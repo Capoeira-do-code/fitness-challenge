@@ -1,6 +1,0 @@
-storage/*.sqlite
-!storage/.gitkeep
-public/uploads/*
-!public/uploads/.gitkeep
-e2e-report/*
-/storage
