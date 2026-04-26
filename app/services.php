@@ -1,0 +1,1731 @@
+<?php
+
+declare(strict_types=1);
+
+const APPROVAL_TYPE_STEP_EXCEPTION = 'step_exception';
+const APPROVAL_TYPE_WORKOUT_EXCEPTION = 'workout_exception';
+const APPROVAL_TYPE_EXTRA_WORKOUT_OVERRIDE = 'extra_workout_override';
+
+const APPROVAL_STATUS_PENDING = 'pending';
+const APPROVAL_STATUS_APPROVED = 'approved';
+const APPROVAL_STATUS_REJECTED = 'rejected';
+
+function normalize_mask(mixed $selectedDays): string
+{
+    if (!is_array($selectedDays)) {
+        $selectedDays = [];
+    }
+
+    $mask = '';
+    for ($i = 0; $i < 7; $i++) {
+        $mask .= in_array((string) $i, $selectedDays, true) ? '1' : '0';
+    }
+
+    return $mask;
+}
+
+function upsert_daily_log(PDO $pdo, array $payload): void
+{
+    $workoutTypeId = null;
+    $workoutTypeName = trim((string) ($payload['workout_type'] ?? ''));
+    if (!empty($payload['workout_type_id'])) {
+        $workoutTypeId = (int) $payload['workout_type_id'];
+        $typeRow = db_fetch_one($pdo, 'SELECT name FROM workout_types WHERE id = :id', [':id' => $workoutTypeId]);
+        if ($typeRow !== null && $workoutTypeName === '') {
+            $workoutTypeName = (string) $typeRow['name'];
+        }
+    }
+
+    $existing = db_fetch_one(
+        $pdo,
+        'SELECT id FROM daily_logs WHERE user_id = :user_id AND log_date = :log_date',
+        [':user_id' => $payload['user_id'], ':log_date' => $payload['log_date']]
+    );
+
+    $now = now_iso();
+
+    if ($existing === null) {
+        db_execute(
+            $pdo,
+            'INSERT INTO daily_logs (
+                user_id, log_date, steps, workout_done, workout_type_id, workout_type,
+                junk_food, extra_workout, distance_km, weight, notes, step_exception_reason,
+                workout_exception_reason, morning_walk, journaling,
+                evening_chores, reading, created_at, updated_at
+            ) VALUES (
+                :user_id, :log_date, :steps, :workout_done, :workout_type_id, :workout_type,
+                :junk_food, :extra_workout, :distance_km, :weight, :notes, :step_exception_reason,
+                :workout_exception_reason, :morning_walk, :journaling,
+                :evening_chores, :reading, :created_at, :updated_at
+            )',
+            [
+                ':user_id' => $payload['user_id'],
+                ':log_date' => $payload['log_date'],
+                ':steps' => $payload['steps'],
+                ':workout_done' => $payload['workout_done'],
+                ':workout_type_id' => $workoutTypeId,
+                ':workout_type' => $workoutTypeName,
+                ':junk_food' => $payload['junk_food'],
+                ':extra_workout' => $payload['extra_workout'],
+                ':distance_km' => $payload['distance_km'] ?? null,
+                ':weight' => $payload['weight'],
+                ':notes' => $payload['notes'],
+                ':step_exception_reason' => $payload['step_exception_reason'],
+                ':workout_exception_reason' => $payload['workout_exception_reason'],
+                ':morning_walk' => $payload['morning_walk'],
+                ':journaling' => $payload['journaling'],
+                ':evening_chores' => $payload['evening_chores'],
+                ':reading' => $payload['reading'],
+                ':created_at' => $now,
+                ':updated_at' => $now,
+            ]
+        );
+
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE daily_logs
+         SET steps = :steps,
+             workout_done = :workout_done,
+             workout_type_id = :workout_type_id,
+             workout_type = :workout_type,
+             junk_food = :junk_food,
+             extra_workout = :extra_workout,
+             distance_km = :distance_km,
+             weight = :weight,
+             notes = :notes,
+             step_exception_reason = :step_exception_reason,
+             workout_exception_reason = :workout_exception_reason,
+             morning_walk = :morning_walk,
+             journaling = :journaling,
+             evening_chores = :evening_chores,
+             reading = :reading,
+             updated_at = :updated_at
+         WHERE id = :id',
+        [
+            ':steps' => $payload['steps'],
+            ':workout_done' => $payload['workout_done'],
+            ':workout_type_id' => $workoutTypeId,
+            ':workout_type' => $workoutTypeName,
+            ':junk_food' => $payload['junk_food'],
+            ':extra_workout' => $payload['extra_workout'],
+            ':distance_km' => $payload['distance_km'] ?? null,
+            ':weight' => $payload['weight'],
+            ':notes' => $payload['notes'],
+            ':step_exception_reason' => $payload['step_exception_reason'],
+            ':workout_exception_reason' => $payload['workout_exception_reason'],
+            ':morning_walk' => $payload['morning_walk'],
+            ':journaling' => $payload['journaling'],
+            ':evening_chores' => $payload['evening_chores'],
+            ':reading' => $payload['reading'],
+            ':updated_at' => $now,
+            ':id' => (int) $existing['id'],
+        ]
+    );
+}
+
+function upsert_daily_log_and_sync_approvals(PDO $pdo, array $payload, int $actorUserId): void
+{
+    $pdo->beginTransaction();
+
+    try {
+        $workoutTypeId = save_workout_type_if_needed($pdo, trim((string) ($payload['workout_type'] ?? '')), $actorUserId);
+        if (empty($payload['workout_type_id']) && $workoutTypeId !== null) {
+            $payload['workout_type_id'] = $workoutTypeId;
+        }
+        upsert_daily_log($pdo, $payload);
+        $log = fetch_log($pdo, (int) $payload['user_id'], (string) $payload['log_date']);
+        if ($log !== null) {
+            sync_log_habits($pdo, (int) $log['id'], $payload['habits'] ?? []);
+        }
+        sync_log_approval_requests($pdo, (int) $payload['user_id'], (string) $payload['log_date'], $actorUserId, $payload);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+}
+
+function sync_log_approval_requests(PDO $pdo, int $userId, string $date, int $actorUserId, array $payload): void
+{
+    $log = fetch_log($pdo, $userId, $date);
+    if ($log === null) {
+        return;
+    }
+
+    $stepReason = trim((string) ($payload['step_exception_reason'] ?? ''));
+    $workoutReason = trim((string) ($payload['workout_exception_reason'] ?? ''));
+    $extraWorkout = (int) ($payload['extra_workout'] ?? 0) === 1;
+    $junkFood = (int) ($payload['junk_food'] ?? 0) === 1;
+
+    $specs = [
+        APPROVAL_TYPE_STEP_EXCEPTION => [
+            'enabled' => $stepReason !== '',
+            'detail' => $stepReason,
+        ],
+        APPROVAL_TYPE_WORKOUT_EXCEPTION => [
+            'enabled' => $workoutReason !== '',
+            'detail' => $workoutReason,
+        ],
+        APPROVAL_TYPE_EXTRA_WORKOUT_OVERRIDE => [
+            'enabled' => $extraWorkout && $junkFood,
+            'detail' => t('approval.extra_detail'),
+        ],
+    ];
+
+    foreach ($specs as $type => $spec) {
+        sync_single_approval_request(
+            $pdo,
+            (int) $log['id'],
+            $userId,
+            $actorUserId,
+            $type,
+            (bool) $spec['enabled'],
+            (string) $spec['detail']
+        );
+    }
+}
+
+function sync_single_approval_request(
+    PDO $pdo,
+    int $logId,
+    int $userId,
+    int $actorUserId,
+    string $type,
+    bool $enabled,
+    string $detail
+): void {
+    $existing = db_fetch_one(
+        $pdo,
+        'SELECT * FROM approval_requests WHERE log_id = :log_id AND approval_type = :approval_type',
+        [':log_id' => $logId, ':approval_type' => $type]
+    );
+
+    if (!$enabled) {
+        db_execute(
+            $pdo,
+            'DELETE FROM approval_requests WHERE log_id = :log_id AND approval_type = :approval_type',
+            [':log_id' => $logId, ':approval_type' => $type]
+        );
+
+        return;
+    }
+
+    $now = now_iso();
+
+    if ($existing === null) {
+        db_execute(
+            $pdo,
+            'INSERT INTO approval_requests (
+                log_id, user_id, approval_type, status,
+                detail, requested_by, approved_by, decision_note,
+                created_at, updated_at
+            ) VALUES (
+                :log_id, :user_id, :approval_type, :status,
+                :detail, :requested_by, NULL, NULL,
+                :created_at, :updated_at
+            )',
+            [
+                ':log_id' => $logId,
+                ':user_id' => $userId,
+                ':approval_type' => $type,
+                ':status' => APPROVAL_STATUS_PENDING,
+                ':detail' => $detail,
+                ':requested_by' => $actorUserId,
+                ':created_at' => $now,
+                ':updated_at' => $now,
+            ]
+        );
+
+        return;
+    }
+
+    $mustReset = $existing['status'] !== APPROVAL_STATUS_PENDING || (string) $existing['detail'] !== $detail;
+
+    if ($mustReset) {
+        db_execute(
+            $pdo,
+            'UPDATE approval_requests
+             SET status = :status,
+                 detail = :detail,
+                 requested_by = :requested_by,
+                 approved_by = NULL,
+                 decision_note = NULL,
+                 updated_at = :updated_at
+             WHERE id = :id',
+            [
+                ':status' => APPROVAL_STATUS_PENDING,
+                ':detail' => $detail,
+                ':requested_by' => $actorUserId,
+                ':updated_at' => $now,
+                ':id' => (int) $existing['id'],
+            ]
+        );
+
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE approval_requests SET detail = :detail, updated_at = :updated_at WHERE id = :id',
+        [
+            ':detail' => $detail,
+            ':updated_at' => $now,
+            ':id' => (int) $existing['id'],
+        ]
+    );
+}
+
+function approval_type_label(string $type): string
+{
+    return match ($type) {
+        APPROVAL_TYPE_STEP_EXCEPTION => t('approval.step_exception'),
+        APPROVAL_TYPE_WORKOUT_EXCEPTION => t('approval.workout_exception'),
+        APPROVAL_TYPE_EXTRA_WORKOUT_OVERRIDE => t('approval.extra_workout_override'),
+        default => $type,
+    };
+}
+
+function approval_status_label(string $status): string
+{
+    return match ($status) {
+        APPROVAL_STATUS_PENDING => t('common.pending'),
+        APPROVAL_STATUS_APPROVED => t('common.approved'),
+        APPROVAL_STATUS_REJECTED => t('common.rejected'),
+        default => $status,
+    };
+}
+
+function can_user_resolve_approval(array $actor, array $approval): bool
+{
+    if ((int) $actor['id'] === (int) $approval['requested_by']) {
+        return false;
+    }
+
+    if ((int) ($actor['active'] ?? 0) !== 1) {
+        return false;
+    }
+
+    if (is_admin($actor)) {
+        return true;
+    }
+
+    return true;
+}
+
+function resolve_approval_request(PDO $pdo, array $actor, int $approvalId, string $decision, string $decisionNote): array
+{
+    $approval = db_fetch_one(
+        $pdo,
+        'SELECT * FROM approval_requests WHERE id = :id',
+        [':id' => $approvalId]
+    );
+
+    if ($approval === null) {
+        return ['ok' => false, 'message' => t('approval.not_found')];
+    }
+
+    if ($approval['status'] !== APPROVAL_STATUS_PENDING) {
+        return ['ok' => false, 'message' => t('approval.already_resolved')];
+    }
+
+    if (!can_user_resolve_approval($actor, $approval)) {
+        return ['ok' => false, 'message' => t('approval.no_permission')];
+    }
+
+    $status = match ($decision) {
+        'approve' => APPROVAL_STATUS_APPROVED,
+        'reject' => APPROVAL_STATUS_REJECTED,
+        default => null,
+    };
+
+    if ($status === null) {
+        return ['ok' => false, 'message' => t('approval.invalid_decision')];
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE approval_requests
+         SET status = :status,
+             approved_by = :approved_by,
+             decision_note = :decision_note,
+             updated_at = :updated_at
+         WHERE id = :id',
+        [
+            ':status' => $status,
+            ':approved_by' => (int) $actor['id'],
+            ':decision_note' => $decisionNote,
+            ':updated_at' => now_iso(),
+            ':id' => $approvalId,
+        ]
+    );
+
+    return ['ok' => true, 'message' => t('approval.updated', ['status' => approval_status_label($status)])];
+}
+
+function fetch_pending_approvals(PDO $pdo, array $viewer, ?int $forUserId = null, int $limit = 40): array
+{
+    $limit = max(1, min(200, $limit));
+    $params = [
+        ':status' => APPROVAL_STATUS_PENDING,
+        ':viewer_id' => (int) $viewer['id'],
+    ];
+
+    $conditions = ['ar.status = :status', 'ar.requested_by != :viewer_id'];
+
+    if ($forUserId !== null && $forUserId > 0) {
+        $conditions[] = 'ar.user_id = :for_user_id';
+        $params[':for_user_id'] = $forUserId;
+    }
+
+    $sql =
+        'SELECT ar.*, dl.log_date, dl.steps, dl.workout_done, dl.junk_food, dl.extra_workout,
+                u.display_name AS owner_name,
+                req.display_name AS requested_by_name,
+                appr.display_name AS approved_by_name
+         FROM approval_requests ar
+         JOIN daily_logs dl ON dl.id = ar.log_id
+         JOIN users u ON u.id = ar.user_id
+         JOIN users req ON req.id = ar.requested_by
+         LEFT JOIN users appr ON appr.id = ar.approved_by
+         WHERE ' . implode(' AND ', $conditions) .
+        ' ORDER BY dl.log_date DESC, ar.created_at DESC
+          LIMIT ' . $limit;
+
+    $rows = db_fetch_all($pdo, $sql, $params);
+
+    foreach ($rows as &$row) {
+        $row['approval_type_label'] = approval_type_label((string) $row['approval_type']);
+        $row['status_label'] = approval_status_label((string) $row['status']);
+        if ((string) $row['approval_type'] === APPROVAL_TYPE_EXTRA_WORKOUT_OVERRIDE) {
+            $row['detail'] = t('approval.extra_detail');
+        }
+    }
+    unset($row);
+
+    return $rows;
+}
+
+function load_approval_status_by_user_date(PDO $pdo, string $startDate, string $endDate): array
+{
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT ar.user_id, ar.approval_type, ar.status, dl.log_date
+         FROM approval_requests ar
+         JOIN daily_logs dl ON dl.id = ar.log_id
+         WHERE dl.log_date BETWEEN :start AND :end',
+        [':start' => $startDate, ':end' => $endDate]
+    );
+
+    $result = [];
+    foreach ($rows as $row) {
+        $userId = (int) $row['user_id'];
+        $date = (string) $row['log_date'];
+        $type = (string) $row['approval_type'];
+        $status = (string) $row['status'];
+
+        if (!isset($result[$userId])) {
+            $result[$userId] = [];
+        }
+        if (!isset($result[$userId][$date])) {
+            $result[$userId][$date] = [];
+        }
+
+        $result[$userId][$date][$type] = $status;
+    }
+
+    return $result;
+}
+
+function fetch_logs_for_user_between(PDO $pdo, int $userId, string $startDate, string $endDate): array
+{
+    $logs = db_fetch_all(
+        $pdo,
+        'SELECT * FROM daily_logs WHERE user_id = :user_id AND log_date BETWEEN :start AND :end ORDER BY log_date ASC',
+        [':user_id' => $userId, ':start' => $startDate, ':end' => $endDate]
+    );
+    foreach ($logs as &$log) {
+        $log['habits'] = fetch_log_habit_values($pdo, (int) $log['id']);
+    }
+    unset($log);
+
+    return $logs;
+}
+
+function fetch_log(PDO $pdo, int $userId, string $date): ?array
+{
+    $log = db_fetch_one(
+        $pdo,
+        'SELECT * FROM daily_logs WHERE user_id = :user_id AND log_date = :log_date',
+        [':user_id' => $userId, ':log_date' => $date]
+    );
+    if ($log !== null) {
+        $log['habits'] = fetch_log_habit_values($pdo, (int) $log['id']);
+    }
+
+    return $log;
+}
+
+function list_habit_definitions(PDO $pdo, bool $activeOnly = true): array
+{
+    $where = $activeOnly ? 'WHERE active = 1' : '';
+
+    return db_fetch_all($pdo, 'SELECT * FROM habit_definitions ' . $where . ' ORDER BY active DESC, sort_order ASC, label ASC');
+}
+
+function fetch_log_habit_values(PDO $pdo, int $logId): array
+{
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT hd.code, hd.id, hd.label, COALESCE(dlh.value, 0) AS value
+         FROM habit_definitions hd
+         LEFT JOIN daily_log_habits dlh ON dlh.habit_id = hd.id AND dlh.log_id = :log_id
+         ORDER BY hd.sort_order ASC, hd.label ASC',
+        [':log_id' => $logId]
+    );
+
+    $values = [];
+    foreach ($rows as $row) {
+        $values[(string) $row['code']] = [
+            'id' => (int) $row['id'],
+            'label' => (string) $row['label'],
+            'value' => (int) $row['value'],
+        ];
+    }
+
+    return $values;
+}
+
+function sync_log_habits(PDO $pdo, int $logId, array $values): void
+{
+    $definitions = list_habit_definitions($pdo, false);
+    $now = now_iso();
+    foreach ($definitions as $definition) {
+        $code = (string) $definition['code'];
+        $habitId = (int) $definition['id'];
+        $value = isset($values[$code]) && (int) $values[$code] === 1 ? 1 : 0;
+        $existing = db_fetch_one(
+            $pdo,
+            'SELECT id FROM daily_log_habits WHERE log_id = :log_id AND habit_id = :habit_id',
+            [':log_id' => $logId, ':habit_id' => $habitId]
+        );
+
+        if ($existing === null) {
+            db_execute(
+                $pdo,
+                'INSERT INTO daily_log_habits (log_id, habit_id, value, created_at, updated_at)
+                 VALUES (:log_id, :habit_id, :value, :created_at, :updated_at)',
+                [':log_id' => $logId, ':habit_id' => $habitId, ':value' => $value, ':created_at' => $now, ':updated_at' => $now]
+            );
+        } else {
+            db_execute(
+                $pdo,
+                'UPDATE daily_log_habits SET value = :value, updated_at = :updated_at WHERE id = :id',
+                [':value' => $value, ':updated_at' => $now, ':id' => (int) $existing['id']]
+            );
+        }
+    }
+}
+
+function save_habit_definition(PDO $pdo, ?int $habitId, string $code, string $label, bool $active, int $sortOrder, int $actorUserId): void
+{
+    $code = preg_replace('/[^a-z0-9_]+/', '_', strtolower(trim($code))) ?: '';
+    $label = trim($label);
+    if ($code === '' || $label === '') {
+        return;
+    }
+
+    $before = $habitId !== null ? db_fetch_one($pdo, 'SELECT * FROM habit_definitions WHERE id = :id', [':id' => $habitId]) : null;
+    $now = now_iso();
+    if ($before === null) {
+        db_execute(
+            $pdo,
+            'INSERT INTO habit_definitions (code, label, active, sort_order, created_by, created_at, updated_at)
+             VALUES (:code, :label, :active, :sort_order, :created_by, :created_at, :updated_at)',
+            [':code' => $code, ':label' => $label, ':active' => $active ? 1 : 0, ':sort_order' => $sortOrder, ':created_by' => $actorUserId, ':created_at' => $now, ':updated_at' => $now]
+        );
+        $after = db_fetch_one($pdo, 'SELECT * FROM habit_definitions WHERE code = :code', [':code' => $code]);
+        audit_log($pdo, $actorUserId, 'habit_created', 'habit_definition', (string) ($after['id'] ?? ''), 'Habit definition created.', null, audit_snapshot($after));
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE habit_definitions SET code = :code, label = :label, active = :active, sort_order = :sort_order, updated_at = :updated_at WHERE id = :id',
+        [':code' => $code, ':label' => $label, ':active' => $active ? 1 : 0, ':sort_order' => $sortOrder, ':updated_at' => $now, ':id' => $habitId]
+    );
+    $after = db_fetch_one($pdo, 'SELECT * FROM habit_definitions WHERE id = :id', [':id' => $habitId]);
+    audit_log($pdo, $actorUserId, 'habit_updated', 'habit_definition', (string) $habitId, 'Habit definition updated.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function fetch_recent_photos(PDO $pdo, int $limit = 24): array
+{
+    $limit = max(1, min(200, $limit));
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT p.*, u.display_name FROM photo_entries p
+         JOIN users u ON u.id = p.user_id
+         ORDER BY p.created_at DESC
+         LIMIT ' . $limit
+    );
+}
+
+function fetch_latest_meal_photo(PDO $pdo, ?int $userId = null): ?array
+{
+    $params = [];
+    $where = 'WHERE p.category IN ("meal", "dinner")';
+    if ($userId !== null) {
+        $where .= ' AND p.user_id = :user_id';
+        $params[':user_id'] = $userId;
+    }
+
+    return db_fetch_one(
+        $pdo,
+        'SELECT p.*, u.display_name
+         FROM photo_entries p
+         JOIN users u ON u.id = p.user_id
+         ' . $where . '
+         ORDER BY p.log_date DESC, p.created_at DESC
+         LIMIT 1',
+        $params
+    );
+}
+
+function fetch_meal_calendar(PDO $pdo, string $startDate, ?int $userId = null, string $view = 'week'): array
+{
+    $start = new DateTimeImmutable($startDate);
+    if ($view === 'month') {
+        $start = $start->modify('first day of this month');
+        $endDate = $start->modify('last day of this month')->format('Y-m-d');
+    } else {
+        $view = 'week';
+        $endDate = $start->modify('+6 days')->format('Y-m-d');
+    }
+    $params = [':start' => $start->format('Y-m-d'), ':end' => $endDate];
+    $where = 'p.log_date BETWEEN :start AND :end AND p.category IN ("meal", "dinner")';
+    if ($userId !== null) {
+        $where .= ' AND p.user_id = :user_id';
+        $params[':user_id'] = $userId;
+    }
+
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT p.*, u.display_name
+         FROM photo_entries p
+         JOIN users u ON u.id = p.user_id
+         WHERE ' . $where . '
+         ORDER BY p.log_date ASC, p.created_at ASC',
+        $params
+    );
+
+    $calendar = [];
+    foreach (day_sequence($start, new DateTimeImmutable($endDate)) as $day) {
+        $calendar[$day->format('Y-m-d')] = ['preview' => null, 'count' => 0, 'photos' => []];
+    }
+    foreach ($rows as $row) {
+        $date = (string) $row['log_date'];
+        if (!isset($calendar[$date])) {
+            continue;
+        }
+        if ($calendar[$date]['preview'] === null) {
+            $calendar[$date]['preview'] = $row;
+        }
+        $calendar[$date]['count']++;
+        $calendar[$date]['photos'][] = $row;
+    }
+
+    return $calendar;
+}
+
+function save_photo_entry(PDO $pdo, array $config, int $userId, string $date, string $category, string $caption, array $file): void
+{
+    $validCategories = ['meal', 'dinner', 'workout', 'other'];
+    if (!in_array($category, $validCategories, true)) {
+        $category = 'other';
+    }
+
+    $webPath = save_uploaded_image($config, $file, (new DateTimeImmutable($date))->format('Y/m'), (string) $userId);
+
+    db_execute(
+        $pdo,
+        'INSERT INTO photo_entries (user_id, log_date, category, caption, file_path, created_at)
+         VALUES (:user_id, :log_date, :category, :caption, :file_path, :created_at)',
+        [
+            ':user_id' => $userId,
+            ':log_date' => $date,
+            ':category' => $category,
+            ':caption' => $caption,
+            ':file_path' => $webPath,
+            ':created_at' => now_iso(),
+        ]
+    );
+}
+
+function save_uploaded_image(array $config, array $file, string $subDir, string $prefix): string
+{
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        throw new RuntimeException(t('upload.failed'));
+    }
+
+    $tmpName = (string) ($file['tmp_name'] ?? '');
+    $imageInfo = @getimagesize($tmpName);
+    if ($imageInfo === false) {
+        throw new RuntimeException(t('upload.invalid_image'));
+    }
+
+    $mime = $imageInfo['mime'] ?? '';
+    $allowed = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+    ];
+
+    if (!isset($allowed[$mime])) {
+        throw new RuntimeException(t('upload.invalid_format'));
+    }
+
+    $targetDir = rtrim((string) $config['upload_dir'], '/') . '/' . trim($subDir, '/');
+    if (!is_dir($targetDir)) {
+        mkdir($targetDir, 0775, true);
+    }
+
+    $safePrefix = preg_replace('/[^a-zA-Z0-9_-]+/', '_', $prefix) ?: 'image';
+    $filename = sprintf('%s_%s.%s', $safePrefix, bin2hex(random_bytes(8)), $allowed[$mime]);
+    $targetPath = $targetDir . '/' . $filename;
+
+    if (!move_uploaded_file($tmpName, $targetPath)) {
+        throw new RuntimeException(t('upload.move_failed'));
+    }
+
+    return rtrim((string) $config['upload_web_path'], '/') . '/' . trim($subDir, '/') . '/' . $filename;
+}
+
+function create_user(PDO $pdo, array $payload): void
+{
+    $now = now_iso();
+
+    db_execute(
+        $pdo,
+        'INSERT INTO users (
+            username, password_hash, display_name, role,
+            step_goal, step_days_mask, workout_target,
+            workout_days_mask, workout_strict, ideal_weight,
+            motivation_quote, primary_goal_type, primary_goal_value, active, created_at, updated_at
+        ) VALUES (
+            :username, :password_hash, :display_name, :role,
+            :step_goal, :step_days_mask, :workout_target,
+            :workout_days_mask, :workout_strict, :ideal_weight,
+            :motivation_quote, :primary_goal_type, :primary_goal_value, :active, :created_at, :updated_at
+        )',
+        [
+            ':username' => $payload['username'],
+            ':password_hash' => password_hash($payload['password'], PASSWORD_DEFAULT),
+            ':display_name' => $payload['display_name'],
+            ':role' => $payload['role'],
+            ':step_goal' => $payload['step_goal'],
+            ':step_days_mask' => $payload['step_days_mask'],
+            ':workout_target' => $payload['workout_target'],
+            ':workout_days_mask' => $payload['workout_days_mask'],
+            ':workout_strict' => $payload['workout_strict'],
+            ':ideal_weight' => $payload['ideal_weight'],
+            ':motivation_quote' => $payload['motivation_quote'],
+            ':primary_goal_type' => $payload['primary_goal_type'] ?? 'steps',
+            ':primary_goal_value' => $payload['primary_goal_value'] ?? null,
+            ':active' => $payload['active'],
+            ':created_at' => $now,
+            ':updated_at' => $now,
+        ]
+    );
+}
+
+function update_user(PDO $pdo, int $userId, array $payload): void
+{
+    db_execute(
+        $pdo,
+        'UPDATE users
+         SET display_name = :display_name,
+             role = :role,
+             step_goal = :step_goal,
+             step_days_mask = :step_days_mask,
+             workout_target = :workout_target,
+             workout_days_mask = :workout_days_mask,
+             workout_strict = :workout_strict,
+             ideal_weight = :ideal_weight,
+             motivation_quote = :motivation_quote,
+             primary_goal_type = :primary_goal_type,
+             primary_goal_value = :primary_goal_value,
+             active = :active,
+             updated_at = :updated_at
+         WHERE id = :id',
+        [
+            ':display_name' => $payload['display_name'],
+            ':role' => $payload['role'],
+            ':step_goal' => $payload['step_goal'],
+            ':step_days_mask' => $payload['step_days_mask'],
+            ':workout_target' => $payload['workout_target'],
+            ':workout_days_mask' => $payload['workout_days_mask'],
+            ':workout_strict' => $payload['workout_strict'],
+            ':ideal_weight' => $payload['ideal_weight'],
+            ':motivation_quote' => $payload['motivation_quote'],
+            ':primary_goal_type' => $payload['primary_goal_type'] ?? 'steps',
+            ':primary_goal_value' => $payload['primary_goal_value'] ?? null,
+            ':active' => $payload['active'],
+            ':updated_at' => now_iso(),
+            ':id' => $userId,
+        ]
+    );
+
+    if (($payload['password'] ?? '') !== '') {
+        db_execute(
+            $pdo,
+            'UPDATE users SET password_hash = :password_hash, updated_at = :updated_at WHERE id = :id',
+            [
+                ':password_hash' => password_hash($payload['password'], PASSWORD_DEFAULT),
+                ':updated_at' => now_iso(),
+                ':id' => $userId,
+            ]
+        );
+    }
+}
+
+function change_password(PDO $pdo, int $userId, string $currentPassword, string $newPassword): bool
+{
+    $user = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => $userId]);
+    if ($user === null) {
+        return false;
+    }
+
+    if (!password_verify($currentPassword, $user['password_hash'])) {
+        return false;
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE users SET password_hash = :hash, updated_at = :updated_at WHERE id = :id',
+        [
+            ':hash' => password_hash($newPassword, PASSWORD_DEFAULT),
+            ':updated_at' => now_iso(),
+            ':id' => $userId,
+        ]
+    );
+
+    return true;
+}
+
+function audit_log(
+    PDO $pdo,
+    ?int $actorUserId,
+    string $action,
+    string $entityType,
+    string $entityId,
+    string $summary,
+    ?array $before = null,
+    ?array $after = null
+): void {
+    db_execute(
+        $pdo,
+        'INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, summary, before_json, after_json, created_at)
+         VALUES (:actor_user_id, :action, :entity_type, :entity_id, :summary, :before_json, :after_json, :created_at)',
+        [
+            ':actor_user_id' => $actorUserId,
+            ':action' => $action,
+            ':entity_type' => $entityType,
+            ':entity_id' => $entityId,
+            ':summary' => $summary,
+            ':before_json' => $before !== null ? json_encode($before, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null,
+            ':after_json' => $after !== null ? json_encode($after, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null,
+            ':created_at' => now_iso(),
+        ]
+    );
+}
+
+function audit_snapshot(?array $row, array $exclude = []): ?array
+{
+    if ($row === null) {
+        return null;
+    }
+
+    foreach ($exclude as $key) {
+        unset($row[$key]);
+    }
+
+    return $row;
+}
+
+function fetch_audit_logs(PDO $pdo, array $filters = [], int $limit = 80): array
+{
+    $limit = max(1, min(300, $limit));
+    $params = [];
+    $conditions = [];
+
+    if (!empty($filters['actor_user_id'])) {
+        $conditions[] = 'a.actor_user_id = :actor_user_id';
+        $params[':actor_user_id'] = (int) $filters['actor_user_id'];
+    }
+    if (!empty($filters['entity_type'])) {
+        $conditions[] = 'a.entity_type = :entity_type';
+        $params[':entity_type'] = (string) $filters['entity_type'];
+    }
+    if (!empty($filters['date_from'])) {
+        $conditions[] = 'DATE(a.created_at) >= :date_from';
+        $params[':date_from'] = (string) $filters['date_from'];
+    }
+    if (!empty($filters['date_to'])) {
+        $conditions[] = 'DATE(a.created_at) <= :date_to';
+        $params[':date_to'] = (string) $filters['date_to'];
+    }
+
+    $where = $conditions === [] ? '' : 'WHERE ' . implode(' AND ', $conditions);
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT a.*, u.display_name AS actor_name
+         FROM audit_logs a
+         LEFT JOIN users u ON u.id = a.actor_user_id
+         ' . $where . '
+         ORDER BY a.created_at DESC
+         LIMIT ' . $limit,
+        $params
+    );
+}
+
+function default_team(PDO $pdo): array
+{
+    $team = db_fetch_one($pdo, 'SELECT * FROM teams WHERE slug = :slug', [':slug' => 'main']);
+    if ($team !== null) {
+        return $team;
+    }
+
+    seed_default_team($pdo);
+    $team = db_fetch_one($pdo, 'SELECT * FROM teams WHERE slug = :slug', [':slug' => 'main']);
+    if ($team === null) {
+        throw new RuntimeException('Default team unavailable.');
+    }
+
+    return $team;
+}
+
+function list_team_members(PDO $pdo, int $teamId, bool $activeOnly = true): array
+{
+    $where = $activeOnly ? 'AND tm.active = 1 AND u.active = 1' : '';
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT tm.*, u.username, u.display_name, u.role AS user_role, u.step_goal, u.workout_target, u.active AS user_active
+         FROM team_memberships tm
+         JOIN users u ON u.id = tm.user_id
+         WHERE tm.team_id = :team_id ' . $where . '
+         ORDER BY tm.active DESC, u.display_name ASC',
+        [':team_id' => $teamId]
+    );
+}
+
+function list_active_team_users(PDO $pdo, int $teamId): array
+{
+    return db_fetch_all(
+        $pdo,
+        'SELECT u.*
+         FROM team_memberships tm
+         JOIN users u ON u.id = tm.user_id
+         WHERE tm.team_id = :team_id AND tm.active = 1 AND u.active = 1
+         ORDER BY u.display_name ASC',
+        [':team_id' => $teamId]
+    );
+}
+
+function list_users_not_in_active_team(PDO $pdo, int $teamId): array
+{
+    return db_fetch_all(
+        $pdo,
+        'SELECT u.* FROM users u
+         WHERE u.active = 1
+           AND NOT EXISTS (
+                SELECT 1 FROM team_memberships tm
+                WHERE tm.user_id = u.id AND tm.team_id = :team_id AND tm.active = 1
+           )
+         ORDER BY u.display_name ASC',
+        [':team_id' => $teamId]
+    );
+}
+
+function set_team_membership(PDO $pdo, int $teamId, int $userId, bool $active, int $actorUserId): void
+{
+    $existing = db_fetch_one(
+        $pdo,
+        'SELECT * FROM team_memberships WHERE team_id = :team_id AND user_id = :user_id',
+        [':team_id' => $teamId, ':user_id' => $userId]
+    );
+    $now = now_iso();
+
+    if ($existing === null) {
+        db_execute(
+            $pdo,
+            'INSERT INTO team_memberships (team_id, user_id, role, active, joined_at, removed_at, created_at, updated_at)
+             VALUES (:team_id, :user_id, "member", :active, :joined_at, :removed_at, :created_at, :updated_at)',
+            [
+                ':team_id' => $teamId,
+                ':user_id' => $userId,
+                ':active' => $active ? 1 : 0,
+                ':joined_at' => $now,
+                ':removed_at' => $active ? null : $now,
+                ':created_at' => $now,
+                ':updated_at' => $now,
+            ]
+        );
+    } else {
+        db_execute(
+            $pdo,
+            'UPDATE team_memberships
+             SET active = :active,
+                 removed_at = :removed_at,
+                 updated_at = :updated_at
+             WHERE id = :id',
+            [
+                ':active' => $active ? 1 : 0,
+                ':removed_at' => $active ? null : $now,
+                ':updated_at' => $now,
+                ':id' => (int) $existing['id'],
+            ]
+        );
+    }
+
+    $after = db_fetch_one(
+        $pdo,
+        'SELECT * FROM team_memberships WHERE team_id = :team_id AND user_id = :user_id',
+        [':team_id' => $teamId, ':user_id' => $userId]
+    );
+    audit_log(
+        $pdo,
+        $actorUserId,
+        $active ? 'team_member_added' : 'team_member_removed',
+        'team_membership',
+        (string) ($after['id'] ?? $userId),
+        $active ? 'Team member added.' : 'Team member removed from team stats.',
+        audit_snapshot($existing),
+        audit_snapshot($after)
+    );
+}
+
+function can_manage_team(PDO $pdo, array $user, int $teamId): bool
+{
+    if (is_admin($user)) {
+        return true;
+    }
+
+    $membership = db_fetch_one(
+        $pdo,
+        'SELECT role FROM team_memberships WHERE team_id = :team_id AND user_id = :user_id AND active = 1',
+        [':team_id' => $teamId, ':user_id' => (int) $user['id']]
+    );
+
+    return $membership !== null && (string) $membership['role'] === 'admin';
+}
+
+function require_team_manager(PDO $pdo, array $user, int $teamId): void
+{
+    if (!can_manage_team($pdo, $user, $teamId)) {
+        http_response_code(403);
+        echo e(t('flash.no_permission'));
+        exit;
+    }
+}
+
+function update_team_member_role(PDO $pdo, int $teamId, int $userId, string $role, int $actorUserId): void
+{
+    $role = $role === 'admin' ? 'admin' : 'member';
+    $before = db_fetch_one(
+        $pdo,
+        'SELECT * FROM team_memberships WHERE team_id = :team_id AND user_id = :user_id',
+        [':team_id' => $teamId, ':user_id' => $userId]
+    );
+    if ($before === null) {
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE team_memberships SET role = :role, updated_at = :updated_at WHERE id = :id',
+        [':role' => $role, ':updated_at' => now_iso(), ':id' => (int) $before['id']]
+    );
+    $after = db_fetch_one($pdo, 'SELECT * FROM team_memberships WHERE id = :id', [':id' => (int) $before['id']]);
+    audit_log($pdo, $actorUserId, 'team_member_role_updated', 'team_membership', (string) $before['id'], 'Team member role updated.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function list_user_teams(PDO $pdo, int $userId): array
+{
+    return db_fetch_all(
+        $pdo,
+        'SELECT t.*, tm.role AS membership_role, tm.active AS membership_active
+         FROM team_memberships tm
+         JOIN teams t ON t.id = tm.team_id
+         WHERE tm.user_id = :user_id AND tm.active = 1 AND t.active = 1
+         ORDER BY t.name ASC',
+        [':user_id' => $userId]
+    );
+}
+
+function list_joinable_teams(PDO $pdo, int $userId): array
+{
+    return db_fetch_all(
+        $pdo,
+        'SELECT t.*,
+                (SELECT status FROM team_join_requests tjr WHERE tjr.team_id = t.id AND tjr.user_id = :user_id ORDER BY tjr.requested_at DESC LIMIT 1) AS request_status
+         FROM teams t
+         WHERE t.active = 1
+           AND t.visibility = "visible"
+           AND NOT EXISTS (
+                SELECT 1 FROM team_memberships tm WHERE tm.team_id = t.id AND tm.user_id = :user_id AND tm.active = 1
+           )
+         ORDER BY t.name ASC',
+        [':user_id' => $userId]
+    );
+}
+
+function request_or_join_team(PDO $pdo, int $teamId, int $userId): string
+{
+    $team = db_fetch_one($pdo, 'SELECT * FROM teams WHERE id = :id AND active = 1', [':id' => $teamId]);
+    if ($team === null || (string) $team['visibility'] !== 'visible') {
+        return 'blocked';
+    }
+
+    if ((string) $team['join_mode'] === 'open') {
+        set_team_membership($pdo, $teamId, $userId, true, $userId);
+        return 'joined';
+    }
+
+    $existing = db_fetch_one(
+        $pdo,
+        'SELECT id FROM team_join_requests WHERE team_id = :team_id AND user_id = :user_id AND status = "pending"',
+        [':team_id' => $teamId, ':user_id' => $userId]
+    );
+    if ($existing === null) {
+        db_execute(
+            $pdo,
+            'INSERT INTO team_join_requests (team_id, user_id, status, requested_at)
+             VALUES (:team_id, :user_id, "pending", :requested_at)',
+            [':team_id' => $teamId, ':user_id' => $userId, ':requested_at' => now_iso()]
+        );
+        audit_log($pdo, $userId, 'team_join_requested', 'team', (string) $teamId, 'Team join requested.', null, ['team_id' => $teamId, 'user_id' => $userId]);
+    }
+
+    return 'requested';
+}
+
+function resolve_team_join_request(PDO $pdo, int $requestId, bool $approve, int $actorUserId): void
+{
+    $before = db_fetch_one($pdo, 'SELECT * FROM team_join_requests WHERE id = :id', [':id' => $requestId]);
+    if ($before === null || (string) $before['status'] !== 'pending') {
+        return;
+    }
+
+    $status = $approve ? 'approved' : 'rejected';
+    db_execute(
+        $pdo,
+        'UPDATE team_join_requests SET status = :status, resolved_by = :resolved_by, resolved_at = :resolved_at WHERE id = :id',
+        [':status' => $status, ':resolved_by' => $actorUserId, ':resolved_at' => now_iso(), ':id' => $requestId]
+    );
+    if ($approve) {
+        set_team_membership($pdo, (int) $before['team_id'], (int) $before['user_id'], true, $actorUserId);
+    }
+    $after = db_fetch_one($pdo, 'SELECT * FROM team_join_requests WHERE id = :id', [':id' => $requestId]);
+    audit_log($pdo, $actorUserId, 'team_join_' . $status, 'team_join_request', (string) $requestId, 'Team join request resolved.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function update_team_settings(PDO $pdo, int $teamId, string $name, string $joinMode, string $visibility, int $actorUserId): void
+{
+    $joinMode = in_array($joinMode, ['open', 'closed'], true) ? $joinMode : 'closed';
+    $visibility = in_array($visibility, ['visible', 'private'], true) ? $visibility : 'visible';
+    $before = db_fetch_one($pdo, 'SELECT * FROM teams WHERE id = :id', [':id' => $teamId]);
+    if ($before === null) {
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE teams SET name = :name, join_mode = :join_mode, visibility = :visibility, updated_at = :updated_at WHERE id = :id',
+        [':name' => trim($name), ':join_mode' => $joinMode, ':visibility' => $visibility, ':updated_at' => now_iso(), ':id' => $teamId]
+    );
+    $after = db_fetch_one($pdo, 'SELECT * FROM teams WHERE id = :id', [':id' => $teamId]);
+    audit_log($pdo, $actorUserId, 'team_settings_updated', 'team', (string) $teamId, 'Team settings updated.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function pending_team_join_requests(PDO $pdo, int $teamId): array
+{
+    return db_fetch_all(
+        $pdo,
+        'SELECT tjr.*, u.display_name, u.username
+         FROM team_join_requests tjr
+         JOIN users u ON u.id = tjr.user_id
+         WHERE tjr.team_id = :team_id AND tjr.status = "pending"
+         ORDER BY tjr.requested_at ASC',
+        [':team_id' => $teamId]
+    );
+}
+
+function list_goals(PDO $pdo, string $scope, ?int $userId = null, ?int $teamId = null, bool $includeArchived = false): array
+{
+    $conditions = ['scope = :scope'];
+    $params = [':scope' => $scope];
+
+    if ($userId !== null) {
+        $conditions[] = 'user_id = :user_id';
+        $params[':user_id'] = $userId;
+    }
+    if ($teamId !== null) {
+        $conditions[] = 'team_id = :team_id';
+        $params[':team_id'] = $teamId;
+    }
+    if (!$includeArchived) {
+        $conditions[] = 'status != "archived"';
+    }
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT * FROM goals WHERE ' . implode(' AND ', $conditions) . ' ORDER BY status ASC, due_date IS NULL, due_date ASC, created_at DESC',
+        $params
+    );
+}
+
+function create_goal(PDO $pdo, array $payload, int $actorUserId): void
+{
+    $now = now_iso();
+    db_execute(
+        $pdo,
+        'INSERT INTO goals (scope, team_id, user_id, title, target_type, target_value, current_value, due_date, status, created_by, created_at, updated_at)
+         VALUES (:scope, :team_id, :user_id, :title, :target_type, :target_value, :current_value, :due_date, "active", :created_by, :created_at, :updated_at)',
+        [
+            ':scope' => $payload['scope'],
+            ':team_id' => $payload['team_id'],
+            ':user_id' => $payload['user_id'],
+            ':title' => $payload['title'],
+            ':target_type' => $payload['target_type'],
+            ':target_value' => $payload['target_value'],
+            ':current_value' => $payload['current_value'] ?? 0,
+            ':due_date' => $payload['due_date'],
+            ':created_by' => $actorUserId,
+            ':created_at' => $now,
+            ':updated_at' => $now,
+        ]
+    );
+    $goal = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = last_insert_rowid()');
+    audit_log($pdo, $actorUserId, 'goal_created', 'goal', (string) ($goal['id'] ?? ''), 'Goal created.', null, audit_snapshot($goal));
+}
+
+function update_goal_status(PDO $pdo, int $goalId, string $status, int $actorUserId): void
+{
+    $allowed = ['active', 'complete', 'archived'];
+    if (!in_array($status, $allowed, true)) {
+        return;
+    }
+
+    $before = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = :id', [':id' => $goalId]);
+    if ($before === null) {
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE goals SET status = :status, updated_at = :updated_at WHERE id = :id',
+        [':status' => $status, ':updated_at' => now_iso(), ':id' => $goalId]
+    );
+    $after = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = :id', [':id' => $goalId]);
+    audit_log($pdo, $actorUserId, 'goal_' . $status, 'goal', (string) $goalId, 'Goal status updated.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): void
+{
+    $before = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = :id', [':id' => $goalId]);
+    if ($before === null) {
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE goals
+         SET title = :title, target_type = :target_type, target_value = :target_value, due_date = :due_date, updated_at = :updated_at
+         WHERE id = :id',
+        [
+            ':title' => trim((string) $payload['title']),
+            ':target_type' => trim((string) $payload['target_type']),
+            ':target_value' => $payload['target_value'],
+            ':due_date' => $payload['due_date'],
+            ':updated_at' => now_iso(),
+            ':id' => $goalId,
+        ]
+    );
+    $after = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = :id', [':id' => $goalId]);
+    audit_log($pdo, $actorUserId, 'goal_updated', 'goal', (string) $goalId, 'Goal updated.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function list_workout_types(PDO $pdo, bool $activeOnly = true): array
+{
+    $where = $activeOnly ? 'WHERE active = 1' : '';
+
+    return db_fetch_all($pdo, 'SELECT * FROM workout_types ' . $where . ' ORDER BY active DESC, LOWER(name) ASC');
+}
+
+function save_workout_type_if_needed(PDO $pdo, string $name, ?int $actorUserId = null): ?int
+{
+    $name = trim($name);
+    if ($name === '') {
+        return null;
+    }
+
+    $existing = db_fetch_one($pdo, 'SELECT * FROM workout_types WHERE LOWER(name) = LOWER(:name)', [':name' => $name]);
+    if ($existing !== null) {
+        if ((int) $existing['active'] !== 1) {
+            db_execute(
+                $pdo,
+                'UPDATE workout_types SET active = 1, updated_at = :updated_at WHERE id = :id',
+                [':updated_at' => now_iso(), ':id' => (int) $existing['id']]
+            );
+            $after = db_fetch_one($pdo, 'SELECT * FROM workout_types WHERE id = :id', [':id' => (int) $existing['id']]);
+            audit_log($pdo, $actorUserId, 'workout_type_reactivated', 'workout_type', (string) $existing['id'], 'Workout type reactivated from daily log.', audit_snapshot($existing), audit_snapshot($after));
+        }
+        return (int) $existing['id'];
+    }
+
+    db_execute(
+        $pdo,
+        'INSERT INTO workout_types (name, active, created_by, created_at, updated_at)
+         VALUES (:name, 1, :created_by, :created_at, :updated_at)',
+        [
+            ':name' => $name,
+            ':created_by' => $actorUserId,
+            ':created_at' => now_iso(),
+            ':updated_at' => now_iso(),
+        ]
+    );
+    $created = db_fetch_one($pdo, 'SELECT * FROM workout_types WHERE LOWER(name) = LOWER(:name)', [':name' => $name]);
+    audit_log($pdo, $actorUserId, 'workout_type_created', 'workout_type', (string) ($created['id'] ?? ''), 'Workout type created from daily log.', null, audit_snapshot($created));
+
+    return $created !== null ? (int) $created['id'] : null;
+}
+
+function deactivate_workout_type(PDO $pdo, int $typeId, int $actorUserId): void
+{
+    $before = db_fetch_one($pdo, 'SELECT * FROM workout_types WHERE id = :id', [':id' => $typeId]);
+    if ($before === null) {
+        return;
+    }
+
+    db_execute($pdo, 'UPDATE workout_types SET active = 0, updated_at = :updated_at WHERE id = :id', [':updated_at' => now_iso(), ':id' => $typeId]);
+    $after = db_fetch_one($pdo, 'SELECT * FROM workout_types WHERE id = :id', [':id' => $typeId]);
+    audit_log($pdo, $actorUserId, 'workout_type_deactivated', 'workout_type', (string) $typeId, 'Workout type deactivated.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function rename_workout_type(PDO $pdo, int $typeId, string $name, bool $active, int $actorUserId): void
+{
+    $name = trim($name);
+    if ($name === '') {
+        return;
+    }
+    $before = db_fetch_one($pdo, 'SELECT * FROM workout_types WHERE id = :id', [':id' => $typeId]);
+    if ($before === null) {
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE workout_types SET name = :name, active = :active, updated_at = :updated_at WHERE id = :id',
+        [':name' => $name, ':active' => $active ? 1 : 0, ':updated_at' => now_iso(), ':id' => $typeId]
+    );
+    $after = db_fetch_one($pdo, 'SELECT * FROM workout_types WHERE id = :id', [':id' => $typeId]);
+    audit_log($pdo, $actorUserId, 'workout_type_updated', 'workout_type', (string) $typeId, 'Workout type updated.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function app_setting(PDO $pdo, string $key, ?string $default = null): ?string
+{
+    $row = db_fetch_one($pdo, 'SELECT setting_value FROM app_settings WHERE setting_key = :key', [':key' => $key]);
+
+    return $row !== null ? (string) $row['setting_value'] : $default;
+}
+
+function set_app_setting(PDO $pdo, string $key, ?string $value, int $actorUserId): void
+{
+    $before = db_fetch_one($pdo, 'SELECT * FROM app_settings WHERE setting_key = :key', [':key' => $key]);
+    db_execute(
+        $pdo,
+        'INSERT INTO app_settings (setting_key, setting_value, updated_by, updated_at)
+         VALUES (:key, :value, :updated_by, :updated_at)
+         ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_by = excluded.updated_by, updated_at = excluded.updated_at',
+        [':key' => $key, ':value' => $value, ':updated_by' => $actorUserId, ':updated_at' => now_iso()]
+    );
+    $after = db_fetch_one($pdo, 'SELECT * FROM app_settings WHERE setting_key = :key', [':key' => $key]);
+    audit_log($pdo, $actorUserId, 'app_setting_updated', 'app_setting', $key, 'App setting updated.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function update_challenge_settings(PDO $pdo, string $name, string $start, string $end, int $actorUserId): void
+{
+    $name = trim($name) !== '' ? trim($name) : 'Fitness Challenge';
+    $start = to_date($start);
+    $end = to_date($end, $start);
+    if ($end < $start) {
+        $end = $start;
+    }
+
+    $before = db_fetch_one($pdo, 'SELECT * FROM challenge_settings WHERE id = 1');
+    db_execute(
+        $pdo,
+        'INSERT INTO challenge_settings (id, challenge_name, challenge_start, challenge_end, active, deleted_at, created_at, updated_at)
+         VALUES (1, :name, :start, :end, 1, NULL, :created_at, :updated_at)
+         ON CONFLICT(id) DO UPDATE SET challenge_name = excluded.challenge_name, challenge_start = excluded.challenge_start, challenge_end = excluded.challenge_end, active = 1, deleted_at = NULL, updated_at = excluded.updated_at',
+        [
+            ':name' => $name,
+            ':start' => $start,
+            ':end' => $end,
+            ':created_at' => now_iso(),
+            ':updated_at' => now_iso(),
+        ]
+    );
+    $after = db_fetch_one($pdo, 'SELECT * FROM challenge_settings WHERE id = 1');
+    audit_log($pdo, $actorUserId, 'challenge_settings_updated', 'challenge_settings', '1', 'Challenge settings updated.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function archive_challenge(PDO $pdo, int $actorUserId): void
+{
+    $before = db_fetch_one($pdo, 'SELECT * FROM challenge_settings WHERE id = 1');
+    if ($before === null) {
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE challenge_settings SET active = 0, deleted_at = :deleted_at, updated_at = :updated_at WHERE id = 1',
+        [':deleted_at' => now_iso(), ':updated_at' => now_iso()]
+    );
+    $after = db_fetch_one($pdo, 'SELECT * FROM challenge_settings WHERE id = 1');
+    audit_log($pdo, $actorUserId, 'challenge_archived', 'challenge_settings', '1', 'Challenge archived.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function list_achievements(PDO $pdo, bool $activeOnly = true): array
+{
+    $where = $activeOnly ? 'WHERE active = 1' : '';
+
+    return db_fetch_all($pdo, 'SELECT * FROM achievements ' . $where . ' ORDER BY scope ASC, name ASC');
+}
+
+function create_manual_achievement(PDO $pdo, string $name, string $description, string $scope, int $actorUserId, ?string $imagePath = null, string $rewardText = ''): int
+{
+    $scope = in_array($scope, ['user', 'team'], true) ? $scope : 'user';
+    $code = 'manual_' . preg_replace('/[^a-z0-9]+/', '_', strtolower($name)) . '_' . substr(bin2hex(random_bytes(3)), 0, 6);
+    $now = now_iso();
+
+    db_execute(
+        $pdo,
+        'INSERT INTO achievements (code, name, description, scope, trigger_key, image_path, reward_text, active, created_by, created_at, updated_at)
+         VALUES (:code, :name, :description, :scope, NULL, :image_path, :reward_text, 1, :created_by, :created_at, :updated_at)',
+        [
+            ':code' => $code,
+            ':name' => $name,
+            ':description' => $description,
+            ':scope' => $scope,
+            ':image_path' => $imagePath,
+            ':reward_text' => $rewardText,
+            ':created_by' => $actorUserId,
+            ':created_at' => $now,
+            ':updated_at' => $now,
+        ]
+    );
+    $achievement = db_fetch_one($pdo, 'SELECT * FROM achievements WHERE code = :code', [':code' => $code]);
+    audit_log($pdo, $actorUserId, 'achievement_created', 'achievement', (string) ($achievement['id'] ?? ''), 'Achievement created.', null, audit_snapshot($achievement));
+
+    return (int) ($achievement['id'] ?? 0);
+}
+
+function create_conditional_achievement(PDO $pdo, array $payload, int $actorUserId): void
+{
+    $achievementId = create_manual_achievement(
+        $pdo,
+        trim((string) $payload['name']),
+        trim((string) ($payload['description'] ?? '')),
+        (string) ($payload['scope'] ?? 'user'),
+        $actorUserId,
+        $payload['image_path'] ?? null,
+        trim((string) ($payload['reward_text'] ?? ''))
+    );
+    if ($achievementId <= 0) {
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'INSERT INTO achievement_rules (achievement_id, metric_key, operator, target_value, window, active, created_at, updated_at)
+         VALUES (:achievement_id, :metric_key, :operator, :target_value, :window, 1, :created_at, :updated_at)',
+        [
+            ':achievement_id' => $achievementId,
+            ':metric_key' => trim((string) ($payload['metric_key'] ?? 'steps')),
+            ':operator' => in_array(($payload['operator'] ?? '>='), ['>=', '<=', '='], true) ? (string) $payload['operator'] : '>=',
+            ':target_value' => (float) ($payload['target_value'] ?? 1),
+            ':window' => in_array(($payload['window'] ?? 'total'), ['total', 'week', 'current_challenge'], true) ? (string) $payload['window'] : 'total',
+            ':created_at' => now_iso(),
+            ':updated_at' => now_iso(),
+        ]
+    );
+    audit_log($pdo, $actorUserId, 'achievement_rule_created', 'achievement', (string) $achievementId, 'Achievement rule created.', null, $payload);
+}
+
+function award_achievement(PDO $pdo, int $achievementId, ?int $userId, ?int $teamId, ?int $actorUserId, string $note = ''): void
+{
+    if ($userId === null && $teamId === null) {
+        return;
+    }
+
+    $existing = db_fetch_one(
+        $pdo,
+        'SELECT id FROM achievement_awards
+         WHERE achievement_id = :achievement_id
+           AND COALESCE(user_id, 0) = COALESCE(:user_id, 0)
+           AND COALESCE(team_id, 0) = COALESCE(:team_id, 0)',
+        [':achievement_id' => $achievementId, ':user_id' => $userId, ':team_id' => $teamId]
+    );
+    if ($existing !== null) {
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'INSERT INTO achievement_awards (achievement_id, user_id, team_id, awarded_by, awarded_at, note)
+         VALUES (:achievement_id, :user_id, :team_id, :awarded_by, :awarded_at, :note)',
+        [
+            ':achievement_id' => $achievementId,
+            ':user_id' => $userId,
+            ':team_id' => $teamId,
+            ':awarded_by' => $actorUserId,
+            ':awarded_at' => now_iso(),
+            ':note' => $note,
+        ]
+    );
+    audit_log($pdo, $actorUserId, 'achievement_awarded', 'achievement', (string) $achievementId, 'Achievement awarded.', null, [
+        'achievement_id' => $achievementId,
+        'user_id' => $userId,
+        'team_id' => $teamId,
+        'note' => $note,
+    ]);
+}
+
+function list_awarded_achievements(PDO $pdo, ?int $userId = null, ?int $teamId = null): array
+{
+    $conditions = [];
+    $params = [];
+    if ($userId !== null) {
+        $conditions[] = 'aa.user_id = :user_id';
+        $params[':user_id'] = $userId;
+    }
+    if ($teamId !== null) {
+        $conditions[] = 'aa.team_id = :team_id';
+        $params[':team_id'] = $teamId;
+    }
+    if ($conditions === []) {
+        $conditions[] = '1 = 0';
+    }
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT aa.*, a.name, a.description, a.scope, a.code, a.image_path, a.reward_text, u.display_name AS awarded_by_name
+         FROM achievement_awards aa
+         JOIN achievements a ON a.id = aa.achievement_id
+         LEFT JOIN users u ON u.id = aa.awarded_by
+         WHERE ' . implode(' AND ', $conditions) . '
+         ORDER BY aa.awarded_at DESC',
+        $params
+    );
+}
+
+function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $teamId = null): void
+{
+    $achievementRows = db_fetch_all($pdo, 'SELECT * FROM achievements WHERE active = 1 AND trigger_key IS NOT NULL');
+    $byTrigger = [];
+    foreach ($achievementRows as $achievement) {
+        $byTrigger[(string) $achievement['trigger_key']] = $achievement;
+    }
+
+    foreach ($metricsByUser as $metric) {
+        $userId = (int) $metric['user']['id'];
+
+        if (isset($byTrigger['first_log']) && db_fetch_one($pdo, 'SELECT id FROM daily_logs WHERE user_id = :user_id LIMIT 1', [':user_id' => $userId]) !== null) {
+            award_achievement($pdo, (int) $byTrigger['first_log']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['first_photo']) && db_fetch_one($pdo, 'SELECT id FROM photo_entries WHERE user_id = :user_id LIMIT 1', [':user_id' => $userId]) !== null) {
+            award_achievement($pdo, (int) $byTrigger['first_photo']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['perfect_week'])) {
+            foreach (($metric['weekly'] ?? []) as $week) {
+                if (($week['status'] ?? '') === 'complete' && (int) ($week['total_failures'] ?? 0) === 0) {
+                    award_achievement($pdo, (int) $byTrigger['perfect_week']['id'], $userId, null, null, 'Automatic unlock.');
+                    break;
+                }
+            }
+        }
+        if (isset($byTrigger['no_strike_week'])) {
+            foreach (($metric['weekly'] ?? []) as $week) {
+                if (($week['status'] ?? '') === 'complete' && (int) ($week['penalty'] ?? 0) === 0) {
+                    award_achievement($pdo, (int) $byTrigger['no_strike_week']['id'], $userId, null, null, 'Automatic unlock.');
+                    break;
+                }
+            }
+        }
+        if (isset($byTrigger['step_streak']) && (int) ($metric['steps_success'] ?? 0) >= 5) {
+            award_achievement($pdo, (int) $byTrigger['step_streak']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['three_workouts_week']) && has_three_workouts_in_week($pdo, $userId)) {
+            award_achievement($pdo, (int) $byTrigger['three_workouts_week']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+    }
+
+    if ($teamId !== null && isset($byTrigger['team_active'])) {
+        $activeMembers = db_fetch_one($pdo, 'SELECT COUNT(*) AS total FROM team_memberships WHERE team_id = :team_id AND active = 1', [':team_id' => $teamId]);
+        if ((int) ($activeMembers['total'] ?? 0) > 0) {
+            award_achievement($pdo, (int) $byTrigger['team_active']['id'], null, $teamId, null, 'Automatic unlock.');
+        }
+    }
+
+    evaluate_conditional_achievements($pdo, $metricsByUser, $teamId);
+}
+
+function evaluate_conditional_achievements(PDO $pdo, array $metricsByUser, ?int $teamId = null): void
+{
+    $rules = db_fetch_all(
+        $pdo,
+        'SELECT ar.*, a.scope
+         FROM achievement_rules ar
+         JOIN achievements a ON a.id = ar.achievement_id
+         WHERE ar.active = 1 AND a.active = 1'
+    );
+
+    foreach ($rules as $rule) {
+        if ((string) $rule['scope'] === 'team') {
+            if ($teamId === null) {
+                continue;
+            }
+            $value = metric_value_for_rule($metricsByUser, (string) $rule['metric_key'], (string) $rule['window']);
+            if (rule_matches($value, (string) $rule['operator'], (float) $rule['target_value'])) {
+                award_achievement($pdo, (int) $rule['achievement_id'], null, $teamId, null, 'Conditional unlock.');
+            }
+            continue;
+        }
+
+        foreach ($metricsByUser as $metric) {
+            $value = metric_value_for_rule([$metric], (string) $rule['metric_key'], (string) $rule['window']);
+            if (rule_matches($value, (string) $rule['operator'], (float) $rule['target_value'])) {
+                award_achievement($pdo, (int) $rule['achievement_id'], (int) $metric['user']['id'], null, null, 'Conditional unlock.');
+            }
+        }
+    }
+}
+
+function metric_value_for_rule(array $metrics, string $metricKey, string $window): float
+{
+    if ($window === 'week') {
+        $best = 0.0;
+        foreach ($metrics as $metric) {
+            foreach (($metric['weekly'] ?? []) as $week) {
+                if ($metricKey === 'steps') {
+                    $weekValue = (float) ($week['steps'] ?? 0);
+                } elseif ($metricKey === 'km') {
+                    $weekValue = (float) ($week['km'] ?? 0);
+                } elseif ($metricKey === 'workouts') {
+                    $weekValue = (float) ($week['workouts'] ?? 0);
+                } elseif (str_starts_with($metricKey, 'habit:')) {
+                    $code = substr($metricKey, 6);
+                    $weekValue = (float) (($week['habit_counts'][$code] ?? 0));
+                } else {
+                    $weekValue = 0.0;
+                }
+                $best = max($best, $weekValue);
+            }
+        }
+
+        return $best;
+    }
+
+    $value = 0.0;
+    foreach ($metrics as $metric) {
+        if ($metricKey === 'steps') {
+            $value += (float) ($metric['total_steps'] ?? 0);
+        } elseif ($metricKey === 'km') {
+            $value += (float) ($metric['total_km'] ?? 0);
+        } elseif ($metricKey === 'workouts') {
+            $value += (float) ($metric['workout_success'] ?? 0);
+        } elseif ($metricKey === 'score') {
+            $value += (float) ($metric['score'] ?? 0);
+        } elseif ($metricKey === 'weight') {
+            $value += (float) ($metric['latest_weight'] ?? 0);
+        } elseif (str_starts_with($metricKey, 'habit:')) {
+            $code = substr($metricKey, 6);
+            $value += (float) (($metric['habit_counts'][$code] ?? 0));
+        }
+    }
+
+    if ($metricKey === 'score' && count($metrics) > 1) {
+        $value = $value / count($metrics);
+    }
+
+    return $value;
+}
+
+function rule_matches(float $value, string $operator, float $target): bool
+{
+    return match ($operator) {
+        '<=' => $value <= $target,
+        '=' => abs($value - $target) < 0.0001,
+        default => $value >= $target,
+    };
+}
+
+function has_three_workouts_in_week(PDO $pdo, int $userId): bool
+{
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT log_date FROM daily_logs WHERE user_id = :user_id AND workout_done = 1 ORDER BY log_date ASC',
+        [':user_id' => $userId]
+    );
+    $counts = [];
+    foreach ($rows as $row) {
+        $week = week_start_for(new DateTimeImmutable((string) $row['log_date']))->format('Y-m-d');
+        $counts[$week] = ($counts[$week] ?? 0) + 1;
+        if ($counts[$week] >= 3) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function team_summary_from_metrics(array $metrics): array
+{
+    $totals = [
+        'members' => count($metrics),
+        'score_avg' => 0,
+        'steps_success' => 0,
+        'steps_required' => 0,
+        'total_steps' => 0,
+        'total_km' => 0,
+        'workout_success' => 0,
+        'workout_target' => 0,
+        'strikes' => 0,
+        'penalty' => 0,
+    ];
+
+    foreach ($metrics as $metric) {
+        $totals['score_avg'] += (float) $metric['score'];
+        $totals['steps_success'] += (int) $metric['steps_success'];
+        $totals['steps_required'] += (int) $metric['steps_required'];
+        $totals['total_steps'] += (int) ($metric['total_steps'] ?? 0);
+        $totals['total_km'] += (float) ($metric['total_km'] ?? 0);
+        $totals['workout_success'] += (int) $metric['workout_success'];
+        $totals['workout_target'] += (int) $metric['workout_target'];
+        $totals['strikes'] += (int) $metric['current_strikes'];
+        $totals['penalty'] += (int) $metric['total_penalty'];
+    }
+
+    if ($totals['members'] > 0) {
+        $totals['score_avg'] = round($totals['score_avg'] / $totals['members'], 1);
+    }
+    $totals['total_km'] = round((float) $totals['total_km'], 2);
+
+    return $totals;
+}

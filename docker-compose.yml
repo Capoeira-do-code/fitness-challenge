@@ -1,0 +1,32 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fitness-app
+    restart: unless-stopped
+    environment:
+      APP_NAME: Fitness Challenge Tracker
+      APP_TIMEZONE: Europe/Madrid
+      APP_DEFAULT_LOCALE: en
+      SESSION_NAME: fitness_challenge_session
+      DB_PATH: ${DB_PATH:-/var/www/storage/fitness.sqlite}
+      CHALLENGE_START: 2026-04-13
+      CHALLENGE_END: 2026-06-07
+      SEED_PASSWORD: ChangeMe123!
+    volumes:
+      - ./storage:/var/www/storage
+      - ./public/uploads:/var/www/public/uploads
+
+  web:
+    image: nginx:1.27-alpine
+    container_name: fitness-web
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "8080:80"
+    volumes:
+      - ./public:/var/www/public:ro
+      - ./public/uploads:/var/www/public/uploads
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro

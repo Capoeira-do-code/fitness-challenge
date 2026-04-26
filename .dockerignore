@@ -1,0 +1,7 @@
+.git
+.gitignore
+storage/*.sqlite
+public/uploads/*
+!storage/.gitkeep
+!public/uploads/.gitkeep
+e2e-report/*
