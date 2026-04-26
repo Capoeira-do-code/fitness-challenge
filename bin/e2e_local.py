@@ -77,6 +77,26 @@ def find_php_bin() -> Optional[str]:
     if php:
         return php
 
+    if os.name == "nt":
+        windows_candidates = [
+            Path("C:/php/php.exe"),
+            Path("C:/xampp/php/php.exe"),
+            Path("C:/wamp64/bin/php/php.exe"),
+            Path("C:/Program Files/PHP/php.exe"),
+            Path("C:/Program Files (x86)/PHP/php.exe"),
+        ]
+        for candidate in windows_candidates:
+            if candidate.exists() and os.access(candidate, os.X_OK):
+                return str(candidate)
+
+        laragon_root = Path("C:/laragon/bin/php")
+        if laragon_root.exists():
+            # Try newest Laragon PHP first.
+            laragon_bins = sorted(laragon_root.glob("php-*/php.exe"), reverse=True)
+            for candidate in laragon_bins:
+                if candidate.exists() and os.access(candidate, os.X_OK):
+                    return str(candidate)
+
     for candidate in ("/opt/homebrew/bin/php", "/usr/local/bin/php"):
         if Path(candidate).exists() and os.access(candidate, os.X_OK):
             return candidate
@@ -163,6 +183,19 @@ def maybe_open_browser(url: str) -> None:
         pass
 
 
+def maybe_hold_console(hold_open: bool, exit_code: int) -> None:
+    if not hold_open:
+        return
+    if sys.stdin is None or not sys.stdin.isatty():
+        return
+
+    state = "correctamente" if exit_code == 0 else "con errores"
+    try:
+        input(f"\n[exit] Runner finalizó {state}. Pulsa Enter para cerrar...")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
 def serve_basic_ui(base_url: str) -> int:
     host, port, scheme = parse_base_url(base_url)
     if scheme != "http":
@@ -245,8 +278,20 @@ def main() -> int:
         default="",
         help="URL base de la app. Default: full=https://127.0.0.1:8443, basic=http://0.0.0.0:8080",
     )
+    parser.add_argument(
+        "--hold",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Mantiene la consola abierta al terminar (útil en Windows/doble clic).",
+    )
     args = parser.parse_args()
 
+    hold_open = args.hold
+    if hold_open is None:
+        # If launched by double-click on Windows, there are usually no args.
+        hold_open = os.name == "nt" and len(sys.argv) == 1
+
+    exit_code = 0
     try:
         docker_ready = has_docker()
 
@@ -265,16 +310,20 @@ def main() -> int:
         print(f"[url] {base_url}")
 
         if run_mode == "full":
-            return serve_full_ui(base_url)
-
-        return serve_basic_ui(base_url)
+            exit_code = serve_full_ui(base_url)
+        else:
+            exit_code = serve_basic_ui(base_url)
 
     except RunnerError as exc:
         print(f"[error] {exc}")
-        return 2
+        exit_code = 2
     except subprocess.CalledProcessError as exc:
         print(f"[error] Comando falló ({exc.returncode}): {' '.join(exc.cmd)}")
-        return 3
+        exit_code = 3
+    finally:
+        maybe_hold_console(bool(hold_open), exit_code)
+
+    return exit_code
 
 
 if __name__ == "__main__":
