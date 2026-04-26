@@ -111,6 +111,56 @@ function initials_for(string $name): string
     return $initials !== '' ? $initials : '?';
 }
 
+function with_cache_buster(string $path, mixed $version = null): string
+{
+    $cleanPath = trim($path);
+    if ($cleanPath === '') {
+        return '';
+    }
+
+    if ($version === null || $version === '') {
+        return $cleanPath;
+    }
+
+    $separator = str_contains($cleanPath, '?') ? '&' : '?';
+
+    return $cleanPath . $separator . 'v=' . rawurlencode((string) $version);
+}
+
+function media_url(?string $path, mixed $version = null): string
+{
+    $rawPath = trim((string) $path);
+    if ($rawPath === '') {
+        return '';
+    }
+
+    if (str_starts_with($rawPath, '/?page=media&path=')) {
+        return with_cache_buster($rawPath, $version);
+    }
+
+    $url = '/?page=media&path=' . rawurlencode($rawPath);
+
+    return with_cache_buster($url, $version);
+}
+
+function avatar_url(array $user): string
+{
+    $avatarPath = trim((string) ($user['avatar_path'] ?? ''));
+    if ($avatarPath === '') {
+        return '';
+    }
+
+    $version = $user['updated_at'] ?? null;
+    if (is_string($version) && $version !== '') {
+        $timestamp = strtotime($version);
+        if ($timestamp !== false) {
+            $version = (string) $timestamp;
+        }
+    }
+
+    return media_url($avatarPath, $version);
+}
+
 function weekday_index(string $date): int
 {
     $d = new DateTimeImmutable($date);

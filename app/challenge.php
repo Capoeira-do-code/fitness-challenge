@@ -517,7 +517,20 @@ function compute_challenge_metrics(PDO $pdo, array $users, string $startDate, st
     uasort(
         $results,
         static function (array $a, array $b): int {
-            return $b['score'] <=> $a['score'];
+            $scoreOrder = $b['score'] <=> $a['score'];
+            if ($scoreOrder !== 0) {
+                return $scoreOrder;
+            }
+
+            $penaltyOrder = ((int) ($a['total_penalty'] ?? 0)) <=> ((int) ($b['total_penalty'] ?? 0));
+            if ($penaltyOrder !== 0) {
+                return $penaltyOrder;
+            }
+
+            return strcmp(
+                strtolower((string) ($a['user']['display_name'] ?? '')),
+                strtolower((string) ($b['user']['display_name'] ?? ''))
+            );
         }
     );
 

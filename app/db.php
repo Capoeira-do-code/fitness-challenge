@@ -342,6 +342,7 @@ function initialize_database(PDO $pdo, array $config): void
 
     ensure_schema_columns($pdo, $config);
     ensure_indexes($pdo);
+    migrate_photo_categories($pdo);
 
     $stmt = $pdo->query('SELECT COUNT(*) AS total FROM users');
     $totalUsers = (int) $stmt->fetch()['total'];
@@ -454,9 +455,18 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'teams', 'join_mode', 'TEXT NOT NULL DEFAULT "closed"');
     ensure_column($pdo, 'teams', 'visibility', 'TEXT NOT NULL DEFAULT "visible"');
 
+    ensure_column($pdo, 'achievements', 'trigger_key', 'TEXT');
     ensure_column($pdo, 'achievements', 'image_path', 'TEXT');
     ensure_column($pdo, 'achievements', 'reward_text', 'TEXT');
+    ensure_column($pdo, 'achievements', 'active', 'INTEGER NOT NULL DEFAULT 1');
     ensure_column($pdo, 'teams', 'description', 'TEXT NOT NULL DEFAULT ""');
+
+    ensure_column($pdo, 'achievement_rules', 'operator', 'TEXT NOT NULL DEFAULT ">="');
+    ensure_column($pdo, 'achievement_rules', 'target_value', 'REAL NOT NULL DEFAULT 1');
+    ensure_column($pdo, 'achievement_rules', 'window', 'TEXT NOT NULL DEFAULT "total"');
+    ensure_column($pdo, 'achievement_rules', 'active', 'INTEGER NOT NULL DEFAULT 1');
+    ensure_column($pdo, 'achievement_rules', 'created_at', 'TEXT');
+    ensure_column($pdo, 'achievement_rules', 'updated_at', 'TEXT');
 
     ensure_column($pdo, 'challenge_settings', 'active', 'INTEGER NOT NULL DEFAULT 1');
     ensure_column($pdo, 'challenge_settings', 'deleted_at', 'TEXT');
@@ -500,6 +510,12 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_log_habits_log ON daily_log_habits(log_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_rules_achievement ON achievement_rules(achievement_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_login_attempts_user_ip ON login_attempts(username, ip_address, attempted_at)');
+}
+
+function migrate_photo_categories(PDO $pdo): void
+{
+    db_execute($pdo, 'UPDATE photo_entries SET category = "lunch" WHERE category = "meal"');
+    db_execute($pdo, 'UPDATE photo_entries SET category = "other" WHERE category = "workout"');
 }
 
 function deduplicate_achievement_awards(PDO $pdo): void

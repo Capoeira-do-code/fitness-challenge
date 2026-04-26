@@ -13,11 +13,26 @@ $weightLabels = array_map(static fn(array $row): string => format_date_eu((strin
 $weightValues = array_map(static fn(array $row): float => (float) $row['weight'], $selectedMetric['weight_series']);
 
 $dashboardLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
-$visibleWidgets = is_array($dashboardLayout) && $dashboardLayout !== []
-    ? array_values(array_filter($dashboardLayout, 'is_string'))
-    : ['kpis', 'money', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'weekly'];
+$visibleWidgets = [];
+if (is_array($dashboardLayout) && $dashboardLayout !== []) {
+    foreach ($dashboardLayout as $widget) {
+        if (!is_string($widget) || $widget === '') {
+            continue;
+        }
+        $normalizedWidget = $widget === 'money' ? 'distance_walked' : $widget;
+        if (!in_array($normalizedWidget, $visibleWidgets, true)) {
+            $visibleWidgets[] = $normalizedWidget;
+        }
+    }
+}
+if ($visibleWidgets === []) {
+    $visibleWidgets = ['kpis', 'distance_walked', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
+}
+if (!in_array('meals', $visibleWidgets, true)) {
+    $visibleWidgets[] = 'meals';
+}
 $showWidget = static fn(string $widget): bool => in_array($widget, $visibleWidgets, true);
-$dashboardWidgets = ['kpis', 'money', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'weekly'];
+$dashboardWidgets = ['kpis', 'distance_walked', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
 $layoutOrder = array_flip($visibleWidgets);
 $widgetOrder = static function (string ...$widgets) use ($visibleWidgets): int {
     $orders = [];
@@ -31,6 +46,31 @@ $widgetOrder = static function (string ...$widgets) use ($visibleWidgets): int {
     return $orders === [] ? 99 : min($orders);
 };
 $isTotalMoneyView = ($dashboardView ?? '') === 'total';
+$penaltySeverityClass = static function (int|float $penalty): string {
+    $value = (float) $penalty;
+    if ($value <= 0) {
+        return 'good';
+    }
+    if ($value <= 50) {
+        return 'warn';
+    }
+
+    return 'bad';
+};
+
+$distanceByDate = is_array($dashboardDistanceByDate ?? null) ? $dashboardDistanceByDate : [];
+$distanceLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['date'] ?? '')), $stepsTail);
+$distanceValues = array_map(
+    static function (array $row) use ($distanceByDate): float {
+        $date = (string) ($row['date'] ?? '');
+        if ($date !== '' && isset($distanceByDate[$date])) {
+            return round((float) $distanceByDate[$date], 2);
+        }
+
+        return round((float) ($row['km'] ?? 0), 2);
+    },
+    $stepsTail
+);
 
 $compareName = $compareMetric !== null ? (string) $compareMetric['user']['display_name'] : null;
 $compareTitle = t('dashboard.compare', ['name' => $compareName !== null ? 'vs ' . $compareName : '']);
@@ -172,105 +212,37 @@ $topbarControls = ob_get_clean();
         <strong>"<?= e((string) ($motivationQuote ?? t('dashboard.default_quote'))) ?>"</strong>
     </div>
 
-    <?php if ($showWidget('kpis')): ?>
-    <div class="metric-grid" style="order: <?= $widgetOrder('kpis') ?>">
-        <?php foreach ($kpis as $kpi): ?>
-            <?php
-            $metricHref = '/?' . http_build_query($metricQueryBase + ['metric' => (string) $kpi['key']]);
-            ?>
-            <a class="metric-card metric-card-link" href="<?= e($metricHref) ?>" data-testid="metric-card-link-<?= e((string) $kpi['key']) ?>">
-                <div class="progress-ring" style="--value: <?= e((string) min(100, max(0, (float) $kpi['progress']))) ?>;">
-                    <span><?= e((string) $kpi['ring']) ?></span>
-                </div>
-                <div>
-                    <span><?= e((string) $kpi['label']) ?></span>
-                    <strong><?= e((string) $kpi['value']) ?></strong>
-                    <p><?= e((string) $kpi['meta']) ?></p>
-                </div>
-            </a>
-        <?php endforeach; ?>
-    </div>
-    <?php endif; ?>
+    <div class="dashboard-layout">
+        <?php if ($showWidget('kpis')): ?>
+        <div class="metric-grid dashboard-span-full dashboard-kpis" style="order: <?= $widgetOrder('kpis') ?>">
+            <?php foreach ($kpis as $kpi): ?>
+                <?php
+                $metricHref = '/?' . http_build_query($metricQueryBase + ['metric' => (string) $kpi['key']]);
+                ?>
+                <a class="metric-card metric-card-link" href="<?= e($metricHref) ?>" data-testid="metric-card-link-<?= e((string) $kpi['key']) ?>">
+                    <div class="progress-ring" style="--value: <?= e((string) min(100, max(0, (float) $kpi['progress']))) ?>;">
+                        <span><?= e((string) $kpi['ring']) ?></span>
+                    </div>
+                    <div>
+                        <span><?= e((string) $kpi['label']) ?></span>
+                        <strong><?= e((string) $kpi['value']) ?></strong>
+                        <p><?= e((string) $kpi['meta']) ?></p>
+                    </div>
+                </a>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
 
-    <?php if ($showWidget('money') || ($showWidget('approvals') && $pendingApprovals !== [])): ?>
-    <div class="grid-two" style="order: <?= $widgetOrder('money', 'approvals') ?>">
-        <?php if ($showWidget('money')): ?>
-        <article class="panel" data-testid="settlement-panel">
-            <div class="panel-head">
-                <div>
-                    <p class="eyebrow"><?= e(t('metric.penalty')) ?></p>
-                    <h2><?= e(t('dashboard.settlement_title')) ?></h2>
-                </div>
-                <?php if ($isTotalMoneyView): ?>
-                    <span class="badge"><?= e(t('metric.total')) ?></span>
-                <?php elseif (!empty($settlementSummary['is_provisional'])): ?>
-                    <span class="badge badge-warn"><?= e(t('common.provisional_week')) ?></span>
-                <?php else: ?>
-                    <span class="badge badge-ok"><?= e(t('common.closed_week')) ?></span>
-                <?php endif; ?>
-            </div>
-            <p class="muted">
-                <?php if ($isTotalMoneyView): ?>
-                    <?= e(t('dashboard.accumulated_penalty', ['amount' => '€' . (string) ($selectedMetric['total_penalty'] ?? 0)])) ?>
-                <?php else: ?>
-                    <?= e(t('dashboard.settlement_hint', ['week' => format_date_eu((string) $selectedWeekStart), 'amount' => '€' . (string) ($settlementSummary['total_penalty'] ?? 0)])) ?>
-                <?php endif; ?>
-            </p>
-
-            <div class="table-wrap compact-wrap">
-                <table class="table compact">
-                    <?php if ($isTotalMoneyView): ?>
-                    <thead>
-                    <tr>
-                        <th><?= e(t('common.user')) ?></th>
-                        <th><?= e(t('metric.strikes')) ?></th>
-                        <th><?= e(t('metric.skip_warnings')) ?></th>
-                        <th><?= e(t('metric.total_penalty')) ?></th>
-                        <th><?= e(t('metric.score')) ?></th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($metricsOrdered as $metric): ?>
-                        <tr>
-                            <td><?= e((string) $metric['user']['display_name']) ?></td>
-                            <td><?= e((string) $metric['current_strikes']) ?></td>
-                            <td><?= e((string) ($metric['skip_warning_events'] ?? 0)) ?></td>
-                            <td>€<?= e((string) $metric['total_penalty']) ?></td>
-                            <td><?= e((string) $metric['score']) ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                    <?php else: ?>
-                    <thead>
-                    <tr>
-                        <th><?= e(t('common.user')) ?></th>
-                        <th><?= e(t('metric.step_failures')) ?></th>
-                        <th><?= e(t('metric.workout_failures')) ?></th>
-                        <th><?= e(t('metric.skip_warnings')) ?></th>
-                        <th><?= e(t('metric.week_penalty')) ?></th>
-                        <th><?= e(t('common.status')) ?></th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach (($settlementSummary['entries'] ?? []) as $entry): ?>
-                        <tr>
-                            <td><?= e((string) $entry['display_name']) ?></td>
-                            <td><?= e((string) $entry['step_failures']) ?></td>
-                            <td><?= e((string) $entry['workout_failures']) ?></td>
-                            <td><?= e((string) $entry['skip_warnings']) ?></td>
-                            <td>€<?= e((string) $entry['penalty']) ?></td>
-                            <td><?= e(label_for_status((string) $entry['status'])) ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                    <?php endif; ?>
-                </table>
-            </div>
+        <?php if ($showWidget('distance_walked')): ?>
+        <article class="panel chart-card dashboard-panel" style="order: <?= $widgetOrder('distance_walked') ?>">
+            <h2>Distance walked</h2>
+            <canvas id="distanceWalkedChart" height="150"></canvas>
+            <p class="muted small"><?= e(t('metric.distance_km')) ?> · <?= e((string) ($selectedMetric['total_km'] ?? 0)) ?> km</p>
         </article>
         <?php endif; ?>
 
         <?php if ($showWidget('approvals') && $pendingApprovals !== []): ?>
-        <article class="panel" data-testid="pending-approvals">
+        <article class="panel dashboard-panel dashboard-approvals" data-testid="pending-approvals" style="order: <?= $widgetOrder('approvals') ?>">
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('common.pending')) ?></p>
@@ -312,19 +284,16 @@ $topbarControls = ob_get_clean();
             <?php endif; ?>
         </article>
         <?php endif; ?>
-    </div>
-    <?php endif; ?>
 
-    <?php if ($showWidget('steps') || $showWidget('weight')): ?>
-    <div class="grid-two" style="order: <?= $widgetOrder('steps', 'weight') ?>">
         <?php if ($showWidget('steps')): ?>
-        <article class="panel chart-card">
+        <article class="panel chart-card dashboard-panel" style="order: <?= $widgetOrder('steps') ?>">
             <h2><?= e(t('dashboard.steps_chart')) ?></h2>
             <canvas id="stepsChart" height="150"></canvas>
         </article>
         <?php endif; ?>
+
         <?php if ($showWidget('weight')): ?>
-        <article class="panel chart-card">
+        <article class="panel chart-card dashboard-panel" style="order: <?= $widgetOrder('weight') ?>">
             <h2><?= e(t('dashboard.weight_chart')) ?></h2>
             <?php if ($weightValues === []): ?>
                 <p class="muted"><?= e(t('dashboard.no_weight')) ?></p>
@@ -339,19 +308,16 @@ $topbarControls = ob_get_clean();
             <?php endif; ?>
         </article>
         <?php endif; ?>
-    </div>
-    <?php endif; ?>
 
-    <?php if ($showWidget('comparison') || $showWidget('ranking')): ?>
-    <div class="grid-two" style="order: <?= $widgetOrder('comparison', 'ranking') ?>">
         <?php if ($showWidget('comparison')): ?>
-        <article class="panel chart-card">
+        <article class="panel chart-card dashboard-panel" style="order: <?= $widgetOrder('comparison') ?>">
             <h2><?= e(trim($compareTitle)) ?></h2>
             <canvas id="compareChart" height="170"></canvas>
         </article>
         <?php endif; ?>
+
         <?php if ($showWidget('ranking')): ?>
-        <article class="panel">
+        <article class="panel dashboard-panel" style="order: <?= $widgetOrder('ranking') ?>">
             <h2><?= e(t('dashboard.ranking')) ?></h2>
             <div class="leaderboard-list">
                 <?php foreach ($metricsOrdered as $metric): ?>
@@ -370,47 +336,171 @@ $topbarControls = ob_get_clean();
             </div>
         </article>
         <?php endif; ?>
-    </div>
-    <?php endif; ?>
 
-    <?php if ($showWidget('weekly')): ?>
-    <article class="panel" style="order: <?= $widgetOrder('weekly') ?>">
-        <div class="panel-head">
-            <h2><?= e(t('dashboard.weekly_history')) ?></h2>
-            <a class="btn btn-ghost" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week=<?= e(date_to_iso_week((string) $selectedWeekStart)) ?>"><?= e(t('table.open_editor')) ?></a>
-        </div>
-        <div class="table-wrap">
-            <table class="table compact">
-                <thead>
-                <tr>
-                    <th><?= e(t('common.week')) ?></th>
-                    <th><?= e(t('common.status')) ?></th>
-                    <th><?= e(t('metric.step_failures')) ?></th>
-                    <th><?= e(t('metric.workout_failures')) ?></th>
-                    <th><?= e(t('metric.warnings')) ?></th>
-                    <th><?= e(t('metric.penalty')) ?></th>
-                    <th><?= e(t('dashboard.strike_reduction')) ?></th>
-                    <th><?= e(t('dashboard.strikes_after_week')) ?></th>
-                </tr>
-                </thead>
-                <tbody>
-                <?php foreach ($selectedMetric['weekly'] as $week): ?>
+        <?php if ($showWidget('meals')): ?>
+        <article class="panel dashboard-panel" style="order: <?= $widgetOrder('meals') ?>">
+            <div class="panel-head">
+                <div>
+                    <p class="eyebrow"><?= e(t('common.week')) ?></p>
+                    <h2><?= e(t('dashboard.meal_calendar')) ?></h2>
+                </div>
+                <form method="get" action="/" class="control-strip">
+                    <input type="hidden" name="page" value="dashboard">
+                    <input type="hidden" name="user_id" value="<?= (int) ($selectedUser['id'] ?? 0) ?>">
+                    <input type="hidden" name="view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
+                    <label class="entry-date-inline">
+                        <?= e(t('common.date')) ?>
+                        <input type="date" name="meal_date" value="<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>" onchange="this.form.submit()">
+                    </label>
+                </form>
+            </div>
+            <?php if (($dashboardMealCalendar ?? []) === []): ?>
+                <p class="muted"><?= e(t('entries.no_photos')) ?></p>
+            <?php else: ?>
+                <div class="meal-calendar entries-calendar">
+                    <?php foreach (($dashboardMealCalendar ?? []) as $dateKey => $day): ?>
+                        <?php
+                        $hasLog = !empty($dashboardMealLoggedDays[$dateKey]);
+                        $photoCount = (int) ($day['count'] ?? 0);
+                        $preview = $day['preview'] ?? null;
+                        ?>
+                        <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?>" href="/?page=entries&mode=meal&date=<?= e((string) $dateKey) ?>">
+                            <article>
+                                <strong><?= e(format_date_eu((string) $dateKey)) ?></strong>
+                                <?php if (is_array($preview) && !empty($preview['file_path'])): ?>
+                                    <img src="<?= e(media_url((string) $preview['file_path'])) ?>" alt="<?= e(t('common.photo')) ?>">
+                                <?php else: ?>
+                                    <div class="entries-calendar-empty">Sin foto</div>
+                                <?php endif; ?>
+                                <span class="badge"><?= $photoCount ?> foto<?= $photoCount === 1 ? '' : 's' ?></span>
+                            </article>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+                <div class="panel-inline-empty chip-group">
+                    <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=month&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>">Mensual</a>
+                    <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=week&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>">Semanal</a>
+                    <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=day&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>">Diaria</a>
+                </div>
+            <?php endif; ?>
+        </article>
+        <?php endif; ?>
+
+        <?php if ($showWidget('weekly')): ?>
+        <article class="panel dashboard-panel dashboard-span-full dashboard-weekly-history" style="order: 999">
+            <div class="panel-head">
+                <h2><?= e(t('dashboard.weekly_history')) ?></h2>
+                <a class="btn btn-ghost" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week=<?= e(date_to_iso_week((string) $selectedWeekStart)) ?>"><?= e(t('table.open_editor')) ?></a>
+            </div>
+            <div class="table-wrap">
+                <table class="table compact">
+                    <thead>
                     <tr>
-                        <td><?= e(format_date_eu((string) $week['week_start'])) ?> -> <?= e(format_date_eu((string) $week['week_end'])) ?></td>
-                        <td><?= e(label_for_status((string) $week['status'])) ?></td>
-                        <td><?= e((string) $week['step_failures']) ?></td>
-                        <td><?= e((string) $week['workout_failures']) ?></td>
-                        <td><?= e((string) ($week['skip_warnings'] ?? 0)) ?></td>
-                        <td>€<?= e((string) $week['penalty']) ?></td>
-                        <td><?= (int) $week['strike_reduction'] > 0 ? '-1' : '-' ?></td>
-                        <td><?= e((string) $week['strikes_after_week']) ?></td>
+                        <th><?= e(t('common.week')) ?></th>
+                        <th><?= e(t('common.status')) ?></th>
+                        <th><?= e(t('metric.step_failures')) ?></th>
+                        <th><?= e(t('metric.workout_failures')) ?></th>
+                        <th><?= e(t('metric.warnings')) ?></th>
+                        <th><?= e(t('metric.penalty')) ?></th>
+                        <th><?= e(t('dashboard.strike_reduction')) ?></th>
+                        <th><?= e(t('dashboard.strikes_after_week')) ?></th>
                     </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </article>
-    <?php endif; ?>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($selectedMetric['weekly'] as $week): ?>
+                        <tr>
+                            <td><?= e(format_date_eu((string) $week['week_start'])) ?> -> <?= e(format_date_eu((string) $week['week_end'])) ?></td>
+                            <td><?= e(label_for_status((string) $week['status'])) ?></td>
+                            <td><?= e((string) $week['step_failures']) ?></td>
+                            <td><?= e((string) $week['workout_failures']) ?></td>
+                            <td><?= e((string) ($week['skip_warnings'] ?? 0)) ?></td>
+                            <td>€<?= e((string) $week['penalty']) ?></td>
+                            <td><?= (int) $week['strike_reduction'] > 0 ? '-1' : '-' ?></td>
+                            <td><?= e((string) $week['strikes_after_week']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </article>
+        <?php endif; ?>
+
+        <article class="panel dashboard-panel dashboard-settlement dashboard-span-full" data-testid="settlement-panel" style="order: 9999">
+            <div class="panel-head">
+                <div>
+                    <p class="eyebrow"><?= e(t('metric.penalty')) ?></p>
+                    <h2><?= e(t('dashboard.settlement_title')) ?></h2>
+                    <p class="muted small">Menor penalización es mejor.</p>
+                </div>
+                <?php if ($isTotalMoneyView): ?>
+                    <span class="badge"><?= e(t('metric.total')) ?></span>
+                <?php elseif (!empty($settlementSummary['is_provisional'])): ?>
+                    <span class="badge badge-warn"><?= e(t('common.provisional_week')) ?></span>
+                <?php else: ?>
+                    <span class="badge badge-ok"><?= e(t('common.closed_week')) ?></span>
+                <?php endif; ?>
+            </div>
+            <p class="muted">
+                <?php if ($isTotalMoneyView): ?>
+                    <?= e(t('dashboard.accumulated_penalty', ['amount' => '€' . (string) ($selectedMetric['total_penalty'] ?? 0)])) ?>
+                <?php else: ?>
+                    <?= e(t('dashboard.settlement_hint', ['week' => format_date_eu((string) $selectedWeekStart), 'amount' => '€' . (string) ($settlementSummary['total_penalty'] ?? 0)])) ?>
+                <?php endif; ?>
+            </p>
+
+            <div class="table-wrap compact-wrap">
+                <table class="table compact">
+                    <?php if ($isTotalMoneyView): ?>
+                    <thead>
+                    <tr>
+                        <th><?= e(t('common.user')) ?></th>
+                        <th><?= e(t('metric.strikes')) ?></th>
+                        <th><?= e(t('metric.skip_warnings')) ?></th>
+                        <th><?= e(t('metric.total_penalty')) ?></th>
+                        <th><?= e(t('metric.score')) ?></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($metricsOrdered as $metric): ?>
+                        <?php $penaltyValue = (int) ($metric['total_penalty'] ?? 0); ?>
+                        <tr>
+                            <td><?= e((string) $metric['user']['display_name']) ?></td>
+                            <td><?= e((string) $metric['current_strikes']) ?></td>
+                            <td><?= e((string) ($metric['skip_warning_events'] ?? 0)) ?></td>
+                            <td><span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">€<?= e((string) $penaltyValue) ?></span></td>
+                            <td><?= e((string) $metric['score']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                    <?php else: ?>
+                    <thead>
+                    <tr>
+                        <th><?= e(t('common.user')) ?></th>
+                        <th><?= e(t('metric.step_failures')) ?></th>
+                        <th><?= e(t('metric.workout_failures')) ?></th>
+                        <th><?= e(t('metric.skip_warnings')) ?></th>
+                        <th><?= e(t('metric.week_penalty')) ?></th>
+                        <th><?= e(t('common.status')) ?></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach (($settlementSummary['entries'] ?? []) as $entry): ?>
+                        <?php $penaltyValue = (int) ($entry['penalty'] ?? 0); ?>
+                        <tr>
+                            <td><?= e((string) $entry['display_name']) ?></td>
+                            <td><?= e((string) $entry['step_failures']) ?></td>
+                            <td><?= e((string) $entry['workout_failures']) ?></td>
+                            <td><?= e((string) $entry['skip_warnings']) ?></td>
+                            <td><span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">€<?= e((string) $penaltyValue) ?></span></td>
+                            <td><?= e(label_for_status((string) $entry['status'])) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                    <?php endif; ?>
+                </table>
+            </div>
+        </article>
+    </div>
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
@@ -437,6 +527,31 @@ $topbarControls = ob_get_clean();
                         borderColor: '#ff6b4a',
                         borderDash: [6, 4],
                         pointRadius: 0,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+    }
+
+    const distanceCtx = document.getElementById('distanceWalkedChart');
+    if (distanceCtx) {
+        new Chart(distanceCtx, {
+            type: 'line',
+            data: {
+                labels: <?= json_encode($distanceLabels) ?>,
+                datasets: [
+                    {
+                        label: <?= json_encode(t('metric.distance_km')) ?>,
+                        data: <?= json_encode($distanceValues) ?>,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.16)',
+                        tension: 0.35,
+                        fill: true,
                     }
                 ]
             },

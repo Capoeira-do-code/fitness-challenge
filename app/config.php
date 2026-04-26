@@ -20,7 +20,7 @@ return [
     'session_name' => env_value('SESSION_NAME', 'fitness_challenge_session'),
     'default_locale' => env_value('APP_DEFAULT_LOCALE', 'en'),
     'db_path' => env_value('DB_PATH', $basePath . '/storage/fitness.sqlite'),
-    'upload_dir' => env_value('UPLOAD_DIR', $basePath . '/public/uploads'),
+    'upload_dir' => env_value('UPLOAD_DIR', $basePath . '/storage/uploads'),
     'upload_web_path' => env_value('UPLOAD_WEB_PATH', '/uploads'),
     'challenge_start' => env_value('CHALLENGE_START', '2026-04-13'),
     'challenge_end' => env_value('CHALLENGE_END', '2026-06-07'),

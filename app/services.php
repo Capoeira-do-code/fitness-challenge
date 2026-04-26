@@ -560,23 +560,47 @@ function save_habit_definition(PDO $pdo, ?int $habitId, string $code, string $la
     audit_log($pdo, $actorUserId, 'habit_updated', 'habit_definition', (string) $habitId, 'Habit definition updated.', audit_snapshot($before), audit_snapshot($after));
 }
 
-function fetch_recent_photos(PDO $pdo, int $limit = 24): array
+function deactivate_habit_definition(PDO $pdo, int $habitId, int $actorUserId): void
+{
+    $before = db_fetch_one($pdo, 'SELECT * FROM habit_definitions WHERE id = :id', [':id' => $habitId]);
+    if ($before === null) {
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE habit_definitions SET active = 0, updated_at = :updated_at WHERE id = :id',
+        [':updated_at' => now_iso(), ':id' => $habitId]
+    );
+    $after = db_fetch_one($pdo, 'SELECT * FROM habit_definitions WHERE id = :id', [':id' => $habitId]);
+    audit_log($pdo, $actorUserId, 'habit_deactivated', 'habit_definition', (string) $habitId, 'Habit deactivated.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function fetch_recent_photos(PDO $pdo, int $limit = 24, ?int $userId = null): array
 {
     $limit = max(1, min(200, $limit));
+    $params = [];
+    $where = '';
+    if ($userId !== null) {
+        $where = 'WHERE p.user_id = :user_id';
+        $params[':user_id'] = $userId;
+    }
 
     return db_fetch_all(
         $pdo,
         'SELECT p.*, u.display_name FROM photo_entries p
          JOIN users u ON u.id = p.user_id
+         ' . $where . '
          ORDER BY p.created_at DESC
-         LIMIT ' . $limit
+         LIMIT ' . $limit,
+        $params
     );
 }
 
 function fetch_latest_meal_photo(PDO $pdo, ?int $userId = null): ?array
 {
     $params = [];
-    $where = 'WHERE p.category IN ("meal", "dinner")';
+    $where = 'WHERE p.category IN ("breakfast", "lunch", "dinner", "other", "meal", "workout")';
     if ($userId !== null) {
         $where .= ' AND p.user_id = :user_id';
         $params[':user_id'] = $userId;
@@ -600,12 +624,14 @@ function fetch_meal_calendar(PDO $pdo, string $startDate, ?int $userId = null, s
     if ($view === 'month') {
         $start = $start->modify('first day of this month');
         $endDate = $start->modify('last day of this month')->format('Y-m-d');
+    } elseif ($view === 'day') {
+        $endDate = $start->format('Y-m-d');
     } else {
         $view = 'week';
         $endDate = $start->modify('+6 days')->format('Y-m-d');
     }
     $params = [':start' => $start->format('Y-m-d'), ':end' => $endDate];
-    $where = 'p.log_date BETWEEN :start AND :end AND p.category IN ("meal", "dinner")';
+    $where = 'p.log_date BETWEEN :start AND :end AND p.category IN ("breakfast", "lunch", "dinner", "other", "meal", "workout")';
     if ($userId !== null) {
         $where .= ' AND p.user_id = :user_id';
         $params[':user_id'] = $userId;
@@ -642,12 +668,19 @@ function fetch_meal_calendar(PDO $pdo, string $startDate, ?int $userId = null, s
 
 function save_photo_entry(PDO $pdo, array $config, int $userId, string $date, string $category, string $caption, array $file): void
 {
-    $validCategories = ['meal', 'dinner', 'workout', 'other'];
-    if (!in_array($category, $validCategories, true)) {
-        $category = 'other';
+    $normalizedCategory = strtolower(trim($category));
+    if ($normalizedCategory === 'meal') {
+        $normalizedCategory = 'lunch';
+    }
+    if ($normalizedCategory === 'workout') {
+        $normalizedCategory = 'other';
+    }
+    $validCategories = ['breakfast', 'lunch', 'dinner', 'other'];
+    if (!in_array($normalizedCategory, $validCategories, true)) {
+        $normalizedCategory = 'other';
     }
 
-    $webPath = save_uploaded_image($config, $file, (new DateTimeImmutable($date))->format('Y/m'), (string) $userId);
+    $storedPath = save_uploaded_image($config, $file, (new DateTimeImmutable($date))->format('Y/m'), (string) $userId);
 
     db_execute(
         $pdo,
@@ -656,9 +689,9 @@ function save_photo_entry(PDO $pdo, array $config, int $userId, string $date, st
         [
             ':user_id' => $userId,
             ':log_date' => $date,
-            ':category' => $category,
+            ':category' => $normalizedCategory,
             ':caption' => $caption,
-            ':file_path' => $webPath,
+            ':file_path' => $storedPath,
             ':created_at' => now_iso(),
         ]
     );
@@ -700,7 +733,90 @@ function save_uploaded_image(array $config, array $file, string $subDir, string 
         throw new RuntimeException(t('upload.move_failed'));
     }
 
-    return rtrim((string) $config['upload_web_path'], '/') . '/' . trim($subDir, '/') . '/' . $filename;
+    $relativeDir = trim($subDir, '/');
+    if ($relativeDir === '') {
+        return $filename;
+    }
+
+    return $relativeDir . '/' . $filename;
+}
+
+function save_uploaded_image_from_data_url(array $config, string $dataUrl, string $subDir, string $prefix): string
+{
+    if (!preg_match('/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/si', trim($dataUrl), $matches)) {
+        throw new RuntimeException(t('upload.invalid_image'));
+    }
+
+    $mime = strtolower((string) $matches[1]);
+    $encoded = (string) $matches[2];
+    $binary = base64_decode(str_replace(' ', '+', $encoded), true);
+    if ($binary === false || $binary === '') {
+        throw new RuntimeException(t('upload.invalid_image'));
+    }
+
+    $info = @getimagesizefromstring($binary);
+    if ($info === false) {
+        throw new RuntimeException(t('upload.invalid_image'));
+    }
+
+    $allowed = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+    ];
+    if (!isset($allowed[$mime])) {
+        throw new RuntimeException(t('upload.invalid_format'));
+    }
+
+    $targetDir = rtrim((string) $config['upload_dir'], '/') . '/' . trim($subDir, '/');
+    if (!is_dir($targetDir)) {
+        mkdir($targetDir, 0775, true);
+    }
+
+    $safePrefix = preg_replace('/[^a-zA-Z0-9_-]+/', '_', $prefix) ?: 'image';
+    $filename = sprintf('%s_%s.%s', $safePrefix, bin2hex(random_bytes(8)), $allowed[$mime]);
+    $targetPath = $targetDir . '/' . $filename;
+    if (file_put_contents($targetPath, $binary) === false) {
+        throw new RuntimeException(t('upload.move_failed'));
+    }
+
+    $relativeDir = trim($subDir, '/');
+    if ($relativeDir === '') {
+        return $filename;
+    }
+
+    return $relativeDir . '/' . $filename;
+}
+
+function resolve_media_storage_path(array $config, string $reference): ?string
+{
+    $raw = trim($reference);
+    if ($raw === '') {
+        return null;
+    }
+
+    $clean = preg_replace('/[#?].*$/', '', $raw) ?? '';
+    $clean = ltrim($clean, '/');
+    if ($clean === '' || str_contains($clean, '..')) {
+        return null;
+    }
+
+    $legacyRelative = $clean;
+    if (str_starts_with($legacyRelative, 'uploads/')) {
+        $legacyRelative = substr($legacyRelative, strlen('uploads/'));
+    }
+    $legacyRoot = dirname(__DIR__) . '/public/uploads';
+    $legacyPath = $legacyRoot . '/' . $legacyRelative;
+    if (is_file($legacyPath)) {
+        return $legacyPath;
+    }
+
+    $storagePath = rtrim((string) $config['upload_dir'], '/') . '/' . $clean;
+    if (is_file($storagePath)) {
+        return $storagePath;
+    }
+
+    return null;
 }
 
 function create_user(PDO $pdo, array $payload): void
@@ -914,7 +1030,7 @@ function list_team_members(PDO $pdo, int $teamId, bool $activeOnly = true): arra
 
     return db_fetch_all(
         $pdo,
-        'SELECT tm.*, u.username, u.display_name, u.role AS user_role, u.step_goal, u.workout_target, u.active AS user_active
+        'SELECT tm.*, u.username, u.display_name, u.role AS user_role, u.step_goal, u.workout_target, u.active AS user_active, u.avatar_path, u.updated_at
          FROM team_memberships tm
          JOIN users u ON u.id = tm.user_id
          WHERE tm.team_id = :team_id ' . $where . '
@@ -1284,6 +1400,148 @@ function delete_goal(PDO $pdo, int $goalId, int $actorUserId): void
     audit_log($pdo, $actorUserId, 'goal_deleted', 'goal', (string) $goalId, 'Goal deleted.', audit_snapshot($before), null);
 }
 
+function normalize_goal_target_type(string $targetType): string
+{
+    $normalized = strtolower(trim($targetType));
+    if ($normalized === 'distance_km') {
+        $normalized = 'km';
+    }
+    if (in_array($normalized, ['steps', 'km', 'workouts', 'score', 'strikes', 'penalties', 'weight'], true)) {
+        return $normalized;
+    }
+    if (str_starts_with($normalized, 'habit:')) {
+        $habitCode = trim(substr($normalized, 6));
+        $habitCode = preg_replace('/[^a-z0-9_\-]/', '', strtolower($habitCode)) ?? '';
+        return $habitCode !== '' ? 'habit:' . $habitCode : 'custom';
+    }
+
+    return 'custom';
+}
+
+function goal_progress_value_from_metric(array $goal, array $metric): float
+{
+    $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
+
+    return match (true) {
+        $type === 'steps' => (float) ($metric['total_steps'] ?? 0),
+        $type === 'km' => (float) ($metric['total_km'] ?? 0),
+        $type === 'workouts' => (float) ($metric['workout_success'] ?? 0),
+        $type === 'score' => (float) ($metric['score'] ?? 0),
+        $type === 'strikes' => (float) ($metric['current_strikes'] ?? 0),
+        $type === 'penalties' => (float) ($metric['total_penalty'] ?? 0),
+        $type === 'weight' => (float) ($metric['latest_weight'] ?? 0),
+        str_starts_with($type, 'habit:') => (float) (($metric['habit_counts'][substr($type, 6)] ?? 0)),
+        default => (float) ($goal['current_value'] ?? 0),
+    };
+}
+
+function goal_target_reached(array $goal, array $metric, float $progressValue): bool
+{
+    $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
+    $target = (float) ($goal['target_value'] ?? 0);
+    if ($target <= 0) {
+        return false;
+    }
+
+    if ($type === 'weight') {
+        $latestWeight = (float) ($metric['latest_weight'] ?? 0);
+        if ($latestWeight <= 0) {
+            return false;
+        }
+
+        $firstWeight = $metric['first_weight'] ?? null;
+        if (is_numeric($firstWeight)) {
+            $initialWeight = (float) $firstWeight;
+            if ($initialWeight > $target) {
+                return $latestWeight <= $target;
+            }
+            if ($initialWeight < $target) {
+                return $latestWeight >= $target;
+            }
+        }
+
+        return $latestWeight <= $target;
+    }
+
+    if (in_array($type, ['strikes', 'penalties'], true)) {
+        return $progressValue <= $target;
+    }
+
+    return $progressValue >= $target;
+}
+
+function auto_complete_user_goals(PDO $pdo, int $userId, string $startDate, string $endDate, ?int $actorUserId = null): int
+{
+    if ($userId <= 0) {
+        return 0;
+    }
+
+    $user = db_fetch_one(
+        $pdo,
+        'SELECT * FROM users WHERE id = :id AND active = 1',
+        [':id' => $userId]
+    );
+    if ($user === null) {
+        return 0;
+    }
+
+    $activeGoals = db_fetch_all(
+        $pdo,
+        'SELECT * FROM goals WHERE scope = "user" AND user_id = :user_id AND status = "active" ORDER BY created_at ASC',
+        [':user_id' => $userId]
+    );
+    if ($activeGoals === []) {
+        return 0;
+    }
+
+    $metricsByUser = compute_challenge_metrics($pdo, [$user], $startDate, $endDate);
+    $metric = $metricsByUser[$userId] ?? array_values($metricsByUser)[0] ?? null;
+    if (!is_array($metric)) {
+        return 0;
+    }
+
+    $completedCount = 0;
+    foreach ($activeGoals as $goal) {
+        $progressValue = goal_progress_value_from_metric($goal, $metric);
+        if (!goal_target_reached($goal, $metric, $progressValue)) {
+            continue;
+        }
+
+        db_execute(
+            $pdo,
+            'UPDATE goals
+             SET status = "complete",
+                 current_value = :current_value,
+                 updated_at = :updated_at
+             WHERE id = :id AND status = "active"',
+            [
+                ':current_value' => round($progressValue, 2),
+                ':updated_at' => now_iso(),
+                ':id' => (int) $goal['id'],
+            ]
+        );
+
+        $after = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = :id', [':id' => (int) $goal['id']]);
+        if ($after === null || (string) ($after['status'] ?? '') !== 'complete') {
+            continue;
+        }
+
+        $completedCount++;
+        audit_log(
+            $pdo,
+            $actorUserId,
+            'goal_complete_auto',
+            'goal',
+            (string) ((int) $goal['id']),
+            'Goal auto-completed from progress metrics.',
+            audit_snapshot($goal),
+            audit_snapshot($after)
+        );
+    }
+
+    return $completedCount;
+}
+
 function list_workout_types(PDO $pdo, bool $activeOnly = true): array
 {
     $where = $activeOnly ? 'WHERE active = 1' : '';
@@ -1361,6 +1619,11 @@ function rename_workout_type(PDO $pdo, int $typeId, string $name, bool $active, 
     audit_log($pdo, $actorUserId, 'workout_type_updated', 'workout_type', (string) $typeId, 'Workout type updated.', audit_snapshot($before), audit_snapshot($after));
 }
 
+function delete_workout_type(PDO $pdo, int $typeId, int $actorUserId): void
+{
+    deactivate_workout_type($pdo, $typeId, $actorUserId);
+}
+
 function app_setting(PDO $pdo, string $key, ?string $default = null): ?string
 {
     $row = db_fetch_one($pdo, 'SELECT setting_value FROM app_settings WHERE setting_key = :key', [':key' => $key]);
@@ -1432,29 +1695,104 @@ function list_achievements(PDO $pdo, bool $activeOnly = true): array
     return db_fetch_all($pdo, 'SELECT * FROM achievements ' . $where . ' ORDER BY scope ASC, name ASC');
 }
 
-function create_manual_achievement(PDO $pdo, string $name, string $description, string $scope, int $actorUserId, ?string $imagePath = null, string $rewardText = ''): int
+function list_achievements_for_admin(PDO $pdo): array
 {
+    return db_fetch_all(
+        $pdo,
+        'SELECT a.*,
+                ar.id AS rule_id,
+                ar.metric_key,
+                ar.operator AS trigger_operator,
+                ar.target_value AS trigger_target,
+                ar."window" AS trigger_window,
+                ar.active AS rule_active
+         FROM achievements a
+         LEFT JOIN achievement_rules ar ON ar.id = (
+            SELECT rr.id
+            FROM achievement_rules rr
+            WHERE rr.achievement_id = a.id AND rr.active = 1
+            ORDER BY rr.id DESC
+            LIMIT 1
+         )
+         ORDER BY a.created_at DESC, a.name ASC'
+    );
+}
+
+function resolve_unique_achievement_code(PDO $pdo, string $seed, ?int $excludeId = null): string
+{
+    $raw = trim(strtolower($seed));
+    $raw = preg_replace('/[^a-z0-9]+/', '_', $raw) ?: '';
+    $raw = trim($raw, '_');
+    if ($raw === '') {
+        $raw = 'achievement';
+    }
+    if (preg_match('/^[a-z0-9_]+$/', $raw) !== 1) {
+        throw new InvalidArgumentException('Invalid achievement code.');
+    }
+
+    $base = $raw;
+    $suffix = 2;
+    while (true) {
+        $params = [':code' => $raw];
+        $sql = 'SELECT id FROM achievements WHERE code = :code';
+        if ($excludeId !== null) {
+            $sql .= ' AND id != :exclude_id';
+            $params[':exclude_id'] = $excludeId;
+        }
+        if (db_fetch_one($pdo, $sql . ' LIMIT 1', $params) === null) {
+            return $raw;
+        }
+        $raw = $base . '_' . $suffix;
+        $suffix++;
+    }
+}
+
+function create_manual_achievement(
+    PDO $pdo,
+    string $name,
+    string $description,
+    string $scope,
+    int $actorUserId,
+    ?string $imagePath = null,
+    string $rewardText = '',
+    ?string $code = null,
+    bool $active = true,
+    ?string $triggerKey = null
+): int
+{
+    $name = trim($name);
+    if ($name === '') {
+        throw new InvalidArgumentException('Achievement name is required.');
+    }
+
     $scope = in_array($scope, ['user', 'team'], true) ? $scope : 'user';
-    $code = 'manual_' . preg_replace('/[^a-z0-9]+/', '_', strtolower($name)) . '_' . substr(bin2hex(random_bytes(3)), 0, 6);
+    $rawCode = trim((string) ($code ?? ''));
+    if ($rawCode === '') {
+        $rawCode = $name;
+    }
+    $rawCode = resolve_unique_achievement_code($pdo, $rawCode);
+
     $now = now_iso();
 
     db_execute(
         $pdo,
         'INSERT INTO achievements (code, name, description, scope, trigger_key, image_path, reward_text, active, created_by, created_at, updated_at)
-         VALUES (:code, :name, :description, :scope, NULL, :image_path, :reward_text, 1, :created_by, :created_at, :updated_at)',
+         VALUES (:code, :name, :description, :scope, :trigger_key, :image_path, :reward_text, :active, :created_by, :created_at, :updated_at)',
         [
-            ':code' => $code,
+            ':code' => $rawCode,
             ':name' => $name,
             ':description' => $description,
             ':scope' => $scope,
+            ':trigger_key' => $triggerKey,
             ':image_path' => $imagePath,
             ':reward_text' => $rewardText,
+            ':active' => $active ? 1 : 0,
             ':created_by' => $actorUserId,
             ':created_at' => $now,
             ':updated_at' => $now,
         ]
     );
-    $achievement = db_fetch_one($pdo, 'SELECT * FROM achievements WHERE code = :code', [':code' => $code]);
+    $achievement = db_fetch_one($pdo, 'SELECT * FROM achievements WHERE code = :code', [':code' => $rawCode]);
     audit_log($pdo, $actorUserId, 'achievement_created', 'achievement', (string) ($achievement['id'] ?? ''), 'Achievement created.', null, audit_snapshot($achievement));
 
     return (int) ($achievement['id'] ?? 0);
@@ -1462,6 +1800,17 @@ function create_manual_achievement(PDO $pdo, string $name, string $description, 
 
 function create_conditional_achievement(PDO $pdo, array $payload, int $actorUserId): void
 {
+    $metricKey = normalize_achievement_rule_metric(
+        (string) ($payload['metric_key'] ?? 'steps'),
+        (string) ($payload['habit_code'] ?? '')
+    );
+    $operator = normalize_achievement_rule_operator((string) ($payload['operator'] ?? '>='));
+    $window = normalize_achievement_rule_window((string) ($payload['window'] ?? 'total'));
+    $targetValue = (float) ($payload['target_value'] ?? 1);
+    if (!is_finite($targetValue)) {
+        throw new InvalidArgumentException('Invalid target amount.');
+    }
+
     $achievementId = create_manual_achievement(
         $pdo,
         trim((string) $payload['name']),
@@ -1469,7 +1818,10 @@ function create_conditional_achievement(PDO $pdo, array $payload, int $actorUser
         (string) ($payload['scope'] ?? 'user'),
         $actorUserId,
         $payload['image_path'] ?? null,
-        trim((string) ($payload['reward_text'] ?? ''))
+        trim((string) ($payload['reward_text'] ?? '')),
+        (string) ($payload['code'] ?? ''),
+        (int) (($payload['active'] ?? 1) ? 1 : 0) === 1,
+        $metricKey
     );
     if ($achievementId <= 0) {
         return;
@@ -1477,19 +1829,255 @@ function create_conditional_achievement(PDO $pdo, array $payload, int $actorUser
 
     db_execute(
         $pdo,
-        'INSERT INTO achievement_rules (achievement_id, metric_key, operator, target_value, window, active, created_at, updated_at)
+        'INSERT INTO achievement_rules (achievement_id, metric_key, operator, target_value, "window", active, created_at, updated_at)
          VALUES (:achievement_id, :metric_key, :operator, :target_value, :window, 1, :created_at, :updated_at)',
         [
             ':achievement_id' => $achievementId,
-            ':metric_key' => trim((string) ($payload['metric_key'] ?? 'steps')),
-            ':operator' => in_array(($payload['operator'] ?? '>='), ['>=', '<=', '='], true) ? (string) $payload['operator'] : '>=',
-            ':target_value' => (float) ($payload['target_value'] ?? 1),
-            ':window' => in_array(($payload['window'] ?? 'total'), ['total', 'week', 'current_challenge'], true) ? (string) $payload['window'] : 'total',
+            ':metric_key' => $metricKey,
+            ':operator' => $operator,
+            ':target_value' => $targetValue,
+            ':window' => $window,
             ':created_at' => now_iso(),
             ':updated_at' => now_iso(),
         ]
     );
     audit_log($pdo, $actorUserId, 'achievement_rule_created', 'achievement', (string) $achievementId, 'Achievement rule created.', null, $payload);
+}
+
+function update_achievement(PDO $pdo, int $achievementId, array $payload, int $actorUserId): void
+{
+    $beforeAchievement = db_fetch_one($pdo, 'SELECT * FROM achievements WHERE id = :id', [':id' => $achievementId]);
+    if ($beforeAchievement === null) {
+        throw new InvalidArgumentException('Achievement not found.');
+    }
+
+    $beforeRule = db_fetch_one(
+        $pdo,
+        'SELECT * FROM achievement_rules WHERE achievement_id = :achievement_id AND active = 1 ORDER BY id DESC LIMIT 1',
+        [':achievement_id' => $achievementId]
+    );
+
+    $name = trim((string) ($payload['name'] ?? ''));
+    if ($name === '') {
+        throw new InvalidArgumentException('Achievement name is required.');
+    }
+    $scope = in_array(($payload['scope'] ?? 'user'), ['user', 'team'], true) ? (string) $payload['scope'] : 'user';
+    $desiredCode = trim((string) ($payload['code'] ?? ''));
+    if ($desiredCode === '') {
+        $desiredCode = $name;
+    }
+    $code = resolve_unique_achievement_code($pdo, $desiredCode, $achievementId);
+    $active = !empty($payload['active']);
+    $conditionalEnabled = !empty($payload['conditional_enabled']);
+
+    $triggerKey = null;
+    $operator = null;
+    $targetValue = null;
+    $window = null;
+
+    if ($conditionalEnabled) {
+        $triggerKey = normalize_achievement_rule_metric((string) ($payload['metric_key'] ?? 'steps'), (string) ($payload['habit_code'] ?? ''));
+        $operator = normalize_achievement_rule_operator((string) ($payload['operator'] ?? '>='));
+        $targetValue = (float) ($payload['target_value'] ?? 1);
+        if (!is_finite($targetValue)) {
+            throw new InvalidArgumentException('Invalid target amount.');
+        }
+        $window = normalize_achievement_rule_window((string) ($payload['window'] ?? 'total'));
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE achievements
+         SET code = :code,
+             name = :name,
+             description = :description,
+             scope = :scope,
+             trigger_key = :trigger_key,
+             image_path = :image_path,
+             reward_text = :reward_text,
+             active = :active,
+             updated_at = :updated_at
+         WHERE id = :id',
+        [
+            ':code' => $code,
+            ':name' => $name,
+            ':description' => trim((string) ($payload['description'] ?? '')),
+            ':scope' => $scope,
+            ':trigger_key' => $triggerKey,
+            ':image_path' => $payload['image_path'] ?? null,
+            ':reward_text' => trim((string) ($payload['reward_text'] ?? '')),
+            ':active' => $active ? 1 : 0,
+            ':updated_at' => now_iso(),
+            ':id' => $achievementId,
+        ]
+    );
+
+    if ($conditionalEnabled) {
+        db_execute(
+            $pdo,
+            'UPDATE achievement_rules SET active = 0, updated_at = :updated_at WHERE achievement_id = :achievement_id',
+            [':updated_at' => now_iso(), ':achievement_id' => $achievementId]
+        );
+        if ($beforeRule !== null) {
+            db_execute(
+                $pdo,
+                'UPDATE achievement_rules
+                 SET metric_key = :metric_key,
+                     operator = :operator,
+                     target_value = :target_value,
+                     "window" = :window,
+                     active = 1,
+                     updated_at = :updated_at
+                 WHERE id = :id',
+                [
+                    ':metric_key' => $triggerKey,
+                    ':operator' => $operator,
+                    ':target_value' => $targetValue,
+                    ':window' => $window,
+                    ':updated_at' => now_iso(),
+                    ':id' => (int) $beforeRule['id'],
+                ]
+            );
+        } else {
+            db_execute(
+                $pdo,
+                'INSERT INTO achievement_rules (achievement_id, metric_key, operator, target_value, "window", active, created_at, updated_at)
+                 VALUES (:achievement_id, :metric_key, :operator, :target_value, :window, 1, :created_at, :updated_at)',
+                [
+                    ':achievement_id' => $achievementId,
+                    ':metric_key' => $triggerKey,
+                    ':operator' => $operator,
+                    ':target_value' => $targetValue,
+                    ':window' => $window,
+                    ':created_at' => now_iso(),
+                    ':updated_at' => now_iso(),
+                ]
+            );
+        }
+    } else {
+        db_execute(
+            $pdo,
+            'UPDATE achievement_rules SET active = 0, updated_at = :updated_at WHERE achievement_id = :achievement_id',
+            [':updated_at' => now_iso(), ':achievement_id' => $achievementId]
+        );
+    }
+
+    $afterAchievement = db_fetch_one($pdo, 'SELECT * FROM achievements WHERE id = :id', [':id' => $achievementId]);
+    $afterRule = db_fetch_one(
+        $pdo,
+        'SELECT * FROM achievement_rules WHERE achievement_id = :achievement_id AND active = 1 ORDER BY id DESC LIMIT 1',
+        [':achievement_id' => $achievementId]
+    );
+    audit_log(
+        $pdo,
+        $actorUserId,
+        'achievement_updated',
+        'achievement',
+        (string) $achievementId,
+        'Achievement updated.',
+        ['achievement' => audit_snapshot($beforeAchievement), 'rule' => audit_snapshot($beforeRule)],
+        ['achievement' => audit_snapshot($afterAchievement), 'rule' => audit_snapshot($afterRule)]
+    );
+}
+
+function deactivate_achievement(PDO $pdo, int $achievementId, int $actorUserId): void
+{
+    $before = db_fetch_one($pdo, 'SELECT * FROM achievements WHERE id = :id', [':id' => $achievementId]);
+    if ($before === null) {
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE achievements SET active = 0, updated_at = :updated_at WHERE id = :id',
+        [':updated_at' => now_iso(), ':id' => $achievementId]
+    );
+    db_execute(
+        $pdo,
+        'UPDATE achievement_rules SET active = 0, updated_at = :updated_at WHERE achievement_id = :achievement_id',
+        [':updated_at' => now_iso(), ':achievement_id' => $achievementId]
+    );
+    $after = db_fetch_one($pdo, 'SELECT * FROM achievements WHERE id = :id', [':id' => $achievementId]);
+    audit_log($pdo, $actorUserId, 'achievement_deactivated', 'achievement', (string) $achievementId, 'Achievement deactivated.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function normalize_achievement_rule_operator(string $operator): string
+{
+    if ($operator === '==') {
+        $operator = '=';
+    }
+    if (!in_array($operator, ['>=', '<=', '=', '>', '<'], true)) {
+        throw new InvalidArgumentException('Invalid operator.');
+    }
+
+    return $operator;
+}
+
+function normalize_achievement_rule_window(string $window): string
+{
+    $window = trim(strtolower($window));
+    $window = str_replace([' ', '-'], '_', $window);
+
+    if ($window === 'currentweek') {
+        $window = 'current_week';
+    } elseif ($window === 'currentmonth') {
+        $window = 'current_month';
+    } elseif ($window === 'currentchallenge') {
+        $window = 'current_challenge';
+    } elseif ($window === 'month') {
+        $window = 'current_month';
+    } elseif ($window === 'challenge') {
+        $window = 'current_challenge';
+    }
+
+    if ($window === 'week') {
+        return 'current_week';
+    }
+
+    if (!in_array($window, ['total', 'current_week', 'current_month', 'current_challenge'], true)) {
+        throw new InvalidArgumentException('Invalid window.');
+    }
+
+    return $window;
+}
+
+function normalize_achievement_rule_metric(string $metricKey, string $habitCode = ''): string
+{
+    $metricKey = trim(strtolower($metricKey));
+    $metricKey = str_replace([' ', '-'], '_', $metricKey);
+    $habitCode = trim(strtolower($habitCode));
+    $habitCode = str_replace([' ', '-'], '_', $habitCode);
+    $allowed = ['steps', 'distance_km', 'km', 'workouts', 'score', 'strikes', 'penalties', 'weight'];
+
+    if ($metricKey === 'distance') {
+        $metricKey = 'distance_km';
+    }
+    if ($metricKey === 'habitcompletion') {
+        $metricKey = 'habit_completion';
+    }
+
+    if ($metricKey === 'habit_completion' || $metricKey === 'habit') {
+        if ($habitCode === '' || preg_match('/^[a-z0-9_]+$/', $habitCode) !== 1) {
+            throw new InvalidArgumentException('Invalid habit metric.');
+        }
+
+        return 'habit:' . $habitCode;
+    }
+
+    if (str_starts_with($metricKey, 'habit:')) {
+        $code = substr($metricKey, 6);
+        if ($code === '' || preg_match('/^[a-z0-9_]+$/', $code) !== 1) {
+            throw new InvalidArgumentException('Invalid habit metric.');
+        }
+
+        return 'habit:' . $code;
+    }
+
+    if (!in_array($metricKey, $allowed, true)) {
+        throw new InvalidArgumentException('Invalid metric.');
+    }
+
+    return $metricKey === 'km' ? 'distance_km' : $metricKey;
 }
 
 function is_achievement_award_suppressed(PDO $pdo, int $achievementId, ?int $userId, ?int $teamId): bool
@@ -1643,7 +2231,7 @@ function list_awarded_achievements(PDO $pdo, ?int $userId = null, ?int $teamId =
 
     return db_fetch_all(
         $pdo,
-        'SELECT aa.*, a.name, a.description, a.scope, a.code, a.image_path, a.reward_text, u.display_name AS awarded_by_name
+        'SELECT aa.*, aa.id AS award_id, a.name, a.description, a.scope, a.code, a.image_path, a.reward_text, u.display_name AS awarded_by_name
          FROM achievement_awards aa
          JOIN achievements a ON a.id = aa.achievement_id
          LEFT JOIN users u ON u.id = aa.awarded_by
@@ -1758,27 +2346,42 @@ function evaluate_conditional_achievements(PDO $pdo, array $metricsByUser, ?int 
 {
     $rules = db_fetch_all(
         $pdo,
-        'SELECT ar.*, a.scope
+        'SELECT ar.id AS rule_id,
+                ar.achievement_id,
+                ar.metric_key,
+                ar.operator,
+                ar.target_value,
+                ar."window" AS trigger_window,
+                ar.active AS rule_active,
+                a.scope
          FROM achievement_rules ar
          JOIN achievements a ON a.id = ar.achievement_id
-         WHERE ar.active = 1 AND a.active = 1'
+         WHERE ar.active = 1 AND a.active = 1 AND a.trigger_key IS NOT NULL'
     );
 
     foreach ($rules as $rule) {
+        try {
+            $metricKey = normalize_achievement_rule_metric((string) $rule['metric_key']);
+            $window = normalize_achievement_rule_window((string) $rule['trigger_window']);
+            $operator = normalize_achievement_rule_operator((string) $rule['operator']);
+        } catch (Throwable) {
+            continue;
+        }
+
         if ((string) $rule['scope'] === 'team') {
             if ($teamId === null) {
                 continue;
             }
-            $value = metric_value_for_rule($metricsByUser, (string) $rule['metric_key'], (string) $rule['window']);
-            if (rule_matches($value, (string) $rule['operator'], (float) $rule['target_value'])) {
+            $value = metric_value_for_rule($metricsByUser, $metricKey, $window);
+            if (rule_matches($value, $operator, (float) $rule['target_value'])) {
                 award_achievement($pdo, (int) $rule['achievement_id'], null, $teamId, null, 'Conditional unlock.');
             }
             continue;
         }
 
         foreach ($metricsByUser as $metric) {
-            $value = metric_value_for_rule([$metric], (string) $rule['metric_key'], (string) $rule['window']);
-            if (rule_matches($value, (string) $rule['operator'], (float) $rule['target_value'])) {
+            $value = metric_value_for_rule([$metric], $metricKey, $window);
+            if (rule_matches($value, $operator, (float) $rule['target_value'])) {
                 award_achievement($pdo, (int) $rule['achievement_id'], (int) $metric['user']['id'], null, null, 'Conditional unlock.');
             }
         }
@@ -1787,16 +2390,136 @@ function evaluate_conditional_achievements(PDO $pdo, array $metricsByUser, ?int 
 
 function metric_value_for_rule(array $metrics, string $metricKey, string $window): float
 {
+    $metricKey = normalize_achievement_rule_metric($metricKey);
+    $window = normalize_achievement_rule_window($window);
+
+    if ($window === 'current_week') {
+        $value = 0.0;
+        foreach ($metrics as $metric) {
+            $weekly = (array) ($metric['weekly'] ?? []);
+            if ($weekly === []) {
+                continue;
+            }
+            $week = $weekly[count($weekly) - 1];
+            if ($metricKey === 'steps') {
+                $metricValue = (float) ($week['steps'] ?? 0);
+            } elseif ($metricKey === 'distance_km') {
+                $metricValue = (float) ($week['km'] ?? 0);
+            } elseif ($metricKey === 'workouts') {
+                $metricValue = (float) ($week['workouts'] ?? 0);
+            } elseif ($metricKey === 'score') {
+                $metricValue = max(
+                    0.0,
+                    100.0 - (
+                        ((int) ($week['step_failures'] ?? 0) * 6) +
+                        ((int) ($week['workout_failures'] ?? 0) * 8) +
+                        ((int) ($week['skip_warnings'] ?? 0) * 3) +
+                        ((int) ($week['strikes_after_week'] ?? 0) * 4)
+                    )
+                );
+            } elseif ($metricKey === 'strikes') {
+                $metricValue = (float) ($week['strikes_after_week'] ?? 0);
+            } elseif ($metricKey === 'penalties') {
+                $metricValue = (float) ($week['penalty'] ?? 0);
+            } elseif ($metricKey === 'weight') {
+                $metricValue = (float) ($metric['latest_weight'] ?? 0);
+            } elseif (str_starts_with($metricKey, 'habit:')) {
+                $code = substr($metricKey, 6);
+                $metricValue = (float) ($week['habit_counts'][$code] ?? 0);
+            } else {
+                $metricValue = 0.0;
+            }
+            $value += $metricValue;
+        }
+        if (($metricKey === 'score' || $metricKey === 'weight') && count($metrics) > 1) {
+            $value = $value / count($metrics);
+        }
+
+        return $value;
+    }
+
+    if ($window === 'current_month') {
+        $value = 0.0;
+        foreach ($metrics as $metric) {
+            $anchorDate = null;
+            foreach ((array) ($metric['steps_series'] ?? []) as $point) {
+                $anchorDate = (string) ($point['date'] ?? $anchorDate);
+            }
+            if ($anchorDate === null || $anchorDate === '') {
+                $anchorDate = (new DateTimeImmutable('today'))->format('Y-m-d');
+            }
+            $monthPrefix = substr($anchorDate, 0, 7);
+
+            if ($metricKey === 'steps' || $metricKey === 'distance_km') {
+                $sum = 0.0;
+                foreach ((array) ($metric['steps_series'] ?? []) as $point) {
+                    $date = (string) ($point['date'] ?? '');
+                    if (!str_starts_with($date, $monthPrefix)) {
+                        continue;
+                    }
+                    $sum += $metricKey === 'steps'
+                        ? (float) ($point['steps'] ?? 0)
+                        : (float) ($point['km'] ?? 0);
+                }
+                $value += $sum;
+            } elseif ($metricKey === 'workouts' || str_starts_with($metricKey, 'habit:')) {
+                $sum = 0.0;
+                $habitCode = str_starts_with($metricKey, 'habit:') ? substr($metricKey, 6) : '';
+                foreach ((array) ($metric['weekly'] ?? []) as $week) {
+                    $weekStart = (string) ($week['week_start'] ?? '');
+                    if (!str_starts_with($weekStart, $monthPrefix)) {
+                        continue;
+                    }
+                    if ($metricKey === 'workouts') {
+                        $sum += (float) ($week['workouts'] ?? 0);
+                    } else {
+                        $sum += (float) (($week['habit_counts'][$habitCode] ?? 0));
+                    }
+                }
+                $value += $sum;
+            } elseif ($metricKey === 'score') {
+                $value += (float) ($metric['score'] ?? 0);
+            } elseif ($metricKey === 'strikes') {
+                $value += (float) ($metric['current_strikes'] ?? 0);
+            } elseif ($metricKey === 'penalties') {
+                $value += (float) ($metric['total_penalty'] ?? 0);
+            } elseif ($metricKey === 'weight') {
+                $value += (float) ($metric['latest_weight'] ?? 0);
+            }
+        }
+        if (($metricKey === 'score' || $metricKey === 'weight') && count($metrics) > 1) {
+            $value = $value / count($metrics);
+        }
+
+        return $value;
+    }
+
     if ($window === 'week') {
         $best = 0.0;
         foreach ($metrics as $metric) {
             foreach (($metric['weekly'] ?? []) as $week) {
                 if ($metricKey === 'steps') {
                     $weekValue = (float) ($week['steps'] ?? 0);
-                } elseif ($metricKey === 'km') {
+                } elseif ($metricKey === 'distance_km') {
                     $weekValue = (float) ($week['km'] ?? 0);
                 } elseif ($metricKey === 'workouts') {
                     $weekValue = (float) ($week['workouts'] ?? 0);
+                } elseif ($metricKey === 'score') {
+                    $weekValue = max(
+                        0.0,
+                        100.0 - (
+                            ((int) ($week['step_failures'] ?? 0) * 6) +
+                            ((int) ($week['workout_failures'] ?? 0) * 8) +
+                            ((int) ($week['skip_warnings'] ?? 0) * 3) +
+                            ((int) ($week['strikes_after_week'] ?? 0) * 4)
+                        )
+                    );
+                } elseif ($metricKey === 'strikes') {
+                    $weekValue = (float) ($week['strikes_after_week'] ?? 0);
+                } elseif ($metricKey === 'penalties') {
+                    $weekValue = (float) ($week['penalty'] ?? 0);
+                } elseif ($metricKey === 'weight') {
+                    $weekValue = (float) ($metric['latest_weight'] ?? 0);
                 } elseif (str_starts_with($metricKey, 'habit:')) {
                     $code = substr($metricKey, 6);
                     $weekValue = (float) (($week['habit_counts'][$code] ?? 0));
@@ -1814,12 +2537,16 @@ function metric_value_for_rule(array $metrics, string $metricKey, string $window
     foreach ($metrics as $metric) {
         if ($metricKey === 'steps') {
             $value += (float) ($metric['total_steps'] ?? 0);
-        } elseif ($metricKey === 'km') {
+        } elseif ($metricKey === 'distance_km') {
             $value += (float) ($metric['total_km'] ?? 0);
         } elseif ($metricKey === 'workouts') {
             $value += (float) ($metric['workout_success'] ?? 0);
         } elseif ($metricKey === 'score') {
             $value += (float) ($metric['score'] ?? 0);
+        } elseif ($metricKey === 'strikes') {
+            $value += (float) ($metric['current_strikes'] ?? 0);
+        } elseif ($metricKey === 'penalties') {
+            $value += (float) ($metric['total_penalty'] ?? 0);
         } elseif ($metricKey === 'weight') {
             $value += (float) ($metric['latest_weight'] ?? 0);
         } elseif (str_starts_with($metricKey, 'habit:')) {
@@ -1828,7 +2555,7 @@ function metric_value_for_rule(array $metrics, string $metricKey, string $window
         }
     }
 
-    if ($metricKey === 'score' && count($metrics) > 1) {
+    if (($metricKey === 'score' || $metricKey === 'weight') && count($metrics) > 1) {
         $value = $value / count($metrics);
     }
 
@@ -1838,6 +2565,8 @@ function metric_value_for_rule(array $metrics, string $metricKey, string $window
 function rule_matches(float $value, string $operator, float $target): bool
 {
     return match ($operator) {
+        '>' => $value > $target,
+        '<' => $value < $target,
         '<=' => $value <= $target,
         '=' => abs($value - $target) < 0.0001,
         default => $value >= $target,

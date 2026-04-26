@@ -7,5 +7,5 @@ WORKDIR /var/www
 
 COPY . /var/www
 
-RUN mkdir -p /var/www/storage /var/www/public/uploads
+RUN mkdir -p /var/www/storage /var/www/storage/uploads /var/www/public/uploads
 ENTRYPOINT ["/var/www/docker/entrypoint.sh"]

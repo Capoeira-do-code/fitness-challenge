@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 $log = $currentLog ?? null;
 $categoryLabels = [
-    'meal' => t('entries.meal'),
-    'dinner' => t('entries.dinner'),
-    'workout' => t('entries.workout'),
-    'other' => t('common.other'),
+    'breakfast' => 'Breakfast',
+    'lunch' => 'Lunch',
+    'dinner' => 'Dinner',
+    'other' => 'Other',
+    'meal' => 'Lunch',
+    'workout' => 'Other',
 ];
-$entryMode = in_array(($entryMode ?? 'data'), ['data', 'meal'], true) ? (string) $entryMode : 'data';
+$entryMode = in_array(($entryMode ?? 'data'), ['data', 'meal', 'calendar'], true) ? (string) $entryMode : 'data';
+$calendarView = in_array(($calendarView ?? 'month'), ['month', 'week', 'day'], true) ? (string) $calendarView : 'month';
 ?>
 <section class="screen stack-lg">
     <div class="hero-panel">
@@ -130,36 +133,50 @@ $entryMode = in_array(($entryMode ?? 'data'), ['data', 'meal'], true) ? (string)
                 </div>
             </div>
 
-            <form method="post" action="/?page=entries" enctype="multipart/form-data" class="stack">
+            <form method="post" action="/?page=entries" enctype="multipart/form-data" class="stack proof-photo-form" data-proof-photo-form>
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="upload_photo">
 
-                <div class="grid-inline entries-two-col">
-                    <label>
-                        <?= e(t('common.date')) ?>
-                        <input type="date" name="log_date" value="<?= e($selectedDate) ?>">
-                    </label>
+                <div class="proof-photo-grid">
+                    <div class="stack proof-photo-fields">
+                        <div class="grid-inline entries-two-col proof-photo-meta">
+                            <label>
+                                <?= e(t('common.date')) ?>
+                                <input type="date" name="log_date" value="<?= e($selectedDate) ?>">
+                            </label>
 
-                    <label>
-                        <?= e(t('common.category')) ?>
-                        <select name="category">
-                            <option value="meal"><?= e(t('entries.meal')) ?></option>
-                            <option value="dinner"><?= e(t('entries.dinner')) ?></option>
-                            <option value="workout"><?= e(t('entries.workout')) ?></option>
-                            <option value="other"><?= e(t('common.other')) ?></option>
-                        </select>
-                    </label>
+                            <label>
+                                <?= e(t('common.category')) ?>
+                                <select name="category">
+                                    <option value="breakfast">Breakfast</option>
+                                    <option value="lunch">Lunch</option>
+                                    <option value="dinner">Dinner</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        <label>
+                            <?= e(t('common.caption')) ?>
+                            <input type="text" name="caption" placeholder="<?= e(t('entries.caption_placeholder')) ?>">
+                        </label>
+
+                        <label>
+                            <?= e(t('entries.camera_hint')) ?>
+                            <input type="file" name="photo" accept="image/*" capture="environment" required data-proof-photo-input>
+                        </label>
+                    </div>
+
+                    <div class="proof-photo-preview" data-proof-photo-preview>
+                        <div class="photo-placeholder">
+                            <div class="photo-placeholder-content">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v8.59l3.3-3.3a1 1 0 0 1 1.4 0L14 15.6l2.3-2.3a1 1 0 0 1 1.4 0L19 14.6V6Zm3 1.2a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6Z"/></svg>
+                                <p>Selecciona una foto para previsualizarla</p>
+                                <small>Se guardará como prueba del día</small>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-
-                <label>
-                    <?= e(t('common.caption')) ?>
-                    <input type="text" name="caption" placeholder="<?= e(t('entries.caption_placeholder')) ?>">
-                </label>
-
-                <label>
-                    <?= e(t('entries.camera_hint')) ?>
-                    <input type="file" name="photo" accept="image/*" capture="environment" required>
-                </label>
 
                 <button type="submit" class="btn btn-secondary btn-block"><?= e(t('entries.upload')) ?></button>
             </form>
@@ -182,7 +199,7 @@ $entryMode = in_array(($entryMode ?? 'data'), ['data', 'meal'], true) ? (string)
                 <?php foreach ($recentPhotos as $photo): ?>
                     <?php $category = (string) $photo['category']; ?>
                     <figure>
-                        <img src="<?= e((string) $photo['file_path']) ?>" alt="<?= e(t('common.photo')) ?>">
+                        <img src="<?= e(media_url((string) $photo['file_path'])) ?>" alt="<?= e(t('common.photo')) ?>">
                         <figcaption>
                             <strong><?= e((string) $photo['display_name']) ?></strong>
                             <span><?= e(format_date_eu((string) $photo['log_date'])) ?> · <?= e($categoryLabels[$category] ?? $category) ?></span>
@@ -195,5 +212,60 @@ $entryMode = in_array(($entryMode ?? 'data'), ['data', 'meal'], true) ? (string)
             </div>
         <?php endif; ?>
     </article>
+    <div class="panel panel-inline-empty">
+        <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=month&date=<?= e($selectedDate) ?>">Ver calendario</a>
+    </div>
+    <?php endif; ?>
+
+    <?php if ($entryMode === 'calendar'): ?>
+        <article class="panel">
+            <div class="panel-head">
+                <div>
+                    <p class="eyebrow"><?= e(t('nav.entries')) ?></p>
+                    <h2>Calendario</h2>
+                </div>
+                <a
+                    class="btn btn-ghost"
+                    href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"
+                    onclick="if (window.history.length > 1) { event.preventDefault(); window.history.back(); }"
+                >← Volver</a>
+            </div>
+            <form method="get" action="/" class="control-strip entries-calendar-controls">
+                <input type="hidden" name="page" value="entries">
+                <input type="hidden" name="mode" value="calendar">
+                <label class="entry-date-inline">
+                    <?= e(t('common.date')) ?>
+                    <input type="date" name="date" value="<?= e($selectedDate) ?>" onchange="this.form.submit()">
+                </label>
+                <label>
+                    <?= e(t('calendar.view_mode')) ?>
+                    <select name="calendar_view" onchange="this.form.submit()">
+                        <option value="month" <?= $calendarView === 'month' ? 'selected' : '' ?>><?= e(t('calendar.view_month')) ?></option>
+                        <option value="week" <?= $calendarView === 'week' ? 'selected' : '' ?>><?= e(t('calendar.view_week')) ?></option>
+                        <option value="day" <?= $calendarView === 'day' ? 'selected' : '' ?>><?= e(t('calendar.view_day')) ?></option>
+                    </select>
+                </label>
+            </form>
+            <div class="meal-calendar<?= $calendarView === 'month' ? ' meal-calendar-month' : '' ?> entries-calendar">
+                <?php foreach (($mealCalendar ?? []) as $dateKey => $day): ?>
+                    <?php
+                    $hasLog = !empty($loggedDays[$dateKey]);
+                    $photoCount = (int) ($day['count'] ?? 0);
+                    $preview = $day['preview'] ?? null;
+                    ?>
+                    <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?>" href="/?page=entries&mode=meal&date=<?= e((string) $dateKey) ?>">
+                        <article>
+                            <strong><?= e(format_date_eu((string) $dateKey)) ?></strong>
+                            <?php if (is_array($preview) && !empty($preview['file_path'])): ?>
+                                <img src="<?= e(media_url((string) $preview['file_path'])) ?>" alt="<?= e(t('common.photo')) ?>">
+                            <?php else: ?>
+                                <div class="entries-calendar-empty">Sin foto</div>
+                            <?php endif; ?>
+                            <span class="badge"><?= $photoCount ?> foto<?= $photoCount === 1 ? '' : 's' ?></span>
+                        </article>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        </article>
     <?php endif; ?>
 </section>

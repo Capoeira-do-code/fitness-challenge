@@ -16,13 +16,22 @@ declare(strict_types=1);
     <div class="grid-two">
         <article class="panel">
             <h2 id="avatar"><?= e(t('settings.avatar')) ?></h2>
-            <form method="post" action="/?page=settings" enctype="multipart/form-data" class="stack">
+            <form method="post" action="/?page=settings" enctype="multipart/form-data" class="stack" data-image-cropper-form>
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="upload_avatar">
+                <input type="hidden" name="avatar_cropped" value="" data-image-crop-output>
                 <?php if (!empty($currentUser['avatar_path'])): ?>
-                    <img class="settings-avatar-preview" src="<?= e((string) $currentUser['avatar_path']) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
+                    <img class="settings-avatar-preview" src="<?= e(avatar_url($currentUser)) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
                 <?php endif; ?>
-                <label><?= e(t('settings.avatar_file')) ?><input type="file" name="avatar" accept="image/*" required></label>
+                <div class="image-cropper" data-image-cropper>
+                    <canvas width="320" height="320" data-image-crop-canvas></canvas>
+                    <p class="muted small" data-image-crop-empty>Selecciona una imagen para recortarla en formato 1:1.</p>
+                    <label>
+                        Zoom
+                        <input type="range" min="1" max="3" step="0.01" value="1" data-image-crop-zoom>
+                    </label>
+                </div>
+                <label><?= e(t('settings.avatar_file')) ?><input type="file" name="avatar" accept="image/*" required data-image-crop-input></label>
                 <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
             </form>
         </article>

@@ -9,18 +9,30 @@ $pageTitle = isset($title) ? $title . ' · ' . $appName : $appName;
 $currentPage = $currentPage ?? '';
 $activeLocale = current_locale();
 $redirectTo = safe_redirect_target($_SERVER['REQUEST_URI'] ?? '/');
-$appIconPath = $loggedIn ? app_setting($GLOBALS['pdo'], 'app_icon_path') : null;
-$desktopNavItems = [
-    'dashboard' => ['label' => t('nav.dashboard'), 'href' => '/?page=dashboard', 'icon' => 'D'],
-    'team' => ['label' => t('nav.team'), 'href' => '/?page=team', 'icon' => 'T'],
-    'profile' => ['label' => t('nav.profile'), 'href' => '/?page=profile', 'icon' => 'P'],
-    'settings' => ['label' => t('nav.settings'), 'href' => '/?page=settings', 'icon' => 'S'],
-];
-if ($loggedIn && is_admin($currentUser)) {
-    $desktopNavItems['admin'] = ['label' => t('nav.admin'), 'href' => '/?page=admin', 'icon' => 'A'];
+$appIconSetting = $loggedIn ? db_fetch_one($GLOBALS['pdo'], 'SELECT setting_value, updated_at FROM app_settings WHERE setting_key = :key', [':key' => 'app_icon_path']) : null;
+$appIconPath = $appIconSetting !== null ? (string) ($appIconSetting['setting_value'] ?? '') : null;
+$appIconVersion = null;
+if ($appIconSetting !== null && !empty($appIconSetting['updated_at'])) {
+    $appIconTimestamp = strtotime((string) $appIconSetting['updated_at']);
+    if ($appIconTimestamp !== false) {
+        $appIconVersion = (string) $appIconTimestamp;
+    }
 }
+$desktopNavItems = [
+    'dashboard' => ['label' => t('nav.dashboard'), 'href' => '/?page=dashboard', 'icon' => 'home'],
+    'team' => ['label' => t('nav.team'), 'href' => '/?page=team', 'icon' => 'users'],
+    'profile' => ['label' => t('nav.profile'), 'href' => '/?page=profile', 'icon' => 'user'],
+];
 $mobileNavItems = array_intersect_key($desktopNavItems, array_flip(['dashboard', 'team', 'profile']));
 $topbarControls = $topbarControls ?? '';
+
+$renderMobileIcon = static function (string $icon): string {
+    return match ($icon) {
+        'home' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5v10.5a1 1 0 0 1-1 1h-5.5v-6.5h-5V22H4a1 1 0 0 1-1-1z"/></svg>',
+        'users' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11a4 4 0 1 0-3.999-4A4 4 0 0 0 16 11Zm-8 0a3 3 0 1 0-2.999-3A3 3 0 0 0 8 11Zm0 2c-2.67 0-8 1.34-8 4v1h10v-1c0-1.16.62-2.16 1.67-2.94A11.2 11.2 0 0 0 8 13Zm8 0c-2.67 0-8 1.34-8 4v1h16v-1c0-2.66-5.33-4-8-4Z"/></svg>',
+        default => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Zm0 14c-4.42 0-8 2.01-8 4.5V22h16v-1.5c0-2.49-3.58-4.5-8-4.5Z"/></svg>',
+    };
+};
 ?>
 <!doctype html>
 <html lang="<?= e($activeLocale) ?>">
@@ -31,16 +43,16 @@ $topbarControls = $topbarControls ?? '';
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/styles.css?v=8">
+    <link rel="stylesheet" href="/assets/styles.css?v=14">
 </head>
 <body data-page="<?= e((string) $currentPage) ?>">
 <?php if ($loggedIn): ?>
     <header class="topbar">
         <a class="brand" href="/?page=dashboard">
             <?php if (!empty($currentUser['avatar_path'])): ?>
-                <img class="brand-avatar" src="<?= e((string) $currentUser['avatar_path']) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
+                <img class="brand-avatar" src="<?= e(avatar_url($currentUser)) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
             <?php elseif ($appIconPath !== null && $appIconPath !== ''): ?>
-                <img class="brand-avatar" src="<?= e($appIconPath) ?>" alt="<?= e($appName) ?>">
+                <img class="brand-avatar" src="<?= e(media_url((string) $appIconPath, $appIconVersion)) ?>" alt="<?= e($appName) ?>">
             <?php else: ?>
                 <span class="brand-mark"><?= e(initials_for((string) $currentUser['display_name'])) ?></span>
             <?php endif; ?>
@@ -58,7 +70,10 @@ $topbarControls = $topbarControls ?? '';
         <div class="topbar-actions">
             <?= $topbarControls ?>
             <details class="add-menu topbar-add-menu">
-                <summary class="btn btn-primary add-menu-trigger" aria-label="<?= e(t('entries.title')) ?>">+</summary>
+                <summary class="btn btn-primary add-menu-trigger btn-add" data-add-button aria-label="<?= e(t('entries.title')) ?>">
+                    <span aria-hidden="true">+</span>
+                    <span class="sr-only"><?= e(t('entries.title')) ?></span>
+                </summary>
                 <div class="add-menu-panel">
                     <a class="btn btn-ghost" href="/?page=entries&mode=data"><?= e(t('entries.quick_data')) ?></a>
                     <a class="btn btn-ghost" href="/?page=entries&mode=meal"><?= e(t('entries.quick_meal')) ?></a>
@@ -67,7 +82,7 @@ $topbarControls = $topbarControls ?? '';
             <details class="user-menu">
                 <summary class="user-menu-trigger">
                     <?php if (!empty($currentUser['avatar_path'])): ?>
-                        <img src="<?= e((string) $currentUser['avatar_path']) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
+                        <img src="<?= e(avatar_url($currentUser)) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
                     <?php else: ?>
                         <span><?= e(initials_for((string) $currentUser['display_name'])) ?></span>
                     <?php endif; ?>
@@ -75,6 +90,9 @@ $topbarControls = $topbarControls ?? '';
                 <div class="user-menu-panel">
                     <a href="/?page=profile"><?= e(t('nav.profile')) ?></a>
                     <a href="/?page=settings"><?= e(t('nav.settings')) ?></a>
+                    <?php if (is_admin($currentUser)): ?>
+                        <a href="/?page=admin"><?= e(t('nav.admin')) ?></a>
+                    <?php endif; ?>
                     <a href="/?page=settings#avatar"><?= e(t('settings.change_avatar')) ?></a>
                     <a href="/?page=logout"><?= e(t('nav.logout')) ?></a>
                 </div>
@@ -113,14 +131,14 @@ $topbarControls = $topbarControls ?? '';
     </details>
     <nav class="bottom-nav" aria-label="Primary mobile">
         <?php foreach ($mobileNavItems as $pageKey => $item): ?>
-            <a class="<?= $currentPage === $pageKey ? 'active' : '' ?>" href="<?= e($item['href']) ?>">
-                <span class="nav-icon"><?= e($item['icon']) ?></span>
+            <a class="<?= $currentPage === $pageKey ? 'active' : '' ?>" href="<?= e($item['href']) ?>" <?= $currentPage === $pageKey ? 'aria-current="page"' : '' ?>>
+                <span class="nav-icon"><?= $renderMobileIcon((string) $item['icon']) ?></span>
                 <span><?= e($item['label']) ?></span>
             </a>
         <?php endforeach; ?>
     </nav>
 <?php endif; ?>
 
-<script src="/assets/main.js?v=8"></script>
+<script src="/assets/main.js?v=14"></script>
 </body>
 </html>

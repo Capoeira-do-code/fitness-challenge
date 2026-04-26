@@ -16,6 +16,7 @@ $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : 0;
 $createUserMode = (string) ($_GET['create_user'] ?? '') === '1';
 $selectedHabitId = (string) ($_GET['habit_id'] ?? '');
 $selectedTypeId = (string) ($_GET['type_id'] ?? '');
+$selectedAchievementId = isset($_GET['achievement_id']) ? (int) $_GET['achievement_id'] : 0;
 $sectionRows = [
     'users' => 'Users',
     'challenge' => 'Challenge',
@@ -46,12 +47,12 @@ $sectionRows = [
     </article>
 
     <article class="panel settings-panel<?= $activeSection === 'users' ? ' active' : '' ?>" data-spa-section="users" <?= $activeSection === 'users' ? '' : 'hidden' ?>>
-        <div class="panel-head">
+        <div class="panel-head admin-section-list" data-spa-show-when-no-param="create_user,user_id" <?= ($createUserMode || $selectedUserId > 0) ? 'hidden' : '' ?>>
             <h2>Users</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back><?= e(t('common.cancel')) ?></a>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
         </div>
 
-        <div class="settings-list compact-list">
+        <div class="settings-list compact-list admin-section-list" data-spa-show-when-no-param="create_user,user_id" <?= ($createUserMode || $selectedUserId > 0) ? 'hidden' : '' ?>>
             <a class="settings-row" href="/?page=admin&section=users&create_user=1" data-spa-link>
                 <span><?= e(t('users.create')) ?></span>
                 <span class="settings-chevron" aria-hidden="true">›</span>
@@ -64,8 +65,11 @@ $sectionRows = [
             <?php endforeach; ?>
         </div>
 
-        <div class="stack" data-spa-param-show="create_user" data-spa-value="1" <?= $createUserMode ? '' : 'hidden' ?>>
-            <h3><?= e(t('users.create')) ?></h3>
+        <div class="stack admin-create-view" data-spa-param-show="create_user" data-spa-value="1" <?= $createUserMode ? '' : 'hidden' ?>>
+            <div class="panel-head">
+                <h3><?= e(t('users.create')) ?></h3>
+                <a class="btn btn-ghost" href="/?page=admin&section=users" data-spa-back aria-label="Volver">← Volver</a>
+            </div>
             <form method="post" action="/?page=admin" class="stack">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="create_user">
@@ -102,8 +106,11 @@ $sectionRows = [
         </div>
 
         <?php foreach ($users as $user): ?>
-            <div class="stack" data-spa-param-show="user_id" data-spa-value="<?= (int) $user['id'] ?>" <?= $selectedUserId === (int) $user['id'] ? '' : 'hidden' ?>>
-                <h3><?= e((string) $user['display_name']) ?></h3>
+            <div class="stack admin-detail-view" data-spa-param-show="user_id" data-spa-value="<?= (int) $user['id'] ?>" <?= $selectedUserId === (int) $user['id'] ? '' : 'hidden' ?>>
+                <div class="panel-head">
+                    <h3><?= e((string) $user['display_name']) ?></h3>
+                    <a class="btn btn-ghost" href="/?page=admin&section=users" data-spa-back aria-label="Volver">← Volver</a>
+                </div>
                 <form method="post" action="/?page=admin" class="stack">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="update_user">
@@ -145,7 +152,7 @@ $sectionRows = [
     <article class="panel settings-panel<?= $activeSection === 'challenge' ? ' active' : '' ?>" data-spa-section="challenge" <?= $activeSection === 'challenge' ? '' : 'hidden' ?>>
         <div class="panel-head">
             <h2>Challenge</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back><?= e(t('common.cancel')) ?></a>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
         </div>
         <form method="post" action="/?page=admin" class="stack compact-form">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -182,7 +189,7 @@ $sectionRows = [
     <article class="panel settings-panel<?= $activeSection === 'app' ? ' active' : '' ?>" data-spa-section="app" <?= $activeSection === 'app' ? '' : 'hidden' ?>>
         <div class="panel-head">
             <h2>App</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back><?= e(t('common.cancel')) ?></a>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
         </div>
         <form method="post" action="/?page=admin" class="stack compact-form">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -191,22 +198,31 @@ $sectionRows = [
             <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
         </form>
 
-        <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack">
+        <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack" data-image-cropper-form>
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="upload_app_icon">
-            <?php if (!empty($appIconPath)): ?><img class="settings-avatar-preview" src="<?= e((string) $appIconPath) ?>" alt="<?= e(t('admin.app_icon')) ?>"><?php endif; ?>
-            <label><?= e(t('common.photo')) ?><input type="file" name="app_icon" accept="image/*" required></label>
+            <input type="hidden" name="app_icon_cropped" value="" data-image-crop-output>
+            <?php if (!empty($appIconPath)): ?><img class="settings-avatar-preview" src="<?= e(media_url((string) $appIconPath, $appIconVersion ?? null)) ?>" alt="<?= e(t('admin.app_icon')) ?>"><?php endif; ?>
+            <div class="image-cropper" data-image-cropper>
+                <canvas width="320" height="320" data-image-crop-canvas></canvas>
+                <p class="muted small" data-image-crop-empty>Selecciona una imagen para recortarla en formato 1:1.</p>
+                <label>
+                    Zoom
+                    <input type="range" min="1" max="3" step="0.01" value="1" data-image-crop-zoom>
+                </label>
+            </div>
+            <label><?= e(t('common.photo')) ?><input type="file" name="app_icon" accept="image/*" required data-image-crop-input></label>
             <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
         </form>
     </article>
 
     <article class="panel settings-panel<?= $activeSection === 'habits' ? ' active' : '' ?>" data-spa-section="habits" <?= $activeSection === 'habits' ? '' : 'hidden' ?>>
-        <div class="panel-head">
+        <div class="panel-head admin-section-list" data-spa-show-when-no-param="habit_id" <?= $selectedHabitId !== '' ? 'hidden' : '' ?>>
             <h2>Habits</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back><?= e(t('common.cancel')) ?></a>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
         </div>
 
-        <div class="settings-list compact-list">
+        <div class="settings-list compact-list admin-section-list" data-spa-show-when-no-param="habit_id" <?= $selectedHabitId !== '' ? 'hidden' : '' ?>>
             <a class="settings-row" href="/?page=admin&section=habits&habit_id=new" data-spa-link>
                 <span><?= e(t('common.save')) ?> <?= e(t('admin.habits')) ?></span>
                 <span class="settings-chevron" aria-hidden="true">›</span>
@@ -219,37 +235,55 @@ $sectionRows = [
             <?php endforeach; ?>
         </div>
 
-        <form method="post" action="/?page=admin" class="mini-card editable-card compact-form" data-spa-param-show="habit_id" data-spa-value="new" <?= $selectedHabitId === 'new' ? '' : 'hidden' ?>>
-            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-            <input type="hidden" name="action" value="save_habit">
-            <input type="text" name="code" placeholder="custom_habit">
-            <input type="text" name="label" placeholder="<?= e(t('admin.habit_label')) ?>">
-            <input type="number" name="sort_order" value="50">
-            <label class="check"><input type="checkbox" name="active" value="1" checked><?= e(t('common.active')) ?></label>
-            <button class="btn small btn-primary" type="submit"><?= e(t('common.save')) ?></button>
-        </form>
-
-        <?php foreach (($habits ?? []) as $habit): ?>
-            <form method="post" action="/?page=admin" class="mini-card editable-card" data-spa-param-show="habit_id" data-spa-value="<?= (int) $habit['id'] ?>" <?= $selectedHabitId === (string) ((int) $habit['id']) ? '' : 'hidden' ?>>
+        <div class="stack admin-create-view" data-spa-param-show="habit_id" data-spa-value="new" <?= $selectedHabitId === 'new' ? '' : 'hidden' ?>>
+            <div class="panel-head">
+                <h3><?= e(t('common.save')) ?> <?= e(t('admin.habits')) ?></h3>
+                <a class="btn btn-ghost" href="/?page=admin&section=habits" data-spa-back aria-label="Volver">← Volver</a>
+            </div>
+            <form method="post" action="/?page=admin" class="mini-card editable-card compact-form">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="save_habit">
-                <input type="hidden" name="habit_id" value="<?= (int) $habit['id'] ?>">
-                <input type="text" name="code" value="<?= e((string) $habit['code']) ?>">
-                <input type="text" name="label" value="<?= e((string) $habit['label']) ?>">
-                <input type="number" name="sort_order" value="<?= e((string) $habit['sort_order']) ?>">
-                <label class="check"><input type="checkbox" name="active" value="1" <?= (int) $habit['active'] === 1 ? 'checked' : '' ?>><?= e(t('common.active')) ?></label>
+                <input type="text" name="code" placeholder="custom_habit">
+                <input type="text" name="label" placeholder="<?= e(t('admin.habit_label')) ?>">
+                <input type="number" name="sort_order" value="50">
+                <label class="check"><input type="checkbox" name="active" value="1" checked><?= e(t('common.active')) ?></label>
                 <button class="btn small btn-primary" type="submit"><?= e(t('common.save')) ?></button>
             </form>
+        </div>
+
+        <?php foreach (($habits ?? []) as $habit): ?>
+            <div class="stack admin-detail-view" data-spa-param-show="habit_id" data-spa-value="<?= (int) $habit['id'] ?>" <?= $selectedHabitId === (string) ((int) $habit['id']) ? '' : 'hidden' ?>>
+                <div class="panel-head">
+                    <h3><?= e((string) $habit['label']) ?></h3>
+                    <a class="btn btn-ghost" href="/?page=admin&section=habits" data-spa-back aria-label="Volver">← Volver</a>
+                </div>
+                <form method="post" action="/?page=admin" class="mini-card editable-card">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="save_habit">
+                    <input type="hidden" name="habit_id" value="<?= (int) $habit['id'] ?>">
+                    <input type="text" name="code" value="<?= e((string) $habit['code']) ?>">
+                    <input type="text" name="label" value="<?= e((string) $habit['label']) ?>">
+                    <input type="number" name="sort_order" value="<?= e((string) $habit['sort_order']) ?>">
+                    <label class="check"><input type="checkbox" name="active" value="1" <?= (int) $habit['active'] === 1 ? 'checked' : '' ?>><?= e(t('common.active')) ?></label>
+                    <button class="btn small btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+                </form>
+                <form method="post" action="/?page=admin" onsubmit="return confirm('¿Eliminar este hábito?');">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="delete_habit">
+                    <input type="hidden" name="habit_id" value="<?= (int) $habit['id'] ?>">
+                    <button class="btn small btn-ghost" type="submit"><?= e(t('common.delete')) ?></button>
+                </form>
+            </div>
         <?php endforeach; ?>
     </article>
 
     <article class="panel settings-panel<?= $activeSection === 'workout_types' ? ' active' : '' ?>" data-spa-section="workout_types" <?= $activeSection === 'workout_types' ? '' : 'hidden' ?>>
-        <div class="panel-head">
+        <div class="panel-head admin-section-list" data-spa-show-when-no-param="type_id" <?= $selectedTypeId !== '' ? 'hidden' : '' ?>>
             <h2>Workout Types</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back><?= e(t('common.cancel')) ?></a>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
         </div>
 
-        <div class="settings-list compact-list">
+        <div class="settings-list compact-list admin-section-list" data-spa-show-when-no-param="type_id" <?= $selectedTypeId !== '' ? 'hidden' : '' ?>>
             <a class="settings-row" href="/?page=admin&section=workout_types&type_id=new" data-spa-link>
                 <span><?= e(t('workout_types.title')) ?> +</span>
                 <span class="settings-chevron" aria-hidden="true">›</span>
@@ -262,89 +296,251 @@ $sectionRows = [
             <?php endforeach; ?>
         </div>
 
-        <form method="post" action="/?page=admin" class="mini-card editable-card" data-spa-param-show="type_id" data-spa-value="new" <?= $selectedTypeId === 'new' ? '' : 'hidden' ?>>
-            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-            <input type="hidden" name="action" value="create_workout_type">
-            <input type="text" name="name" placeholder="<?= e(t('entries.workout_type')) ?>" required>
-            <button class="btn small btn-primary" type="submit"><?= e(t('common.save')) ?></button>
-        </form>
-
-        <?php foreach (($workoutTypes ?? []) as $type): ?>
-            <form method="post" action="/?page=admin" class="mini-card editable-card" data-spa-param-show="type_id" data-spa-value="<?= (int) $type['id'] ?>" <?= $selectedTypeId === (string) ((int) $type['id']) ? '' : 'hidden' ?>>
+        <div class="stack admin-create-view" data-spa-param-show="type_id" data-spa-value="new" <?= $selectedTypeId === 'new' ? '' : 'hidden' ?>>
+            <div class="panel-head">
+                <h3><?= e(t('workout_types.title')) ?> +</h3>
+                <a class="btn btn-ghost" href="/?page=admin&section=workout_types" data-spa-back aria-label="Volver">← Volver</a>
+            </div>
+            <form method="post" action="/?page=admin" class="mini-card editable-card">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="update_workout_type">
-                <input type="hidden" name="type_id" value="<?= (int) $type['id'] ?>">
-                <input type="text" name="name" value="<?= e((string) $type['name']) ?>">
-                <label class="check"><input type="checkbox" name="active" value="1" <?= (int) $type['active'] === 1 ? 'checked' : '' ?>><?= e(t('common.active')) ?></label>
+                <input type="hidden" name="action" value="create_workout_type">
+                <input type="text" name="name" placeholder="<?= e(t('entries.workout_type')) ?>" required>
                 <button class="btn small btn-primary" type="submit"><?= e(t('common.save')) ?></button>
             </form>
+        </div>
+
+        <?php foreach (($workoutTypes ?? []) as $type): ?>
+            <div class="stack admin-detail-view" data-spa-param-show="type_id" data-spa-value="<?= (int) $type['id'] ?>" <?= $selectedTypeId === (string) ((int) $type['id']) ? '' : 'hidden' ?>>
+                <div class="panel-head">
+                    <h3><?= e((string) $type['name']) ?></h3>
+                    <a class="btn btn-ghost" href="/?page=admin&section=workout_types" data-spa-back aria-label="Volver">← Volver</a>
+                </div>
+                <form method="post" action="/?page=admin" class="mini-card editable-card">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="update_workout_type">
+                    <input type="hidden" name="type_id" value="<?= (int) $type['id'] ?>">
+                    <input type="text" name="name" value="<?= e((string) $type['name']) ?>">
+                    <label class="check"><input type="checkbox" name="active" value="1" <?= (int) $type['active'] === 1 ? 'checked' : '' ?>><?= e(t('common.active')) ?></label>
+                    <button class="btn small btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+                </form>
+                <form method="post" action="/?page=admin" onsubmit="return confirm('¿Eliminar este tipo de entreno?');">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="delete_workout_type">
+                    <input type="hidden" name="type_id" value="<?= (int) $type['id'] ?>">
+                    <button class="btn small btn-ghost" type="submit"><?= e(t('common.delete')) ?></button>
+                </form>
+            </div>
         <?php endforeach; ?>
     </article>
 
     <article class="panel settings-panel<?= $activeSection === 'achievements' ? ' active' : '' ?>" data-spa-section="achievements" <?= $activeSection === 'achievements' ? '' : 'hidden' ?>>
-        <div class="panel-head">
+        <div class="panel-head admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
             <h2>Achievements</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back><?= e(t('common.cancel')) ?></a>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
         </div>
 
-        <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack compact-form">
-            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-            <input type="hidden" name="action" value="create_achievement">
-            <div class="grid-inline">
-                <label><?= e(t('achievements.name')) ?><input type="text" name="name" required></label>
-                <label><?= e(t('achievements.scope')) ?><select name="scope"><option value="user"><?= e(t('common.user')) ?></option><option value="team"><?= e(t('nav.team')) ?></option></select></label>
-                <label><?= e(t('achievements.description')) ?><input type="text" name="description"></label>
-            </div>
-            <div class="grid-inline">
-                <label><?= e(t('achievements.reward')) ?><input type="text" name="reward_text"></label>
-                <label><?= e(t('common.photo')) ?><input type="file" name="image" accept="image/*"></label>
-                <label class="check"><input type="checkbox" name="conditional" value="1"><?= e(t('achievements.conditional')) ?></label>
-            </div>
-            <div class="grid-inline">
-                <label><?= e(t('achievements.metric')) ?><input type="text" name="metric_key" placeholder="steps / km / workouts / habit:journaling"></label>
-                <label><?= e(t('achievements.operator')) ?><select name="operator"><option value=">=">&gt;=</option><option value="<=">&lt;=</option><option value="=">=</option></select></label>
-                <label><?= e(t('achievements.target')) ?><input type="number" step="0.1" name="target_value" value="1"></label>
-                <label><?= e(t('achievements.window')) ?><select name="window"><option value="total">total</option><option value="week">week</option><option value="current_challenge">challenge</option></select></label>
-            </div>
-            <button class="btn btn-primary" type="submit"><?= e(t('achievements.create')) ?></button>
-        </form>
+        <section class="stack compact-form admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
+            <h3>Crear achievement</h3>
+            <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack" data-achievement-form>
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="create_achievement">
+                <div class="grid-inline">
+                    <label>Code <input type="text" name="code" placeholder="my_achievement_code"></label>
+                    <label><?= e(t('achievements.name')) ?><input type="text" name="name" required></label>
+                    <label><?= e(t('achievements.scope')) ?><select name="scope"><option value="user"><?= e(t('common.user')) ?></option><option value="team"><?= e(t('nav.team')) ?></option></select></label>
+                    <label><?= e(t('achievements.description')) ?><input type="text" name="description"></label>
+                </div>
+                <div class="grid-inline">
+                    <label><?= e(t('achievements.reward')) ?><input type="text" name="reward_text"></label>
+                    <label><?= e(t('common.photo')) ?><input type="file" name="image" accept="image/*"></label>
+                    <label class="check"><input type="checkbox" name="active" value="1" checked><?= e(t('common.active')) ?></label>
+                    <label class="check"><input type="checkbox" name="conditional_enabled" value="1" data-achievement-conditional-toggle><?= e(t('achievements.conditional')) ?></label>
+                </div>
+                <div class="grid-inline" data-achievement-conditional-fields hidden>
+                    <label>
+                        <?= e(t('achievements.metric')) ?>
+                        <select name="metric" data-achievement-metric>
+                            <option value="steps">Steps</option>
+                            <option value="distance_km">Distance km</option>
+                            <option value="workouts">Workouts</option>
+                            <option value="score">Score</option>
+                            <option value="strikes">Strikes</option>
+                            <option value="penalties">Penalties</option>
+                            <option value="weight">Weight</option>
+                            <option value="habit_completion">Habit completion</option>
+                        </select>
+                    </label>
+                    <label data-achievement-habit-wrap hidden>
+                        Habit
+                        <select name="habit_code">
+                            <?php foreach (($habits ?? []) as $habit): ?>
+                                <option value="<?= e((string) $habit['code']) ?>"><?= e((string) $habit['label']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label><?= e(t('achievements.operator')) ?><select name="operator"><option value=">=">&gt;=</option><option value="<=">&lt;=</option><option value="=">=</option><option value=">">&gt;</option><option value="<">&lt;</option></select></label>
+                    <label><?= e(t('achievements.target')) ?><input type="number" step="0.1" name="target_amount" value="1"></label>
+                    <label><?= e(t('achievements.window')) ?><select name="window"><option value="total">total</option><option value="current_week">current_week</option><option value="current_month">current_month</option><option value="current_challenge">current_challenge</option></select></label>
+                </div>
+                <button class="btn btn-primary" type="submit"><?= e(t('achievements.create')) ?></button>
+            </form>
+        </section>
 
-        <form method="post" action="/?page=admin" class="stack compact-form">
-            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-            <input type="hidden" name="action" value="grant_achievement">
-            <div class="grid-inline">
-                <label><?= e(t('achievements.title')) ?><select name="achievement_id"><?php foreach (($achievements ?? []) as $achievement): ?><option value="<?= (int) $achievement['id'] ?>"><?= e((string) $achievement['name']) ?> (<?= e((string) $achievement['scope']) ?>)</option><?php endforeach; ?></select></label>
-                <label><?= e(t('achievements.scope')) ?><select name="scope"><option value="user"><?= e(t('common.user')) ?></option><option value="team"><?= e(t('nav.team')) ?></option></select></label>
-                <label><?= e(t('common.user')) ?><select name="user_id"><?php foreach ($users as $user): ?><option value="<?= (int) $user['id'] ?>"><?= e((string) $user['display_name']) ?></option><?php endforeach; ?></select></label>
-                <input type="hidden" name="team_id" value="<?= (int) $team['id'] ?>">
-            </div>
-            <label><?= e(t('common.notes')) ?><input type="text" name="note"></label>
-            <button class="btn btn-secondary" type="submit"><?= e(t('achievements.grant')) ?></button>
-        </form>
+        <section class="stack compact-form admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
+            <h3>Grant achievement</h3>
+            <form method="post" action="/?page=admin" class="stack">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="grant_achievement">
+                <div class="grid-inline">
+                    <label><?= e(t('achievements.title')) ?><select name="achievement_id"><?php foreach (($achievements ?? []) as $achievement): ?><option value="<?= (int) $achievement['id'] ?>"><?= e((string) $achievement['name']) ?> (<?= e((string) $achievement['scope']) ?>)</option><?php endforeach; ?></select></label>
+                    <label><?= e(t('achievements.scope')) ?><select name="scope"><option value="user"><?= e(t('common.user')) ?></option><option value="team"><?= e(t('nav.team')) ?></option></select></label>
+                    <label><?= e(t('common.user')) ?><select name="user_id"><?php foreach ($users as $user): ?><option value="<?= (int) $user['id'] ?>"><?= e((string) $user['display_name']) ?></option><?php endforeach; ?></select></label>
+                    <input type="hidden" name="team_id" value="<?= (int) $team['id'] ?>">
+                </div>
+                <label><?= e(t('common.notes')) ?><input type="text" name="note"></label>
+                <button class="btn btn-secondary" type="submit"><?= e(t('achievements.grant')) ?></button>
+            </form>
+        </section>
 
-        <div class="card-list">
-            <?php foreach (($achievementAwards ?? []) as $award): ?>
-                <form method="post" action="/?page=admin" class="mini-card">
+        <section class="stack admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
+            <h3>Achievements creados</h3>
+            <div class="settings-list compact-list">
+                <?php foreach (($adminAchievements ?? []) as $achievement): ?>
+                    <?php
+                    $triggerKey = trim((string) ($achievement['trigger_key'] ?? ''));
+                    $conditionSummary = 'Manual';
+                    if ($triggerKey !== '') {
+                        if (!empty($achievement['rule_id'])) {
+                            $conditionSummary = $triggerKey
+                                . ' '
+                                . (string) ($achievement['trigger_operator'] ?? '>=')
+                                . ' '
+                                . (string) ($achievement['trigger_target'] ?? '1')
+                                . ' · '
+                                . (string) ($achievement['trigger_window'] ?? 'total');
+                        } else {
+                            $conditionSummary = $triggerKey . ' · pendiente';
+                        }
+                    }
+                    $status = (int) ($achievement['active'] ?? 1) === 1 ? 'active' : 'inactive';
+                    ?>
+                    <a class="settings-row" href="/?page=admin&section=achievements&achievement_id=<?= (int) $achievement['id'] ?>" data-spa-link>
+                        <span>
+                            <strong><?= e((string) $achievement['name']) ?></strong>
+                            <small class="muted"><?= e((string) $achievement['scope']) ?> · <?= e($conditionSummary) ?> · <?= e($status) ?></small>
+                        </span>
+                        <span class="settings-chevron" aria-hidden="true">›</span>
+                    </a>
+                <?php endforeach; ?>
+                <?php if (($adminAchievements ?? []) === []): ?>
+                    <p class="muted panel-inline-empty"><?= e(t('achievements.empty')) ?></p>
+                <?php endif; ?>
+            </div>
+        </section>
+
+        <?php foreach (($adminAchievements ?? []) as $achievement): ?>
+            <?php
+            $achievementTrigger = trim((string) ($achievement['trigger_key'] ?? ''));
+            $achievementConditional = $achievementTrigger !== '' && !empty($achievement['rule_id']);
+            $achievementMetric = str_starts_with($achievementTrigger, 'habit:') ? 'habit_completion' : $achievementTrigger;
+            if ($achievementMetric === 'km') {
+                $achievementMetric = 'distance_km';
+            }
+            $achievementHabitCode = str_starts_with($achievementTrigger, 'habit:') ? substr($achievementTrigger, 6) : '';
+            $achievementOperator = (string) ($achievement['trigger_operator'] ?? '>=');
+            $achievementTarget = (string) ($achievement['trigger_target'] ?? '1');
+            $achievementWindow = (string) ($achievement['trigger_window'] ?? 'total');
+            if ($achievementWindow === 'week') {
+                $achievementWindow = 'current_week';
+            }
+            ?>
+            <div class="stack admin-detail-view" data-spa-param-show="achievement_id" data-spa-value="<?= (int) $achievement['id'] ?>" <?= $selectedAchievementId === (int) $achievement['id'] ? '' : 'hidden' ?>>
+                <div class="panel-head">
+                    <h3><?= e((string) $achievement['name']) ?></h3>
+                    <a class="btn btn-ghost" href="/?page=admin&section=achievements" data-spa-back aria-label="Volver">← Volver</a>
+                </div>
+                <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack compact-form" data-achievement-form>
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                    <input type="hidden" name="action" value="delete_achievement_award">
-                    <input type="hidden" name="award_id" value="<?= (int) $award['id'] ?>">
-                    <div>
-                        <strong><?= e((string) $award['name']) ?></strong>
-                        <span><?= e((string) ($award['owner_name'] ?? $award['team_name'] ?? '')) ?> · <?= e(format_date_eu((string) $award['awarded_at'])) ?></span>
+                    <input type="hidden" name="action" value="update_achievement">
+                    <input type="hidden" name="achievement_id" value="<?= (int) $achievement['id'] ?>">
+                    <div class="grid-inline">
+                        <label>Code <input type="text" name="code" value="<?= e((string) $achievement['code']) ?>"></label>
+                        <label><?= e(t('achievements.name')) ?><input type="text" name="name" value="<?= e((string) $achievement['name']) ?>" required></label>
+                        <label><?= e(t('achievements.scope')) ?><select name="scope"><option value="user" <?= (string) $achievement['scope'] === 'user' ? 'selected' : '' ?>><?= e(t('common.user')) ?></option><option value="team" <?= (string) $achievement['scope'] === 'team' ? 'selected' : '' ?>><?= e(t('nav.team')) ?></option></select></label>
+                        <label><?= e(t('achievements.description')) ?><input type="text" name="description" value="<?= e((string) $achievement['description']) ?>"></label>
                     </div>
-                    <button class="btn small btn-ghost" type="submit"><?= e(t('common.delete')) ?></button>
+                    <div class="grid-inline">
+                        <label><?= e(t('achievements.reward')) ?><input type="text" name="reward_text" value="<?= e((string) ($achievement['reward_text'] ?? '')) ?>"></label>
+                        <label><?= e(t('common.photo')) ?><input type="file" name="image" accept="image/*"></label>
+                        <label class="check"><input type="checkbox" name="active" value="1" <?= (int) ($achievement['active'] ?? 1) === 1 ? 'checked' : '' ?>><?= e(t('common.active')) ?></label>
+                        <label class="check"><input type="checkbox" name="conditional_enabled" value="1" data-achievement-conditional-toggle <?= $achievementConditional ? 'checked' : '' ?>><?= e(t('achievements.conditional')) ?></label>
+                    </div>
+                    <?php if (!empty($achievement['image_path'])): ?>
+                        <img class="settings-avatar-preview" src="<?= e(media_url((string) $achievement['image_path'])) ?>" alt="<?= e((string) $achievement['name']) ?>">
+                    <?php endif; ?>
+                    <div class="grid-inline" data-achievement-conditional-fields <?= $achievementConditional ? '' : 'hidden' ?>>
+                        <label>
+                            <?= e(t('achievements.metric')) ?>
+                            <select name="metric" data-achievement-metric>
+                                <option value="steps" <?= $achievementMetric === 'steps' ? 'selected' : '' ?>>Steps</option>
+                                <option value="distance_km" <?= $achievementMetric === 'distance_km' ? 'selected' : '' ?>>Distance km</option>
+                                <option value="workouts" <?= $achievementMetric === 'workouts' ? 'selected' : '' ?>>Workouts</option>
+                                <option value="score" <?= $achievementMetric === 'score' ? 'selected' : '' ?>>Score</option>
+                                <option value="strikes" <?= $achievementMetric === 'strikes' ? 'selected' : '' ?>>Strikes</option>
+                                <option value="penalties" <?= $achievementMetric === 'penalties' ? 'selected' : '' ?>>Penalties</option>
+                                <option value="weight" <?= $achievementMetric === 'weight' ? 'selected' : '' ?>>Weight</option>
+                                <option value="habit_completion" <?= $achievementMetric === 'habit_completion' ? 'selected' : '' ?>>Habit completion</option>
+                            </select>
+                        </label>
+                        <label data-achievement-habit-wrap <?= $achievementMetric === 'habit_completion' ? '' : 'hidden' ?>>
+                            Habit
+                            <select name="habit_code">
+                                <?php foreach (($habits ?? []) as $habit): ?>
+                                    <option value="<?= e((string) $habit['code']) ?>" <?= (string) $habit['code'] === $achievementHabitCode ? 'selected' : '' ?>><?= e((string) $habit['label']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                        <label><?= e(t('achievements.operator')) ?><select name="operator"><option value=">=" <?= $achievementOperator === '>=' ? 'selected' : '' ?>>&gt;=</option><option value="<=" <?= $achievementOperator === '<=' ? 'selected' : '' ?>>&lt;=</option><option value="=" <?= $achievementOperator === '=' ? 'selected' : '' ?>>=</option><option value=">" <?= $achievementOperator === '>' ? 'selected' : '' ?>>&gt;</option><option value="<" <?= $achievementOperator === '<' ? 'selected' : '' ?>>&lt;</option></select></label>
+                        <label><?= e(t('achievements.target')) ?><input type="number" step="0.1" name="target_amount" value="<?= e($achievementTarget) ?>"></label>
+                        <label><?= e(t('achievements.window')) ?><select name="window"><option value="total" <?= $achievementWindow === 'total' ? 'selected' : '' ?>>total</option><option value="current_week" <?= $achievementWindow === 'current_week' ? 'selected' : '' ?>>current_week</option><option value="current_month" <?= $achievementWindow === 'current_month' ? 'selected' : '' ?>>current_month</option><option value="current_challenge" <?= $achievementWindow === 'current_challenge' ? 'selected' : '' ?>>current_challenge</option></select></label>
+                    </div>
+                    <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
                 </form>
-            <?php endforeach; ?>
-            <?php if (($achievementAwards ?? []) === []): ?>
-                <p class="muted"><?= e(t('achievements.empty')) ?></p>
-            <?php endif; ?>
-        </div>
+                <form method="post" action="/?page=admin" onsubmit="return confirm('¿Desactivar este achievement?');">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="deactivate_achievement">
+                    <input type="hidden" name="achievement_id" value="<?= (int) $achievement['id'] ?>">
+                    <button class="btn btn-ghost" type="submit"><?= e(t('common.delete')) ?></button>
+                </form>
+            </div>
+        <?php endforeach; ?>
+
+        <section class="stack compact-form admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
+            <h3>Achievements awards</h3>
+            <div class="card-list">
+                <?php foreach (($achievementAwards ?? []) as $award): ?>
+                    <form method="post" action="/?page=admin" class="mini-card">
+                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                        <input type="hidden" name="action" value="delete_achievement_award">
+                        <input type="hidden" name="award_id" value="<?= (int) $award['id'] ?>">
+                        <div>
+                            <strong><?= e((string) $award['name']) ?></strong>
+                            <span><?= e((string) ($award['owner_name'] ?? $award['team_name'] ?? '')) ?> · <?= e(format_date_eu((string) $award['awarded_at'])) ?></span>
+                        </div>
+                        <button class="btn small btn-ghost" type="submit"><?= e(t('common.delete')) ?></button>
+                    </form>
+                <?php endforeach; ?>
+                <?php if (($achievementAwards ?? []) === []): ?>
+                    <p class="muted"><?= e(t('achievements.empty')) ?></p>
+                <?php endif; ?>
+            </div>
+        </section>
     </article>
 
     <article class="panel settings-panel<?= $activeSection === 'audit' ? ' active' : '' ?>" data-spa-section="audit" <?= $activeSection === 'audit' ? '' : 'hidden' ?>>
         <div class="panel-head">
             <h2>Audit Log</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back><?= e(t('common.cancel')) ?></a>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
         </div>
 
         <form method="get" action="/" class="control-strip audit-filter">

@@ -40,6 +40,13 @@ declare(strict_types=1);
             <div class="card-list">
                 <?php foreach (($teamMembers ?? []) as $member): ?>
                     <article class="mini-card">
+                        <div class="member-card-title">
+                            <?php if (!empty($member['avatar_path'])): ?>
+                                <img class="member-avatar" src="<?= e(avatar_url($member)) ?>" alt="<?= e((string) $member['display_name']) ?>">
+                            <?php else: ?>
+                                <span class="member-avatar member-avatar-initials"><?= e(initials_for((string) $member['display_name'])) ?></span>
+                            <?php endif; ?>
+                        </div>
                         <div>
                             <strong><?= e((string) $member['display_name']) ?></strong>
                             <span><?= e((string) $member['username']) ?> · <?= e((string) $member['role']) ?> · <?= (int) $member['active'] === 1 ? e(t('common.active')) : e(t('team.removed')) ?></span>
