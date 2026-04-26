@@ -207,8 +207,9 @@ $profileExportPayload = [
 <section class="screen stack-lg spa-shell" data-spa-page="profile">
     <div class="hero-panel profile-hero">
         <div class="profile-title">
-            <?php if (!empty($profileUser['avatar_path'])): ?>
-                <img class="profile-avatar" src="<?= e(avatar_url($profileUser)) ?>" alt="<?= e((string) $profileUser['display_name']) ?>">
+            <?php $profileAvatarUrl = avatar_url($profileUser); ?>
+            <?php if ($profileAvatarUrl !== ''): ?>
+                <img class="profile-avatar" src="<?= e($profileAvatarUrl) ?>" alt="<?= e((string) $profileUser['display_name']) ?>">
             <?php else: ?>
                 <span class="profile-avatar initials"><?= e(initials_for((string) $profileUser['display_name'])) ?></span>
             <?php endif; ?>

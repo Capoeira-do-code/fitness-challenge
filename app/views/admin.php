@@ -202,7 +202,7 @@ $sectionRows = [
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="upload_app_icon">
             <input type="hidden" name="app_icon_cropped" value="" data-image-crop-output>
-            <?php if (!empty($appIconPath)): ?><img class="settings-avatar-preview" src="<?= e(media_url((string) $appIconPath, $appIconVersion ?? null)) ?>" alt="<?= e(t('admin.app_icon')) ?>"><?php endif; ?>
+            <?php if (!empty($appIconPath)): ?><img class="settings-avatar-preview" src="<?= e(with_cache_buster('/?page=app_icon', $appIconVersion ?? null)) ?>" alt="<?= e(t('admin.app_icon')) ?>"><?php endif; ?>
             <div class="image-cropper" data-image-cropper>
                 <canvas width="320" height="320" data-image-crop-canvas></canvas>
                 <p class="muted small" data-image-crop-empty>Selecciona una imagen para recortarla en formato 1:1.</p>

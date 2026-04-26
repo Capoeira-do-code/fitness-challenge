@@ -9,14 +9,18 @@ $pageTitle = isset($title) ? $title . ' · ' . $appName : $appName;
 $currentPage = $currentPage ?? '';
 $activeLocale = current_locale();
 $redirectTo = safe_redirect_target($_SERVER['REQUEST_URI'] ?? '/');
-$appIconSetting = $loggedIn ? db_fetch_one($GLOBALS['pdo'], 'SELECT setting_value, updated_at FROM app_settings WHERE setting_key = :key', [':key' => 'app_icon_path']) : null;
-$appIconPath = $appIconSetting !== null ? (string) ($appIconSetting['setting_value'] ?? '') : null;
+$appIconSetting = db_fetch_one($GLOBALS['pdo'], 'SELECT setting_value, updated_at FROM app_settings WHERE setting_key = :key', [':key' => 'app_icon_path']);
+$appIconPath = $appIconSetting !== null ? trim((string) ($appIconSetting['setting_value'] ?? '')) : '';
 $appIconVersion = null;
 if ($appIconSetting !== null && !empty($appIconSetting['updated_at'])) {
     $appIconTimestamp = strtotime((string) $appIconSetting['updated_at']);
     if ($appIconTimestamp !== false) {
         $appIconVersion = (string) $appIconTimestamp;
     }
+}
+$appIconWebUrl = '';
+if ($appIconPath !== '' && resolve_media_storage_path($config, $appIconPath) !== null) {
+    $appIconWebUrl = with_cache_buster('/?page=app_icon', $appIconVersion);
 }
 $desktopNavItems = [
     'dashboard' => ['label' => t('nav.dashboard'), 'href' => '/?page=dashboard', 'icon' => 'home'],
@@ -40,21 +44,26 @@ $renderMobileIcon = static function (string $icon): string {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($pageTitle) ?></title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="<?= e($appName) ?>">
+    <?php if ($appIconWebUrl !== ''): ?>
+        <link rel="icon" href="<?= e($appIconWebUrl) ?>">
+        <link rel="apple-touch-icon" sizes="180x180" href="<?= e($appIconWebUrl) ?>">
+    <?php endif; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/styles.css?v=14">
+    <link rel="stylesheet" href="/assets/styles.css?v=15">
 </head>
 <body data-page="<?= e((string) $currentPage) ?>">
 <?php if ($loggedIn): ?>
     <header class="topbar">
         <a class="brand" href="/?page=dashboard">
-            <?php if (!empty($currentUser['avatar_path'])): ?>
-                <img class="brand-avatar" src="<?= e(avatar_url($currentUser)) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
-            <?php elseif ($appIconPath !== null && $appIconPath !== ''): ?>
-                <img class="brand-avatar" src="<?= e(media_url((string) $appIconPath, $appIconVersion)) ?>" alt="<?= e($appName) ?>">
+            <?php if ($appIconWebUrl !== ''): ?>
+                <img class="brand-avatar" src="<?= e($appIconWebUrl) ?>" alt="<?= e($appName) ?>">
             <?php else: ?>
-                <span class="brand-mark"><?= e(initials_for((string) $currentUser['display_name'])) ?></span>
+                <span class="brand-mark"><?= e(initials_for($appName)) ?></span>
             <?php endif; ?>
             <span><?= e($appName) ?></span>
         </a>
@@ -81,8 +90,9 @@ $renderMobileIcon = static function (string $icon): string {
             </details>
             <details class="user-menu">
                 <summary class="user-menu-trigger">
-                    <?php if (!empty($currentUser['avatar_path'])): ?>
-                        <img src="<?= e(avatar_url($currentUser)) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
+                    <?php $currentUserAvatarUrl = avatar_url($currentUser); ?>
+                    <?php if ($currentUserAvatarUrl !== ''): ?>
+                        <img src="<?= e($currentUserAvatarUrl) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
                     <?php else: ?>
                         <span><?= e(initials_for((string) $currentUser['display_name'])) ?></span>
                     <?php endif; ?>
@@ -139,6 +149,6 @@ $renderMobileIcon = static function (string $icon): string {
     </nav>
 <?php endif; ?>
 
-<script src="/assets/main.js?v=14"></script>
+<script src="/assets/main.js?v=15"></script>
 </body>
 </html>

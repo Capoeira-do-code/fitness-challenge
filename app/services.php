@@ -795,10 +795,35 @@ function resolve_media_storage_path(array $config, string $reference): ?string
         return null;
     }
 
+    // Support legacy values that accidentally stored a full media URL.
+    if (preg_match('~^https?://~i', $raw) === 1 || str_starts_with($raw, '/?page=media')) {
+        $parsed = parse_url($raw);
+        if (is_array($parsed)) {
+            $query = [];
+            if (!empty($parsed['query'])) {
+                parse_str((string) $parsed['query'], $query);
+            }
+            $innerPath = isset($query['path']) && is_string($query['path']) ? trim((string) $query['path']) : '';
+            if ($innerPath !== '') {
+                $raw = $innerPath;
+            } elseif (!empty($parsed['path'])) {
+                $raw = (string) $parsed['path'];
+            }
+        }
+    }
+
     $clean = preg_replace('/[#?].*$/', '', $raw) ?? '';
     $clean = ltrim($clean, '/');
     if ($clean === '' || str_contains($clean, '..')) {
         return null;
+    }
+
+    if (str_starts_with($clean, 'public/uploads/')) {
+        $clean = substr($clean, strlen('public/uploads/'));
+    } elseif (str_starts_with($clean, 'storage/uploads/')) {
+        $clean = substr($clean, strlen('storage/uploads/'));
+    } elseif (str_starts_with($clean, 'var/www/storage/uploads/')) {
+        $clean = substr($clean, strlen('var/www/storage/uploads/'));
     }
 
     $legacyRelative = $clean;
@@ -817,6 +842,40 @@ function resolve_media_storage_path(array $config, string $reference): ?string
     }
 
     return null;
+}
+
+function detect_media_mime_type(string $filePath): string
+{
+    $mime = 'application/octet-stream';
+    if (function_exists('finfo_open')) {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo !== false) {
+            $detected = finfo_file($finfo, $filePath);
+            if (is_string($detected) && $detected !== '') {
+                $mime = $detected;
+            }
+            finfo_close($finfo);
+        }
+    }
+
+    if ($mime === '' || $mime === 'application/octet-stream') {
+        $extension = strtolower((string) pathinfo($filePath, PATHINFO_EXTENSION));
+        $mimeByExtension = [
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'webp' => 'image/webp',
+            'gif' => 'image/gif',
+            'avif' => 'image/avif',
+            'svg' => 'image/svg+xml',
+            'ico' => 'image/x-icon',
+        ];
+        if (isset($mimeByExtension[$extension])) {
+            $mime = $mimeByExtension[$extension];
+        }
+    }
+
+    return $mime;
 }
 
 function create_user(PDO $pdo, array $payload): void

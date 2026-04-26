@@ -77,6 +77,25 @@ if ($page === 'logout') {
     redirect('/?page=login');
 }
 
+if ($page === 'app_icon') {
+    $appIconPath = trim((string) (app_setting($pdo, 'app_icon_path', '') ?? ''));
+    $resolvedPath = resolve_media_storage_path($config, $appIconPath);
+    if ($resolvedPath === null || !is_file($resolvedPath)) {
+        http_response_code(404);
+        echo e(t('flash.not_found'));
+        exit;
+    }
+
+    $mime = detect_media_mime_type($resolvedPath);
+
+    header('Content-Type: ' . $mime);
+    header('Content-Length: ' . (string) filesize($resolvedPath));
+    header('Cache-Control: public, max-age=86400');
+    header('X-Content-Type-Options: nosniff');
+    readfile($resolvedPath);
+    exit;
+}
+
 if ($page === 'api_save_row') {
     $currentUser = require_login($pdo);
 
@@ -208,17 +227,7 @@ if ($page === 'media') {
         exit;
     }
 
-    $mime = 'application/octet-stream';
-    if (function_exists('finfo_open')) {
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        if ($finfo !== false) {
-            $detected = finfo_file($finfo, $resolvedPath);
-            if (is_string($detected) && $detected !== '') {
-                $mime = $detected;
-            }
-            finfo_close($finfo);
-        }
-    }
+    $mime = detect_media_mime_type($resolvedPath);
 
     header('Content-Type: ' . $mime);
     header('Content-Length: ' . (string) filesize($resolvedPath));

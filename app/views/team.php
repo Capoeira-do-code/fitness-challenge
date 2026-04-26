@@ -122,8 +122,9 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
 
             <div class="team-member-summary">
                 <div class="team-member-avatar-wrap">
-                    <?php if (!empty($memberUser['avatar_path'])): ?>
-                        <img class="member-avatar member-avatar-lg" src="<?= e(avatar_url($memberUser)) ?>" alt="<?= e((string) ($memberUser['display_name'] ?? '')) ?>">
+                    <?php $memberUserAvatarUrl = avatar_url($memberUser); ?>
+                    <?php if ($memberUserAvatarUrl !== ''): ?>
+                        <img class="member-avatar member-avatar-lg" src="<?= e($memberUserAvatarUrl) ?>" alt="<?= e((string) ($memberUser['display_name'] ?? '')) ?>">
                     <?php else: ?>
                         <span class="member-avatar member-avatar-initials member-avatar-lg"><?= e(initials_for((string) ($memberUser['display_name'] ?? ''))) ?></span>
                     <?php endif; ?>
@@ -337,8 +338,9 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                         <div class="team-leaderboard-card-head">
                             <span class="team-rank">#<?= $idx + 1 ?></span>
                             <span class="team-leaderboard-user">
-                                <?php if (!empty($row['avatar_path'])): ?>
-                                    <img class="member-avatar" src="<?= e(avatar_url($row)) ?>" alt="<?= e((string) ($row['display_name'] ?? '')) ?>">
+                                <?php $leaderboardAvatarUrl = avatar_url($row); ?>
+                                <?php if ($leaderboardAvatarUrl !== ''): ?>
+                                    <img class="member-avatar" src="<?= e($leaderboardAvatarUrl) ?>" alt="<?= e((string) ($row['display_name'] ?? '')) ?>">
                                 <?php else: ?>
                                     <span class="member-avatar member-avatar-initials"><?= e(initials_for((string) ($row['display_name'] ?? ''))) ?></span>
                                 <?php endif; ?>
@@ -377,8 +379,9 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     <?php foreach (($members ?? []) as $member): ?>
                         <article class="mini-card member-card">
                             <div class="member-card-title">
-                                <?php if (!empty($member['avatar_path'])): ?>
-                                    <img class="member-avatar" src="<?= e(avatar_url($member)) ?>" alt="<?= e((string) $member['display_name']) ?>">
+                                <?php $teamMemberAvatarUrl = avatar_url($member); ?>
+                                <?php if ($teamMemberAvatarUrl !== ''): ?>
+                                    <img class="member-avatar" src="<?= e($teamMemberAvatarUrl) ?>" alt="<?= e((string) $member['display_name']) ?>">
                                 <?php else: ?>
                                     <span class="member-avatar member-avatar-initials"><?= e(initials_for((string) $member['display_name'])) ?></span>
                                 <?php endif; ?>

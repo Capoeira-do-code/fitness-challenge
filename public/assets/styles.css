@@ -150,6 +150,7 @@ a {
     background: var(--ink);
     color: #fff;
     font-weight: 900;
+    line-height: 1;
 }
 
 .brand-avatar {
@@ -161,10 +162,20 @@ a {
 
 .brand-avatar img,
 .profile-avatar img,
-.settings-avatar-preview img {
+.settings-avatar-preview img,
+img.brand-avatar,
+img.profile-avatar,
+img.settings-avatar-preview {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    object-position: center;
+}
+
+img.brand-avatar,
+img.profile-avatar,
+img.settings-avatar-preview {
+    display: block;
 }
 
 .brand-mark.large {
@@ -1753,6 +1764,13 @@ textarea {
     height: 82px;
     flex: 0 0 82px;
     font-size: 1.4rem;
+    border-radius: 50%;
+    border: 2px solid rgba(20, 163, 139, 0.26);
+}
+
+.settings-avatar-preview-round {
+    border-radius: 50%;
+    border: 2px solid rgba(20, 163, 139, 0.26);
 }
 
 .settings-avatar-preview {

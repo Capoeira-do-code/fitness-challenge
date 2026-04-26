@@ -20,8 +20,9 @@ declare(strict_types=1);
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="upload_avatar">
                 <input type="hidden" name="avatar_cropped" value="" data-image-crop-output>
-                <?php if (!empty($currentUser['avatar_path'])): ?>
-                    <img class="settings-avatar-preview" src="<?= e(avatar_url($currentUser)) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
+                <?php $settingsAvatarUrl = avatar_url($currentUser); ?>
+                <?php if ($settingsAvatarUrl !== ''): ?>
+                    <img class="settings-avatar-preview settings-avatar-preview-round" src="<?= e($settingsAvatarUrl) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
                 <?php endif; ?>
                 <div class="image-cropper" data-image-cropper>
                     <canvas width="320" height="320" data-image-crop-canvas></canvas>

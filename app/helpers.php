@@ -150,6 +150,17 @@ function avatar_url(array $user): string
         return '';
     }
 
+    if (
+        function_exists('resolve_media_storage_path')
+        && isset($GLOBALS['config'])
+        && is_array($GLOBALS['config'])
+    ) {
+        $resolvedPath = resolve_media_storage_path((array) $GLOBALS['config'], $avatarPath);
+        if ($resolvedPath === null || !is_file($resolvedPath)) {
+            return '';
+        }
+    }
+
     $version = $user['updated_at'] ?? null;
     if (is_string($version) && $version !== '') {
         $timestamp = strtotime($version);
