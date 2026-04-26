@@ -19,7 +19,7 @@ $week = $week ?? ['step_failures' => 0, 'workout_failures' => 0, 'skip_warnings'
             <h1><?= e(t('table.week_summary')) ?></h1>
             <p class="muted"><?= e(format_date_eu($weekStart)) ?> - <?= e(format_date_eu($weekEnd ?? $weekStart)) ?></p>
         </div>
-        <a class="btn btn-primary" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week_start=<?= e($weekStart) ?>"><?= e(t('table.open_editor')) ?></a>
+        <a class="btn btn-primary" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week=<?= e(date_to_iso_week($weekStart)) ?>"><?= e(t('table.open_editor')) ?></a>
     </div>
 
     <form method="get" class="control-strip">
@@ -33,8 +33,8 @@ $week = $week ?? ['step_failures' => 0, 'workout_failures' => 0, 'skip_warnings'
             </select>
         </label>
         <label>
-            <?= e(t('common.week_monday')) ?>
-            <input type="date" name="week_start" value="<?= e($weekStart) ?>" onchange="this.form.submit()">
+            <?= e(t('common.week')) ?>
+            <input type="week" name="week" value="<?= e(date_to_iso_week($weekStart)) ?>" onchange="this.form.submit()">
         </label>
     </form>
 

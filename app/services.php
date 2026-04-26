@@ -1021,7 +1021,7 @@ function can_manage_team(PDO $pdo, array $user, int $teamId): bool
         [':team_id' => $teamId, ':user_id' => (int) $user['id']]
     );
 
-    return $membership !== null && (string) $membership['role'] === 'admin';
+    return $membership !== null && in_array((string) $membership['role'], ['admin', 'owner'], true);
 }
 
 function require_team_manager(PDO $pdo, array $user, int $teamId): void
@@ -1134,7 +1134,7 @@ function resolve_team_join_request(PDO $pdo, int $requestId, bool $approve, int 
     audit_log($pdo, $actorUserId, 'team_join_' . $status, 'team_join_request', (string) $requestId, 'Team join request resolved.', audit_snapshot($before), audit_snapshot($after));
 }
 
-function update_team_settings(PDO $pdo, int $teamId, string $name, string $joinMode, string $visibility, int $actorUserId): void
+function update_team_settings(PDO $pdo, int $teamId, string $name, string $description, string $joinMode, string $visibility, int $actorUserId): void
 {
     $joinMode = in_array($joinMode, ['open', 'closed'], true) ? $joinMode : 'closed';
     $visibility = in_array($visibility, ['visible', 'private'], true) ? $visibility : 'visible';
@@ -1145,8 +1145,21 @@ function update_team_settings(PDO $pdo, int $teamId, string $name, string $joinM
 
     db_execute(
         $pdo,
-        'UPDATE teams SET name = :name, join_mode = :join_mode, visibility = :visibility, updated_at = :updated_at WHERE id = :id',
-        [':name' => trim($name), ':join_mode' => $joinMode, ':visibility' => $visibility, ':updated_at' => now_iso(), ':id' => $teamId]
+        'UPDATE teams
+         SET name = :name,
+             description = :description,
+             join_mode = :join_mode,
+             visibility = :visibility,
+             updated_at = :updated_at
+         WHERE id = :id',
+        [
+            ':name' => trim($name),
+            ':description' => trim($description),
+            ':join_mode' => $joinMode,
+            ':visibility' => $visibility,
+            ':updated_at' => now_iso(),
+            ':id' => $teamId,
+        ]
     );
     $after = db_fetch_one($pdo, 'SELECT * FROM teams WHERE id = :id', [':id' => $teamId]);
     audit_log($pdo, $actorUserId, 'team_settings_updated', 'team', (string) $teamId, 'Team settings updated.', audit_snapshot($before), audit_snapshot($after));
@@ -1258,6 +1271,17 @@ function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): v
     );
     $after = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = :id', [':id' => $goalId]);
     audit_log($pdo, $actorUserId, 'goal_updated', 'goal', (string) $goalId, 'Goal updated.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function delete_goal(PDO $pdo, int $goalId, int $actorUserId): void
+{
+    $before = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = :id', [':id' => $goalId]);
+    if ($before === null) {
+        return;
+    }
+
+    db_execute($pdo, 'DELETE FROM goals WHERE id = :id', [':id' => $goalId]);
+    audit_log($pdo, $actorUserId, 'goal_deleted', 'goal', (string) $goalId, 'Goal deleted.', audit_snapshot($before), null);
 }
 
 function list_workout_types(PDO $pdo, bool $activeOnly = true): array
@@ -1468,19 +1492,113 @@ function create_conditional_achievement(PDO $pdo, array $payload, int $actorUser
     audit_log($pdo, $actorUserId, 'achievement_rule_created', 'achievement', (string) $achievementId, 'Achievement rule created.', null, $payload);
 }
 
-function award_achievement(PDO $pdo, int $achievementId, ?int $userId, ?int $teamId, ?int $actorUserId, string $note = ''): void
+function is_achievement_award_suppressed(PDO $pdo, int $achievementId, ?int $userId, ?int $teamId): bool
+{
+    if ($userId === null && $teamId === null) {
+        return false;
+    }
+
+    $suppressed = db_fetch_one(
+        $pdo,
+        'SELECT id
+         FROM achievement_award_suppressions
+         WHERE achievement_id = :achievement_id
+           AND ((:user_id IS NULL AND user_id IS NULL) OR user_id = :user_id)
+           AND ((:team_id IS NULL AND team_id IS NULL) OR team_id = :team_id)
+         LIMIT 1',
+        [
+            ':achievement_id' => $achievementId,
+            ':user_id' => $userId,
+            ':team_id' => $teamId,
+        ]
+    );
+
+    return $suppressed !== null;
+}
+
+function clear_achievement_award_suppression(PDO $pdo, int $achievementId, ?int $userId, ?int $teamId): void
 {
     if ($userId === null && $teamId === null) {
         return;
+    }
+
+    db_execute(
+        $pdo,
+        'DELETE FROM achievement_award_suppressions
+         WHERE achievement_id = :achievement_id
+           AND ((:user_id IS NULL AND user_id IS NULL) OR user_id = :user_id)
+           AND ((:team_id IS NULL AND team_id IS NULL) OR team_id = :team_id)',
+        [
+            ':achievement_id' => $achievementId,
+            ':user_id' => $userId,
+            ':team_id' => $teamId,
+        ]
+    );
+}
+
+function suppress_achievement_award(PDO $pdo, int $achievementId, ?int $userId, ?int $teamId, ?int $actorUserId, string $reason = ''): void
+{
+    if ($userId === null && $teamId === null) {
+        return;
+    }
+
+    $now = now_iso();
+    db_execute(
+        $pdo,
+        'INSERT OR IGNORE INTO achievement_award_suppressions (achievement_id, user_id, team_id, suppressed_by, suppressed_at, reason)
+         VALUES (:achievement_id, :user_id, :team_id, :suppressed_by, :suppressed_at, :reason)',
+        [
+            ':achievement_id' => $achievementId,
+            ':user_id' => $userId,
+            ':team_id' => $teamId,
+            ':suppressed_by' => $actorUserId,
+            ':suppressed_at' => $now,
+            ':reason' => $reason,
+        ]
+    );
+
+    db_execute(
+        $pdo,
+        'UPDATE achievement_award_suppressions
+         SET suppressed_by = :suppressed_by, suppressed_at = :suppressed_at, reason = :reason
+         WHERE achievement_id = :achievement_id
+           AND ((:user_id IS NULL AND user_id IS NULL) OR user_id = :user_id)
+           AND ((:team_id IS NULL AND team_id IS NULL) OR team_id = :team_id)',
+        [
+            ':suppressed_by' => $actorUserId,
+            ':suppressed_at' => $now,
+            ':reason' => $reason,
+            ':achievement_id' => $achievementId,
+            ':user_id' => $userId,
+            ':team_id' => $teamId,
+        ]
+    );
+}
+
+function award_achievement(PDO $pdo, int $achievementId, ?int $userId, ?int $teamId, ?int $actorUserId, string $note = '', bool $manualGrant = false): void
+{
+    if ($userId === null && $teamId === null) {
+        return;
+    }
+
+    if (!$manualGrant && is_achievement_award_suppressed($pdo, $achievementId, $userId, $teamId)) {
+        return;
+    }
+    if ($manualGrant) {
+        clear_achievement_award_suppression($pdo, $achievementId, $userId, $teamId);
     }
 
     $existing = db_fetch_one(
         $pdo,
         'SELECT id FROM achievement_awards
          WHERE achievement_id = :achievement_id
-           AND COALESCE(user_id, 0) = COALESCE(:user_id, 0)
-           AND COALESCE(team_id, 0) = COALESCE(:team_id, 0)',
-        [':achievement_id' => $achievementId, ':user_id' => $userId, ':team_id' => $teamId]
+           AND ((:user_id IS NULL AND user_id IS NULL) OR user_id = :user_id)
+           AND ((:team_id IS NULL AND team_id IS NULL) OR team_id = :team_id)',
+        [
+            ':achievement_id' => $achievementId,
+            ':user_id' => $userId,
+            ':team_id' => $teamId,
+        ]
     );
     if ($existing !== null) {
         return;
@@ -1488,7 +1606,7 @@ function award_achievement(PDO $pdo, int $achievementId, ?int $userId, ?int $tea
 
     db_execute(
         $pdo,
-        'INSERT INTO achievement_awards (achievement_id, user_id, team_id, awarded_by, awarded_at, note)
+        'INSERT OR IGNORE INTO achievement_awards (achievement_id, user_id, team_id, awarded_by, awarded_at, note)
          VALUES (:achievement_id, :user_id, :team_id, :awarded_by, :awarded_at, :note)',
         [
             ':achievement_id' => $achievementId,
@@ -1533,6 +1651,56 @@ function list_awarded_achievements(PDO $pdo, ?int $userId = null, ?int $teamId =
          ORDER BY aa.awarded_at DESC',
         $params
     );
+}
+
+function list_recent_achievement_awards(PDO $pdo, int $limit = 200): array
+{
+    $safeLimit = max(1, min(1000, $limit));
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT aa.*, a.name, a.description, a.scope, a.code, a.image_path, a.reward_text,
+                u.display_name AS awarded_by_name,
+                owner.display_name AS owner_name,
+                t.name AS team_name
+         FROM achievement_awards aa
+         JOIN achievements a ON a.id = aa.achievement_id
+         LEFT JOIN users u ON u.id = aa.awarded_by
+         LEFT JOIN users owner ON owner.id = aa.user_id
+         LEFT JOIN teams t ON t.id = aa.team_id
+         ORDER BY aa.awarded_at DESC
+         LIMIT ' . $safeLimit
+    );
+}
+
+function delete_achievement_award(PDO $pdo, int $awardId, int $actorUserId): void
+{
+    if ($awardId <= 0) {
+        return;
+    }
+
+    $before = db_fetch_one(
+        $pdo,
+        'SELECT aa.*, a.name, a.scope
+         FROM achievement_awards aa
+         JOIN achievements a ON a.id = aa.achievement_id
+         WHERE aa.id = :id',
+        [':id' => $awardId]
+    );
+    if ($before === null) {
+        return;
+    }
+
+    db_execute($pdo, 'DELETE FROM achievement_awards WHERE id = :id', [':id' => $awardId]);
+    suppress_achievement_award(
+        $pdo,
+        (int) ($before['achievement_id'] ?? 0),
+        ($before['user_id'] ?? null) !== null ? (int) $before['user_id'] : null,
+        ($before['team_id'] ?? null) !== null ? (int) $before['team_id'] : null,
+        $actorUserId,
+        'Deleted achievement award.'
+    );
+    audit_log($pdo, $actorUserId, 'achievement_award_deleted', 'achievement', (string) ($before['achievement_id'] ?? ''), 'Achievement award deleted.', audit_snapshot($before), null);
 }
 
 function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $teamId = null): void

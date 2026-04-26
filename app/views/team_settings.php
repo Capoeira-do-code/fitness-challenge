@@ -19,6 +19,7 @@ declare(strict_types=1);
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="team_settings">
                 <label><?= e(t('team.name')) ?><input type="text" name="name" value="<?= e((string) $team['name']) ?>" required></label>
+                <label><?= e(t('team.description')) ?><textarea name="description" rows="3" placeholder="<?= e(t('team.description_placeholder')) ?>"><?= e((string) ($team['description'] ?? '')) ?></textarea></label>
                 <div class="grid-inline two">
                     <label><?= e(t('team.join_mode')) ?><select name="join_mode"><option value="open" <?= ($team['join_mode'] ?? '') === 'open' ? 'selected' : '' ?>>Open</option><option value="closed" <?= ($team['join_mode'] ?? '') !== 'open' ? 'selected' : '' ?>>Closed</option></select></label>
                     <label><?= e(t('team.visibility')) ?><select name="visibility"><option value="visible" <?= ($team['visibility'] ?? '') !== 'private' ? 'selected' : '' ?>>Visible</option><option value="private" <?= ($team['visibility'] ?? '') === 'private' ? 'selected' : '' ?>>Private</option></select></label>

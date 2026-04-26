@@ -15,9 +15,9 @@ $weightValues = array_map(static fn(array $row): float => (float) $row['weight']
 $dashboardLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
 $visibleWidgets = is_array($dashboardLayout) && $dashboardLayout !== []
     ? array_values(array_filter($dashboardLayout, 'is_string'))
-    : ['kpis', 'money', 'approvals', 'steps', 'weight', 'comparison', 'meals', 'ranking', 'weekly'];
+    : ['kpis', 'money', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'weekly'];
 $showWidget = static fn(string $widget): bool => in_array($widget, $visibleWidgets, true);
-$dashboardWidgets = ['kpis', 'money', 'approvals', 'steps', 'weight', 'comparison', 'meals', 'ranking', 'weekly'];
+$dashboardWidgets = ['kpis', 'money', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'weekly'];
 $layoutOrder = array_flip($visibleWidgets);
 $widgetOrder = static function (string ...$widgets) use ($visibleWidgets): int {
     $orders = [];
@@ -61,13 +61,15 @@ if ($compareMetric !== null) {
 
 $kpis = [
     [
-        'label' => t('metric.total_steps'),
+        'key' => 'steps',
+        'label' => t('metric.steps'),
         'value' => (string) ($selectedMetric['total_steps'] ?? 0),
-        'meta' => t('metric.total'),
-        'ring' => (string) round((float) ($selectedMetric['step_completion_pct'] ?? 0)) . '%',
+        'meta' => (string) ($selectedMetric['steps_success'] ?? 0) . ' / ' . (string) ($selectedMetric['steps_required'] ?? 0) . ' · ' . (string) ($selectedMetric['step_completion_pct'] ?? 0) . '%',
+        'ring' => (string) ($selectedMetric['step_completion_pct'] ?? 0) . '%',
         'progress' => (float) $selectedMetric['step_completion_pct'],
     ],
     [
+        'key' => 'distance',
         'label' => t('metric.total_km'),
         'value' => (string) ($selectedMetric['total_km'] ?? 0) . ' km',
         'meta' => t('metric.distance_km'),
@@ -75,13 +77,7 @@ $kpis = [
         'progress' => min(100, (float) ($selectedMetric['total_km'] ?? 0)),
     ],
     [
-        'label' => t('metric.steps'),
-        'value' => (string) $selectedMetric['steps_success'] . ' / ' . (string) $selectedMetric['steps_required'],
-        'meta' => (string) $selectedMetric['step_completion_pct'] . '%',
-        'ring' => (string) $selectedMetric['step_completion_pct'] . '%',
-        'progress' => (float) $selectedMetric['step_completion_pct'],
-    ],
-    [
+        'key' => 'workouts',
         'label' => t('metric.workouts'),
         'value' => (string) $selectedMetric['workout_success'] . ' / ' . (string) $selectedMetric['workout_target'],
         'meta' => (string) $selectedMetric['workout_completion_pct'] . '%',
@@ -89,6 +85,15 @@ $kpis = [
         'progress' => (float) $selectedMetric['workout_completion_pct'],
     ],
     [
+        'key' => 'money',
+        'label' => t('metric.penalty'),
+        'value' => '€' . (string) ($selectedMetric['total_penalty'] ?? 0),
+        'meta' => t('metric.total_penalty'),
+        'ring' => '€' . (string) ($selectedMetric['total_penalty'] ?? 0),
+        'progress' => min(100, (float) ($selectedMetric['total_penalty'] ?? 0)),
+    ],
+    [
+        'key' => 'strikes',
         'label' => t('metric.strikes'),
         'value' => (string) $selectedMetric['current_strikes'],
         'meta' => t('dashboard.accumulated_penalty', ['amount' => '€' . (string) $selectedMetric['total_penalty']]),
@@ -96,6 +101,7 @@ $kpis = [
         'progress' => max(0, 100 - ((int) $selectedMetric['current_strikes'] * 10)),
     ],
     [
+        'key' => 'score',
         'label' => t('metric.discipline'),
         'value' => (string) $selectedMetric['score'],
         'meta' => t('dashboard.warning_count', ['count' => (string) ($selectedMetric['skip_warning_events'] ?? 0)]),
@@ -103,12 +109,18 @@ $kpis = [
         'progress' => (float) $selectedMetric['score'],
     ],
 ];
+$metricQueryBase = [
+    'page' => 'metric',
+    'user_id' => (int) ($selectedUser['id'] ?? 0),
+    'view' => (string) ($dashboardView ?? 'current_week'),
+];
 
 ob_start();
 ?>
 <details class="topbar-context">
-    <summary class="btn btn-ghost btn-topbar"><?= e(t('dashboard.controls')) ?></summary>
-    <form method="get" class="topbar-context-panel">
+    <summary class="btn btn-ghost btn-topbar">Vista</summary>
+    <div class="topbar-context-panel">
+        <form method="get" class="stack">
         <input type="hidden" name="page" value="dashboard">
         <label>
             <?= e(t('dashboard.viewing')) ?>
@@ -130,15 +142,26 @@ ob_start();
                 <?php endforeach; ?>
             </select>
         </label>
-        <label>
-            <?= e(t('dashboard.steps_range')) ?>
-            <select name="steps_range" onchange="this.form.submit()">
-                <option value="30" <?= ($stepsRange ?? '30') === '30' ? 'selected' : '' ?>>30</option>
-                <option value="90" <?= ($stepsRange ?? '30') === '90' ? 'selected' : '' ?>>90</option>
-                <option value="all" <?= ($stepsRange ?? '30') === 'all' ? 'selected' : '' ?>><?= e(t('dashboard.all_challenge')) ?></option>
-            </select>
-        </label>
-    </form>
+        </form>
+        <details class="inline-context-sub">
+            <summary class="btn btn-ghost btn-block"><?= e(t('dashboard.edit_layout')) ?></summary>
+            <form method="post" action="/?page=dashboard" class="stack">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="save_dashboard_layout">
+                <input type="hidden" name="dashboard_view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
+                <div class="chip-group">
+                    <?php foreach ($dashboardWidgets as $widget): ?>
+                        <label class="chip">
+                            <input type="checkbox" name="dashboard_widgets[]" value="<?= e($widget) ?>" <?= in_array($widget, $visibleWidgets, true) ? 'checked' : '' ?>>
+                            <?= e(t('dashboard.widget_' . $widget)) ?>
+                            <input type="number" name="dashboard_order[<?= e($widget) ?>]" value="<?= e((string) (($layoutOrder[$widget] ?? array_search($widget, $dashboardWidgets, true)) + 1)) ?>" min="1" max="<?= count($dashboardWidgets) ?>">
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+            </form>
+        </details>
+    </div>
 </details>
 <?php
 $topbarControls = ob_get_clean();
@@ -146,33 +169,16 @@ $topbarControls = ob_get_clean();
 <section class="screen stack-lg">
     <div class="motivation-band">
         <span><?= e(t('dashboard.motivation')) ?></span>
-        <strong>"<?= e((string) ($selectedUser['motivation_quote'] ?: t('dashboard.default_quote'))) ?>"</strong>
+        <strong>"<?= e((string) ($motivationQuote ?? t('dashboard.default_quote'))) ?>"</strong>
     </div>
-
-    <details class="panel layout-editor">
-        <summary class="btn btn-ghost"><?= e(t('dashboard.edit_layout')) ?></summary>
-        <form method="post" action="/?page=dashboard" class="stack">
-            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-            <input type="hidden" name="action" value="save_dashboard_layout">
-            <input type="hidden" name="dashboard_view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
-            <input type="hidden" name="steps_range" value="<?= e((string) ($stepsRange ?? '30')) ?>">
-            <div class="chip-group">
-                <?php foreach ($dashboardWidgets as $widget): ?>
-                    <label class="chip">
-                        <input type="checkbox" name="dashboard_widgets[]" value="<?= e($widget) ?>" <?= in_array($widget, $visibleWidgets, true) ? 'checked' : '' ?>>
-                        <?= e(t('dashboard.widget_' . $widget)) ?>
-                        <input type="number" name="dashboard_order[<?= e($widget) ?>]" value="<?= e((string) (($layoutOrder[$widget] ?? array_search($widget, $dashboardWidgets, true)) + 1)) ?>" min="1" max="<?= count($dashboardWidgets) ?>">
-                    </label>
-                <?php endforeach; ?>
-            </div>
-            <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
-        </form>
-    </details>
 
     <?php if ($showWidget('kpis')): ?>
     <div class="metric-grid" style="order: <?= $widgetOrder('kpis') ?>">
         <?php foreach ($kpis as $kpi): ?>
-            <article class="metric-card">
+            <?php
+            $metricHref = '/?' . http_build_query($metricQueryBase + ['metric' => (string) $kpi['key']]);
+            ?>
+            <a class="metric-card metric-card-link" href="<?= e($metricHref) ?>" data-testid="metric-card-link-<?= e((string) $kpi['key']) ?>">
                 <div class="progress-ring" style="--value: <?= e((string) min(100, max(0, (float) $kpi['progress']))) ?>;">
                     <span><?= e((string) $kpi['ring']) ?></span>
                 </div>
@@ -181,12 +187,12 @@ $topbarControls = ob_get_clean();
                     <strong><?= e((string) $kpi['value']) ?></strong>
                     <p><?= e((string) $kpi['meta']) ?></p>
                 </div>
-            </article>
+            </a>
         <?php endforeach; ?>
     </div>
     <?php endif; ?>
 
-    <?php if ($showWidget('money') || $showWidget('approvals')): ?>
+    <?php if ($showWidget('money') || ($showWidget('approvals') && $pendingApprovals !== [])): ?>
     <div class="grid-two" style="order: <?= $widgetOrder('money', 'approvals') ?>">
         <?php if ($showWidget('money')): ?>
         <article class="panel" data-testid="settlement-panel">
@@ -263,7 +269,7 @@ $topbarControls = ob_get_clean();
         </article>
         <?php endif; ?>
 
-        <?php if ($showWidget('approvals')): ?>
+        <?php if ($showWidget('approvals') && $pendingApprovals !== []): ?>
         <article class="panel" data-testid="pending-approvals">
             <div class="panel-head">
                 <div>
@@ -283,7 +289,6 @@ $topbarControls = ob_get_clean();
                             <input type="hidden" name="approval_id" value="<?= (int) $approval['id'] ?>">
                             <input type="hidden" name="redirect_user_id" value="<?= (int) $selectedUser['id'] ?>">
                             <input type="hidden" name="redirect_week_start" value="<?= e((string) $selectedWeekStart) ?>">
-                            <input type="hidden" name="redirect_steps_range" value="<?= e((string) ($stepsRange ?? '30')) ?>">
 
                             <div class="pending-head">
                                 <strong><?= e((string) $approval['approval_type_label']) ?></strong>
@@ -314,19 +319,7 @@ $topbarControls = ob_get_clean();
     <div class="grid-two" style="order: <?= $widgetOrder('steps', 'weight') ?>">
         <?php if ($showWidget('steps')): ?>
         <article class="panel chart-card">
-            <div class="panel-head">
-                <h2><?= e(t('dashboard.steps_chart')) ?></h2>
-                <form method="get" class="range-form">
-                    <input type="hidden" name="page" value="dashboard">
-                    <input type="hidden" name="user_id" value="<?= (int) $selectedUser['id'] ?>">
-                    <input type="hidden" name="view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
-                    <select name="steps_range" onchange="this.form.submit()">
-                        <option value="30" <?= ($stepsRange ?? '30') === '30' ? 'selected' : '' ?>>30</option>
-                        <option value="90" <?= ($stepsRange ?? '30') === '90' ? 'selected' : '' ?>>90</option>
-                        <option value="all" <?= ($stepsRange ?? '30') === 'all' ? 'selected' : '' ?>><?= e(t('dashboard.all_challenge')) ?></option>
-                    </select>
-                </form>
-            </div>
+            <h2><?= e(t('dashboard.steps_chart')) ?></h2>
             <canvas id="stepsChart" height="150"></canvas>
         </article>
         <?php endif; ?>
@@ -349,66 +342,6 @@ $topbarControls = ob_get_clean();
     </div>
     <?php endif; ?>
 
-    <?php if ($showWidget('meals')): ?>
-    <div class="grid-two" style="order: <?= $widgetOrder('meals') ?>">
-        <article class="panel">
-            <div class="panel-head">
-                <div><p class="eyebrow"><?= e(t('entries.meal')) ?></p><h2><?= e(t('dashboard.meal_calendar')) ?></h2></div>
-                <form method="post" action="/?page=dashboard" class="range-form">
-                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                    <input type="hidden" name="action" value="save_meal_calendar_view">
-                    <input type="hidden" name="dashboard_view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
-                    <input type="hidden" name="steps_range" value="<?= e((string) ($stepsRange ?? '30')) ?>">
-                    <select name="meal_calendar_view" onchange="this.form.submit()">
-                        <option value="week" <?= ($mealView ?? 'week') === 'week' ? 'selected' : '' ?>><?= e(t('common.week')) ?></option>
-                        <option value="month" <?= ($mealView ?? 'week') === 'month' ? 'selected' : '' ?>><?= e(t('dashboard.month')) ?></option>
-                    </select>
-                </form>
-            </div>
-            <div class="meal-calendar <?= ($mealView ?? 'week') === 'month' ? 'meal-calendar-month' : '' ?>">
-                <?php foreach (($mealCalendar ?? []) as $date => $day): ?>
-                    <article>
-                        <strong><?= e(format_date_eu((string) $date)) ?></strong>
-                        <?php if ($day['preview'] !== null): ?>
-                            <?php
-                            $photoPayload = array_map(static fn(array $photo): array => [
-                                'src' => (string) $photo['file_path'],
-                                'caption' => trim(format_date_eu((string) $photo['log_date']) . ' · ' . (string) ($photo['caption'] ?? '')),
-                            ], $day['photos'] ?? []);
-                            ?>
-                            <button class="meal-thumb" type="button" data-photos="<?= e(json_encode($photoPayload, JSON_UNESCAPED_SLASHES)) ?>">
-                                <img src="<?= e((string) $day['preview']['file_path']) ?>" alt="<?= e(t('entries.meal')) ?>">
-                            </button>
-                            <?php if ((int) $day['count'] > 1): ?><span class="badge">+<?= (int) $day['count'] - 1 ?></span><?php endif; ?>
-                        <?php else: ?>
-                            <span class="muted small"><?= e(t('entries.no_photos')) ?></span>
-                        <?php endif; ?>
-                    </article>
-                <?php endforeach; ?>
-            </div>
-        </article>
-        <article class="panel">
-            <div class="panel-head">
-                <div><p class="eyebrow"><?= e(t('dashboard.latest_meal')) ?></p><h2><?= e(t('entries.upload_photo')) ?></h2></div>
-            </div>
-            <?php if (($latestMeal ?? null) !== null): ?>
-                <figure class="latest-meal"><img src="<?= e((string) $latestMeal['file_path']) ?>" alt="<?= e(t('dashboard.latest_meal')) ?>"><figcaption><?= e(format_date_eu((string) $latestMeal['log_date'])) ?> · <?= e((string) $latestMeal['caption']) ?></figcaption></figure>
-            <?php endif; ?>
-            <form method="post" action="/?page=dashboard" enctype="multipart/form-data" class="stack">
-                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="quick_meal_upload">
-                <div class="grid-inline">
-                    <label><?= e(t('common.date')) ?><input type="date" name="log_date" value="<?= e(to_date(null)) ?>"></label>
-                    <label><?= e(t('common.category')) ?><select name="category"><option value="meal"><?= e(t('entries.meal')) ?></option><option value="dinner"><?= e(t('entries.dinner')) ?></option></select></label>
-                </div>
-                <label><?= e(t('common.caption')) ?><input type="text" name="caption"></label>
-                <label><?= e(t('entries.camera_hint')) ?><input type="file" name="photo" accept="image/*" capture="environment" required></label>
-                <button class="btn btn-primary" type="submit"><?= e(t('entries.upload')) ?></button>
-            </form>
-        </article>
-    </div>
-    <?php endif; ?>
-
     <?php if ($showWidget('comparison') || $showWidget('ranking')): ?>
     <div class="grid-two" style="order: <?= $widgetOrder('comparison', 'ranking') ?>">
         <?php if ($showWidget('comparison')): ?>
@@ -420,11 +353,18 @@ $topbarControls = ob_get_clean();
         <?php if ($showWidget('ranking')): ?>
         <article class="panel">
             <h2><?= e(t('dashboard.ranking')) ?></h2>
-            <div class="stat-list">
+            <div class="leaderboard-list">
                 <?php foreach ($metricsOrdered as $metric): ?>
-                    <article>
-                        <strong><?= e((string) $metric['user']['display_name']) ?></strong>
-                        <span><?= e(t('metric.score')) ?> <?= e((string) $metric['score']) ?> · <?= e(t('metric.strikes')) ?> <?= e((string) $metric['current_strikes']) ?> · <?= e(t('metric.warnings')) ?> <?= e((string) ($metric['skip_warning_events'] ?? 0)) ?> · €<?= e((string) $metric['total_penalty']) ?></span>
+                    <article class="leaderboard-row">
+                        <div class="leaderboard-name">
+                            <strong><?= e((string) $metric['user']['display_name']) ?></strong>
+                            <span><?= e(t('metric.warnings')) ?>: <?= e((string) ($metric['skip_warning_events'] ?? 0)) ?></span>
+                        </div>
+                        <div class="leaderboard-stats">
+                            <span class="badge"><?= e(t('metric.score')) ?> <?= e((string) $metric['score']) ?></span>
+                            <span class="badge"><?= e(t('metric.strikes')) ?> <?= e((string) $metric['current_strikes']) ?></span>
+                            <span class="badge">€<?= e((string) $metric['total_penalty']) ?></span>
+                        </div>
                     </article>
                 <?php endforeach; ?>
             </div>
@@ -437,7 +377,7 @@ $topbarControls = ob_get_clean();
     <article class="panel" style="order: <?= $widgetOrder('weekly') ?>">
         <div class="panel-head">
             <h2><?= e(t('dashboard.weekly_history')) ?></h2>
-            <a class="btn btn-ghost" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week_start=<?= e((string) $selectedWeekStart) ?>"><?= e(t('table.open_editor')) ?></a>
+            <a class="btn btn-ghost" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week=<?= e(date_to_iso_week((string) $selectedWeekStart)) ?>"><?= e(t('table.open_editor')) ?></a>
         </div>
         <div class="table-wrap">
             <table class="table compact">
@@ -472,16 +412,6 @@ $topbarControls = ob_get_clean();
     </article>
     <?php endif; ?>
 </section>
-
-<dialog class="meal-lightbox" id="mealLightbox">
-    <button class="btn btn-ghost lightbox-close" type="button" data-lightbox-close><?= e(t('common.close_action')) ?></button>
-    <button class="btn btn-ghost lightbox-prev" type="button" data-lightbox-prev>&lt;</button>
-    <figure>
-        <img src="" alt="<?= e(t('entries.meal')) ?>" data-lightbox-image>
-        <figcaption data-lightbox-caption></figcaption>
-    </figure>
-    <button class="btn btn-ghost lightbox-next" type="button" data-lightbox-next>&gt;</button>
-</dialog>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>

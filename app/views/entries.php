@@ -9,6 +9,7 @@ $categoryLabels = [
     'workout' => t('entries.workout'),
     'other' => t('common.other'),
 ];
+$entryMode = in_array(($entryMode ?? 'data'), ['data', 'meal'], true) ? (string) $entryMode : 'data';
 ?>
 <section class="screen stack-lg">
     <div class="hero-panel">
@@ -17,26 +18,31 @@ $categoryLabels = [
             <h1><?= e(t('entries.title')) ?></h1>
             <p class="muted"><?= e(t('entries.subtitle')) ?></p>
         </div>
+        <div class="chip-group">
+            <a class="btn <?= $entryMode === 'data' ? 'btn-primary' : 'btn-ghost' ?>" href="/?page=entries&mode=data&date=<?= e($selectedDate) ?>"><?= e(t('entries.quick_data')) ?></a>
+            <a class="btn <?= $entryMode === 'meal' ? 'btn-primary' : 'btn-ghost' ?>" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"><?= e(t('entries.quick_meal')) ?></a>
+        </div>
     </div>
 
-    <div class="grid-two">
+    <?php if ($entryMode === 'data'): ?>
         <article class="panel">
             <div class="panel-head">
                 <div>
-                    <p class="eyebrow"><?= e(format_date_eu((string) $selectedDate)) ?></p>
+                    <p class="eyebrow"><?= e(t('entries.day_data')) ?></p>
                     <h2><?= e(t('entries.day_data')) ?></h2>
                 </div>
+                <label class="entry-date-inline">
+                    <?= e(t('common.date')) ?>
+                    <input id="entry-date" type="date" name="log_date" value="<?= e($selectedDate) ?>" onchange="window.location='/?page=entries&mode=data&date='+this.value;" data-testid="entry-date">
+                </label>
             </div>
 
             <form method="post" action="/?page=entries" class="stack" data-testid="entry-form" data-primary-goal-type="<?= e((string) ($currentUser['primary_goal_type'] ?? 'steps')) ?>" data-step-goal="<?= e((string) ($currentUser['step_goal'] ?? 0)) ?>" data-km-goal="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="save_log">
+                <input type="hidden" name="log_date" value="<?= e($selectedDate) ?>">
 
-                <div class="grid-inline">
-                    <label>
-                        <?= e(t('common.date')) ?>
-                        <input id="entry-date" type="date" name="log_date" value="<?= e($selectedDate) ?>" onchange="window.location='/?page=entries&date='+this.value;" data-testid="entry-date">
-                    </label>
+                <div class="grid-inline entries-two-col">
                     <label>
                         <?= e(t('metric.steps')) ?>
                         <input type="number" min="0" name="steps" value="<?= e((string) ($log['steps'] ?? 0)) ?>" data-testid="entry-steps">
@@ -47,7 +53,7 @@ $categoryLabels = [
                     </label>
                 </div>
 
-                <div class="quick-stats">
+                <div class="quick-stats entries-two-col">
                     <label>
                         <?= e(t('metric.weight')) ?> (kg)
                         <input type="number" step="0.1" name="weight" value="<?= e((string) ($log['weight'] ?? '')) ?>">
@@ -68,7 +74,7 @@ $categoryLabels = [
                     </label>
                 </div>
 
-                <div class="toggle-row pill-toggles">
+                <div class="toggle-row pill-toggles entries-toggles">
                     <label class="check">
                         <input type="checkbox" name="workout_done" value="1" <?= !empty($log) && (int) $log['workout_done'] === 1 ? 'checked' : '' ?> data-testid="entry-workout-done">
                         <?= e(t('entries.workout_done')) ?>
@@ -90,7 +96,7 @@ $categoryLabels = [
                     <?php endforeach; ?>
                 </div>
 
-                <div class="grid-inline">
+                <div class="grid-inline entries-two-col">
                     <label class="conditional-reason" data-reason="steps">
                         <?= e(t('entries.step_exception')) ?>
                         <input type="text" name="step_exception_reason" placeholder="<?= e(t('entries.step_exception_placeholder')) ?>" value="<?= e((string) ($log['step_exception_reason'] ?? '')) ?>" data-testid="entry-step-exception">
@@ -112,7 +118,10 @@ $categoryLabels = [
 
             <p class="muted small"><?= e(t('entries.pending_hint')) ?></p>
         </article>
+    <?php endif; ?>
 
+    <?php if ($entryMode === 'meal'): ?>
+    <div class="grid-two">
         <article class="panel">
             <div class="panel-head">
                 <div>
@@ -125,7 +134,7 @@ $categoryLabels = [
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="upload_photo">
 
-                <div class="grid-inline">
+                <div class="grid-inline entries-two-col">
                     <label>
                         <?= e(t('common.date')) ?>
                         <input type="date" name="log_date" value="<?= e($selectedDate) ?>">
@@ -186,4 +195,5 @@ $categoryLabels = [
             </div>
         <?php endif; ?>
     </article>
+    <?php endif; ?>
 </section>

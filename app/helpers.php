@@ -39,6 +39,49 @@ function to_date(?string $date, ?string $fallback = null): string
     return (new DateTimeImmutable('now'))->format('Y-m-d');
 }
 
+function week_to_monday(?string $week, ?string $fallback = null): string
+{
+    $value = trim((string) $week);
+    if ($value !== '' && preg_match('/^(\d{4})-W(\d{2})$/', $value, $matches) === 1) {
+        $year = (int) $matches[1];
+        $isoWeek = (int) $matches[2];
+        $date = (new DateTimeImmutable())->setISODate($year, $isoWeek, 1);
+
+        return $date->format('Y-m-d');
+    }
+
+    return to_date(null, $fallback);
+}
+
+function date_to_iso_week(string $date): string
+{
+    try {
+        return (new DateTimeImmutable($date))->format('o-\WW');
+    } catch (Throwable) {
+        return (new DateTimeImmutable('monday this week'))->format('o-\WW');
+    }
+}
+
+function random_motivation_quote(): string
+{
+    $quotes = [
+        'Consistency is the shortcut.',
+        'Do what your future self will thank you for.',
+        'Small wins compound faster than motivation fades.',
+        'Discipline builds the life motivation dreams about.',
+        'Show up first, improve second.',
+        'Momentum loves repetition.',
+        'Keep promises to yourself.',
+        'Progress prefers patience.',
+        'A hard day still counts.',
+        'One clean decision changes the whole day.',
+        'Done beats perfect every single time.',
+        'You are building evidence, not just results.',
+    ];
+
+    return $quotes[array_rand($quotes)];
+}
+
 function format_date_eu(?string $date): string
 {
     if ($date === null || $date === '') {

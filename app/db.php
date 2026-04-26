@@ -135,6 +135,7 @@ function initialize_database(PDO $pdo, array $config): void
         'CREATE TABLE IF NOT EXISTS teams (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT "",
             slug TEXT NOT NULL UNIQUE,
             join_mode TEXT NOT NULL DEFAULT "closed",
             visibility TEXT NOT NULL DEFAULT "visible",
@@ -214,6 +215,22 @@ function initialize_database(PDO $pdo, array $config): void
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
             FOREIGN KEY (awarded_by) REFERENCES users(id) ON DELETE SET NULL
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS achievement_award_suppressions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            achievement_id INTEGER NOT NULL,
+            user_id INTEGER,
+            team_id INTEGER,
+            suppressed_by INTEGER,
+            suppressed_at TEXT NOT NULL,
+            reason TEXT,
+            FOREIGN KEY (achievement_id) REFERENCES achievements(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+            FOREIGN KEY (suppressed_by) REFERENCES users(id) ON DELETE SET NULL
         )'
     );
 
@@ -311,6 +328,15 @@ function initialize_database(PDO $pdo, array $config): void
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY (achievement_id) REFERENCES achievements(id) ON DELETE CASCADE
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS login_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            ip_address TEXT NOT NULL,
+            attempted_at TEXT NOT NULL
         )'
     );
 
@@ -430,6 +456,7 @@ function ensure_schema_columns(PDO $pdo, array $config): void
 
     ensure_column($pdo, 'achievements', 'image_path', 'TEXT');
     ensure_column($pdo, 'achievements', 'reward_text', 'TEXT');
+    ensure_column($pdo, 'teams', 'description', 'TEXT NOT NULL DEFAULT ""');
 
     ensure_column($pdo, 'challenge_settings', 'active', 'INTEGER NOT NULL DEFAULT 1');
     ensure_column($pdo, 'challenge_settings', 'deleted_at', 'TEXT');
@@ -449,6 +476,9 @@ function ensure_column(PDO $pdo, string $table, string $column, string $definiti
 
 function ensure_indexes(PDO $pdo): void
 {
+    deduplicate_achievement_awards($pdo);
+    deduplicate_achievement_suppressions($pdo);
+
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_approval_status ON approval_requests(status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_approval_user ON approval_requests(user_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_logs_date ON daily_logs(log_date)');
@@ -457,11 +487,43 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_goals_scope ON goals(scope, status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_awards_user ON achievement_awards(user_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_awards_team ON achievement_awards(team_id)');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_achievement_awards_user_unique ON achievement_awards(achievement_id, user_id) WHERE user_id IS NOT NULL');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_achievement_awards_team_unique ON achievement_awards(achievement_id, team_id) WHERE team_id IS NOT NULL');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_suppressions_user ON achievement_award_suppressions(user_id)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_suppressions_team ON achievement_award_suppressions(team_id)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_suppressions_achievement ON achievement_award_suppressions(achievement_id)');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_achievement_suppressions_user_unique ON achievement_award_suppressions(achievement_id, user_id) WHERE user_id IS NOT NULL');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_achievement_suppressions_team_unique ON achievement_award_suppressions(achievement_id, team_id) WHERE team_id IS NOT NULL');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity_type, entity_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_join_requests_team ON team_join_requests(team_id, status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_log_habits_log ON daily_log_habits(log_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_rules_achievement ON achievement_rules(achievement_id)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_login_attempts_user_ip ON login_attempts(username, ip_address, attempted_at)');
+}
+
+function deduplicate_achievement_awards(PDO $pdo): void
+{
+    $pdo->exec(
+        'DELETE FROM achievement_awards
+         WHERE id NOT IN (
+             SELECT MIN(id)
+             FROM achievement_awards
+             GROUP BY achievement_id, COALESCE(user_id, 0), COALESCE(team_id, 0)
+         )'
+    );
+}
+
+function deduplicate_achievement_suppressions(PDO $pdo): void
+{
+    $pdo->exec(
+        'DELETE FROM achievement_award_suppressions
+         WHERE id NOT IN (
+             SELECT MIN(id)
+             FROM achievement_award_suppressions
+             GROUP BY achievement_id, COALESCE(user_id, 0), COALESCE(team_id, 0)
+         )'
+    );
 }
 
 function seed_default_team(PDO $pdo): void
@@ -472,10 +534,11 @@ function seed_default_team(PDO $pdo): void
     if ($team === null) {
         db_execute(
             $pdo,
-            'INSERT INTO teams (name, slug, active, created_at, updated_at)
-             VALUES (:name, :slug, 1, :created_at, :updated_at)',
+            'INSERT INTO teams (name, description, slug, active, created_at, updated_at)
+             VALUES (:name, :description, :slug, 1, :created_at, :updated_at)',
             [
                 ':name' => 'Fitness Challenge Team',
+                ':description' => 'Shared stats, members, goals and achievements for the challenge.',
                 ':slug' => 'main',
                 ':created_at' => $now,
                 ':updated_at' => $now,

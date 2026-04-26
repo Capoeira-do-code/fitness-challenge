@@ -41,6 +41,63 @@ function login_user(PDO $pdo, string $username, string $password): bool
     return true;
 }
 
+function request_ip_address(): string
+{
+    $remote = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+    return $remote !== '' ? $remote : 'unknown';
+}
+
+function login_attempt_is_blocked(PDO $pdo, string $username, string $ipAddress, int $maxAttempts = 5, int $windowMinutes = 15): bool
+{
+    $cutoff = (new DateTimeImmutable('-' . $windowMinutes . ' minutes'))->format('Y-m-d H:i:s');
+    db_execute(
+        $pdo,
+        'DELETE FROM login_attempts WHERE attempted_at < :cutoff',
+        [':cutoff' => $cutoff]
+    );
+    $row = db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS total
+         FROM login_attempts
+         WHERE username = :username
+           AND ip_address = :ip_address
+           AND attempted_at >= :cutoff',
+        [
+            ':username' => strtolower(trim($username)),
+            ':ip_address' => $ipAddress,
+            ':cutoff' => $cutoff,
+        ]
+    );
+
+    return (int) ($row['total'] ?? 0) >= $maxAttempts;
+}
+
+function register_failed_login_attempt(PDO $pdo, string $username, string $ipAddress): void
+{
+    db_execute(
+        $pdo,
+        'INSERT INTO login_attempts (username, ip_address, attempted_at)
+         VALUES (:username, :ip_address, :attempted_at)',
+        [
+            ':username' => strtolower(trim($username)),
+            ':ip_address' => $ipAddress,
+            ':attempted_at' => now_iso(),
+        ]
+    );
+}
+
+function clear_login_attempts(PDO $pdo, string $username, string $ipAddress): void
+{
+    db_execute(
+        $pdo,
+        'DELETE FROM login_attempts WHERE username = :username AND ip_address = :ip_address',
+        [
+            ':username' => strtolower(trim($username)),
+            ':ip_address' => $ipAddress,
+        ]
+    );
+}
+
 function logout_user(): void
 {
     $_SESSION = [];

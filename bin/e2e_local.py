@@ -348,10 +348,10 @@ def run_browser_suite(base_url: str, creds: dict) -> List[StepResult]:
             page.fill('input[name="username"]', user)
             page.fill('input[name="password"]', password)
             page.click('button[type="submit"]')
-            page.wait_for_selector('[data-testid="dashboard-user-select"]', timeout=15000)
+            page.wait_for_selector('.motivation-band', timeout=15000)
 
         def logout() -> None:
-            page.click('a[href="/?page=logout"]')
+            page.goto(app_url(base_url, "/?page=logout"), wait_until="domcontentloaded")
             page.wait_for_selector('input[name="username"]', timeout=10000)
 
         today = dt.date.today().isoformat()
@@ -360,7 +360,7 @@ def run_browser_suite(base_url: str, creds: dict) -> List[StepResult]:
             login(creds["user"], creds["password"])
 
         def step_input_daily() -> None:
-            page.goto(app_url(base_url, "/?page=entries"), wait_until="domcontentloaded")
+            page.goto(app_url(base_url, "/?page=entries&mode=data"), wait_until="domcontentloaded")
             page.fill('[data-testid="entry-date"]', today)
             page.fill('[data-testid="entry-steps"]', "500")
             page.check('[data-testid="entry-workout-done"]')
@@ -373,16 +373,58 @@ def run_browser_suite(base_url: str, creds: dict) -> List[StepResult]:
 
         def step_table_edit() -> None:
             monday = (dt.date.today() - dt.timedelta(days=dt.date.today().weekday())).isoformat()
-            page.goto(app_url(base_url, f"/?page=table&week_start={monday}"), wait_until="domcontentloaded")
-            page.wait_for_selector('[data-testid="spreadsheet-table"]')
-            first_row = page.locator('#spreadsheet tbody tr').first
+            iso_week = dt.date.fromisoformat(monday).strftime("%G-W%V")
+            page.goto(app_url(base_url, f"/?page=week_editor&week={iso_week}"), wait_until="domcontentloaded")
+            page.wait_for_selector('#week-editor-grid .week-day-card')
+            first_row = page.locator('#week-editor-grid .week-day-card').first
             first_row.locator('input[name="steps"]').fill("7777")
             first_row.locator('.js-save-row').click()
             first_row.locator('.save-status.ok').wait_for(timeout=12000)
 
         def step_dashboard_pending_visible() -> None:
             page.goto(app_url(base_url, "/?page=dashboard"), wait_until="domcontentloaded")
-            page.wait_for_selector('[data-testid="pending-approvals"]')
+            page.wait_for_selector('.motivation-band')
+
+        def step_metric_detail() -> None:
+            page.goto(app_url(base_url, "/?page=dashboard"), wait_until="domcontentloaded")
+            page.click('[data-testid="metric-card-link-steps"]')
+            page.wait_for_url("**/?page=metric**", timeout=10000)
+            page.wait_for_selector('#metricDetailChart, .panel .muted')
+
+        def step_admin_spa() -> None:
+            page.goto(app_url(base_url, "/?page=admin"), wait_until="domcontentloaded")
+            page.wait_for_selector('[data-spa-main]')
+            page.click('a[data-spa-link][href*=\"section=users\"]')
+            page.wait_for_url("**section=users**", timeout=10000)
+            page.wait_for_selector('[data-spa-section=\"users\"]')
+            if page.locator('[data-spa-main]').is_visible():
+                raise AssertionError("La lista principal de ajustes debería ocultarse al abrir sección.")
+            page.click('[data-spa-section=\"users\"] [data-spa-back]')
+            page.wait_for_url("**/?page=admin", timeout=10000)
+            page.wait_for_selector('[data-spa-main]:not([hidden])')
+
+        def step_profile_spa() -> None:
+            page.goto(app_url(base_url, "/?page=profile"), wait_until="domcontentloaded")
+            page.wait_for_selector('[data-spa-main]')
+            page.click('a[data-spa-link][href*=\"section=goals\"]')
+            page.wait_for_url("**section=goals**", timeout=10000)
+            page.wait_for_selector('[data-spa-section=\"goals\"]')
+            rows = page.locator('.goal-row')
+            if rows.count() > 0:
+                rows.first.click()
+                page.wait_for_url("**goal_id=**", timeout=10000)
+                if page.locator('[data-profile-goals-list]').is_visible():
+                    raise AssertionError("La lista de objetivos debe ocultarse al abrir el detalle.")
+                page.click('[data-spa-section=\"goals\"] a[data-spa-link]:has-text(\"Volver\")')
+                page.wait_for_url("**section=goals**", timeout=10000)
+
+            page.goto(app_url(base_url, "/?page=profile&section=achievements"), wait_until="domcontentloaded")
+            delete_buttons = page.locator('[data-achievement-delete-trigger]')
+            if delete_buttons.count() > 0:
+                delete_buttons.first.click()
+                page.wait_for_selector('.confirm-modal:not([hidden])', timeout=10000)
+                page.click('[data-confirm-cancel]')
+                page.wait_for_selector('.confirm-modal[hidden]', timeout=10000)
 
         def step_owner_cannot_self_approve() -> None:
             page.goto(app_url(base_url, "/?page=dashboard"), wait_until="domcontentloaded")
@@ -414,7 +456,10 @@ def run_browser_suite(base_url: str, creds: dict) -> List[StepResult]:
         results.append(run_step("Login", step_login))
         results.append(run_step("Input diario (excepciones + junk + extra)", step_input_daily))
         results.append(run_step("Tabla editable", step_table_edit))
-        results.append(run_step("Dashboard carga y panel pendientes", step_dashboard_pending_visible))
+        results.append(run_step("Dashboard carga", step_dashboard_pending_visible))
+        results.append(run_step("Detalle de métrica", step_metric_detail))
+        results.append(run_step("Admin SPA navegación", step_admin_spa))
+        results.append(run_step("Profile SPA navegación", step_profile_spa))
         results.append(run_step("Permisos: owner no autoaprueba", step_owner_cannot_self_approve))
         results.append(run_step("Aprobaciones por segundo usuario", step_second_user_approves))
         results.append(run_step("Logout", step_logout))
@@ -473,7 +518,7 @@ def run_basic_suite(base_url: str, auto_install_deps: bool) -> List[StepResult]:
         (STORAGE_DIR / "fitness_basic.sqlite").unlink(missing_ok=True)
 
         php_server = subprocess.Popen(
-            [php_bin, "-S", "127.0.0.1:8080", "-t", "public"],
+            [php_bin, "-S", "0.0.0.0:8080", "-t", "public"],
             cwd=str(ROOT),
             env=env,
             stdout=subprocess.DEVNULL,
@@ -614,7 +659,7 @@ def summarize(results: List[StepResult], report_path: Path) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run or serve Fitness Challenge Tracker locally.")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8080", help="Base URL for the web app.")
+    parser.add_argument("--base-url", default="http://0.0.0.0:8080", help="Base URL for the web app.")
     parser.add_argument(
         "--profile",
         default="auto",
