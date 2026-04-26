@@ -697,10 +697,23 @@ function save_photo_entry(PDO $pdo, array $config, int $userId, string $date, st
     );
 }
 
+function upload_error_message(int $errorCode): string
+{
+    return match ($errorCode) {
+        UPLOAD_ERR_INI_SIZE => t('upload.too_large_server') . ' (' . (string) ini_get('upload_max_filesize') . ')',
+        UPLOAD_ERR_FORM_SIZE => t('upload.too_large_form'),
+        UPLOAD_ERR_PARTIAL => t('upload.partial'),
+        UPLOAD_ERR_NO_FILE => t('upload.no_file'),
+        UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE, UPLOAD_ERR_EXTENSION => t('upload.move_failed'),
+        default => t('upload.failed'),
+    };
+}
+
 function save_uploaded_image(array $config, array $file, string $subDir, string $prefix): string
 {
-    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-        throw new RuntimeException(t('upload.failed'));
+    $errorCode = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($errorCode !== UPLOAD_ERR_OK) {
+        throw new RuntimeException(upload_error_message($errorCode));
     }
 
     $tmpName = (string) ($file['tmp_name'] ?? '');
