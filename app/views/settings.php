@@ -23,6 +23,8 @@ declare(strict_types=1);
                 <?php $settingsAvatarUrl = avatar_url($currentUser); ?>
                 <?php if ($settingsAvatarUrl !== ''): ?>
                     <img class="settings-avatar-preview settings-avatar-preview-round" src="<?= e($settingsAvatarUrl) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
+                <?php else: ?>
+                    <span class="settings-avatar-preview settings-avatar-preview-round"><?= e(initials_for((string) ($currentUser['display_name'] ?? ''))) ?></span>
                 <?php endif; ?>
                 <div class="image-cropper" data-image-cropper>
                     <canvas width="320" height="320" data-image-crop-canvas></canvas>

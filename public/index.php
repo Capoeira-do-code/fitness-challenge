@@ -516,17 +516,68 @@ if ($page === 'settings') {
         }
 
         if ($action === 'upload_avatar') {
+            $storedPath = null;
+            $persisted = false;
             try {
                 $cropped = trim((string) ($_POST['avatar_cropped'] ?? ''));
                 if ($cropped !== '') {
-                    $path = save_uploaded_image_from_data_url($config, $cropped, 'avatars', 'user_' . (string) $currentUser['id']);
+                    $storedPath = save_uploaded_image_from_data_url($config, $cropped, 'avatars', 'user_' . (string) $currentUser['id']);
                 } else {
-                    $path = save_uploaded_image($config, $_FILES['avatar'] ?? [], 'avatars', 'user_' . (string) $currentUser['id']);
+                    $storedPath = save_uploaded_image($config, $_FILES['avatar'] ?? [], 'avatars', 'user_' . (string) $currentUser['id']);
                 }
-                db_execute($pdo, 'UPDATE users SET avatar_path = :avatar_path, updated_at = :updated_at WHERE id = :id', [':avatar_path' => $path, ':updated_at' => now_iso(), ':id' => (int) $currentUser['id']]);
-                audit_log($pdo, (int) $currentUser['id'], 'avatar_updated', 'user', (string) $currentUser['id'], 'Avatar updated.', null, ['avatar_path' => $path]);
+
+                $resolvedStoredPath = resolve_media_storage_path($config, (string) $storedPath);
+                if ($resolvedStoredPath === null || !is_file($resolvedStoredPath)) {
+                    throw new RuntimeException(t('upload.move_failed'));
+                }
+
+                $updatedAt = now_iso();
+                $pdo->beginTransaction();
+                db_execute(
+                    $pdo,
+                    'UPDATE users SET avatar_path = :avatar_path, updated_at = :updated_at WHERE id = :id',
+                    [
+                        ':avatar_path' => $storedPath,
+                        ':updated_at' => $updatedAt,
+                        ':id' => (int) $currentUser['id'],
+                    ]
+                );
+                $updatedUser = db_fetch_one(
+                    $pdo,
+                    'SELECT id, avatar_path, updated_at FROM users WHERE id = :id',
+                    [':id' => (int) $currentUser['id']]
+                );
+                if ($updatedUser === null || trim((string) ($updatedUser['avatar_path'] ?? '')) !== (string) $storedPath) {
+                    throw new RuntimeException(t('upload.persist_failed'));
+                }
+                $pdo->commit();
+                $persisted = true;
+
+                try {
+                    audit_log(
+                        $pdo,
+                        (int) $currentUser['id'],
+                        'avatar_updated',
+                        'user',
+                        (string) $currentUser['id'],
+                        'Avatar updated.',
+                        null,
+                        ['avatar_path' => $storedPath]
+                    );
+                } catch (Throwable) {
+                    // Audit issues should not block a successful avatar update.
+                }
                 flash_set('success', t('flash.avatar_updated'));
             } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                if (!$persisted && is_string($storedPath) && trim($storedPath) !== '') {
+                    $failedFile = resolve_media_storage_path($config, $storedPath);
+                    if ($failedFile !== null && is_file($failedFile)) {
+                        @unlink($failedFile);
+                    }
+                }
                 flash_set('error', $e->getMessage());
             }
             redirect('/?page=settings');

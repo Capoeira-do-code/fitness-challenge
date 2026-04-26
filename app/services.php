@@ -709,6 +709,53 @@ function upload_error_message(int $errorCode): string
     };
 }
 
+function ensure_upload_target_dir(array $config, string $subDir): string
+{
+    $targetDir = rtrim((string) $config['upload_dir'], '/') . '/' . trim($subDir, '/');
+    if (!is_dir($targetDir) && !mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
+        throw new RuntimeException(t('upload.move_failed'));
+    }
+
+    @chmod($targetDir, 0775);
+    if (!is_writable($targetDir)) {
+        @chmod($targetDir, 0777);
+    }
+    if (!is_writable($targetDir)) {
+        throw new RuntimeException(t('upload.directory_unwritable'));
+    }
+
+    return $targetDir;
+}
+
+function detect_uploaded_image_mime(string $filePath): string
+{
+    if ($filePath === '' || !is_file($filePath)) {
+        return '';
+    }
+
+    $mime = '';
+    if (function_exists('finfo_open')) {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo !== false) {
+            $detected = finfo_file($finfo, $filePath);
+            if (is_string($detected) && $detected !== '') {
+                $mime = strtolower(trim($detected));
+            }
+            finfo_close($finfo);
+        }
+    }
+
+    if ($mime === '') {
+        $imageInfo = @getimagesize($filePath);
+        $fallbackMime = is_array($imageInfo) ? strtolower((string) ($imageInfo['mime'] ?? '')) : '';
+        if ($fallbackMime !== '') {
+            $mime = $fallbackMime;
+        }
+    }
+
+    return $mime;
+}
+
 function save_uploaded_image(array $config, array $file, string $subDir, string $prefix): string
 {
     $errorCode = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
@@ -717,12 +764,15 @@ function save_uploaded_image(array $config, array $file, string $subDir, string 
     }
 
     $tmpName = (string) ($file['tmp_name'] ?? '');
-    $imageInfo = @getimagesize($tmpName);
-    if ($imageInfo === false) {
+    if ($tmpName === '' || !is_uploaded_file($tmpName)) {
+        throw new RuntimeException(t('upload.failed'));
+    }
+
+    $mime = detect_uploaded_image_mime($tmpName);
+    if ($mime === '') {
         throw new RuntimeException(t('upload.invalid_image'));
     }
 
-    $mime = $imageInfo['mime'] ?? '';
     $allowed = [
         'image/jpeg' => 'jpg',
         'image/png' => 'png',
@@ -733,13 +783,10 @@ function save_uploaded_image(array $config, array $file, string $subDir, string 
         throw new RuntimeException(t('upload.invalid_format'));
     }
 
-    $targetDir = rtrim((string) $config['upload_dir'], '/') . '/' . trim($subDir, '/');
-    if (!is_dir($targetDir)) {
-        mkdir($targetDir, 0775, true);
-    }
+    $targetDir = ensure_upload_target_dir($config, $subDir);
 
     $safePrefix = preg_replace('/[^a-zA-Z0-9_-]+/', '_', $prefix) ?: 'image';
-    $filename = sprintf('%s_%s.%s', $safePrefix, bin2hex(random_bytes(8)), $allowed[$mime]);
+    $filename = sprintf('%s_%s_%s.%s', $safePrefix, date('YmdHis'), bin2hex(random_bytes(6)), $allowed[$mime]);
     $targetPath = $targetDir . '/' . $filename;
 
     if (!move_uploaded_file($tmpName, $targetPath)) {
@@ -760,15 +807,33 @@ function save_uploaded_image_from_data_url(array $config, string $dataUrl, strin
         throw new RuntimeException(t('upload.invalid_image'));
     }
 
-    $mime = strtolower((string) $matches[1]);
+    $claimedMime = strtolower((string) $matches[1]);
     $encoded = (string) $matches[2];
     $binary = base64_decode(str_replace(' ', '+', $encoded), true);
     if ($binary === false || $binary === '') {
         throw new RuntimeException(t('upload.invalid_image'));
     }
 
+    $mime = '';
+    if (function_exists('finfo_open')) {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo !== false) {
+            $detected = finfo_buffer($finfo, $binary);
+            if (is_string($detected) && $detected !== '') {
+                $mime = strtolower(trim($detected));
+            }
+            finfo_close($finfo);
+        }
+    }
+
     $info = @getimagesizefromstring($binary);
     if ($info === false) {
+        throw new RuntimeException(t('upload.invalid_image'));
+    }
+    if ($mime === '') {
+        $mime = strtolower((string) ($info['mime'] ?? ''));
+    }
+    if ($mime === '') {
         throw new RuntimeException(t('upload.invalid_image'));
     }
 
@@ -780,14 +845,14 @@ function save_uploaded_image_from_data_url(array $config, string $dataUrl, strin
     if (!isset($allowed[$mime])) {
         throw new RuntimeException(t('upload.invalid_format'));
     }
-
-    $targetDir = rtrim((string) $config['upload_dir'], '/') . '/' . trim($subDir, '/');
-    if (!is_dir($targetDir)) {
-        mkdir($targetDir, 0775, true);
+    if (!isset($allowed[$claimedMime])) {
+        throw new RuntimeException(t('upload.invalid_format'));
     }
 
+    $targetDir = ensure_upload_target_dir($config, $subDir);
+
     $safePrefix = preg_replace('/[^a-zA-Z0-9_-]+/', '_', $prefix) ?: 'image';
-    $filename = sprintf('%s_%s.%s', $safePrefix, bin2hex(random_bytes(8)), $allowed[$mime]);
+    $filename = sprintf('%s_%s_%s.%s', $safePrefix, date('YmdHis'), bin2hex(random_bytes(6)), $allowed[$mime]);
     $targetPath = $targetDir . '/' . $filename;
     if (file_put_contents($targetPath, $binary) === false) {
         throw new RuntimeException(t('upload.move_failed'));
