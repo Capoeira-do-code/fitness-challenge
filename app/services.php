@@ -697,6 +697,53 @@ function save_photo_entry(PDO $pdo, array $config, int $userId, string $date, st
     );
 }
 
+function delete_photo_entry(PDO $pdo, array $config, int $photoId): ?array
+{
+    if ($photoId <= 0) {
+        return null;
+    }
+
+    $photo = db_fetch_one($pdo, 'SELECT * FROM photo_entries WHERE id = :id', [':id' => $photoId]);
+    if ($photo === null) {
+        return null;
+    }
+
+    $filePath = trim((string) ($photo['file_path'] ?? ''));
+    db_execute($pdo, 'DELETE FROM photo_entries WHERE id = :id', [':id' => $photoId]);
+
+    if ($filePath !== '') {
+        $remaining = db_fetch_one(
+            $pdo,
+            'SELECT COUNT(*) AS total FROM photo_entries WHERE file_path = :file_path',
+            [':file_path' => $filePath]
+        );
+        $remainingCount = (int) ($remaining['total'] ?? 0);
+        if ($remainingCount === 0) {
+            $resolvedPath = resolve_media_storage_path($config, $filePath);
+            if ($resolvedPath !== null && is_file($resolvedPath)) {
+                $deleted = @unlink($resolvedPath);
+                media_debug_log('delete_photo_entry', [
+                    'stored_value' => $filePath,
+                    'helper_input' => $filePath,
+                    'normalized_value' => (string) (normalize_media_reference($filePath)['normalized'] ?? ''),
+                    'final_url' => $resolvedPath,
+                    'reason' => $deleted ? 'file_deleted' : 'unlink_failed',
+                ]);
+            } else {
+                media_debug_log('delete_photo_entry', [
+                    'stored_value' => $filePath,
+                    'helper_input' => $filePath,
+                    'normalized_value' => (string) (normalize_media_reference($filePath)['normalized'] ?? ''),
+                    'final_url' => '',
+                    'reason' => 'resolved_path_missing',
+                ]);
+            }
+        }
+    }
+
+    return $photo;
+}
+
 function upload_error_message(int $errorCode): string
 {
     return match ($errorCode) {

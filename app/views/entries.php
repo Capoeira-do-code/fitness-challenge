@@ -18,6 +18,11 @@ $entryPrimaryGoalsJson = json_encode($entryPrimaryGoals, JSON_UNESCAPED_SLASHES)
 if (!is_string($entryPrimaryGoalsJson)) {
     $entryPrimaryGoalsJson = '[]';
 }
+$calendarSelectedPhotos = [];
+if ($entryMode === 'calendar') {
+    $selectedDayData = is_array($mealCalendar[$selectedDate] ?? null) ? (array) $mealCalendar[$selectedDate] : [];
+    $calendarSelectedPhotos = is_array($selectedDayData['photos'] ?? null) ? array_values((array) $selectedDayData['photos']) : [];
+}
 ?>
 <section class="screen stack-lg">
     <div class="hero-panel">
@@ -216,6 +221,14 @@ if (!is_string($entryPrimaryGoalsJson)) {
                             <?php if (!empty($photo['caption'])): ?>
                                 <span><?= e((string) $photo['caption']) ?></span>
                             <?php endif; ?>
+                            <form method="post" action="/?page=entries" class="inline-actions-mini" onsubmit="return window.confirm('<?= e(t('entries.delete_photo_confirm')) ?>');">
+                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="delete_photo">
+                                <input type="hidden" name="photo_id" value="<?= (int) ($photo['id'] ?? 0) ?>">
+                                <input type="hidden" name="redirect_mode" value="meal">
+                                <input type="hidden" name="redirect_date" value="<?= e((string) $selectedDate) ?>">
+                                <button class="btn small btn-ghost" type="submit"><?= e(t('common.delete')) ?></button>
+                            </form>
                         </figcaption>
                     </figure>
                 <?php endforeach; ?>
@@ -277,6 +290,48 @@ if (!is_string($entryPrimaryGoalsJson)) {
                     </a>
                 <?php endforeach; ?>
             </div>
+        </article>
+
+        <article class="panel">
+            <div class="panel-head">
+                <div>
+                    <p class="eyebrow"><?= e(t('common.date')) ?> · <?= e(format_date_eu((string) $selectedDate)) ?></p>
+                    <h2><?= e(t('entries.recent_photos')) ?></h2>
+                </div>
+            </div>
+            <?php if ($calendarSelectedPhotos === []): ?>
+                <p class="muted"><?= e(t('entries.no_photos')) ?></p>
+            <?php else: ?>
+                <div class="photo-grid">
+                    <?php foreach ($calendarSelectedPhotos as $photo): ?>
+                        <?php $calendarPhotoCategory = (string) ($photo['category'] ?? 'other'); ?>
+                        <?php $calendarPhotoUrl = media_url((string) ($photo['file_path'] ?? '')); ?>
+                        <figure>
+                            <?php if ($calendarPhotoUrl !== ''): ?>
+                                <img src="<?= e($calendarPhotoUrl) ?>" alt="<?= e(t('common.photo')) ?>">
+                            <?php else: ?>
+                                <div class="entries-calendar-empty">Sin foto</div>
+                            <?php endif; ?>
+                            <figcaption>
+                                <strong><?= e((string) ($photo['display_name'] ?? '')) ?></strong>
+                                <span><?= e(format_date_eu((string) ($photo['log_date'] ?? $selectedDate))) ?> · <?= e($categoryLabels[$calendarPhotoCategory] ?? $calendarPhotoCategory) ?></span>
+                                <?php if (!empty($photo['caption'])): ?>
+                                    <span><?= e((string) $photo['caption']) ?></span>
+                                <?php endif; ?>
+                                <form method="post" action="/?page=entries" class="inline-actions-mini" onsubmit="return window.confirm('<?= e(t('entries.delete_photo_confirm')) ?>');">
+                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                    <input type="hidden" name="action" value="delete_photo">
+                                    <input type="hidden" name="photo_id" value="<?= (int) ($photo['id'] ?? 0) ?>">
+                                    <input type="hidden" name="redirect_mode" value="calendar">
+                                    <input type="hidden" name="redirect_date" value="<?= e((string) $selectedDate) ?>">
+                                    <input type="hidden" name="redirect_calendar_view" value="<?= e((string) $calendarView) ?>">
+                                    <button class="btn small btn-ghost" type="submit"><?= e(t('common.delete')) ?></button>
+                                </form>
+                            </figcaption>
+                        </figure>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         </article>
     <?php endif; ?>
 </section>

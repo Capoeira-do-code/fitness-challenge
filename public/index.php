@@ -396,6 +396,59 @@ if ($page === 'entries') {
 
             redirect('/?page=entries&mode=' . rawurlencode($entryMode) . '&date=' . $date);
         }
+
+        if ($action === 'delete_photo') {
+            $photoId = (int) ($_POST['photo_id'] ?? 0);
+            $redirectMode = (string) ($_POST['redirect_mode'] ?? $entryMode);
+            if (!in_array($redirectMode, ['meal', 'calendar'], true)) {
+                $redirectMode = 'meal';
+            }
+            $redirectDate = to_date((string) ($_POST['redirect_date'] ?? null));
+            $redirectCalendarView = (string) ($_POST['redirect_calendar_view'] ?? 'month');
+            if (!in_array($redirectCalendarView, ['month', 'week', 'day'], true)) {
+                $redirectCalendarView = 'month';
+            }
+
+            try {
+                if ($photoId <= 0) {
+                    throw new RuntimeException(t('flash.not_found'));
+                }
+
+                $photo = db_fetch_one($pdo, 'SELECT * FROM photo_entries WHERE id = :id', [':id' => $photoId]);
+                if ($photo === null) {
+                    throw new RuntimeException(t('flash.not_found'));
+                }
+
+                if (!is_admin($currentUser) && (int) ($photo['user_id'] ?? 0) !== (int) $currentUser['id']) {
+                    throw new RuntimeException(t('flash.no_permission'));
+                }
+
+                $deletedPhoto = delete_photo_entry($pdo, $config, $photoId);
+                if ($deletedPhoto === null) {
+                    throw new RuntimeException(t('flash.not_found'));
+                }
+
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'photo_deleted',
+                    'photo_entry',
+                    (string) $photoId,
+                    'Proof photo deleted.',
+                    audit_snapshot($photo),
+                    null
+                );
+                flash_set('success', t('flash.photo_deleted'));
+            } catch (Throwable $e) {
+                flash_set('error', t('flash.photo_delete_failed', ['error' => $e->getMessage()]));
+            }
+
+            $redirectUrl = '/?page=entries&mode=' . rawurlencode($redirectMode) . '&date=' . rawurlencode($redirectDate);
+            if ($redirectMode === 'calendar') {
+                $redirectUrl .= '&calendar_view=' . rawurlencode($redirectCalendarView);
+            }
+            redirect($redirectUrl);
+        }
     }
 
     $users = [$currentUser];
