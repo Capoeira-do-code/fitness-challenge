@@ -1417,6 +1417,7 @@ textarea {
     color: var(--muted);
     font-size: 0.78rem;
     font-weight: 800;
+    text-decoration: none;
 }
 
 .badge.badge-warn {
@@ -1443,6 +1444,18 @@ textarea {
     font-weight: 800;
     background: #fff;
     color: #334155;
+    text-decoration: none;
+}
+
+.penalty-link-inline {
+    color: inherit;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.penalty-link-inline:hover,
+.penalty-link-inline:focus-visible {
+    text-decoration: underline;
 }
 
 .penalty-chip-good {

@@ -7,7 +7,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 $page = $_GET['page'] ?? null;
 if ($page === null) {
     $pathPage = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/');
-    if (in_array($pathPage, ['dashboard', 'entries', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'login'], true)) {
+    if (in_array($pathPage, ['dashboard', 'entries', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'login'], true)) {
         $page = $pathPage;
     }
 }
@@ -480,16 +480,8 @@ if ($page === 'entries') {
     $recentPhotos = fetch_recent_photos($pdo, 20, $selectedUserId);
     $workoutTypes = list_workout_types($pdo, true);
     $mealCalendar = [];
-    $loggedDays = [];
     if ($entryMode === 'calendar') {
         $mealCalendar = fetch_meal_calendar($pdo, $selectedDate, $selectedUserId, $calendarView);
-        $calendarKeys = array_keys($mealCalendar);
-        $calendarStart = $calendarKeys[0] ?? $selectedDate;
-        $calendarEnd = $calendarKeys !== [] ? $calendarKeys[count($calendarKeys) - 1] : $selectedDate;
-        $monthLogs = fetch_logs_for_user_between($pdo, $selectedUserId, $calendarStart, $calendarEnd);
-        foreach ($monthLogs as $monthLog) {
-            $loggedDays[(string) $monthLog['log_date']] = true;
-        }
     }
 
     render_view('entries', [
@@ -503,7 +495,6 @@ if ($page === 'entries') {
         'currentLog' => $currentLog,
         'recentPhotos' => $recentPhotos,
         'mealCalendar' => $mealCalendar,
-        'loggedDays' => $loggedDays,
         'calendarView' => $calendarView,
         'workoutTypes' => $workoutTypes,
         'habits' => list_habit_definitions($pdo, true),
@@ -735,7 +726,7 @@ if ($page === 'settings') {
             $layoutJson = (string) ($before['dashboard_layout_json'] ?? '[]');
             $hasWidgetPayload = array_key_exists('dashboard_widgets', $_POST) || array_key_exists('dashboard_order', $_POST);
             if ($hasWidgetPayload) {
-                $allowedWidgets = ['kpis', 'distance_walked', 'money', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories'];
+                $allowedWidgets = ['kpis', 'distance_walked', 'money', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories'];
                 $selectedWidgets = array_values(array_intersect(array_map('strval', (array) ($_POST['dashboard_widgets'] ?? [])), $allowedWidgets));
                 $selectedWidgets = array_values(array_unique(array_map(
                     static fn(string $widget): string => $widget === 'money' ? 'distance_walked' : $widget,
@@ -2262,6 +2253,10 @@ if ($page === 'metric') {
     }
 
     $weeklyRows = array_values((array) ($selectedMetric['weekly'] ?? []));
+    usort(
+        $weeklyRows,
+        static fn(array $left, array $right): int => strcmp((string) ($left['week_start'] ?? ''), (string) ($right['week_start'] ?? ''))
+    );
     $weekOptionsMap = [];
     foreach ($weeklyRows as $weekRow) {
         $weekStart = (string) ($weekRow['week_start'] ?? '');
@@ -2276,20 +2271,19 @@ if ($page === 'metric') {
     if (!in_array($dashboardView, ['current_week', 'total'], true)) {
         $dashboardView = to_date($dashboardView, $defaultWeekStart);
     }
-    $selectedWeekStart = $dashboardView === 'current_week' ? $defaultWeekStart : ($dashboardView === 'total' ? $defaultWeekStart : to_date($dashboardView, $defaultWeekStart));
-    if (!in_array($selectedWeekStart, $weekOptions, true) && $weekOptions !== []) {
-        $selectedWeekStart = $defaultWeekStart;
+    $selectedWeekStart = $defaultWeekStart;
+    if ($dashboardView !== 'total') {
+        $selectedWeekStart = $dashboardView === 'current_week'
+            ? $defaultWeekStart
+            : to_date($dashboardView, $defaultWeekStart);
+        if (!in_array($selectedWeekStart, $weekOptions, true) && $weekOptions !== []) {
+            $selectedWeekStart = $defaultWeekStart;
+        }
     }
 
     $selectedWeeklyRows = [];
     if ($dashboardView === 'total') {
         $selectedWeeklyRows = $weeklyRows;
-    } elseif ($dashboardView === 'current_week') {
-        foreach ($weeklyRows as $weekRow) {
-            if ((string) ($weekRow['week_start'] ?? '') === $selectedWeekStart) {
-                $selectedWeeklyRows[] = $weekRow;
-            }
-        }
     } else {
         foreach ($weeklyRows as $weekRow) {
             if ((string) ($weekRow['week_start'] ?? '') === $selectedWeekStart) {
@@ -2300,8 +2294,6 @@ if ($page === 'metric') {
     if ($selectedWeeklyRows === [] && $weeklyRows !== []) {
         $selectedWeeklyRows = [$weeklyRows[count($weeklyRows) - 1]];
     }
-    $selectedWeekRow = $selectedWeeklyRows !== [] ? $selectedWeeklyRows[count($selectedWeeklyRows) - 1] : null;
-
     $seriesLabels = [];
     $seriesValues = [];
     $currentValue = 0;
@@ -2329,6 +2321,12 @@ if ($page === 'metric') {
 
         return (int) ($row['workouts'] ?? 0);
     };
+    $strikes_net_for_week = static function (array $row): int {
+        $totalFailures = (int) ($row['total_failures'] ?? ((int) ($row['step_failures'] ?? 0) + (int) ($row['workout_failures'] ?? 0)));
+        $strikeReduction = (int) ($row['strike_reduction'] ?? 0);
+
+        return $totalFailures - $strikeReduction;
+    };
 
     if ($metricKey === 'steps') {
         $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['week_start'] ?? '')), $selectedWeeklyRows);
@@ -2346,30 +2344,27 @@ if ($page === 'metric') {
     if ($metricKey === 'workouts') {
         $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['week_start'] ?? '')), $selectedWeeklyRows);
         $seriesValues = array_map($workout_success_for_week, $selectedWeeklyRows);
-        $currentValue = $dashboardView === 'total'
-            ? array_sum($seriesValues)
-            : (int) ($selectedWeekRow !== null ? $workout_success_for_week($selectedWeekRow) : 0);
+        $currentValue = array_sum($seriesValues);
     }
 
     if ($metricKey === 'money') {
         $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['week_start'] ?? '')), $selectedWeeklyRows);
         $seriesValues = array_map(static fn(array $row): int => (int) ($row['penalty'] ?? 0), $selectedWeeklyRows);
-        $currentValue = $dashboardView === 'total'
-            ? (float) array_sum($seriesValues)
-            : (float) ($selectedWeekRow['penalty'] ?? 0);
+        $currentValue = (float) array_sum($seriesValues);
         $currentValueSuffix = ' €';
     }
 
     if ($metricKey === 'strikes') {
         $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['week_start'] ?? '')), $selectedWeeklyRows);
-        $seriesValues = array_map(static fn(array $row): int => (int) ($row['strikes_after_week'] ?? 0), $selectedWeeklyRows);
-        $currentValue = (int) ($selectedWeekRow['strikes_after_week'] ?? ($selectedMetric['current_strikes'] ?? 0));
+        $seriesValues = array_map($strikes_net_for_week, $selectedWeeklyRows);
+        $currentValue = array_sum($seriesValues);
     }
 
     if ($metricKey === 'score') {
         $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['week_start'] ?? '')), $selectedWeeklyRows);
         $seriesValues = array_map($score_for_week, $selectedWeeklyRows);
-        $currentValue = (float) ($dashboardView === 'total' ? ($selectedMetric['score'] ?? 0) : ($seriesValues !== [] ? $seriesValues[count($seriesValues) - 1] : 0));
+        $seriesCount = count($seriesValues);
+        $currentValue = $seriesCount > 0 ? round(array_sum($seriesValues) / $seriesCount, 1) : 0;
     }
 
     $backUrl = '/?' . http_build_query([
@@ -2394,6 +2389,152 @@ if ($page === 'metric') {
         'dashboardView' => $dashboardView,
         'weekOptions' => $weekOptions,
         'selectedWeekStart' => $selectedWeekStart,
+        'backUrl' => $backUrl,
+        'config' => $config,
+    ]);
+}
+
+if ($page === 'penalties') {
+    $settings = challenge_settings($pdo, $config);
+    if (!challenge_is_active($settings)) {
+        flash_set('error', t('flash.challenge_inactive'));
+        redirect('/?page=admin');
+    }
+
+    $team = default_team($pdo);
+    $users = list_active_team_users($pdo, (int) $team['id']);
+    if ($users === []) {
+        $users = list_active_users($pdo);
+    }
+
+    $metricsByUser = compute_challenge_metrics(
+        $pdo,
+        $users,
+        (string) $settings['challenge_start'],
+        (string) $settings['challenge_end']
+    );
+
+    $metricsById = [];
+    foreach ($metricsByUser as $userId => $metric) {
+        $metricsById[(int) $userId] = $metric;
+    }
+
+    $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
+    if (!is_admin($currentUser) && $selectedUserId !== (int) $currentUser['id']) {
+        $selectedUserId = (int) $currentUser['id'];
+    }
+
+    $selectedMetric = $metricsById[$selectedUserId] ?? null;
+    if ($selectedMetric === null) {
+        $selectedMetric = count($metricsByUser) > 0 ? array_values($metricsByUser)[0] : null;
+    }
+    if ($selectedMetric === null) {
+        flash_set('error', t('flash.no_active_users'));
+        redirect('/?page=dashboard');
+    }
+
+    $weeklyRows = array_values((array) ($selectedMetric['weekly'] ?? []));
+    usort(
+        $weeklyRows,
+        static fn(array $left, array $right): int => strcmp((string) ($left['week_start'] ?? ''), (string) ($right['week_start'] ?? ''))
+    );
+    $weekOptionsMap = [];
+    foreach ($weeklyRows as $weekRow) {
+        $weekStart = (string) ($weekRow['week_start'] ?? '');
+        if ($weekStart !== '') {
+            $weekOptionsMap[$weekStart] = true;
+        }
+    }
+    $weekOptions = array_keys($weekOptionsMap);
+    sort($weekOptions);
+    $defaultWeekStart = $weekOptions !== [] ? $weekOptions[count($weekOptions) - 1] : to_date(null);
+
+    $dashboardView = (string) ($_GET['view'] ?? ($currentUser['dashboard_view'] ?? 'current_week'));
+    if (!in_array($dashboardView, ['current_week', 'total'], true)) {
+        $dashboardView = to_date($dashboardView, $defaultWeekStart);
+    }
+
+    $selectedWeekStart = $defaultWeekStart;
+    if ($dashboardView !== 'total') {
+        $selectedWeekStart = $dashboardView === 'current_week'
+            ? $defaultWeekStart
+            : to_date($dashboardView, $defaultWeekStart);
+        if (!in_array($selectedWeekStart, $weekOptions, true) && $weekOptions !== []) {
+            $selectedWeekStart = $defaultWeekStart;
+        }
+    }
+
+    $selectedWeeklyRows = [];
+    if ($dashboardView === 'total') {
+        $selectedWeeklyRows = $weeklyRows;
+    } else {
+        foreach ($weeklyRows as $weekRow) {
+            if ((string) ($weekRow['week_start'] ?? '') === $selectedWeekStart) {
+                $selectedWeeklyRows[] = $weekRow;
+            }
+        }
+    }
+    if ($selectedWeeklyRows === [] && $weeklyRows !== []) {
+        $selectedWeeklyRows = [$weeklyRows[count($weeklyRows) - 1]];
+    }
+
+    $penaltyRows = [];
+    $rangeSummary = [
+        'penalty_total' => 0,
+        'step_failures' => 0,
+        'workout_failures' => 0,
+        'warnings' => 0,
+        'strike_reduction' => 0,
+        'total_failures' => 0,
+        'net_strikes' => 0,
+    ];
+    foreach ($selectedWeeklyRows as $weekRow) {
+        $stepFailures = (int) ($weekRow['step_failures'] ?? 0);
+        $workoutFailures = (int) ($weekRow['workout_failures'] ?? 0);
+        $totalFailures = (int) ($weekRow['total_failures'] ?? ($stepFailures + $workoutFailures));
+        $strikeReduction = (int) ($weekRow['strike_reduction'] ?? 0);
+        $warnings = (int) ($weekRow['skip_warnings'] ?? 0);
+        $penalty = (int) ($weekRow['penalty'] ?? 0);
+        $netStrikes = $totalFailures - $strikeReduction;
+        $rangeSummary['penalty_total'] += $penalty;
+        $rangeSummary['step_failures'] += $stepFailures;
+        $rangeSummary['workout_failures'] += $workoutFailures;
+        $rangeSummary['warnings'] += $warnings;
+        $rangeSummary['strike_reduction'] += $strikeReduction;
+        $rangeSummary['total_failures'] += $totalFailures;
+        $rangeSummary['net_strikes'] += $netStrikes;
+        $penaltyRows[] = [
+            'week_start' => (string) ($weekRow['week_start'] ?? ''),
+            'week_end' => (string) ($weekRow['week_end'] ?? ''),
+            'status' => (string) ($weekRow['status'] ?? ''),
+            'penalty' => $penalty,
+            'step_failures' => $stepFailures,
+            'workout_failures' => $workoutFailures,
+            'warnings' => $warnings,
+            'strike_reduction' => $strikeReduction,
+            'total_failures' => $totalFailures,
+            'net_strikes' => $netStrikes,
+            'strikes_after_week' => (int) ($weekRow['strikes_after_week'] ?? 0),
+        ];
+    }
+
+    $backUrl = '/?' . http_build_query([
+        'page' => 'dashboard',
+        'user_id' => (int) ($selectedMetric['user']['id'] ?? 0),
+        'view' => $dashboardView,
+    ]);
+
+    render_view('penalties', [
+        'title' => t('penalties.title'),
+        'currentPage' => 'dashboard',
+        'currentUser' => $currentUser,
+        'users' => $users,
+        'selectedMetric' => $selectedMetric,
+        'dashboardView' => $dashboardView,
+        'weekOptions' => $weekOptions,
+        'selectedWeekStart' => $selectedWeekStart,
+        'penaltyRows' => $penaltyRows,
+        'penaltiesSummary' => $rangeSummary,
         'backUrl' => $backUrl,
         'config' => $config,
     ]);
@@ -2443,7 +2584,7 @@ if ($page === 'dashboard') {
         }
 
         if ($action === 'save_dashboard_layout' || $action === 'save_dashboard_prefs') {
-            $allowedWidgets = ['kpis', 'distance_walked', 'money', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories'];
+            $allowedWidgets = ['kpis', 'distance_walked', 'money', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories'];
             $widgets = array_values(array_intersect(array_map('strval', (array) ($_POST['dashboard_widgets'] ?? [])), $allowedWidgets));
             $widgets = array_values(array_unique(array_map(
                 static fn(string $widget): string => $widget === 'money' ? 'distance_walked' : $widget,
@@ -2530,8 +2671,6 @@ if ($page === 'dashboard') {
 
     $settlementSummary = weekly_settlement_summary(array_values($metricsByUser), $selectedWeekStart);
     $pendingApprovals = fetch_pending_approvals($pdo, $currentUser, null, 80);
-    $stepsRange = 'all';
-
     $distanceByDate = [];
     $distanceLogs = fetch_logs_for_user_between(
         $pdo,
@@ -2588,14 +2727,6 @@ if ($page === 'dashboard') {
 
     $dashboardMealDate = to_date($_GET['meal_date'] ?? $selectedWeekStart);
     $dashboardMealCalendar = fetch_meal_calendar($pdo, $dashboardMealDate, (int) $selectedMetric['user']['id'], 'week');
-    $dashboardMealLoggedDays = [];
-    $dashboardMealKeys = array_keys($dashboardMealCalendar);
-    $dashboardMealStart = $dashboardMealKeys[0] ?? $dashboardMealDate;
-    $dashboardMealEnd = $dashboardMealKeys !== [] ? $dashboardMealKeys[count($dashboardMealKeys) - 1] : $dashboardMealDate;
-    $dashboardMealLogs = fetch_logs_for_user_between($pdo, (int) $selectedMetric['user']['id'], $dashboardMealStart, $dashboardMealEnd);
-    foreach ($dashboardMealLogs as $mealLog) {
-        $dashboardMealLoggedDays[(string) $mealLog['log_date']] = true;
-    }
     if ($dashboardView !== (string) ($currentUser['dashboard_view'] ?? 'current_week')) {
         db_execute($pdo, 'UPDATE users SET dashboard_view = :view, updated_at = :updated_at WHERE id = :id', [':view' => $dashboardView, ':updated_at' => now_iso(), ':id' => (int) $currentUser['id']]);
         $currentUser['dashboard_view'] = $dashboardView;
@@ -2611,14 +2742,12 @@ if ($page === 'dashboard') {
         'metricsOrdered' => array_values($metricsByUser),
         'selectedWeekStart' => $selectedWeekStart,
         'dashboardView' => $dashboardView,
-        'stepsRange' => $stepsRange,
         'weekOptions' => $weekOptions,
         'settlementSummary' => $settlementSummary,
         'pendingApprovals' => $pendingApprovals,
         'dashboardDistanceByDate' => $distanceByDate,
         'dashboardMealDate' => $dashboardMealDate,
         'dashboardMealCalendar' => $dashboardMealCalendar,
-        'dashboardMealLoggedDays' => $dashboardMealLoggedDays,
         'dashboardCalorieStats' => $dashboardCalorieStats,
         'dashboardCalorieRangeStart' => $calorieStartDate,
         'dashboardCalorieRangeEnd' => $calorieEndDate,

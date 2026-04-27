@@ -363,8 +363,8 @@ $canDeletePhoto = static function (array $photo, array $viewer): bool {
             <div class="meal-calendar<?= $calendarView === 'month' ? ' meal-calendar-month' : '' ?> entries-calendar">
                 <?php foreach (($mealCalendar ?? []) as $dateKey => $day): ?>
                     <?php
-                    $hasLog = !empty($loggedDays[$dateKey]);
                     $photoCount = (int) ($day['count'] ?? 0);
+                    $hasLog = $photoCount > 0;
                     $preview = $day['preview'] ?? null;
                     $previewUrl = is_array($preview) ? media_url((string) ($preview['file_path'] ?? '')) : '';
                     $previewPhotoId = (int) (($preview['id'] ?? 0));
@@ -403,7 +403,6 @@ $canDeletePhoto = static function (array $photo, array $viewer): bool {
                         $photoId = (int) ($photo['id'] ?? 0);
                         $calendarPhotoCategory = (string) ($photo['category'] ?? 'other');
                         $calendarPhotoUrl = media_url((string) ($photo['file_path'] ?? ''));
-                        $photoDeleteFormId = 'photo-delete-form-calendar-' . $photoId;
                         $nutritionLine = $nutritionSummary($photo);
                         ?>
                         <figure class="photo-card">
@@ -414,24 +413,6 @@ $canDeletePhoto = static function (array $photo, array $viewer): bool {
                                     <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
                                 <?php endif; ?>
                             </a>
-                            <?php if ($canDeletePhoto($photo, $currentUser)): ?>
-                                <button
-                                    type="button"
-                                    class="photo-delete-btn"
-                                    data-photo-delete-trigger
-                                    data-photo-delete-form="<?= e($photoDeleteFormId) ?>"
-                                    data-photo-delete-message="<?= e(t('entries.delete_photo_confirm')) ?>"
-                                    aria-label="<?= e(t('common.delete')) ?>"
-                                >×</button>
-                                <form id="<?= e($photoDeleteFormId) ?>" method="post" action="/?page=entries" hidden>
-                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                    <input type="hidden" name="action" value="delete_photo">
-                                    <input type="hidden" name="photo_id" value="<?= $photoId ?>">
-                                    <input type="hidden" name="redirect_mode" value="calendar">
-                                    <input type="hidden" name="redirect_date" value="<?= e((string) $selectedDate) ?>">
-                                    <input type="hidden" name="redirect_calendar_view" value="<?= e((string) $calendarView) ?>">
-                                </form>
-                            <?php endif; ?>
                             <figcaption>
                                 <strong><?= e((string) ($photo['display_name'] ?? '')) ?></strong>
                                 <span><?= e(format_date_eu((string) ($photo['log_date'] ?? $selectedDate))) ?> · <?= e($categoryLabels[$calendarPhotoCategory] ?? $calendarPhotoCategory) ?></span>
