@@ -1534,17 +1534,14 @@ textarea {
 }
 
 .dashboard-calories {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    height: 100%;
+    height: auto;
 }
 
 .calories-overview {
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    height: 100%;
+    justify-content: flex-start;
+    height: auto;
     gap: 0.45rem;
     margin-bottom: 0.55rem;
 }
@@ -1572,6 +1569,11 @@ textarea {
     margin: 0;
     font-size: 0.95rem;
     line-height: 1.2;
+}
+
+.dashboard-calories #calorieChart {
+    height: 175px !important;
+    max-height: 175px;
 }
 
 .meal-calendar {
@@ -2694,6 +2696,11 @@ textarea {
     .chart-card canvas {
         height: 260px !important;
         max-height: 260px;
+    }
+
+    .dashboard-calories #calorieChart {
+        height: 205px !important;
+        max-height: 205px;
     }
 
     .meal-calendar {
