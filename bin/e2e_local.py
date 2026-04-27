@@ -522,7 +522,7 @@ def ensure_php_dependency(auto_install_deps: bool) -> Optional[str]:
 def serve_basic_ui(base_url: str, *, auto_install_deps: bool) -> int:
     host, port, scheme = parse_base_url(base_url)
     if scheme != "http":
-        raise RunnerError("El modo basic solo soporta HTTP (ejemplo: http://127.0.0.1:8080).")
+        raise RunnerError("El modo basic solo soporta HTTP (ejemplo: http://0.0.0.0:8080).")
 
     php_bin = ensure_php_dependency(auto_install_deps)
     if php_bin is None:
@@ -651,7 +651,7 @@ def main() -> int:
     parser.add_argument(
         "--base-url",
         default="",
-        help="URL base de la app. Default: full=https://127.0.0.1:8443, basic=http://127.0.0.1:8080",
+        help="URL base de la app. Default: full=https://127.0.0.1:8443, basic=http://0.0.0.0:8080",
     )
     parser.add_argument(
         "--hold",
@@ -685,7 +685,7 @@ def main() -> int:
 
         base_url = args.base_url.strip()
         if base_url == "":
-            base_url = "https://127.0.0.1:8443" if run_mode == "full" else "http://127.0.0.1:8080"
+            base_url = "https://127.0.0.1:8443" if run_mode == "full" else "http://0.0.0.0:8080"
 
         print(f"[mode] {run_mode}")
         print(f"[url] {base_url}")
