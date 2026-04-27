@@ -42,6 +42,7 @@ function initialize_database(PDO $pdo, array $config): void
             workout_days_mask TEXT NOT NULL DEFAULT "0000000",
             workout_strict INTEGER NOT NULL DEFAULT 0,
             ideal_weight REAL,
+            maintenance_calories REAL,
             motivation_quote TEXT DEFAULT "",
             locale TEXT NOT NULL DEFAULT "en",
             avatar_path TEXT,
@@ -69,6 +70,7 @@ function initialize_database(PDO $pdo, array $config): void
             junk_food INTEGER NOT NULL DEFAULT 0,
             extra_workout INTEGER NOT NULL DEFAULT 0,
             distance_km REAL,
+            training_calories_burned REAL,
             weight REAL,
             notes TEXT,
             step_exception_reason TEXT,
@@ -114,7 +116,27 @@ function initialize_database(PDO $pdo, array $config): void
             category TEXT NOT NULL,
             caption TEXT,
             file_path TEXT NOT NULL,
+            calories REAL,
+            protein_g REAL,
+            carbs_g REAL,
+            fat_g REAL,
+            fiber_g REAL,
+            sugar_g REAL,
+            sodium_mg REAL,
             created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS photo_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            photo_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            comment TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (photo_id) REFERENCES photo_entries(id) ON DELETE CASCADE,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )'
     );
@@ -449,10 +471,20 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'dashboard_view', 'TEXT NOT NULL DEFAULT "current_week"');
     ensure_column($pdo, 'users', 'dashboard_layout_json', 'TEXT');
     ensure_column($pdo, 'users', 'meal_calendar_view', 'TEXT NOT NULL DEFAULT "week"');
+    ensure_column($pdo, 'users', 'maintenance_calories', 'REAL');
 
     ensure_column($pdo, 'daily_logs', 'extra_workout', 'INTEGER NOT NULL DEFAULT 0');
     ensure_column($pdo, 'daily_logs', 'distance_km', 'REAL');
     ensure_column($pdo, 'daily_logs', 'workout_type_id', 'INTEGER');
+    ensure_column($pdo, 'daily_logs', 'training_calories_burned', 'REAL');
+
+    ensure_column($pdo, 'photo_entries', 'calories', 'REAL');
+    ensure_column($pdo, 'photo_entries', 'protein_g', 'REAL');
+    ensure_column($pdo, 'photo_entries', 'carbs_g', 'REAL');
+    ensure_column($pdo, 'photo_entries', 'fat_g', 'REAL');
+    ensure_column($pdo, 'photo_entries', 'fiber_g', 'REAL');
+    ensure_column($pdo, 'photo_entries', 'sugar_g', 'REAL');
+    ensure_column($pdo, 'photo_entries', 'sodium_mg', 'REAL');
 
     ensure_column($pdo, 'teams', 'join_mode', 'TEXT NOT NULL DEFAULT "closed"');
     ensure_column($pdo, 'teams', 'visibility', 'TEXT NOT NULL DEFAULT "visible"');
@@ -494,6 +526,9 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_approval_status ON approval_requests(status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_approval_user ON approval_requests(user_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_logs_date ON daily_logs(log_date)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_entries_user_date ON photo_entries(user_id, log_date)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_comments_photo_created ON photo_comments(photo_id, created_at)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_comments_user ON photo_comments(user_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_team_memberships_team ON team_memberships(team_id, active)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_team_memberships_user ON team_memberships(user_id, active)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_goals_scope ON goals(scope, status)');

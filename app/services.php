@@ -49,12 +49,12 @@ function upsert_daily_log(PDO $pdo, array $payload): void
             $pdo,
             'INSERT INTO daily_logs (
                 user_id, log_date, steps, workout_done, workout_type_id, workout_type,
-                junk_food, extra_workout, distance_km, weight, notes, step_exception_reason,
+                junk_food, extra_workout, distance_km, training_calories_burned, weight, notes, step_exception_reason,
                 workout_exception_reason, morning_walk, journaling,
                 evening_chores, reading, created_at, updated_at
             ) VALUES (
                 :user_id, :log_date, :steps, :workout_done, :workout_type_id, :workout_type,
-                :junk_food, :extra_workout, :distance_km, :weight, :notes, :step_exception_reason,
+                :junk_food, :extra_workout, :distance_km, :training_calories_burned, :weight, :notes, :step_exception_reason,
                 :workout_exception_reason, :morning_walk, :journaling,
                 :evening_chores, :reading, :created_at, :updated_at
             )',
@@ -68,6 +68,7 @@ function upsert_daily_log(PDO $pdo, array $payload): void
                 ':junk_food' => $payload['junk_food'],
                 ':extra_workout' => $payload['extra_workout'],
                 ':distance_km' => $payload['distance_km'] ?? null,
+                ':training_calories_burned' => $payload['training_calories_burned'] ?? null,
                 ':weight' => $payload['weight'],
                 ':notes' => $payload['notes'],
                 ':step_exception_reason' => $payload['step_exception_reason'],
@@ -94,6 +95,7 @@ function upsert_daily_log(PDO $pdo, array $payload): void
              junk_food = :junk_food,
              extra_workout = :extra_workout,
              distance_km = :distance_km,
+             training_calories_burned = :training_calories_burned,
              weight = :weight,
              notes = :notes,
              step_exception_reason = :step_exception_reason,
@@ -112,6 +114,7 @@ function upsert_daily_log(PDO $pdo, array $payload): void
             ':junk_food' => $payload['junk_food'],
             ':extra_workout' => $payload['extra_workout'],
             ':distance_km' => $payload['distance_km'] ?? null,
+            ':training_calories_burned' => $payload['training_calories_burned'] ?? null,
             ':weight' => $payload['weight'],
             ':notes' => $payload['notes'],
             ':step_exception_reason' => $payload['step_exception_reason'],
@@ -666,7 +669,41 @@ function fetch_meal_calendar(PDO $pdo, string $startDate, ?int $userId = null, s
     return $calendar;
 }
 
-function save_photo_entry(PDO $pdo, array $config, int $userId, string $date, string $category, string $caption, array $file): void
+function normalize_nullable_float_input(mixed $value, ?float $min = null): ?float
+{
+    if ($value === null) {
+        return null;
+    }
+
+    if (is_string($value)) {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+    }
+
+    if (!is_numeric($value)) {
+        return null;
+    }
+
+    $normalized = (float) $value;
+    if ($min !== null && $normalized < $min) {
+        $normalized = $min;
+    }
+
+    return $normalized;
+}
+
+function save_photo_entry(
+    PDO $pdo,
+    array $config,
+    int $userId,
+    string $date,
+    string $category,
+    string $caption,
+    array $file,
+    array $nutrition = []
+): void
 {
     $normalizedCategory = strtolower(trim($category));
     if ($normalizedCategory === 'meal') {
@@ -684,14 +721,26 @@ function save_photo_entry(PDO $pdo, array $config, int $userId, string $date, st
 
     db_execute(
         $pdo,
-        'INSERT INTO photo_entries (user_id, log_date, category, caption, file_path, created_at)
-         VALUES (:user_id, :log_date, :category, :caption, :file_path, :created_at)',
+        'INSERT INTO photo_entries (
+            user_id, log_date, category, caption, file_path,
+            calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, created_at
+        ) VALUES (
+            :user_id, :log_date, :category, :caption, :file_path,
+            :calories, :protein_g, :carbs_g, :fat_g, :fiber_g, :sugar_g, :sodium_mg, :created_at
+        )',
         [
             ':user_id' => $userId,
             ':log_date' => $date,
             ':category' => $normalizedCategory,
             ':caption' => $caption,
             ':file_path' => $storedPath,
+            ':calories' => normalize_nullable_float_input($nutrition['calories'] ?? null, 0),
+            ':protein_g' => normalize_nullable_float_input($nutrition['protein_g'] ?? null, 0),
+            ':carbs_g' => normalize_nullable_float_input($nutrition['carbs_g'] ?? null, 0),
+            ':fat_g' => normalize_nullable_float_input($nutrition['fat_g'] ?? null, 0),
+            ':fiber_g' => normalize_nullable_float_input($nutrition['fiber_g'] ?? null, 0),
+            ':sugar_g' => normalize_nullable_float_input($nutrition['sugar_g'] ?? null, 0),
+            ':sodium_mg' => normalize_nullable_float_input($nutrition['sodium_mg'] ?? null, 0),
             ':created_at' => now_iso(),
         ]
     );
@@ -742,6 +791,201 @@ function delete_photo_entry(PDO $pdo, array $config, int $photoId): ?array
     }
 
     return $photo;
+}
+
+function fetch_photo_by_id(PDO $pdo, int $photoId): ?array
+{
+    if ($photoId <= 0) {
+        return null;
+    }
+
+    return db_fetch_one(
+        $pdo,
+        'SELECT p.*, u.display_name, u.username, u.avatar_path, u.updated_at AS user_updated_at
+         FROM photo_entries p
+         JOIN users u ON u.id = p.user_id
+         WHERE p.id = :id
+         LIMIT 1',
+        [':id' => $photoId]
+    );
+}
+
+function fetch_photo_comments(PDO $pdo, int $photoId, int $limit = 250): array
+{
+    if ($photoId <= 0) {
+        return [];
+    }
+
+    $safeLimit = max(1, min(500, $limit));
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT c.*, u.display_name, u.username, u.avatar_path, u.updated_at AS user_updated_at
+         FROM photo_comments c
+         JOIN users u ON u.id = c.user_id
+         WHERE c.photo_id = :photo_id
+         ORDER BY c.created_at ASC
+         LIMIT ' . $safeLimit,
+        [':photo_id' => $photoId]
+    );
+}
+
+function create_photo_comment(PDO $pdo, int $photoId, int $userId, string $comment): array
+{
+    if ($photoId <= 0) {
+        throw new InvalidArgumentException(t('flash.not_found'));
+    }
+
+    $photo = db_fetch_one($pdo, 'SELECT id FROM photo_entries WHERE id = :id', [':id' => $photoId]);
+    if ($photo === null) {
+        throw new InvalidArgumentException(t('flash.not_found'));
+    }
+
+    $text = trim($comment);
+    if ($text === '') {
+        throw new InvalidArgumentException(t('photo.comment_required'));
+    }
+
+    $maxLength = 1200;
+    if (function_exists('mb_strlen')) {
+        if (mb_strlen($text) > $maxLength) {
+            throw new InvalidArgumentException(t('photo.comment_too_long'));
+        }
+    } elseif (strlen($text) > $maxLength) {
+        throw new InvalidArgumentException(t('photo.comment_too_long'));
+    }
+
+    $now = now_iso();
+    db_execute(
+        $pdo,
+        'INSERT INTO photo_comments (photo_id, user_id, comment, created_at, updated_at)
+         VALUES (:photo_id, :user_id, :comment, :created_at, :updated_at)',
+        [
+            ':photo_id' => $photoId,
+            ':user_id' => $userId,
+            ':comment' => $text,
+            ':created_at' => $now,
+            ':updated_at' => $now,
+        ]
+    );
+
+    $created = db_fetch_one($pdo, 'SELECT * FROM photo_comments WHERE id = last_insert_rowid()');
+    if ($created === null) {
+        throw new RuntimeException(t('flash.save_failed'));
+    }
+
+    return $created;
+}
+
+function delete_photo_comment(PDO $pdo, int $commentId): ?array
+{
+    if ($commentId <= 0) {
+        return null;
+    }
+
+    $existing = db_fetch_one($pdo, 'SELECT * FROM photo_comments WHERE id = :id', [':id' => $commentId]);
+    if ($existing === null) {
+        return null;
+    }
+
+    db_execute($pdo, 'DELETE FROM photo_comments WHERE id = :id', [':id' => $commentId]);
+
+    return $existing;
+}
+
+function fetch_user_calorie_stats(PDO $pdo, int $userId, string $startDate, string $endDate, ?float $maintenanceCalories): array
+{
+    $start = new DateTimeImmutable($startDate);
+    $end = new DateTimeImmutable($endDate);
+    if ($end < $start) {
+        $end = $start;
+    }
+
+    $seriesByDate = [];
+    foreach (day_sequence($start, $end) as $day) {
+        $key = $day->format('Y-m-d');
+        $seriesByDate[$key] = [
+            'date' => $key,
+            'consumed' => 0.0,
+            'burned' => 0.0,
+            'tracked' => false,
+        ];
+    }
+
+    $dailyLogs = db_fetch_all(
+        $pdo,
+        'SELECT log_date,
+                SUM(COALESCE(training_calories_burned, 0)) AS burned
+         FROM daily_logs
+         WHERE user_id = :user_id
+           AND log_date BETWEEN :start_date AND :end_date
+         GROUP BY log_date',
+        [':user_id' => $userId, ':start_date' => $start->format('Y-m-d'), ':end_date' => $end->format('Y-m-d')]
+    );
+    foreach ($dailyLogs as $row) {
+        $date = (string) ($row['log_date'] ?? '');
+        if (!isset($seriesByDate[$date])) {
+            continue;
+        }
+        $seriesByDate[$date]['burned'] = (float) ($row['burned'] ?? 0);
+        $seriesByDate[$date]['tracked'] = true;
+    }
+
+    $dailyPhotos = db_fetch_all(
+        $pdo,
+        'SELECT log_date,
+                SUM(COALESCE(calories, 0)) AS consumed
+         FROM photo_entries
+         WHERE user_id = :user_id
+           AND log_date BETWEEN :start_date AND :end_date
+         GROUP BY log_date',
+        [':user_id' => $userId, ':start_date' => $start->format('Y-m-d'), ':end_date' => $end->format('Y-m-d')]
+    );
+    foreach ($dailyPhotos as $row) {
+        $date = (string) ($row['log_date'] ?? '');
+        if (!isset($seriesByDate[$date])) {
+            continue;
+        }
+        $seriesByDate[$date]['consumed'] = (float) ($row['consumed'] ?? 0);
+        $seriesByDate[$date]['tracked'] = true;
+    }
+
+    $trackedDays = 0;
+    $totalConsumed = 0.0;
+    $totalBurned = 0.0;
+    $maintenanceDaily = max(0.0, (float) ($maintenanceCalories ?? 0.0));
+    $series = [];
+    foreach ($seriesByDate as $date => $row) {
+        $consumed = round((float) $row['consumed'], 2);
+        $burned = round((float) $row['burned'], 2);
+        $isTracked = (bool) ($row['tracked'] ?? false);
+        if ($isTracked) {
+            $trackedDays++;
+        }
+        $totalConsumed += $consumed;
+        $totalBurned += $burned;
+        $series[] = [
+            'date' => $date,
+            'consumed' => $consumed,
+            'burned' => $burned,
+            'deficit' => round(($isTracked ? $maintenanceDaily : 0.0) + $burned - $consumed, 2),
+        ];
+    }
+
+    $maintenanceTotal = round($maintenanceDaily * $trackedDays, 2);
+    $totalConsumed = round($totalConsumed, 2);
+    $totalBurned = round($totalBurned, 2);
+    $deficit = round($maintenanceTotal + $totalBurned - $totalConsumed, 2);
+
+    return [
+        'tracked_days' => $trackedDays,
+        'maintenance_daily' => $maintenanceDaily,
+        'maintenance_total' => $maintenanceTotal,
+        'total_consumed' => $totalConsumed,
+        'total_burned' => $totalBurned,
+        'deficit' => $deficit,
+        'series' => $series,
+    ];
 }
 
 function upload_error_message(int $errorCode): string

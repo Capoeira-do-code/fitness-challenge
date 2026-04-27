@@ -1134,11 +1134,18 @@ textarea {
 }
 
 .photo-grid figure {
+    position: relative;
     margin: 0;
     overflow: hidden;
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: #fff;
+}
+
+.photo-card-media {
+    display: block;
+    color: inherit;
+    text-decoration: none;
 }
 
 .photo-grid img {
@@ -1148,11 +1155,61 @@ textarea {
     object-fit: cover;
 }
 
+.photo-card-media .entries-calendar-empty {
+    height: 152px;
+}
+
 .photo-grid figcaption {
     display: grid;
     gap: 0.2rem;
     padding: 0.55rem;
     font-size: 0.78rem;
+}
+
+.photo-nutrition-line {
+    color: var(--primary-dark);
+    font-weight: 700;
+}
+
+.photo-delete-btn {
+    position: absolute;
+    right: 0.55rem;
+    top: 0.55rem;
+    z-index: 2;
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 999px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 1.05rem;
+    line-height: 1;
+    display: inline-grid;
+    place-items: center;
+    cursor: pointer;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.22);
+    opacity: 0;
+    transform: translateY(-4px) scale(0.92);
+    transition: opacity 0.18s ease, transform 0.18s ease, background 0.15s ease;
+}
+
+.photo-card:hover .photo-delete-btn,
+.photo-card:focus-within .photo-delete-btn,
+.photo-delete-btn:focus-visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.photo-delete-btn:hover,
+.photo-delete-btn:focus-visible {
+    background: #dc2626;
+}
+
+@media (hover: none) {
+    .photo-delete-btn {
+        opacity: 1;
+        transform: none;
+    }
 }
 
 .proof-photo-grid {
@@ -1172,6 +1229,24 @@ textarea {
     border: 1px solid var(--line);
     border-radius: 12px;
     background: #fbfdfc;
+}
+
+.photo-nutrition-tools {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.photo-nutrition-panel {
+    display: grid;
+    gap: 0.65rem;
+    padding: 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+}
+
+.photo-nutrition-advanced {
+    margin-top: 0.3rem;
 }
 
 .proof-photo-meta {
@@ -1434,6 +1509,36 @@ textarea {
 
 .range-form select {
     min-width: 120px;
+}
+
+.dashboard-calories .panel-head {
+    align-items: flex-start;
+}
+
+.calorie-kpis {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+    margin-bottom: 0.65rem;
+}
+
+.calorie-kpis article {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #f9fcfb;
+    padding: 0.55rem 0.65rem;
+    display: grid;
+    gap: 0.25rem;
+}
+
+.calorie-kpis span {
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 700;
+}
+
+.calorie-kpis strong {
+    font-size: 0.95rem;
 }
 
 .meal-calendar {
@@ -2266,6 +2371,149 @@ textarea {
     font-weight: 700;
 }
 
+.photo-post {
+    display: grid;
+    gap: 1rem;
+}
+
+.photo-post-title {
+    margin-bottom: 0;
+    font-size: clamp(1.5rem, 2.7vw, 2.1rem);
+}
+
+.photo-post-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+    gap: 1rem;
+}
+
+.photo-post-media {
+    margin: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: #fff;
+}
+
+.photo-post-media img {
+    width: 100%;
+    max-height: 68vh;
+    object-fit: cover;
+    display: block;
+}
+
+.photo-post-side {
+    min-width: 0;
+}
+
+.photo-post-meta {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.photo-post-author {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.photo-post-author .profile-avatar {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+}
+
+.photo-post-author span {
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.photo-post-tags {
+    display: flex;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+.photo-post-caption {
+    margin: 0;
+}
+
+.photo-delete-text-btn {
+    color: #b91c1c;
+}
+
+.photo-post-nutrition h3 {
+    margin: 0;
+}
+
+.photo-post-nutrition ul {
+    list-style: none;
+    margin: 0.55rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.35rem;
+}
+
+.photo-post-nutrition li {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.84rem;
+}
+
+.photo-comments {
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--line);
+}
+
+.photo-comment-form {
+    margin-top: 0.2rem;
+}
+
+.photo-comment-list {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.photo-comment-item {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #f9fcfb;
+    padding: 0.65rem;
+    display: grid;
+    gap: 0.45rem;
+}
+
+.photo-comment-item p {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.photo-comment-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.6rem;
+    align-items: flex-start;
+}
+
+.photo-comment-author {
+    display: flex;
+    gap: 0.55rem;
+    align-items: center;
+}
+
+.photo-comment-author .profile-avatar {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+}
+
+.photo-comment-author span {
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
 .team-settings-bottom {
     display: none;
 }
@@ -2298,7 +2546,7 @@ textarea {
 }
 
 .week-day-primary {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .week-day-secondary {
@@ -2558,6 +2806,14 @@ textarea {
     .profile-achievement-media {
         width: 100%;
         min-height: 120px;
+    }
+
+    .photo-post-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .calorie-kpis {
+        grid-template-columns: 1fr;
     }
 
     .team-settings-top {

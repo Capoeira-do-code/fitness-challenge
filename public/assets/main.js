@@ -124,7 +124,60 @@
     if (proofPhotoForm) {
         const fileInput = proofPhotoForm.querySelector('[data-proof-photo-input]');
         const previewContainer = proofPhotoForm.querySelector('[data-proof-photo-preview]');
+        const nutritionToggle = proofPhotoForm.querySelector('[data-photo-nutrition-toggle]');
+        const nutritionPanel = proofPhotoForm.querySelector('[data-photo-nutrition-panel]');
+        const nutritionAdvancedToggle = proofPhotoForm.querySelector('[data-photo-nutrition-advanced-toggle]');
+        const nutritionAdvanced = proofPhotoForm.querySelector('[data-photo-nutrition-advanced]');
         let activeObjectUrl = null;
+
+        const placeholderTitle = previewContainer instanceof HTMLElement
+            ? (previewContainer.dataset.placeholderTitle || 'Select a photo to preview')
+            : 'Select a photo to preview';
+        const placeholderHint = previewContainer instanceof HTMLElement
+            ? (previewContainer.dataset.placeholderHint || 'The image will be saved as proof')
+            : 'The image will be saved as proof';
+        const previewAlt = previewContainer instanceof HTMLElement
+            ? (previewContainer.dataset.previewAlt || 'Photo preview')
+            : 'Photo preview';
+        const escapeHtml = (value) => String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+
+        const hasFilledValues = (root) => {
+            if (!(root instanceof HTMLElement)) {
+                return false;
+            }
+            const controls = root.querySelectorAll('input, textarea, select');
+            return [...controls].some((control) => {
+                if (!(control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement)) {
+                    return false;
+                }
+                return String(control.value || '').trim() !== '';
+            });
+        };
+
+        const setPanelState = (expanded) => {
+            if (!(nutritionPanel instanceof HTMLElement)) {
+                return;
+            }
+            nutritionPanel.hidden = !expanded;
+            if (nutritionToggle instanceof HTMLButtonElement) {
+                nutritionToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            }
+        };
+
+        const setAdvancedState = (expanded) => {
+            if (!(nutritionAdvanced instanceof HTMLElement)) {
+                return;
+            }
+            nutritionAdvanced.hidden = !expanded;
+            if (nutritionAdvancedToggle instanceof HTMLButtonElement) {
+                nutritionAdvancedToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            }
+        };
 
         const renderPlaceholder = () => {
             if (!(previewContainer instanceof HTMLElement)) {
@@ -134,8 +187,8 @@
                 <div class="photo-placeholder">
                     <div class="photo-placeholder-content">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v8.59l3.3-3.3a1 1 0 0 1 1.4 0L14 15.6l2.3-2.3a1 1 0 0 1 1.4 0L19 14.6V6Zm3 1.2a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6Z"/></svg>
-                        <p>Selecciona una foto para previsualizarla</p>
-                        <small>Se guardará como prueba del día</small>
+                        <p>${escapeHtml(placeholderTitle)}</p>
+                        <small>${escapeHtml(placeholderHint)}</small>
                     </div>
                 </div>
             `;
@@ -155,9 +208,24 @@
                 return;
             }
             activeObjectUrl = URL.createObjectURL(selectedFile);
-            previewContainer.innerHTML = `<img src="${activeObjectUrl}" alt="Vista previa de la foto">`;
+            previewContainer.innerHTML = '';
+            const previewImage = document.createElement('img');
+            previewImage.src = activeObjectUrl;
+            previewImage.alt = previewAlt;
+            previewContainer.appendChild(previewImage);
         };
 
+        nutritionToggle?.addEventListener('click', () => {
+            const current = nutritionPanel instanceof HTMLElement ? !nutritionPanel.hidden : false;
+            setPanelState(!current);
+        });
+        nutritionAdvancedToggle?.addEventListener('click', () => {
+            const current = nutritionAdvanced instanceof HTMLElement ? !nutritionAdvanced.hidden : false;
+            setAdvancedState(!current);
+        });
+
+        setPanelState(hasFilledValues(nutritionPanel));
+        setAdvancedState(hasFilledValues(nutritionAdvanced));
         fileInput?.addEventListener('change', renderPreview);
         renderPreview();
         window.addEventListener('beforeunload', () => {
@@ -166,6 +234,80 @@
             }
         });
     }
+
+    const initPhotoDeleteModal = () => {
+        const modal = document.querySelector('[data-photo-delete-modal]');
+        const triggers = document.querySelectorAll('[data-photo-delete-trigger]');
+        if (!(modal instanceof HTMLElement) || triggers.length === 0) {
+            return;
+        }
+
+        const confirmButton = modal.querySelector('[data-photo-delete-confirm]');
+        const cancelButtons = modal.querySelectorAll('[data-photo-delete-cancel]');
+        const titleNode = modal.querySelector('#photo-delete-title');
+        let pendingForm = null;
+        let defaultTitle = titleNode instanceof HTMLElement ? titleNode.textContent || '' : '';
+
+        const closeModal = () => {
+            pendingForm = null;
+            if (titleNode instanceof HTMLElement) {
+                titleNode.textContent = defaultTitle;
+            }
+            modal.hidden = true;
+            modal.setAttribute('aria-hidden', 'true');
+            modal.classList.remove('is-open');
+        };
+
+        const openModal = (message) => {
+            if (titleNode instanceof HTMLElement && message) {
+                titleNode.textContent = message;
+            }
+            modal.hidden = false;
+            modal.setAttribute('aria-hidden', 'false');
+            modal.classList.add('is-open');
+            if (confirmButton instanceof HTMLElement) {
+                confirmButton.focus();
+            }
+        };
+
+        triggers.forEach((trigger) => {
+            if (!(trigger instanceof HTMLButtonElement)) {
+                return;
+            }
+            trigger.addEventListener('click', () => {
+                const formId = String(trigger.dataset.photoDeleteForm || '').trim();
+                if (!formId) {
+                    return;
+                }
+                const form = document.getElementById(formId);
+                if (!(form instanceof HTMLFormElement)) {
+                    return;
+                }
+                pendingForm = form;
+                const message = String(trigger.dataset.photoDeleteMessage || '').trim();
+                openModal(message);
+            });
+        });
+
+        if (confirmButton instanceof HTMLButtonElement) {
+            confirmButton.addEventListener('click', () => {
+                if (pendingForm instanceof HTMLFormElement) {
+                    pendingForm.submit();
+                }
+                closeModal();
+            });
+        }
+
+        cancelButtons.forEach((button) => {
+            button.addEventListener('click', closeModal);
+        });
+
+        window.addEventListener('keydown', (event) => {
+            if (!modal.hidden && event.key === 'Escape') {
+                closeModal();
+            }
+        });
+    };
 
     const lightbox = document.getElementById('mealLightbox');
     if (lightbox) {
@@ -1176,6 +1318,7 @@
         safeInit(initSpaNavigation);
         safeInit(initAdminAchievementFields);
         safeInit(initAchievementDeleteModal);
+        safeInit(initPhotoDeleteModal);
         safeInit(initProfileGoalsSection);
         safeInit(initProfileConfigEditor);
         safeInit(initImageCroppers);

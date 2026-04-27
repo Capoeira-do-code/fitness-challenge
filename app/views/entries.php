@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 $log = $currentLog ?? null;
 $categoryLabels = [
-    'breakfast' => 'Breakfast',
-    'lunch' => 'Lunch',
-    'dinner' => 'Dinner',
-    'other' => 'Other',
-    'meal' => 'Lunch',
-    'workout' => 'Other',
+    'breakfast' => t('entries.breakfast'),
+    'lunch' => t('entries.lunch'),
+    'dinner' => t('entries.dinner'),
+    'other' => t('common.other'),
+    'meal' => t('entries.lunch'),
+    'workout' => t('entries.workout'),
 ];
 $entryMode = in_array(($entryMode ?? 'data'), ['data', 'meal', 'calendar'], true) ? (string) $entryMode : 'data';
 $calendarView = in_array(($calendarView ?? 'month'), ['month', 'week', 'day'], true) ? (string) $calendarView : 'month';
@@ -23,6 +23,30 @@ if ($entryMode === 'calendar') {
     $selectedDayData = is_array($mealCalendar[$selectedDate] ?? null) ? (array) $mealCalendar[$selectedDate] : [];
     $calendarSelectedPhotos = is_array($selectedDayData['photos'] ?? null) ? array_values((array) $selectedDayData['photos']) : [];
 }
+$nutritionSummary = static function (array $photo): string {
+    $parts = [];
+    $calories = $photo['calories'] ?? null;
+    if ($calories !== null && $calories !== '') {
+        $parts[] = rtrim(rtrim(number_format((float) $calories, 1, '.', ''), '0'), '.') . ' kcal';
+    }
+    $protein = $photo['protein_g'] ?? null;
+    if ($protein !== null && $protein !== '') {
+        $parts[] = 'P ' . rtrim(rtrim(number_format((float) $protein, 1, '.', ''), '0'), '.') . 'g';
+    }
+    $carbs = $photo['carbs_g'] ?? null;
+    if ($carbs !== null && $carbs !== '') {
+        $parts[] = 'C ' . rtrim(rtrim(number_format((float) $carbs, 1, '.', ''), '0'), '.') . 'g';
+    }
+    $fat = $photo['fat_g'] ?? null;
+    if ($fat !== null && $fat !== '') {
+        $parts[] = 'F ' . rtrim(rtrim(number_format((float) $fat, 1, '.', ''), '0'), '.') . 'g';
+    }
+
+    return implode(' · ', $parts);
+};
+$canDeletePhoto = static function (array $photo, array $viewer): bool {
+    return is_admin($viewer) || (int) ($photo['user_id'] ?? 0) === (int) ($viewer['id'] ?? 0);
+};
 ?>
 <section class="screen stack-lg">
     <div class="hero-panel">
@@ -68,10 +92,13 @@ if ($entryMode === 'calendar') {
 
                 <div class="quick-stats entries-two-col">
                     <label>
+                        <?= e(t('entries.training_calories_burned')) ?>
+                        <input type="number" min="0" step="1" name="training_calories_burned" value="<?= e((string) ($log['training_calories_burned'] ?? '')) ?>">
+                    </label>
+                    <label>
                         <?= e(t('metric.weight')) ?> (kg)
                         <input type="number" step="0.1" name="weight" value="<?= e((string) ($log['weight'] ?? '')) ?>">
                     </label>
-
                     <label>
                         <?= e(t('entries.workout_type')) ?>
                         <select name="workout_type_id" onchange="document.getElementById('custom-workout-type').value = this.options[this.selectedIndex].dataset.name || '';">
@@ -158,10 +185,10 @@ if ($entryMode === 'calendar') {
                             <label>
                                 <?= e(t('common.category')) ?>
                                 <select name="category">
-                                    <option value="breakfast">Breakfast</option>
-                                    <option value="lunch">Lunch</option>
-                                    <option value="dinner">Dinner</option>
-                                    <option value="other">Other</option>
+                                    <option value="breakfast"><?= e(t('entries.breakfast')) ?></option>
+                                    <option value="lunch"><?= e(t('entries.lunch')) ?></option>
+                                    <option value="dinner"><?= e(t('entries.dinner')) ?></option>
+                                    <option value="other"><?= e(t('common.other')) ?></option>
                                 </select>
                             </label>
                         </div>
@@ -175,14 +202,59 @@ if ($entryMode === 'calendar') {
                             <?= e(t('entries.camera_hint')) ?>
                             <input type="file" name="photo" accept="image/*" capture="environment" required data-proof-photo-input>
                         </label>
+
+                        <div class="photo-nutrition-tools">
+                            <button type="button" class="btn btn-ghost small" data-photo-nutrition-toggle><?= e(t('entries.add_calorie_info')) ?></button>
+                        </div>
+                        <div class="photo-nutrition-panel" data-photo-nutrition-panel hidden>
+                            <label>
+                                <?= e(t('entries.photo_calories')) ?>
+                                <input type="number" min="0" step="1" name="photo_calories" placeholder="650">
+                            </label>
+                            <div class="photo-nutrition-tools">
+                                <button type="button" class="btn btn-ghost small" data-photo-nutrition-advanced-toggle><?= e(t('entries.nutrition_advanced')) ?></button>
+                            </div>
+                            <div class="grid-inline entries-two-col photo-nutrition-advanced" data-photo-nutrition-advanced hidden>
+                                <label>
+                                    <?= e(t('entries.photo_protein')) ?>
+                                    <input type="number" min="0" step="0.1" name="photo_protein_g" placeholder="35">
+                                </label>
+                                <label>
+                                    <?= e(t('entries.photo_carbs')) ?>
+                                    <input type="number" min="0" step="0.1" name="photo_carbs_g" placeholder="60">
+                                </label>
+                                <label>
+                                    <?= e(t('entries.photo_fat')) ?>
+                                    <input type="number" min="0" step="0.1" name="photo_fat_g" placeholder="22">
+                                </label>
+                                <label>
+                                    <?= e(t('entries.photo_fiber')) ?>
+                                    <input type="number" min="0" step="0.1" name="photo_fiber_g" placeholder="8">
+                                </label>
+                                <label>
+                                    <?= e(t('entries.photo_sugar')) ?>
+                                    <input type="number" min="0" step="0.1" name="photo_sugar_g" placeholder="12">
+                                </label>
+                                <label>
+                                    <?= e(t('entries.photo_sodium')) ?>
+                                    <input type="number" min="0" step="1" name="photo_sodium_mg" placeholder="700">
+                                </label>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="proof-photo-preview" data-proof-photo-preview>
+                    <div
+                        class="proof-photo-preview"
+                        data-proof-photo-preview
+                        data-placeholder-title="<?= e(t('entries.photo_preview_placeholder')) ?>"
+                        data-placeholder-hint="<?= e(t('entries.photo_preview_hint')) ?>"
+                        data-preview-alt="<?= e(t('common.photo')) ?>"
+                    >
                         <div class="photo-placeholder">
                             <div class="photo-placeholder-content">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v8.59l3.3-3.3a1 1 0 0 1 1.4 0L14 15.6l2.3-2.3a1 1 0 0 1 1.4 0L19 14.6V6Zm3 1.2a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6Z"/></svg>
-                                <p>Selecciona una foto para previsualizarla</p>
-                                <small>Se guardará como prueba del día</small>
+                                <p><?= e(t('entries.photo_preview_placeholder')) ?></p>
+                                <small><?= e(t('entries.photo_preview_hint')) ?></small>
                             </div>
                         </div>
                     </div>
@@ -207,28 +279,47 @@ if ($entryMode === 'calendar') {
         <?php else: ?>
             <div class="photo-grid">
                 <?php foreach ($recentPhotos as $photo): ?>
-                    <?php $category = (string) $photo['category']; ?>
-                    <?php $photoUrl = media_url((string) ($photo['file_path'] ?? '')); ?>
-                    <figure>
-                        <?php if ($photoUrl !== ''): ?>
-                            <img src="<?= e($photoUrl) ?>" alt="<?= e(t('common.photo')) ?>">
-                        <?php else: ?>
-                            <div class="entries-calendar-empty">Sin foto</div>
+                    <?php
+                    $photoId = (int) ($photo['id'] ?? 0);
+                    $category = (string) ($photo['category'] ?? 'other');
+                    $photoUrl = media_url((string) ($photo['file_path'] ?? ''));
+                    $photoDeleteFormId = 'photo-delete-form-meal-' . $photoId;
+                    $nutritionLine = $nutritionSummary($photo);
+                    ?>
+                    <figure class="photo-card">
+                        <a class="photo-card-media" href="/?page=photo&photo_id=<?= $photoId ?>">
+                            <?php if ($photoUrl !== ''): ?>
+                                <img src="<?= e($photoUrl) ?>" alt="<?= e(t('common.photo')) ?>">
+                            <?php else: ?>
+                                <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
+                            <?php endif; ?>
+                        </a>
+                        <?php if ($canDeletePhoto($photo, $currentUser)): ?>
+                            <button
+                                type="button"
+                                class="photo-delete-btn"
+                                data-photo-delete-trigger
+                                data-photo-delete-form="<?= e($photoDeleteFormId) ?>"
+                                data-photo-delete-message="<?= e(t('entries.delete_photo_confirm')) ?>"
+                                aria-label="<?= e(t('common.delete')) ?>"
+                            >×</button>
+                            <form id="<?= e($photoDeleteFormId) ?>" method="post" action="/?page=entries" hidden>
+                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="delete_photo">
+                                <input type="hidden" name="photo_id" value="<?= $photoId ?>">
+                                <input type="hidden" name="redirect_mode" value="meal">
+                                <input type="hidden" name="redirect_date" value="<?= e((string) $selectedDate) ?>">
+                            </form>
                         <?php endif; ?>
                         <figcaption>
-                            <strong><?= e((string) $photo['display_name']) ?></strong>
-                            <span><?= e(format_date_eu((string) $photo['log_date'])) ?> · <?= e($categoryLabels[$category] ?? $category) ?></span>
+                            <strong><?= e((string) ($photo['display_name'] ?? '')) ?></strong>
+                            <span><?= e(format_date_eu((string) ($photo['log_date'] ?? ''))) ?> · <?= e((string) ($categoryLabels[$category] ?? $category)) ?></span>
                             <?php if (!empty($photo['caption'])): ?>
                                 <span><?= e((string) $photo['caption']) ?></span>
                             <?php endif; ?>
-                            <form method="post" action="/?page=entries" class="inline-actions-mini" onsubmit="return window.confirm('<?= e(t('entries.delete_photo_confirm')) ?>');">
-                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                <input type="hidden" name="action" value="delete_photo">
-                                <input type="hidden" name="photo_id" value="<?= (int) ($photo['id'] ?? 0) ?>">
-                                <input type="hidden" name="redirect_mode" value="meal">
-                                <input type="hidden" name="redirect_date" value="<?= e((string) $selectedDate) ?>">
-                                <button class="btn small btn-ghost" type="submit"><?= e(t('common.delete')) ?></button>
-                            </form>
+                            <?php if ($nutritionLine !== ''): ?>
+                                <span class="photo-nutrition-line"><?= e($nutritionLine) ?></span>
+                            <?php endif; ?>
                         </figcaption>
                     </figure>
                 <?php endforeach; ?>
@@ -236,7 +327,7 @@ if ($entryMode === 'calendar') {
         <?php endif; ?>
     </article>
     <div class="panel panel-inline-empty">
-        <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=month&date=<?= e($selectedDate) ?>">Ver calendario</a>
+        <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=month&date=<?= e($selectedDate) ?>"><?= e(t('entries.view_calendar')) ?></a>
     </div>
     <?php endif; ?>
 
@@ -245,13 +336,13 @@ if ($entryMode === 'calendar') {
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('nav.entries')) ?></p>
-                    <h2>Calendario</h2>
+                    <h2><?= e(t('entries.calendar_title')) ?></h2>
                 </div>
                 <a
                     class="btn btn-ghost"
                     href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"
                     onclick="if (window.history.length > 1) { event.preventDefault(); window.history.back(); }"
-                >← Volver</a>
+                >← <?= e(t('common.back')) ?></a>
             </div>
             <form method="get" action="/" class="control-strip entries-calendar-controls">
                 <input type="hidden" name="page" value="entries">
@@ -276,16 +367,20 @@ if ($entryMode === 'calendar') {
                     $photoCount = (int) ($day['count'] ?? 0);
                     $preview = $day['preview'] ?? null;
                     $previewUrl = is_array($preview) ? media_url((string) ($preview['file_path'] ?? '')) : '';
+                    $previewPhotoId = (int) (($preview['id'] ?? 0));
+                    $calendarDayUrl = $previewPhotoId > 0
+                        ? '/?page=photo&photo_id=' . $previewPhotoId
+                        : '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey);
                     ?>
-                    <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?>" href="/?page=entries&mode=meal&date=<?= e((string) $dateKey) ?>">
+                    <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?>" href="<?= e($calendarDayUrl) ?>">
                         <article>
                             <strong><?= e(format_date_eu((string) $dateKey)) ?></strong>
                             <?php if ($previewUrl !== ''): ?>
                                 <img src="<?= e($previewUrl) ?>" alt="<?= e(t('common.photo')) ?>">
                             <?php else: ?>
-                                <div class="entries-calendar-empty">Sin foto</div>
+                                <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
                             <?php endif; ?>
-                            <span class="badge"><?= $photoCount ?> foto<?= $photoCount === 1 ? '' : 's' ?></span>
+                            <span class="badge"><?= $photoCount ?> <?= e($photoCount === 1 ? t('entries.photo_singular') : t('entries.photo_plural')) ?></span>
                         </article>
                     </a>
                 <?php endforeach; ?>
@@ -304,13 +399,38 @@ if ($entryMode === 'calendar') {
             <?php else: ?>
                 <div class="photo-grid">
                     <?php foreach ($calendarSelectedPhotos as $photo): ?>
-                        <?php $calendarPhotoCategory = (string) ($photo['category'] ?? 'other'); ?>
-                        <?php $calendarPhotoUrl = media_url((string) ($photo['file_path'] ?? '')); ?>
-                        <figure>
-                            <?php if ($calendarPhotoUrl !== ''): ?>
-                                <img src="<?= e($calendarPhotoUrl) ?>" alt="<?= e(t('common.photo')) ?>">
-                            <?php else: ?>
-                                <div class="entries-calendar-empty">Sin foto</div>
+                        <?php
+                        $photoId = (int) ($photo['id'] ?? 0);
+                        $calendarPhotoCategory = (string) ($photo['category'] ?? 'other');
+                        $calendarPhotoUrl = media_url((string) ($photo['file_path'] ?? ''));
+                        $photoDeleteFormId = 'photo-delete-form-calendar-' . $photoId;
+                        $nutritionLine = $nutritionSummary($photo);
+                        ?>
+                        <figure class="photo-card">
+                            <a class="photo-card-media" href="/?page=photo&photo_id=<?= $photoId ?>">
+                                <?php if ($calendarPhotoUrl !== ''): ?>
+                                    <img src="<?= e($calendarPhotoUrl) ?>" alt="<?= e(t('common.photo')) ?>">
+                                <?php else: ?>
+                                    <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
+                                <?php endif; ?>
+                            </a>
+                            <?php if ($canDeletePhoto($photo, $currentUser)): ?>
+                                <button
+                                    type="button"
+                                    class="photo-delete-btn"
+                                    data-photo-delete-trigger
+                                    data-photo-delete-form="<?= e($photoDeleteFormId) ?>"
+                                    data-photo-delete-message="<?= e(t('entries.delete_photo_confirm')) ?>"
+                                    aria-label="<?= e(t('common.delete')) ?>"
+                                >×</button>
+                                <form id="<?= e($photoDeleteFormId) ?>" method="post" action="/?page=entries" hidden>
+                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                    <input type="hidden" name="action" value="delete_photo">
+                                    <input type="hidden" name="photo_id" value="<?= $photoId ?>">
+                                    <input type="hidden" name="redirect_mode" value="calendar">
+                                    <input type="hidden" name="redirect_date" value="<?= e((string) $selectedDate) ?>">
+                                    <input type="hidden" name="redirect_calendar_view" value="<?= e((string) $calendarView) ?>">
+                                </form>
                             <?php endif; ?>
                             <figcaption>
                                 <strong><?= e((string) ($photo['display_name'] ?? '')) ?></strong>
@@ -318,15 +438,9 @@ if ($entryMode === 'calendar') {
                                 <?php if (!empty($photo['caption'])): ?>
                                     <span><?= e((string) $photo['caption']) ?></span>
                                 <?php endif; ?>
-                                <form method="post" action="/?page=entries" class="inline-actions-mini" onsubmit="return window.confirm('<?= e(t('entries.delete_photo_confirm')) ?>');">
-                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                    <input type="hidden" name="action" value="delete_photo">
-                                    <input type="hidden" name="photo_id" value="<?= (int) ($photo['id'] ?? 0) ?>">
-                                    <input type="hidden" name="redirect_mode" value="calendar">
-                                    <input type="hidden" name="redirect_date" value="<?= e((string) $selectedDate) ?>">
-                                    <input type="hidden" name="redirect_calendar_view" value="<?= e((string) $calendarView) ?>">
-                                    <button class="btn small btn-ghost" type="submit"><?= e(t('common.delete')) ?></button>
-                                </form>
+                                <?php if ($nutritionLine !== ''): ?>
+                                    <span class="photo-nutrition-line"><?= e($nutritionLine) ?></span>
+                                <?php endif; ?>
                             </figcaption>
                         </figure>
                     <?php endforeach; ?>
@@ -335,3 +449,14 @@ if ($entryMode === 'calendar') {
         </article>
     <?php endif; ?>
 </section>
+
+<div class="confirm-modal" hidden aria-hidden="true" data-photo-delete-modal>
+    <div class="confirm-modal-backdrop" data-photo-delete-cancel></div>
+    <div class="confirm-modal-card" role="dialog" aria-modal="true" aria-labelledby="photo-delete-title">
+        <h3 id="photo-delete-title"><?= e(t('entries.delete_photo_confirm')) ?></h3>
+        <div class="confirm-modal-actions">
+            <button type="button" class="btn btn-ghost" data-photo-delete-cancel><?= e(t('common.cancel')) ?></button>
+            <button type="button" class="btn btn-primary" data-photo-delete-confirm><?= e(t('common.delete')) ?></button>
+        </div>
+    </div>
+</div>

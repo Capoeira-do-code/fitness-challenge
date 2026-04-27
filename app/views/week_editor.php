@@ -55,6 +55,10 @@ for ($i = 0; $i < 7; $i++) {
                             <input type="number" min="0" step="0.01" name="distance_km" value="<?= e((string) ($log['distance_km'] ?? '')) ?>">
                         </label>
                         <label>
+                            <?= e(t('entries.training_calories_burned')) ?>
+                            <input type="number" min="0" step="1" name="training_calories_burned" value="<?= e((string) ($log['training_calories_burned'] ?? '')) ?>">
+                        </label>
+                        <label>
                             <?= e(t('metric.weight')) ?>
                             <input type="number" step="0.1" name="weight" value="<?= e((string) ($log['weight'] ?? '')) ?>">
                         </label>
@@ -198,6 +202,7 @@ for ($i = 0; $i < 7; $i++) {
             log_date: row.dataset.date,
             steps: row.querySelector('[name="steps"]').value,
             distance_km: row.querySelector('[name="distance_km"]').value,
+            training_calories_burned: row.querySelector('[name="training_calories_burned"]').value,
             workout_done: row.querySelector('[name="workout_done"]').checked ? 1 : 0,
             junk_food: row.querySelector('[name="junk_food"]').checked ? 1 : 0,
             extra_workout: row.querySelector('[name="extra_workout"]').checked ? 1 : 0,

@@ -26,13 +26,13 @@ if (is_array($dashboardLayout) && $dashboardLayout !== []) {
     }
 }
 if ($visibleWidgets === []) {
-    $visibleWidgets = ['kpis', 'distance_walked', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
+    $visibleWidgets = ['kpis', 'distance_walked', 'calories', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
 }
 if (!in_array('meals', $visibleWidgets, true)) {
     $visibleWidgets[] = 'meals';
 }
 $showWidget = static fn(string $widget): bool => in_array($widget, $visibleWidgets, true);
-$dashboardWidgets = ['kpis', 'distance_walked', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
+$dashboardWidgets = ['kpis', 'distance_walked', 'calories', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
 $layoutOrder = array_flip($visibleWidgets);
 $widgetOrder = static function (string ...$widgets) use ($visibleWidgets): int {
     $orders = [];
@@ -100,6 +100,18 @@ if ($compareMetric !== null) {
         ],
     ];
 }
+$calorieStats = is_array($dashboardCalorieStats ?? null) ? (array) $dashboardCalorieStats : [];
+$calorieSeries = array_values((array) ($calorieStats['series'] ?? []));
+$calorieLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['date'] ?? '')), $calorieSeries);
+$calorieConsumedValues = array_map(static fn(array $row): float => (float) ($row['consumed'] ?? 0), $calorieSeries);
+$calorieBurnedValues = array_map(static fn(array $row): float => (float) ($row['burned'] ?? 0), $calorieSeries);
+$calorieDeficitValues = array_map(static fn(array $row): float => (float) ($row['deficit'] ?? 0), $calorieSeries);
+$formatCalories = static function (float $value): string {
+    return number_format($value, 0, '.', '');
+};
+$calorieRangeStart = (string) ($dashboardCalorieRangeStart ?? to_date(null));
+$calorieRangeEnd = (string) ($dashboardCalorieRangeEnd ?? $calorieRangeStart);
+$calorieRangeText = t('common.from_to', ['start' => format_date_eu($calorieRangeStart), 'end' => format_date_eu($calorieRangeEnd)]);
 
 $kpis = [
     [
@@ -243,6 +255,42 @@ $topbarControls = ob_get_clean();
         </article>
         <?php endif; ?>
 
+        <?php if ($showWidget('calories')): ?>
+        <article class="panel chart-card dashboard-panel dashboard-calories" style="order: <?= $widgetOrder('calories') ?>">
+            <div class="panel-head">
+                <div>
+                    <h2><?= e(t('dashboard.calories_title')) ?></h2>
+                    <p class="muted small"><?= e($calorieRangeText) ?></p>
+                </div>
+                <span class="badge"><?= e((string) ($calorieStats['tracked_days'] ?? 0)) ?> <?= e(t('dashboard.calories_tracked_days')) ?></span>
+            </div>
+            <div class="calorie-kpis">
+                <article>
+                    <span><?= e(t('dashboard.calories_consumed')) ?></span>
+                    <strong><?= e($formatCalories((float) ($calorieStats['total_consumed'] ?? 0))) ?> kcal</strong>
+                </article>
+                <article>
+                    <span><?= e(t('dashboard.calories_burned')) ?></span>
+                    <strong><?= e($formatCalories((float) ($calorieStats['total_burned'] ?? 0))) ?> kcal</strong>
+                </article>
+                <article>
+                    <span><?= e(t('dashboard.calories_maintenance')) ?></span>
+                    <strong><?= e($formatCalories((float) ($calorieStats['maintenance_total'] ?? 0))) ?> kcal</strong>
+                </article>
+                <article>
+                    <span><?= e(t('dashboard.calories_deficit')) ?></span>
+                    <strong><?= e($formatCalories((float) ($calorieStats['deficit'] ?? 0))) ?> kcal</strong>
+                </article>
+            </div>
+            <?php if ($calorieSeries === []): ?>
+                <p class="muted"><?= e(t('dashboard.no_calorie_data')) ?></p>
+            <?php else: ?>
+                <canvas id="calorieChart" height="165"></canvas>
+            <?php endif; ?>
+            <p class="muted small"><?= e(t('dashboard.calories_hint')) ?></p>
+        </article>
+        <?php endif; ?>
+
         <?php if ($showWidget('approvals') && $pendingApprovals !== []): ?>
         <article class="panel dashboard-panel dashboard-approvals" data-testid="pending-approvals" style="order: <?= $widgetOrder('approvals') ?>">
             <div class="panel-head">
@@ -372,24 +420,28 @@ $topbarControls = ob_get_clean();
                         $photoCount = (int) ($day['count'] ?? 0);
                         $preview = $day['preview'] ?? null;
                         $previewUrl = is_array($preview) ? media_url((string) ($preview['file_path'] ?? '')) : '';
+                        $previewPhotoId = is_array($preview) ? (int) ($preview['id'] ?? 0) : 0;
+                        $previewHref = $previewPhotoId > 0
+                            ? '/?page=photo&photo_id=' . $previewPhotoId
+                            : '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey);
                         ?>
-                        <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?>" href="/?page=entries&mode=meal&date=<?= e((string) $dateKey) ?>">
+                        <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?>" href="<?= e($previewHref) ?>">
                             <article>
                                 <strong><?= e(format_date_eu((string) $dateKey)) ?></strong>
                                 <?php if ($previewUrl !== ''): ?>
                                     <img src="<?= e($previewUrl) ?>" alt="<?= e(t('common.photo')) ?>">
                                 <?php else: ?>
-                                    <div class="entries-calendar-empty">Sin foto</div>
+                                    <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
                                 <?php endif; ?>
-                                <span class="badge"><?= $photoCount ?> foto<?= $photoCount === 1 ? '' : 's' ?></span>
+                                <span class="badge"><?= $photoCount ?> <?= e($photoCount === 1 ? t('entries.photo_singular') : t('entries.photo_plural')) ?></span>
                             </article>
                         </a>
                     <?php endforeach; ?>
                 </div>
                 <div class="panel-inline-empty chip-group">
-                    <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=month&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>">Mensual</a>
-                    <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=week&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>">Semanal</a>
-                    <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=day&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>">Diaria</a>
+                    <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=month&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>"><?= e(t('calendar.view_month')) ?></a>
+                    <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=week&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>"><?= e(t('calendar.view_week')) ?></a>
+                    <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=day&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>"><?= e(t('calendar.view_day')) ?></a>
                 </div>
             <?php endif; ?>
         </article>
@@ -562,6 +614,47 @@ $topbarControls = ob_get_clean();
                         tension: 0.35,
                         fill: true,
                     }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+    }
+
+    const calorieCtx = document.getElementById('calorieChart');
+    if (calorieCtx) {
+        new Chart(calorieCtx, {
+            type: 'line',
+            data: {
+                labels: <?= json_encode($calorieLabels) ?>,
+                datasets: [
+                    {
+                        label: <?= json_encode(t('dashboard.calories_consumed')) ?>,
+                        data: <?= json_encode($calorieConsumedValues) ?>,
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.16)',
+                        tension: 0.3,
+                        fill: true,
+                    },
+                    {
+                        label: <?= json_encode(t('dashboard.calories_burned')) ?>,
+                        data: <?= json_encode($calorieBurnedValues) ?>,
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.14)',
+                        tension: 0.3,
+                        fill: true,
+                    },
+                    {
+                        label: <?= json_encode(t('dashboard.calories_deficit')) ?>,
+                        data: <?= json_encode($calorieDeficitValues) ?>,
+                        borderColor: '#059669',
+                        backgroundColor: 'rgba(5, 150, 105, 0.12)',
+                        tension: 0.3,
+                        fill: false,
+                    },
                 ]
             },
             options: {

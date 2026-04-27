@@ -154,6 +154,7 @@ $profileExportPayload = [
         'primary_goal_value' => (float) ($profileUser['primary_goal_value'] ?? 0),
         'primary_goals_spec' => $primaryGoalsSpec,
         'workout_target' => (int) ($profileUser['workout_target'] ?? 0),
+        'maintenance_calories' => $profileUser['maintenance_calories'] !== null ? (float) $profileUser['maintenance_calories'] : null,
         'ideal_weight' => $profileUser['ideal_weight'] !== null ? (float) $profileUser['ideal_weight'] : null,
     ],
     'totals' => [
@@ -498,6 +499,7 @@ $profileExportPayload = [
                 <li><strong><?= e(t('settings.primary_goal')) ?>:</strong> <?= e((string) ($profileUser['primary_goal_type'] ?? 'steps')) ?> <?= e((string) ($profileUser['primary_goal_value'] ?? $profileUser['step_goal'])) ?></li>
                 <li><strong><?= e(t('settings.primary_goals_spec')) ?>:</strong> <?= e($primaryGoalsSpec !== '' ? $primaryGoalsSpec : '-') ?></li>
                 <li><strong><?= e(t('profile.workout_target')) ?>:</strong> <?= e((string) $profileUser['workout_target']) ?>/<?= e(strtolower(t('common.week'))) ?></li>
+                <li><strong><?= e(t('profile.maintenance_calories')) ?>:</strong> <?= $profileUser['maintenance_calories'] !== null ? e((string) $profileUser['maintenance_calories']) . ' kcal' : '-' ?></li>
                 <li><strong><?= e(t('metric.ideal_weight')) ?>:</strong> <?= $profileUser['ideal_weight'] !== null ? e((string) $profileUser['ideal_weight']) . ' kg' : '-' ?></li>
             </ul>
 
@@ -523,6 +525,7 @@ $profileExportPayload = [
                             <small class="muted"><?= e(t('settings.primary_goals_spec_hint')) ?></small>
                         </label>
                         <label><?= e(t('profile.workout_target')) ?><input type="number" min="0" name="workout_target" value="<?= e((string) ($profileUser['workout_target'] ?? 0)) ?>"></label>
+                        <label><?= e(t('profile.maintenance_calories')) ?><input type="number" min="0" step="1" name="maintenance_calories" value="<?= e((string) ($profileUser['maintenance_calories'] ?? '')) ?>"></label>
                         <label><?= e(t('metric.ideal_weight')) ?><input type="number" step="0.1" name="ideal_weight" value="<?= e((string) ($profileUser['ideal_weight'] ?? '')) ?>"></label>
                     </div>
                     <div class="goal-editor-actions">

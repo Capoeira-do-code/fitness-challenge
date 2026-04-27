@@ -135,6 +135,7 @@ if ($page === 'api_save_row') {
         'junk_food' => (int) ($json['junk_food'] ?? 0) === 1 ? 1 : 0,
         'extra_workout' => (int) ($json['extra_workout'] ?? 0) === 1 ? 1 : 0,
         'distance_km' => ($json['distance_km'] ?? '') !== '' ? (float) $json['distance_km'] : null,
+        'training_calories_burned' => ($json['training_calories_burned'] ?? '') !== '' ? (float) $json['training_calories_burned'] : null,
         'weight' => ($json['weight'] ?? '') !== '' ? (float) $json['weight'] : null,
         'notes' => trim((string) ($json['notes'] ?? '')),
         'step_exception_reason' => trim((string) ($json['step_exception_reason'] ?? '')),
@@ -331,6 +332,7 @@ if ($page === 'entries') {
                     'junk_food' => bool_from_form('junk_food'),
                     'extra_workout' => bool_from_form('extra_workout'),
                     'distance_km' => ($_POST['distance_km'] ?? '') !== '' ? (float) $_POST['distance_km'] : null,
+                    'training_calories_burned' => ($_POST['training_calories_burned'] ?? '') !== '' ? (float) $_POST['training_calories_burned'] : null,
                     'weight' => ($_POST['weight'] ?? '') !== '' ? (float) $_POST['weight'] : null,
                     'notes' => trim((string) ($_POST['notes'] ?? '')),
                     'step_exception_reason' => trim((string) ($_POST['step_exception_reason'] ?? '')),
@@ -376,9 +378,18 @@ if ($page === 'entries') {
             $date = to_date($_POST['log_date'] ?? null);
             $category = (string) ($_POST['category'] ?? 'other');
             $caption = trim((string) ($_POST['caption'] ?? ''));
+            $nutrition = [
+                'calories' => $_POST['photo_calories'] ?? null,
+                'protein_g' => $_POST['photo_protein_g'] ?? null,
+                'carbs_g' => $_POST['photo_carbs_g'] ?? null,
+                'fat_g' => $_POST['photo_fat_g'] ?? null,
+                'fiber_g' => $_POST['photo_fiber_g'] ?? null,
+                'sugar_g' => $_POST['photo_sugar_g'] ?? null,
+                'sodium_mg' => $_POST['photo_sodium_mg'] ?? null,
+            ];
 
             try {
-                save_photo_entry($pdo, $config, $userId, $date, $category, $caption, $_FILES['photo'] ?? []);
+                save_photo_entry($pdo, $config, $userId, $date, $category, $caption, $_FILES['photo'] ?? [], $nutrition);
                 audit_log(
                     $pdo,
                     (int) $currentUser['id'],
@@ -387,7 +398,13 @@ if ($page === 'entries') {
                     $userId . ':' . $date,
                     'Proof photo uploaded.',
                     null,
-                    ['user_id' => $userId, 'log_date' => $date, 'category' => $category, 'caption' => $caption]
+                    [
+                        'user_id' => $userId,
+                        'log_date' => $date,
+                        'category' => $category,
+                        'caption' => $caption,
+                        'nutrition' => $nutrition,
+                    ]
                 );
                 flash_set('success', t('flash.photo_uploaded'));
             } catch (Throwable $e) {
@@ -495,6 +512,136 @@ if ($page === 'entries') {
     ]);
 }
 
+if ($page === 'photo') {
+    $photoId = isset($_GET['photo_id']) ? (int) $_GET['photo_id'] : (int) ($_POST['photo_id'] ?? 0);
+    $photo = fetch_photo_by_id($pdo, $photoId);
+    if ($photo === null) {
+        flash_set('error', t('flash.not_found'));
+        redirect('/?page=entries&mode=meal&date=' . rawurlencode(to_date(null)));
+    }
+
+    $photoOwnerId = (int) ($photo['user_id'] ?? 0);
+    $canDeletePhoto = is_admin($currentUser) || $photoOwnerId === (int) $currentUser['id'];
+
+    if (is_post()) {
+        if (!csrf_verify()) {
+            flash_set('error', t('flash.csrf'));
+            redirect('/?page=photo&photo_id=' . (int) $photoId);
+        }
+
+        $action = (string) ($_POST['action'] ?? '');
+
+        if ($action === 'add_photo_comment') {
+            $commentBody = (string) ($_POST['comment'] ?? '');
+            try {
+                $createdComment = create_photo_comment($pdo, $photoId, (int) $currentUser['id'], $commentBody);
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'photo_comment_created',
+                    'photo_comment',
+                    (string) ($createdComment['id'] ?? ''),
+                    'Photo comment created.',
+                    null,
+                    audit_snapshot($createdComment)
+                );
+                flash_set('success', t('photo.comment_added'));
+            } catch (Throwable $e) {
+                flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : t('flash.save_failed'));
+            }
+
+            redirect('/?page=photo&photo_id=' . (int) $photoId);
+        }
+
+        if ($action === 'delete_photo_comment') {
+            $commentId = (int) ($_POST['comment_id'] ?? 0);
+            try {
+                if ($commentId <= 0) {
+                    throw new RuntimeException(t('flash.not_found'));
+                }
+                $comment = db_fetch_one(
+                    $pdo,
+                    'SELECT * FROM photo_comments WHERE id = :id AND photo_id = :photo_id',
+                    [':id' => $commentId, ':photo_id' => $photoId]
+                );
+                if ($comment === null) {
+                    throw new RuntimeException(t('flash.not_found'));
+                }
+                $canDeleteComment = is_admin($currentUser)
+                    || (int) ($comment['user_id'] ?? 0) === (int) $currentUser['id']
+                    || $photoOwnerId === (int) $currentUser['id'];
+                if (!$canDeleteComment) {
+                    throw new RuntimeException(t('flash.no_permission'));
+                }
+
+                $deletedComment = delete_photo_comment($pdo, $commentId);
+                if ($deletedComment === null) {
+                    throw new RuntimeException(t('flash.not_found'));
+                }
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'photo_comment_deleted',
+                    'photo_comment',
+                    (string) $commentId,
+                    'Photo comment deleted.',
+                    audit_snapshot($comment),
+                    null
+                );
+                flash_set('success', t('photo.comment_deleted'));
+            } catch (Throwable $e) {
+                flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : t('flash.save_failed'));
+            }
+
+            redirect('/?page=photo&photo_id=' . (int) $photoId);
+        }
+
+        if ($action === 'delete_photo') {
+            try {
+                if (!$canDeletePhoto) {
+                    throw new RuntimeException(t('flash.no_permission'));
+                }
+                $deletedPhoto = delete_photo_entry($pdo, $config, $photoId);
+                if ($deletedPhoto === null) {
+                    throw new RuntimeException(t('flash.not_found'));
+                }
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'photo_deleted',
+                    'photo_entry',
+                    (string) $photoId,
+                    'Proof photo deleted from photo detail.',
+                    audit_snapshot($photo),
+                    null
+                );
+                flash_set('success', t('flash.photo_deleted'));
+            } catch (Throwable $e) {
+                flash_set('error', t('flash.photo_delete_failed', ['error' => $e->getMessage()]));
+                redirect('/?page=photo&photo_id=' . (int) $photoId);
+            }
+
+            redirect('/?page=entries&mode=meal&date=' . rawurlencode((string) ($photo['log_date'] ?? to_date(null))));
+        }
+    }
+
+    $photo = fetch_photo_by_id($pdo, $photoId);
+    if ($photo === null) {
+        flash_set('error', t('flash.not_found'));
+        redirect('/?page=entries&mode=meal&date=' . rawurlencode(to_date(null)));
+    }
+
+    render_view('photo', [
+        'title' => t('photo.title'),
+        'currentPage' => 'entries',
+        'currentUser' => $currentUser,
+        'photo' => $photo,
+        'comments' => fetch_photo_comments($pdo, $photoId, 250),
+        'canDeletePhoto' => $canDeletePhoto,
+        'config' => $config,
+    ]);
+}
+
 if ($page === 'table' || $page === 'week_editor') {
     $users = list_active_users($pdo);
 
@@ -588,7 +735,7 @@ if ($page === 'settings') {
             $layoutJson = (string) ($before['dashboard_layout_json'] ?? '[]');
             $hasWidgetPayload = array_key_exists('dashboard_widgets', $_POST) || array_key_exists('dashboard_order', $_POST);
             if ($hasWidgetPayload) {
-                $allowedWidgets = ['kpis', 'distance_walked', 'money', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
+                $allowedWidgets = ['kpis', 'distance_walked', 'money', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories'];
                 $selectedWidgets = array_values(array_intersect(array_map('strval', (array) ($_POST['dashboard_widgets'] ?? [])), $allowedWidgets));
                 $selectedWidgets = array_values(array_unique(array_map(
                     static fn(string $widget): string => $widget === 'money' ? 'distance_walked' : $widget,
@@ -899,6 +1046,7 @@ if ($page === 'profile') {
                      primary_goal_value = :primary_goal_value,
                      primary_goals_spec = :primary_goals_spec,
                      workout_target = :workout_target,
+                     maintenance_calories = :maintenance_calories,
                      ideal_weight = :ideal_weight,
                      updated_at = :updated_at
                  WHERE id = :id',
@@ -907,6 +1055,7 @@ if ($page === 'profile') {
                     ':primary_goal_value' => ($_POST['primary_goal_value'] ?? '') !== '' ? (float) $_POST['primary_goal_value'] : null,
                     ':primary_goals_spec' => $normalizedPrimaryGoalsSpec,
                     ':workout_target' => max(0, (int) ($_POST['workout_target'] ?? 0)),
+                    ':maintenance_calories' => ($_POST['maintenance_calories'] ?? '') !== '' ? max(0.0, (float) $_POST['maintenance_calories']) : null,
                     ':ideal_weight' => ($_POST['ideal_weight'] ?? '') !== '' ? (float) $_POST['ideal_weight'] : null,
                     ':updated_at' => now_iso(),
                     ':id' => (int) $profileUser['id'],
@@ -2294,7 +2443,7 @@ if ($page === 'dashboard') {
         }
 
         if ($action === 'save_dashboard_layout' || $action === 'save_dashboard_prefs') {
-            $allowedWidgets = ['kpis', 'distance_walked', 'money', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
+            $allowedWidgets = ['kpis', 'distance_walked', 'money', 'approvals', 'steps', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories'];
             $widgets = array_values(array_intersect(array_map('strval', (array) ($_POST['dashboard_widgets'] ?? [])), $allowedWidgets));
             $widgets = array_values(array_unique(array_map(
                 static fn(string $widget): string => $widget === 'money' ? 'distance_walked' : $widget,
@@ -2401,6 +2550,42 @@ if ($page === 'dashboard') {
         $distanceByDate[$dateKey] += (float) ($distanceLog['distance_km'] ?? 0);
     }
 
+    $challengeStartObj = new DateTimeImmutable((string) $settings['challenge_start']);
+    $challengeConfiguredEnd = new DateTimeImmutable((string) $settings['challenge_end']);
+    $todayObj = new DateTimeImmutable('today');
+    $challengeEndObj = $challengeConfiguredEnd > $todayObj ? $todayObj : $challengeConfiguredEnd;
+    if ($challengeEndObj < $challengeStartObj) {
+        $challengeEndObj = $challengeStartObj;
+    }
+    if ($dashboardView === 'total') {
+        $calorieStartDate = $challengeStartObj->format('Y-m-d');
+        $calorieEndDate = $challengeEndObj->format('Y-m-d');
+    } else {
+        $weekStartObj = new DateTimeImmutable($selectedWeekStart);
+        $weekEndObj = $weekStartObj->modify('+6 days');
+        if ($weekStartObj < $challengeStartObj) {
+            $weekStartObj = $challengeStartObj;
+        }
+        if ($weekEndObj > $challengeEndObj) {
+            $weekEndObj = $challengeEndObj;
+        }
+        if ($weekEndObj < $weekStartObj) {
+            $weekEndObj = $weekStartObj;
+        }
+        $calorieStartDate = $weekStartObj->format('Y-m-d');
+        $calorieEndDate = $weekEndObj->format('Y-m-d');
+    }
+    $maintenanceCalories = ($selectedMetric['user']['maintenance_calories'] ?? null) !== null
+        ? (float) $selectedMetric['user']['maintenance_calories']
+        : null;
+    $dashboardCalorieStats = fetch_user_calorie_stats(
+        $pdo,
+        (int) ($selectedMetric['user']['id'] ?? 0),
+        $calorieStartDate,
+        $calorieEndDate,
+        $maintenanceCalories
+    );
+
     $dashboardMealDate = to_date($_GET['meal_date'] ?? $selectedWeekStart);
     $dashboardMealCalendar = fetch_meal_calendar($pdo, $dashboardMealDate, (int) $selectedMetric['user']['id'], 'week');
     $dashboardMealLoggedDays = [];
@@ -2434,6 +2619,9 @@ if ($page === 'dashboard') {
         'dashboardMealDate' => $dashboardMealDate,
         'dashboardMealCalendar' => $dashboardMealCalendar,
         'dashboardMealLoggedDays' => $dashboardMealLoggedDays,
+        'dashboardCalorieStats' => $dashboardCalorieStats,
+        'dashboardCalorieRangeStart' => $calorieStartDate,
+        'dashboardCalorieRangeEnd' => $calorieEndDate,
         'motivationQuote' => random_motivation_quote(),
         'config' => $config,
     ]);
