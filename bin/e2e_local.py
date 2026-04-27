@@ -161,6 +161,61 @@ def wait_for_http(url: str, timeout_s: int = 90) -> None:
         time.sleep(1.5)
 
 
+def basic_probe_urls(base_url: str, path_query: str) -> list[str]:
+    primary = app_url(base_url, path_query)
+    parsed = urlparse(primary)
+    host = (parsed.hostname or "").strip().lower()
+    urls = [primary]
+
+    if host not in {"0.0.0.0", "::"}:
+        return urls
+
+    for fallback_host in ("127.0.0.1", "localhost"):
+        port_part = f":{parsed.port}" if parsed.port is not None else ""
+        fallback_netloc = f"{fallback_host}{port_part}"
+        fallback_url = parsed._replace(netloc=fallback_netloc).geturl()
+        if fallback_url not in urls:
+            urls.append(fallback_url)
+
+    return urls
+
+
+def wait_for_http_any(urls: list[str], timeout_s: int = 90, proc: Optional[subprocess.Popen] = None) -> str:
+    start = time.time()
+    targets: list[str] = []
+    for url in urls:
+        if url not in targets:
+            targets.append(url)
+
+    while True:
+        for url in targets:
+            parsed = urlparse(url)
+            insecure_tls = parsed.scheme == "https"
+            context = ssl._create_unverified_context() if insecure_tls else None
+
+            try:
+                with urllib.request.urlopen(url, timeout=5, context=context) as response:
+                    if 200 <= response.status < 500:
+                        return url
+            except urllib.error.URLError:
+                pass
+            except Exception:
+                pass
+
+        if proc is not None and proc.poll() is not None:
+            raise RunnerError(
+                "El servidor local PHP terminó antes de responder "
+                f"(exit code {proc.returncode})."
+            )
+
+        if time.time() - start > timeout_s:
+            raise RunnerError(
+                "Timeout esperando a que la app responda. URLs probadas: "
+                + ", ".join(targets)
+            )
+        time.sleep(1.5)
+
+
 def app_url(base_url: str, path_query: str) -> str:
     return base_url.rstrip("/") + path_query
 
@@ -467,7 +522,7 @@ def ensure_php_dependency(auto_install_deps: bool) -> Optional[str]:
 def serve_basic_ui(base_url: str, *, auto_install_deps: bool) -> int:
     host, port, scheme = parse_base_url(base_url)
     if scheme != "http":
-        raise RunnerError("El modo basic solo soporta HTTP (ejemplo: http://0.0.0.0:8080).")
+        raise RunnerError("El modo basic solo soporta HTTP (ejemplo: http://127.0.0.1:8080).")
 
     php_bin = ensure_php_dependency(auto_install_deps)
     if php_bin is None:
@@ -479,12 +534,12 @@ def serve_basic_ui(base_url: str, *, auto_install_deps: bool) -> int:
             )
         raise RunnerError("No se encontró `php` para ejecutar el modo basic.")
 
-    login_url = app_url(base_url, "/?page=login")
+    login_probe_urls = basic_probe_urls(base_url, "/?page=login")
 
     try:
-        wait_for_http(login_url, timeout_s=3)
-        print(f"[serve] App ya está activa en {base_url}")
-        maybe_open_browser(login_url)
+        live_url = wait_for_http_any(login_probe_urls, timeout_s=3)
+        print(f"[serve] App ya está activa en {live_url}")
+        maybe_open_browser(live_url)
         return 0
     except Exception:
         pass
@@ -492,6 +547,15 @@ def serve_basic_ui(base_url: str, *, auto_install_deps: bool) -> int:
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env["DB_PATH"] = str(STORAGE_DIR / "fitness.sqlite")
+    upload_max_filesize = os.environ.get("PHP_UPLOAD_MAX_FILESIZE", "").strip() or "20M"
+    post_max_size = os.environ.get("PHP_POST_MAX_SIZE", "").strip() or "256M"
+    max_file_uploads = os.environ.get("PHP_MAX_FILE_UPLOADS", "").strip() or "200"
+    try:
+        if int(max_file_uploads) < 1:
+            raise ValueError
+    except ValueError:
+        print(f"[deps] PHP_MAX_FILE_UPLOADS inválido ({max_file_uploads}). Usando 200.")
+        max_file_uploads = "200"
     php_runtime_flags: list[str] = []
 
     if php_has_sqlite_driver(php_bin):
@@ -515,24 +579,30 @@ def serve_basic_ui(base_url: str, *, auto_install_deps: bool) -> int:
         php_bin,
         *php_runtime_flags,
         "-d",
-        "upload_max_filesize=20M",
+        f"upload_max_filesize={upload_max_filesize}",
         "-d",
-        "post_max_size=20M",
+        f"post_max_size={post_max_size}",
         "-d",
-        "max_file_uploads=50",
+        f"max_file_uploads={max_file_uploads}",
         "-S",
         f"{host}:{port}",
         "-t",
         "public",
     ]
+    print(
+        "[deps] Límites upload PHP: "
+        f"upload_max_filesize={upload_max_filesize}, "
+        f"post_max_size={post_max_size}, "
+        f"max_file_uploads={max_file_uploads}"
+    )
     print(f"[serve] Iniciando servidor local: {' '.join(cmd)}")
     proc = subprocess.Popen(cmd, cwd=str(ROOT), env=env)
 
     try:
-        wait_for_http(login_url, timeout_s=25)
-        print(f"[serve] UI lista en {login_url}")
+        live_url = wait_for_http_any(login_probe_urls, timeout_s=40, proc=proc)
+        print(f"[serve] UI lista en {live_url}")
         print("[serve] Pulsa Ctrl+C para detener.")
-        maybe_open_browser(login_url)
+        maybe_open_browser(live_url)
         proc.wait()
     except KeyboardInterrupt:
         print("\n[serve] Deteniendo servidor local...")
@@ -581,7 +651,7 @@ def main() -> int:
     parser.add_argument(
         "--base-url",
         default="",
-        help="URL base de la app. Default: full=https://127.0.0.1:8443, basic=http://0.0.0.0:8080",
+        help="URL base de la app. Default: full=https://127.0.0.1:8443, basic=http://127.0.0.1:8080",
     )
     parser.add_argument(
         "--hold",
@@ -615,7 +685,7 @@ def main() -> int:
 
         base_url = args.base_url.strip()
         if base_url == "":
-            base_url = "https://127.0.0.1:8443" if run_mode == "full" else "http://0.0.0.0:8080"
+            base_url = "https://127.0.0.1:8443" if run_mode == "full" else "http://127.0.0.1:8080"
 
         print(f"[mode] {run_mode}")
         print(f"[url] {base_url}")

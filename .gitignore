@@ -1,0 +1,5 @@
+.tools/
+
+# Runtime storage artifacts (keep directory scaffold)
+storage/*
+!storage/.gitkeep
