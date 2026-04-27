@@ -870,56 +870,119 @@ function resolve_media_storage_path(array $config, string $reference): ?string
 {
     $normalized = normalize_media_reference($reference);
     $kind = (string) ($normalized['kind'] ?? '');
+    $normalizedValue = (string) ($normalized['normalized'] ?? '');
+    $attemptedPaths = [];
     if ($kind !== 'media') {
         media_debug_log('resolve_media_storage_path', [
             'stored_value' => $reference,
             'helper_input' => $reference,
-            'normalized_value' => (string) ($normalized['normalized'] ?? ''),
+            'normalized_value' => $normalizedValue,
+            'normalized_kind' => $kind,
             'final_url' => '',
             'reason' => $kind === '' ? 'invalid' : $kind,
+            'attempted_paths' => $attemptedPaths,
         ]);
 
         return null;
     }
 
-    $clean = (string) ($normalized['normalized'] ?? '');
+    $clean = $normalizedValue;
     if ($clean === '') {
-        return null;
-    }
-
-    $legacyRoot = dirname(__DIR__) . '/public/uploads';
-    $legacyPath = $legacyRoot . '/' . $clean;
-    if (is_file($legacyPath)) {
         media_debug_log('resolve_media_storage_path', [
             'stored_value' => $reference,
             'helper_input' => $reference,
-            'normalized_value' => $clean,
-            'final_url' => $legacyPath,
-            'reason' => 'legacy_public_uploads',
+            'normalized_value' => '',
+            'normalized_kind' => $kind,
+            'final_url' => '',
+            'reason' => 'normalized_empty',
+            'attempted_paths' => $attemptedPaths,
         ]);
 
-        return $legacyPath;
+        return null;
     }
 
-    $storagePath = rtrim((string) $config['upload_dir'], '/') . '/' . $clean;
+    $storageRoot = rtrim((string) $config['upload_dir'], '/');
+    $legacyRoot = rtrim(dirname(__DIR__) . '/public/uploads', '/');
+    $allowedRoots = [$storageRoot, $legacyRoot];
+    $decodedReference = media_decode_reference_value(str_replace('\\', '/', trim($reference)));
+    if (media_is_absolute_filesystem_path($decodedReference)) {
+        $absoluteCandidate = preg_replace('~/+~', '/', $decodedReference) ?? $decodedReference;
+        $attemptedPaths[] = $absoluteCandidate;
+        if (is_file($absoluteCandidate)) {
+            $absoluteReal = realpath($absoluteCandidate) ?: $absoluteCandidate;
+            foreach ($allowedRoots as $root) {
+                $rootReal = realpath($root) ?: $root;
+                if ($rootReal === '') {
+                    continue;
+                }
+                $rootPrefix = rtrim(str_replace('\\', '/', $rootReal), '/') . '/';
+                $absoluteCheck = str_replace('\\', '/', $absoluteReal);
+                if (str_starts_with($absoluteCheck, $rootPrefix)) {
+                    media_debug_log('resolve_media_storage_path', [
+                        'stored_value' => $reference,
+                        'helper_input' => $reference,
+                        'normalized_value' => $clean,
+                        'normalized_kind' => $kind,
+                        'final_url' => $absoluteReal,
+                        'reason' => 'absolute_allowed',
+                        'attempted_paths' => $attemptedPaths,
+                    ]);
+
+                    return $absoluteReal;
+                }
+            }
+            media_debug_log('resolve_media_storage_path', [
+                'stored_value' => $reference,
+                'helper_input' => $reference,
+                'normalized_value' => $clean,
+                'normalized_kind' => $kind,
+                'final_url' => '',
+                'reason' => 'absolute_outside_allowed_roots',
+                'attempted_paths' => $attemptedPaths,
+            ]);
+        }
+    }
+
+    $storagePath = $storageRoot . '/' . $clean;
+    $attemptedPaths[] = $storagePath;
     if (is_file($storagePath)) {
         media_debug_log('resolve_media_storage_path', [
             'stored_value' => $reference,
             'helper_input' => $reference,
             'normalized_value' => $clean,
+            'normalized_kind' => $kind,
             'final_url' => $storagePath,
             'reason' => 'storage_upload_dir',
+            'attempted_paths' => $attemptedPaths,
         ]);
 
         return $storagePath;
+    }
+
+    $legacyPath = $legacyRoot . '/' . $clean;
+    $attemptedPaths[] = $legacyPath;
+    if (is_file($legacyPath)) {
+        media_debug_log('resolve_media_storage_path', [
+            'stored_value' => $reference,
+            'helper_input' => $reference,
+            'normalized_value' => $clean,
+            'normalized_kind' => $kind,
+            'final_url' => $legacyPath,
+            'reason' => 'legacy_public_uploads',
+            'attempted_paths' => $attemptedPaths,
+        ]);
+
+        return $legacyPath;
     }
 
     media_debug_log('resolve_media_storage_path', [
         'stored_value' => $reference,
         'helper_input' => $reference,
         'normalized_value' => $clean,
+        'normalized_kind' => $kind,
         'final_url' => '',
         'reason' => 'file_not_found',
+        'attempted_paths' => $attemptedPaths,
     ]);
 
     return null;

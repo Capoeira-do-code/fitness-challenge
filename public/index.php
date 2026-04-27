@@ -217,20 +217,77 @@ if ($page === 'login') {
 }
 
 if ($page === 'media') {
-    $currentUser = require_login($pdo);
-
     $mediaPath = trim((string) ($_GET['path'] ?? ''));
+    $mediaUser = current_user($pdo);
+    if ($mediaUser === null) {
+        media_debug_log('media_route', [
+            'stored_value' => $mediaPath,
+            'helper_input' => $mediaPath,
+            'normalized_value' => (string) (normalize_media_reference($mediaPath)['normalized'] ?? ''),
+            'final_url' => '',
+            'result' => 'no_auth',
+            'request_uri' => (string) ($_SERVER['REQUEST_URI'] ?? ''),
+        ]);
+        flash_set('error', t('auth.login_required'));
+        redirect('/?page=login');
+    }
+
+    $normalizedMedia = normalize_media_reference($mediaPath);
+    $normalizedMediaKind = (string) ($normalizedMedia['kind'] ?? '');
+    if ($normalizedMediaKind !== 'media') {
+        media_debug_log('media_route', [
+            'stored_value' => $mediaPath,
+            'helper_input' => $mediaPath,
+            'normalized_value' => (string) ($normalizedMedia['normalized'] ?? ''),
+            'normalized_kind' => $normalizedMediaKind,
+            'final_url' => '',
+            'result' => 'path_invalid',
+            'request_uri' => (string) ($_SERVER['REQUEST_URI'] ?? ''),
+            'user_id' => (int) ($mediaUser['id'] ?? 0),
+        ]);
+        http_response_code(404);
+        echo e(t('flash.not_found'));
+        exit;
+    }
+
     $resolvedPath = resolve_media_storage_path($config, $mediaPath);
     if ($resolvedPath === null || !is_file($resolvedPath)) {
+        media_debug_log('media_route', [
+            'stored_value' => $mediaPath,
+            'helper_input' => $mediaPath,
+            'normalized_value' => (string) ($normalizedMedia['normalized'] ?? ''),
+            'normalized_kind' => $normalizedMediaKind,
+            'resolved_path' => (string) $resolvedPath,
+            'final_url' => '',
+            'result' => 'file_not_found',
+            'request_uri' => (string) ($_SERVER['REQUEST_URI'] ?? ''),
+            'user_id' => (int) ($mediaUser['id'] ?? 0),
+        ]);
         http_response_code(404);
         echo e(t('flash.not_found'));
         exit;
     }
 
     $mime = detect_media_mime_type($resolvedPath);
+    $filesize = filesize($resolvedPath);
+    media_debug_log('media_route', [
+        'stored_value' => $mediaPath,
+        'helper_input' => $mediaPath,
+        'normalized_value' => (string) ($normalizedMedia['normalized'] ?? ''),
+        'normalized_kind' => $normalizedMediaKind,
+        'resolved_path' => $resolvedPath,
+        'final_url' => '/?page=media&path=' . rawurlencode((string) ($normalizedMedia['normalized'] ?? '')),
+        'result' => 'served_ok',
+        'mime' => $mime,
+        'bytes' => $filesize === false ? null : (int) $filesize,
+        'request_uri' => (string) ($_SERVER['REQUEST_URI'] ?? ''),
+        'user_id' => (int) ($mediaUser['id'] ?? 0),
+    ]);
 
     header('Content-Type: ' . $mime);
-    header('Content-Length: ' . (string) filesize($resolvedPath));
+    if ($filesize !== false) {
+        header('Content-Length: ' . (string) $filesize);
+    }
     header('Cache-Control: private, max-age=86400');
     header('X-Content-Type-Options: nosniff');
     readfile($resolvedPath);

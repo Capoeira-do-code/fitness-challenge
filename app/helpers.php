@@ -175,6 +175,97 @@ function media_debug_log(string $helper, array $payload): void
     error_log('[media-debug] ' . $encoded);
 }
 
+function media_decode_reference_value(string $value, int $maxIterations = 3): string
+{
+    $decoded = $value;
+    $max = max(1, min(5, $maxIterations));
+    for ($i = 0; $i < $max; $i++) {
+        $next = rawurldecode($decoded);
+        if ($next === $decoded) {
+            break;
+        }
+        $decoded = $next;
+    }
+
+    return $decoded;
+}
+
+function media_extract_query_path(string $queryPart): string
+{
+    $query = [];
+    parse_str($queryPart, $query);
+    $innerPath = isset($query['path']) && is_string($query['path']) ? trim((string) $query['path']) : '';
+    if ($innerPath === '') {
+        return '';
+    }
+
+    return media_decode_reference_value($innerPath);
+}
+
+function media_has_upload_marker(string $value): bool
+{
+    $normalized = strtolower(str_replace('\\', '/', $value));
+    $markers = [
+        '/storage/uploads/',
+        '/public/uploads/',
+        '/var/www/storage/uploads/',
+        '/var/www/public/uploads/',
+        '/uploads/',
+        'storage/uploads/',
+        'public/uploads/',
+        'uploads/',
+    ];
+    foreach ($markers as $marker) {
+        if (str_contains($normalized, $marker)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function media_extract_relative_path(string $value): string
+{
+    $normalizedValue = str_replace('\\', '/', $value);
+    $normalizedValue = preg_replace('~/+~', '/', $normalizedValue) ?? $normalizedValue;
+    $normalizedValue = media_decode_reference_value($normalizedValue);
+    $lowerValue = strtolower($normalizedValue);
+    $markers = [
+        '/var/www/storage/uploads/',
+        '/var/www/public/uploads/',
+        '/storage/uploads/',
+        '/public/uploads/',
+        '/uploads/',
+        'storage/uploads/',
+        'public/uploads/',
+        'uploads/',
+    ];
+
+    $bestPos = null;
+    $bestMarker = '';
+    foreach ($markers as $marker) {
+        $pos = strpos($lowerValue, strtolower($marker));
+        if ($pos === false) {
+            continue;
+        }
+        if ($bestPos === null || $pos < $bestPos || ($pos === $bestPos && strlen($marker) > strlen($bestMarker))) {
+            $bestPos = $pos;
+            $bestMarker = $marker;
+        }
+    }
+
+    if ($bestPos !== null) {
+        return (string) substr($normalizedValue, (int) $bestPos + strlen($bestMarker));
+    }
+
+    return ltrim($normalizedValue, '/');
+}
+
+function media_is_absolute_filesystem_path(string $value): bool
+{
+    return preg_match('~^(?:[a-zA-Z]:[\\\\/]|/)~', $value) === 1;
+}
+
 function normalize_media_reference(?string $reference): array
 {
     $raw = trim((string) $reference);
@@ -187,26 +278,43 @@ function normalize_media_reference(?string $reference): array
         ];
     }
 
-    $candidate = str_replace('\\', '/', $raw);
-    if (preg_match('~^https?://~i', $candidate) === 1) {
-        $parsed = parse_url($candidate);
+    $candidate = media_decode_reference_value(str_replace('\\', '/', $raw));
+    $isAbsoluteUrlInput = preg_match('~^https?://~i', $candidate) === 1;
+    if ($isAbsoluteUrlInput) {
+        $absoluteUrl = $candidate;
+        $parsed = parse_url($absoluteUrl);
         if (is_array($parsed)) {
+            $queryPart = (string) ($parsed['query'] ?? '');
             $query = [];
-            if (!empty($parsed['query'])) {
-                parse_str((string) $parsed['query'], $query);
+            if ($queryPart !== '') {
+                parse_str($queryPart, $query);
             }
-            $innerPath = isset($query['path']) && is_string($query['path']) ? trim((string) $query['path']) : '';
+            $queryPage = strtolower(trim((string) ($query['page'] ?? '')));
+            $innerPath = $queryPart !== '' ? media_extract_query_path($queryPart) : '';
             if ($innerPath !== '') {
                 $candidate = $innerPath;
-            } elseif (!empty($parsed['path'])) {
-                $candidate = (string) $parsed['path'];
+            } elseif ($queryPage === 'media') {
+                $candidate = '';
+            } else {
+                $pathPart = media_decode_reference_value((string) ($parsed['path'] ?? ''));
+                $pathPart = str_replace('\\', '/', $pathPart);
+                $assetLike = str_starts_with(ltrim($pathPart, '/'), 'assets/');
+                if ($pathPart === '' || (!media_has_upload_marker($pathPart) && !$assetLike)) {
+                    return [
+                        'kind' => 'absolute_url',
+                        'raw' => $raw,
+                        'normalized' => $absoluteUrl,
+                        'url' => $absoluteUrl,
+                    ];
+                }
+                $candidate = $pathPart;
             }
         }
-    } elseif (str_starts_with($candidate, '/?page=media') || str_starts_with($candidate, '?page=media')) {
+    }
+
+    if (str_starts_with($candidate, '/?page=media') || str_starts_with($candidate, '?page=media')) {
         $queryPart = (string) parse_url($candidate, PHP_URL_QUERY);
-        $query = [];
-        parse_str($queryPart, $query);
-        $innerPath = isset($query['path']) && is_string($query['path']) ? trim((string) $query['path']) : '';
+        $innerPath = media_extract_query_path($queryPart);
         $candidate = $innerPath;
     }
 
@@ -220,7 +328,7 @@ function normalize_media_reference(?string $reference): array
     }
 
     $clean = preg_replace('/[#?].*$/', '', $candidate) ?? '';
-    $clean = trim(str_replace('\\', '/', $clean));
+    $clean = trim(media_decode_reference_value(str_replace('\\', '/', $clean)));
     if ($clean === '') {
         return [
             'kind' => 'empty',
@@ -230,7 +338,7 @@ function normalize_media_reference(?string $reference): array
         ];
     }
 
-    $assetPath = ltrim($clean, '/');
+    $assetPath = ltrim(media_extract_relative_path($clean), '/');
     if (str_starts_with($assetPath, 'assets/')) {
         return [
             'kind' => 'asset',
@@ -240,23 +348,57 @@ function normalize_media_reference(?string $reference): array
         ];
     }
 
-    $normalized = ltrim($clean, '/');
-    $prefixes = [
-        'public/uploads/',
-        'uploads/',
-        'storage/uploads/',
-        'var/www/storage/uploads/',
-        'var/www/public/uploads/',
-    ];
-    foreach ($prefixes as $prefix) {
-        if (str_starts_with($normalized, $prefix)) {
-            $normalized = substr($normalized, strlen($prefix));
-            break;
-        }
+    if (media_is_absolute_filesystem_path($clean) && !media_has_upload_marker($clean)) {
+        return [
+            'kind' => 'invalid',
+            'raw' => $raw,
+            'normalized' => '',
+            'url' => '',
+        ];
     }
 
-    $normalized = ltrim($normalized, '/');
+    $normalized = ltrim(media_extract_relative_path($clean), '/');
+    $normalized = trim($normalized);
+    if ($normalized !== '') {
+        $segments = explode('/', str_replace('\\', '/', $normalized));
+        $safeSegments = [];
+        foreach ($segments as $segment) {
+            $piece = trim($segment);
+            if ($piece === '') {
+                continue;
+            }
+            if ($piece === '.' || $piece === '..' || str_contains($piece, ':')) {
+                return [
+                    'kind' => 'invalid',
+                    'raw' => $raw,
+                    'normalized' => '',
+                    'url' => '',
+                ];
+            }
+            $safeSegments[] = $piece;
+        }
+        $normalized = implode('/', $safeSegments);
+    }
+
     if ($normalized === '' || str_contains($normalized, '..')) {
+        if ($isAbsoluteUrlInput) {
+            return [
+                'kind' => 'absolute_url',
+                'raw' => $raw,
+                'normalized' => $candidate,
+                'url' => $candidate,
+            ];
+        }
+
+        if (media_is_absolute_filesystem_path($clean)) {
+            return [
+                'kind' => 'invalid',
+                'raw' => $raw,
+                'normalized' => '',
+                'url' => '',
+            ];
+        }
+
         return [
             'kind' => 'invalid',
             'raw' => $raw,
