@@ -22,6 +22,7 @@ return [
     'db_path' => env_value('DB_PATH', $basePath . '/storage/fitness.sqlite'),
     'upload_dir' => env_value('UPLOAD_DIR', $basePath . '/storage/uploads'),
     'upload_web_path' => env_value('UPLOAD_WEB_PATH', '/uploads'),
+    'media_debug' => env_value('MEDIA_DEBUG', '0'),
     'challenge_start' => env_value('CHALLENGE_START', '2026-04-13'),
     'challenge_end' => env_value('CHALLENGE_END', '2026-06-07'),
     'seed_password' => env_value('SEED_PASSWORD', 'ChangeMe123!'),

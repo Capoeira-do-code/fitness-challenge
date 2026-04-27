@@ -380,6 +380,7 @@ if ($page === 'entries') {
         'calendarView' => $calendarView,
         'workoutTypes' => $workoutTypes,
         'habits' => list_habit_definitions($pdo, true),
+        'entryPrimaryGoals' => user_primary_goals($currentUser),
         'config' => $config,
     ]);
 }
@@ -774,11 +775,19 @@ if ($page === 'profile') {
             $primaryGoalType = in_array((string) ($_POST['primary_goal_type'] ?? 'steps'), ['steps', 'km', 'workouts'], true)
                 ? (string) $_POST['primary_goal_type']
                 : 'steps';
+            $rawPrimaryGoalsSpec = trim((string) ($_POST['primary_goals_spec'] ?? ''));
+            try {
+                $normalizedPrimaryGoalsSpec = $rawPrimaryGoalsSpec !== '' ? normalize_primary_goals_spec($rawPrimaryGoalsSpec) : null;
+            } catch (InvalidArgumentException $exception) {
+                flash_set('error', $exception->getMessage());
+                redirect($profileUrl('config', ['edit' => 1]));
+            }
             db_execute(
                 $pdo,
                 'UPDATE users
                  SET primary_goal_type = :primary_goal_type,
                      primary_goal_value = :primary_goal_value,
+                     primary_goals_spec = :primary_goals_spec,
                      workout_target = :workout_target,
                      ideal_weight = :ideal_weight,
                      updated_at = :updated_at
@@ -786,6 +795,7 @@ if ($page === 'profile') {
                 [
                     ':primary_goal_type' => $primaryGoalType,
                     ':primary_goal_value' => ($_POST['primary_goal_value'] ?? '') !== '' ? (float) $_POST['primary_goal_value'] : null,
+                    ':primary_goals_spec' => $normalizedPrimaryGoalsSpec,
                     ':workout_target' => max(0, (int) ($_POST['workout_target'] ?? 0)),
                     ':ideal_weight' => ($_POST['ideal_weight'] ?? '') !== '' ? (float) $_POST['ideal_weight'] : null,
                     ':updated_at' => now_iso(),
@@ -1992,7 +2002,16 @@ if ($page === 'metric') {
         redirect('/?page=dashboard');
     }
 
-    $weekOptions = week_starts_from_metrics($selectedMetric);
+    $weeklyRows = array_values((array) ($selectedMetric['weekly'] ?? []));
+    $weekOptionsMap = [];
+    foreach ($weeklyRows as $weekRow) {
+        $weekStart = (string) ($weekRow['week_start'] ?? '');
+        if ($weekStart !== '') {
+            $weekOptionsMap[$weekStart] = true;
+        }
+    }
+    $weekOptions = array_keys($weekOptionsMap);
+    sort($weekOptions);
     $defaultWeekStart = $weekOptions !== [] ? $weekOptions[count($weekOptions) - 1] : to_date(null);
     $dashboardView = (string) ($_GET['view'] ?? ($currentUser['dashboard_view'] ?? 'current_week'));
     if (!in_array($dashboardView, ['current_week', 'total'], true)) {
@@ -2003,109 +2022,94 @@ if ($page === 'metric') {
         $selectedWeekStart = $defaultWeekStart;
     }
 
-    $filterWeeklyRows = static function (array $rows) use ($dashboardView, $selectedWeekStart): array {
-        if ($rows === []) {
-            return [];
+    $selectedWeeklyRows = [];
+    if ($dashboardView === 'total') {
+        $selectedWeeklyRows = $weeklyRows;
+    } elseif ($dashboardView === 'current_week') {
+        foreach ($weeklyRows as $weekRow) {
+            if ((string) ($weekRow['week_start'] ?? '') === $selectedWeekStart) {
+                $selectedWeeklyRows[] = $weekRow;
+            }
         }
-        if ($dashboardView === 'total') {
-            return $rows;
-        }
-        if ($dashboardView === 'current_week') {
-            return array_slice($rows, -6);
-        }
-        $filtered = array_values(array_filter(
-            $rows,
-            static fn(array $row): bool => (string) ($row['week_start'] ?? '') === $selectedWeekStart
-        ));
-        return $filtered;
-    };
-
-    $selectedWeekRow = null;
-    foreach (($selectedMetric['weekly'] ?? []) as $weekRow) {
-        if ((string) ($weekRow['week_start'] ?? '') === $selectedWeekStart) {
-            $selectedWeekRow = $weekRow;
-            break;
+    } else {
+        foreach ($weeklyRows as $weekRow) {
+            if ((string) ($weekRow['week_start'] ?? '') === $selectedWeekStart) {
+                $selectedWeeklyRows[] = $weekRow;
+            }
         }
     }
-
-    $rangeStart = $selectedWeekStart;
-    $rangeEnd = (new DateTimeImmutable($selectedWeekStart))->modify('+6 days')->format('Y-m-d');
-    $stepsRows = (array) ($selectedMetric['steps_series'] ?? []);
-    $filteredDailySteps = array_values(array_filter(
-        $stepsRows,
-        static fn(array $row): bool => $dashboardView === 'total' || ((string) $row['date'] >= $rangeStart && (string) $row['date'] <= $rangeEnd)
-    ));
-    if ($filteredDailySteps === []) {
-        $filteredDailySteps = $stepsRows;
+    if ($selectedWeeklyRows === [] && $weeklyRows !== []) {
+        $selectedWeeklyRows = [$weeklyRows[count($weeklyRows) - 1]];
     }
-
-    $logs = fetch_logs_for_user_between($pdo, (int) $selectedMetric['user']['id'], (string) $settings['challenge_start'], (string) $settings['challenge_end']);
-    $distanceByWeek = [];
-    foreach ($logs as $log) {
-        $weekStart = week_start_for(new DateTimeImmutable((string) $log['log_date']))->format('Y-m-d');
-        if (!isset($distanceByWeek[$weekStart])) {
-            $distanceByWeek[$weekStart] = 0.0;
-        }
-        $distanceByWeek[$weekStart] += (float) ($log['distance_km'] ?? 0);
-    }
-    ksort($distanceByWeek);
-    $distanceWeeklyRows = [];
-    foreach ($distanceByWeek as $weekStart => $value) {
-        $distanceWeeklyRows[] = [
-            'week_start' => $weekStart,
-            'value' => round((float) $value, 2),
-        ];
-    }
+    $selectedWeekRow = $selectedWeeklyRows !== [] ? $selectedWeeklyRows[count($selectedWeeklyRows) - 1] : null;
 
     $seriesLabels = [];
     $seriesValues = [];
     $currentValue = 0;
     $currentValueSuffix = '';
     $chartLabel = $allowedMetrics[$metricKey];
+    $score_for_week = static fn(array $row): float => round(
+        max(
+            0.0,
+            100 - (
+                ((int) ($row['step_failures'] ?? 0) * 6)
+                + ((int) ($row['workout_failures'] ?? 0) * 8)
+                + ((int) ($row['skip_warnings'] ?? 0) * 3)
+                + ((int) ($row['strikes_after_week'] ?? 0) * 4)
+            )
+        ),
+        1
+    );
+    $workout_success_for_week = static function (array $row): int {
+        if (isset($row['workout_success_week'])) {
+            return (int) ($row['workout_success_week'] ?? 0);
+        }
+        if (isset($row['workout_target_week'])) {
+            return max(0, (int) ($row['workout_target_week'] ?? 0) - (int) ($row['workout_failures'] ?? 0));
+        }
+
+        return (int) ($row['workouts'] ?? 0);
+    };
 
     if ($metricKey === 'steps') {
-        $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) $row['date']), $filteredDailySteps);
-        $seriesValues = array_map(static fn(array $row): int => (int) $row['steps'], $filteredDailySteps);
-        $currentValue = array_sum(array_map(static fn(array $row): int => (int) $row['steps'], $filteredDailySteps));
+        $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['week_start'] ?? '')), $selectedWeeklyRows);
+        $seriesValues = array_map(static fn(array $row): int => (int) ($row['steps'] ?? 0), $selectedWeeklyRows);
+        $currentValue = array_sum($seriesValues);
     }
 
     if ($metricKey === 'distance') {
-        $distanceRows = $filterWeeklyRows($distanceWeeklyRows);
-        $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) $row['week_start']), $distanceRows);
-        $seriesValues = array_map(static fn(array $row): float => (float) $row['value'], $distanceRows);
-        $currentValue = array_sum(array_map(static fn(array $row): float => (float) $row['value'], $distanceRows));
+        $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['week_start'] ?? '')), $selectedWeeklyRows);
+        $seriesValues = array_map(static fn(array $row): float => round((float) ($row['km'] ?? 0), 2), $selectedWeeklyRows);
+        $currentValue = array_sum($seriesValues);
         $currentValueSuffix = ' km';
     }
 
     if ($metricKey === 'workouts') {
-        $rows = $filterWeeklyRows((array) ($selectedMetric['weekly'] ?? []));
-        $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) $row['week_start']), $rows);
-        $seriesValues = array_map(static fn(array $row): int => max(0, (int) ($selectedMetric['workout_target'] ?? 0) - (int) ($row['workout_failures'] ?? 0)), $rows);
-        $currentValue = (int) ($dashboardView === 'total' ? ($selectedMetric['workout_success'] ?? 0) : max(0, (int) ($selectedMetric['workout_target'] ?? 0) - (int) ($selectedWeekRow['workout_failures'] ?? 0)));
+        $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['week_start'] ?? '')), $selectedWeeklyRows);
+        $seriesValues = array_map($workout_success_for_week, $selectedWeeklyRows);
+        $currentValue = $dashboardView === 'total'
+            ? array_sum($seriesValues)
+            : (int) ($selectedWeekRow !== null ? $workout_success_for_week($selectedWeekRow) : 0);
     }
 
     if ($metricKey === 'money') {
-        $rows = $filterWeeklyRows((array) ($selectedMetric['weekly'] ?? []));
-        $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) $row['week_start']), $rows);
-        $seriesValues = array_map(static fn(array $row): int => (int) ($row['penalty'] ?? 0), $rows);
-        $currentValue = (float) ($dashboardView === 'total' ? ($selectedMetric['total_penalty'] ?? 0) : ($selectedWeekRow['penalty'] ?? 0));
+        $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['week_start'] ?? '')), $selectedWeeklyRows);
+        $seriesValues = array_map(static fn(array $row): int => (int) ($row['penalty'] ?? 0), $selectedWeeklyRows);
+        $currentValue = $dashboardView === 'total'
+            ? (float) array_sum($seriesValues)
+            : (float) ($selectedWeekRow['penalty'] ?? 0);
         $currentValueSuffix = ' €';
     }
 
     if ($metricKey === 'strikes') {
-        $rows = $filterWeeklyRows((array) ($selectedMetric['weekly'] ?? []));
-        $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) $row['week_start']), $rows);
-        $seriesValues = array_map(static fn(array $row): int => (int) ($row['strikes_after_week'] ?? 0), $rows);
-        $currentValue = (int) ($dashboardView === 'total' ? ($selectedMetric['current_strikes'] ?? 0) : ($selectedWeekRow['strikes_after_week'] ?? 0));
+        $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['week_start'] ?? '')), $selectedWeeklyRows);
+        $seriesValues = array_map(static fn(array $row): int => (int) ($row['strikes_after_week'] ?? 0), $selectedWeeklyRows);
+        $currentValue = (int) ($selectedWeekRow['strikes_after_week'] ?? ($selectedMetric['current_strikes'] ?? 0));
     }
 
     if ($metricKey === 'score') {
-        $rows = $filterWeeklyRows((array) ($selectedMetric['weekly'] ?? []));
-        $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) $row['week_start']), $rows);
-        $seriesValues = array_map(
-            static fn(array $row): float => round(max(0.0, 100 - (((int) ($row['step_failures'] ?? 0) * 6) + ((int) ($row['workout_failures'] ?? 0) * 8) + ((int) ($row['skip_warnings'] ?? 0) * 3) + ((int) ($row['strikes_after_week'] ?? 0) * 4))), 1),
-            $rows
-        );
+        $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['week_start'] ?? '')), $selectedWeeklyRows);
+        $seriesValues = array_map($score_for_week, $selectedWeeklyRows);
         $currentValue = (float) ($dashboardView === 'total' ? ($selectedMetric['score'] ?? 0) : ($seriesValues !== [] ? $seriesValues[count($seriesValues) - 1] : 0));
     }
 

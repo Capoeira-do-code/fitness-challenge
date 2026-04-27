@@ -17,6 +17,7 @@ $goalCreateMode = (string) ($_GET['goal_new'] ?? '') === '1';
 $goalDetailId = isset($_GET['goal_id']) ? (int) $_GET['goal_id'] : 0;
 $configEditMode = $canEditProfile && (string) ($_GET['edit'] ?? '') === '1';
 $profileMetric = is_array($profileMetric ?? null) ? (array) $profileMetric : [];
+$primaryGoalsSpec = trim((string) ($profileUser['primary_goals_spec'] ?? ''));
 
 $profileQueryBase = ['page' => 'profile'];
 if (!$isOwnProfile) {
@@ -151,6 +152,7 @@ $profileExportPayload = [
     'config' => [
         'primary_goal_type' => (string) ($profileUser['primary_goal_type'] ?? 'steps'),
         'primary_goal_value' => (float) ($profileUser['primary_goal_value'] ?? 0),
+        'primary_goals_spec' => $primaryGoalsSpec,
         'workout_target' => (int) ($profileUser['workout_target'] ?? 0),
         'ideal_weight' => $profileUser['ideal_weight'] !== null ? (float) $profileUser['ideal_weight'] : null,
     ],
@@ -442,7 +444,12 @@ $profileExportPayload = [
                     <article class="achievement-card profile-achievement-card">
                         <div class="profile-achievement-media">
                             <?php if (!empty($achievement['image_path'])): ?>
-                                <img src="<?= e(media_url((string) $achievement['image_path'])) ?>" alt="<?= e((string) $achievement['name']) ?>">
+                                <?php $achievementImageUrl = media_url((string) ($achievement['image_path'] ?? '')); ?>
+                                <?php if ($achievementImageUrl !== ''): ?>
+                                    <img src="<?= e($achievementImageUrl) ?>" alt="<?= e((string) $achievement['name']) ?>">
+                                <?php else: ?>
+                                    <span>*</span>
+                                <?php endif; ?>
                             <?php else: ?>
                                 <span>*</span>
                             <?php endif; ?>
@@ -489,6 +496,7 @@ $profileExportPayload = [
             <ul class="facts" data-config-readonly data-spa-show-when-no-param="edit" <?= $configEditMode ? 'hidden' : '' ?>>
                 <li><strong><?= e(t('common.username')) ?>:</strong> <?= e((string) $profileUser['username']) ?></li>
                 <li><strong><?= e(t('settings.primary_goal')) ?>:</strong> <?= e((string) ($profileUser['primary_goal_type'] ?? 'steps')) ?> <?= e((string) ($profileUser['primary_goal_value'] ?? $profileUser['step_goal'])) ?></li>
+                <li><strong><?= e(t('settings.primary_goals_spec')) ?>:</strong> <?= e($primaryGoalsSpec !== '' ? $primaryGoalsSpec : '-') ?></li>
                 <li><strong><?= e(t('profile.workout_target')) ?>:</strong> <?= e((string) $profileUser['workout_target']) ?>/<?= e(strtolower(t('common.week'))) ?></li>
                 <li><strong><?= e(t('metric.ideal_weight')) ?>:</strong> <?= $profileUser['ideal_weight'] !== null ? e((string) $profileUser['ideal_weight']) . ' kg' : '-' ?></li>
             </ul>
@@ -509,6 +517,11 @@ $profileExportPayload = [
                             </select>
                         </label>
                         <label><?= e(t('settings.primary_goal_value')) ?><input type="number" step="0.1" name="primary_goal_value" value="<?= e((string) ($profileUser['primary_goal_value'] ?? '')) ?>"></label>
+                        <label>
+                            <?= e(t('settings.primary_goals_spec')) ?>
+                            <input type="text" name="primary_goals_spec" value="<?= e($primaryGoalsSpec) ?>" placeholder="<?= e(t('settings.primary_goals_spec_placeholder')) ?>">
+                            <small class="muted"><?= e(t('settings.primary_goals_spec_hint')) ?></small>
+                        </label>
                         <label><?= e(t('profile.workout_target')) ?><input type="number" min="0" name="workout_target" value="<?= e((string) ($profileUser['workout_target'] ?? 0)) ?>"></label>
                         <label><?= e(t('metric.ideal_weight')) ?><input type="number" step="0.1" name="ideal_weight" value="<?= e((string) ($profileUser['ideal_weight'] ?? '')) ?>"></label>
                     </div>

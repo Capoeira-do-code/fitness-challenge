@@ -868,58 +868,201 @@ function save_uploaded_image_from_data_url(array $config, string $dataUrl, strin
 
 function resolve_media_storage_path(array $config, string $reference): ?string
 {
-    $raw = trim($reference);
-    if ($raw === '') {
+    $normalized = normalize_media_reference($reference);
+    $kind = (string) ($normalized['kind'] ?? '');
+    if ($kind !== 'media') {
+        media_debug_log('resolve_media_storage_path', [
+            'stored_value' => $reference,
+            'helper_input' => $reference,
+            'normalized_value' => (string) ($normalized['normalized'] ?? ''),
+            'final_url' => '',
+            'reason' => $kind === '' ? 'invalid' : $kind,
+        ]);
+
         return null;
     }
 
-    // Support legacy values that accidentally stored a full media URL.
-    if (preg_match('~^https?://~i', $raw) === 1 || str_starts_with($raw, '/?page=media')) {
-        $parsed = parse_url($raw);
-        if (is_array($parsed)) {
-            $query = [];
-            if (!empty($parsed['query'])) {
-                parse_str((string) $parsed['query'], $query);
-            }
-            $innerPath = isset($query['path']) && is_string($query['path']) ? trim((string) $query['path']) : '';
-            if ($innerPath !== '') {
-                $raw = $innerPath;
-            } elseif (!empty($parsed['path'])) {
-                $raw = (string) $parsed['path'];
-            }
-        }
-    }
-
-    $clean = preg_replace('/[#?].*$/', '', $raw) ?? '';
-    $clean = ltrim($clean, '/');
-    if ($clean === '' || str_contains($clean, '..')) {
+    $clean = (string) ($normalized['normalized'] ?? '');
+    if ($clean === '') {
         return null;
     }
 
-    if (str_starts_with($clean, 'public/uploads/')) {
-        $clean = substr($clean, strlen('public/uploads/'));
-    } elseif (str_starts_with($clean, 'storage/uploads/')) {
-        $clean = substr($clean, strlen('storage/uploads/'));
-    } elseif (str_starts_with($clean, 'var/www/storage/uploads/')) {
-        $clean = substr($clean, strlen('var/www/storage/uploads/'));
-    }
-
-    $legacyRelative = $clean;
-    if (str_starts_with($legacyRelative, 'uploads/')) {
-        $legacyRelative = substr($legacyRelative, strlen('uploads/'));
-    }
     $legacyRoot = dirname(__DIR__) . '/public/uploads';
-    $legacyPath = $legacyRoot . '/' . $legacyRelative;
+    $legacyPath = $legacyRoot . '/' . $clean;
     if (is_file($legacyPath)) {
+        media_debug_log('resolve_media_storage_path', [
+            'stored_value' => $reference,
+            'helper_input' => $reference,
+            'normalized_value' => $clean,
+            'final_url' => $legacyPath,
+            'reason' => 'legacy_public_uploads',
+        ]);
+
         return $legacyPath;
     }
 
     $storagePath = rtrim((string) $config['upload_dir'], '/') . '/' . $clean;
     if (is_file($storagePath)) {
+        media_debug_log('resolve_media_storage_path', [
+            'stored_value' => $reference,
+            'helper_input' => $reference,
+            'normalized_value' => $clean,
+            'final_url' => $storagePath,
+            'reason' => 'storage_upload_dir',
+        ]);
+
         return $storagePath;
     }
 
+    media_debug_log('resolve_media_storage_path', [
+        'stored_value' => $reference,
+        'helper_input' => $reference,
+        'normalized_value' => $clean,
+        'final_url' => '',
+        'reason' => 'file_not_found',
+    ]);
+
     return null;
+}
+
+function allowed_primary_goal_types(): array
+{
+    return ['steps', 'km', 'workouts'];
+}
+
+function parse_primary_goals_spec(string $rawSpec, bool $strict = false): array
+{
+    $spec = trim($rawSpec);
+    if ($spec === '') {
+        return [];
+    }
+
+    $allowedTypes = allowed_primary_goal_types();
+    $goalsByType = [];
+    $order = [];
+    $chunks = explode(';', $spec);
+    foreach ($chunks as $chunk) {
+        $piece = trim($chunk);
+        if ($piece === '') {
+            continue;
+        }
+
+        if (!str_contains($piece, ':')) {
+            if ($strict) {
+                throw new InvalidArgumentException('Invalid goal format. Use type:value;type:value');
+            }
+            continue;
+        }
+
+        [$rawType, $rawValue] = array_map('trim', explode(':', $piece, 2));
+        $type = strtolower($rawType);
+        if (!in_array($type, $allowedTypes, true)) {
+            if ($strict) {
+                throw new InvalidArgumentException('Invalid goal type. Allowed: steps, km, workouts');
+            }
+            continue;
+        }
+
+        if ($rawValue === '' || !is_numeric($rawValue)) {
+            if ($strict) {
+                throw new InvalidArgumentException('Invalid goal value for "' . $type . '".');
+            }
+            continue;
+        }
+
+        $value = (float) $rawValue;
+        if (in_array($type, ['steps', 'workouts'], true)) {
+            $value = (float) max(0, (int) round($value));
+        }
+        if ($value <= 0) {
+            if ($strict) {
+                throw new InvalidArgumentException('Goal value for "' . $type . '" must be greater than 0.');
+            }
+            continue;
+        }
+
+        if (!isset($goalsByType[$type])) {
+            $order[] = $type;
+        }
+        $goalsByType[$type] = [
+            'type' => $type,
+            'value' => $value,
+        ];
+    }
+
+    $parsed = [];
+    foreach ($order as $type) {
+        if (isset($goalsByType[$type])) {
+            $parsed[] = $goalsByType[$type];
+        }
+    }
+
+    if ($strict && $parsed === []) {
+        throw new InvalidArgumentException('At least one valid goal is required.');
+    }
+
+    return $parsed;
+}
+
+function format_primary_goals_spec(array $goals): string
+{
+    $parts = [];
+    foreach ($goals as $goal) {
+        $type = strtolower(trim((string) ($goal['type'] ?? '')));
+        $value = (float) ($goal['value'] ?? 0);
+        if ($type === '' || $value <= 0 || !in_array($type, allowed_primary_goal_types(), true)) {
+            continue;
+        }
+
+        $formattedValue = in_array($type, ['steps', 'workouts'], true)
+            ? (string) ((int) round($value))
+            : rtrim(rtrim(number_format($value, 4, '.', ''), '0'), '.');
+
+        $parts[] = $type . ':' . $formattedValue;
+    }
+
+    return implode(';', $parts);
+}
+
+function normalize_primary_goals_spec(string $rawSpec): string
+{
+    return format_primary_goals_spec(parse_primary_goals_spec($rawSpec, true));
+}
+
+function user_primary_goals(array $user): array
+{
+    $spec = trim((string) ($user['primary_goals_spec'] ?? ''));
+    if ($spec !== '') {
+        $parsed = parse_primary_goals_spec($spec, false);
+        if ($parsed !== []) {
+            return $parsed;
+        }
+    }
+
+    $legacyType = strtolower(trim((string) ($user['primary_goal_type'] ?? 'steps')));
+    if (!in_array($legacyType, allowed_primary_goal_types(), true)) {
+        $legacyType = 'steps';
+    }
+
+    $legacyValue = match ($legacyType) {
+        'steps' => (float) max(1, (int) ($user['step_goal'] ?? 0)),
+        'km' => (float) ($user['primary_goal_value'] ?? 0),
+        'workouts' => (float) (($user['primary_goal_value'] ?? 1) ?: 1),
+        default => (float) max(1, (int) ($user['step_goal'] ?? 0)),
+    };
+
+    if ($legacyType === 'km' && $legacyValue <= 0) {
+        $legacyType = 'steps';
+        $legacyValue = (float) max(1, (int) ($user['step_goal'] ?? 0));
+    }
+    if ($legacyType === 'workouts') {
+        $legacyValue = (float) max(1, (int) round($legacyValue));
+    }
+
+    return [[
+        'type' => $legacyType,
+        'value' => $legacyValue,
+    ]];
 }
 
 function detect_media_mime_type(string $filePath): string

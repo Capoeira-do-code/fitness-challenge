@@ -47,6 +47,7 @@ function initialize_database(PDO $pdo, array $config): void
             avatar_path TEXT,
             primary_goal_type TEXT NOT NULL DEFAULT "steps",
             primary_goal_value REAL,
+            primary_goals_spec TEXT,
             dashboard_view TEXT NOT NULL DEFAULT "current_week",
             dashboard_layout_json TEXT,
             meal_calendar_view TEXT NOT NULL DEFAULT "week",
@@ -444,6 +445,7 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'avatar_path', 'TEXT');
     ensure_column($pdo, 'users', 'primary_goal_type', 'TEXT NOT NULL DEFAULT "steps"');
     ensure_column($pdo, 'users', 'primary_goal_value', 'REAL');
+    ensure_column($pdo, 'users', 'primary_goals_spec', 'TEXT');
     ensure_column($pdo, 'users', 'dashboard_view', 'TEXT NOT NULL DEFAULT "current_week"');
     ensure_column($pdo, 'users', 'dashboard_layout_json', 'TEXT');
     ensure_column($pdo, 'users', 'meal_calendar_view', 'TEXT NOT NULL DEFAULT "week"');

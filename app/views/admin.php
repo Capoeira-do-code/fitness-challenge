@@ -476,7 +476,12 @@ $sectionRows = [
                         <label class="check"><input type="checkbox" name="conditional_enabled" value="1" data-achievement-conditional-toggle <?= $achievementConditional ? 'checked' : '' ?>><?= e(t('achievements.conditional')) ?></label>
                     </div>
                     <?php if (!empty($achievement['image_path'])): ?>
-                        <img class="settings-avatar-preview" src="<?= e(media_url((string) $achievement['image_path'])) ?>" alt="<?= e((string) $achievement['name']) ?>">
+                        <?php $achievementImageUrl = media_url((string) ($achievement['image_path'] ?? '')); ?>
+                        <?php if ($achievementImageUrl !== ''): ?>
+                            <img class="settings-avatar-preview" src="<?= e($achievementImageUrl) ?>" alt="<?= e((string) $achievement['name']) ?>">
+                        <?php else: ?>
+                            <div class="entries-calendar-empty">Sin foto</div>
+                        <?php endif; ?>
                     <?php endif; ?>
                     <div class="grid-inline" data-achievement-conditional-fields <?= $achievementConditional ? '' : 'hidden' ?>>
                         <label>

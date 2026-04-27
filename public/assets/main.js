@@ -65,14 +65,47 @@
         const workoutInput = entryForm.querySelector('[name="workout_done"]');
         const stepReason = entryForm.querySelector('[data-reason="steps"]');
         const workoutReason = entryForm.querySelector('[data-reason="workout"]');
+        let primaryGoals = [];
+        try {
+            const parsedGoals = JSON.parse(entryForm.dataset.primaryGoals || '[]');
+            if (Array.isArray(parsedGoals)) {
+                primaryGoals = parsedGoals;
+            }
+        } catch {
+            primaryGoals = [];
+        }
         const updateReasons = () => {
             const goalType = entryForm.dataset.primaryGoalType || 'steps';
             const stepGoal = Number(entryForm.dataset.stepGoal || 0);
             const kmGoal = Number(entryForm.dataset.kmGoal || 0);
             const stepsValue = Number(stepsInput?.value || 0);
             const kmValue = Number(kmInput?.value || 0);
-            const missingSteps = goalType === 'km' && kmGoal > 0 ? kmValue < kmGoal : stepsValue < stepGoal;
-            const missingWorkout = workoutInput ? !workoutInput.checked : false;
+            const workoutValue = workoutInput && workoutInput.checked ? 1 : 0;
+            let missingSteps = goalType === 'km' && kmGoal > 0 ? kmValue < kmGoal : stepsValue < stepGoal;
+            let missingWorkout = workoutInput ? !workoutInput.checked : false;
+
+            if (primaryGoals.length > 0) {
+                missingSteps = false;
+                missingWorkout = false;
+                primaryGoals.forEach((goal) => {
+                    if (!goal || typeof goal !== 'object') {
+                        return;
+                    }
+                    const type = String(goal.type || '').toLowerCase().trim();
+                    const target = Number(goal.value || 0);
+                    if (!type || !(target > 0)) {
+                        return;
+                    }
+
+                    if (type === 'steps' && stepsValue < target) {
+                        missingSteps = true;
+                    } else if (type === 'km' && kmValue < target) {
+                        missingSteps = true;
+                    } else if (type === 'workouts' && workoutValue < target) {
+                        missingWorkout = true;
+                    }
+                });
+            }
             if (stepReason) {
                 stepReason.hidden = !missingSteps;
             }
@@ -143,7 +176,11 @@
         const render = () => {
             const current = photos[index] || {};
             if (image) {
-                image.src = current.src || '';
+                if (current.src) {
+                    image.src = current.src;
+                } else {
+                    image.removeAttribute('src');
+                }
             }
             if (caption) {
                 caption.textContent = current.caption || '';

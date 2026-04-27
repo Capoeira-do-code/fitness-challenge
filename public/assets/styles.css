@@ -650,6 +650,49 @@ img.settings-avatar-preview {
     margin-bottom: 0.8rem;
 }
 
+.panel-head-help {
+    align-items: center;
+}
+
+.metric-help-popover {
+    position: relative;
+    display: inline-block;
+}
+
+.metric-help-popover > summary {
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    color: var(--primary-dark);
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+
+.metric-help-popover > summary::-webkit-details-marker {
+    display: none;
+}
+
+.metric-help-popover-content {
+    position: absolute;
+    right: 0;
+    top: 1.9rem;
+    z-index: 30;
+    width: min(320px, 78vw);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fff;
+    box-shadow: var(--shadow);
+    padding: 0.7rem;
+    color: var(--muted);
+    font-size: 0.84rem;
+    line-height: 1.35;
+}
+
 .eyebrow {
     margin-bottom: 0.35rem;
     color: var(--primary-dark);

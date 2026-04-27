@@ -23,6 +23,7 @@ import time
 import urllib.error
 import urllib.request
 import webbrowser
+import zipfile
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
@@ -32,6 +33,12 @@ STORAGE_DIR = ROOT / "storage"
 TLS_CERT_DIR = ROOT / "nginx" / "certs"
 TLS_CERT_FILE = TLS_CERT_DIR / "local.crt"
 TLS_KEY_FILE = TLS_CERT_DIR / "local.key"
+TOOLS_DIR = ROOT / ".tools"
+WINDOWS_PORTABLE_PHP_DIR = TOOLS_DIR / "php-portable"
+WINDOWS_DEFAULT_PORTABLE_PHP_URLS = [
+    "https://windows.php.net/downloads/releases/latest/php-8.3-nts-Win32-vs16-x64-latest.zip",
+    "https://windows.php.net/downloads/releases/latest/php-8.4-nts-Win32-vs17-x64-latest.zip",
+]
 
 
 class RunnerError(RuntimeError):
@@ -196,6 +203,108 @@ def maybe_hold_console(hold_open: bool, exit_code: int) -> None:
         pass
 
 
+def verify_php_bin(php_path: Path | str) -> bool:
+    candidate = str(php_path)
+    try:
+        completed = subprocess.run(
+            [candidate, "-v"],
+            cwd=str(ROOT),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+    except Exception:
+        return False
+    return completed.returncode == 0
+
+
+def download_file(url: str, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with urllib.request.urlopen(url, timeout=120) as response:
+        if getattr(response, "status", 200) >= 400:
+            raise RunnerError(f"Descarga fallida ({response.status}) para {url}")
+        with destination.open("wb") as output:
+            while True:
+                chunk = response.read(1024 * 64)
+                if not chunk:
+                    break
+                output.write(chunk)
+
+
+def extract_php_zip(zip_path: Path, target_dir: Path) -> Optional[Path]:
+    if target_dir.exists():
+        shutil.rmtree(target_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(zip_path, "r") as zip_file:
+        zip_file.extractall(target_dir)
+
+    direct_candidate = target_dir / "php.exe"
+    if direct_candidate.exists():
+        return direct_candidate
+
+    nested_candidates = list(target_dir.glob("**/php.exe"))
+    return nested_candidates[0] if nested_candidates else None
+
+
+def attempt_portable_php_windows() -> Optional[str]:
+    if os.name != "nt":
+        return None
+
+    existing_php = WINDOWS_PORTABLE_PHP_DIR / "php.exe"
+    if existing_php.exists() and verify_php_bin(existing_php):
+        print(f"[deps] Usando PHP portable existente: {existing_php}")
+        return str(existing_php)
+
+    env_url = os.environ.get("PHP_WINDOWS_ZIP_URL", "").strip()
+    candidate_urls = [env_url] if env_url else []
+    candidate_urls.extend(WINDOWS_DEFAULT_PORTABLE_PHP_URLS)
+
+    archive_path = WINDOWS_PORTABLE_PHP_DIR / "php-portable.zip"
+    extract_dir = WINDOWS_PORTABLE_PHP_DIR / "_extracted"
+    WINDOWS_PORTABLE_PHP_DIR.mkdir(parents=True, exist_ok=True)
+
+    for url in candidate_urls:
+        if not url:
+            continue
+        print(f"[deps] Intentando fallback PHP portable desde: {url}")
+        try:
+            download_file(url, archive_path)
+            php_candidate = extract_php_zip(archive_path, extract_dir)
+            if php_candidate is None:
+                print("[deps] ZIP descargado, pero no contiene php.exe.")
+                continue
+
+            for item in WINDOWS_PORTABLE_PHP_DIR.iterdir():
+                if item.name in {"php-portable.zip", "_extracted"}:
+                    continue
+                if item.is_dir():
+                    shutil.rmtree(item, ignore_errors=True)
+                else:
+                    item.unlink(missing_ok=True)
+
+            if php_candidate.parent != WINDOWS_PORTABLE_PHP_DIR:
+                for extracted_item in php_candidate.parent.iterdir():
+                    destination = WINDOWS_PORTABLE_PHP_DIR / extracted_item.name
+                    if destination.exists():
+                        if destination.is_dir():
+                            shutil.rmtree(destination, ignore_errors=True)
+                        else:
+                            destination.unlink(missing_ok=True)
+                    shutil.move(str(extracted_item), str(destination))
+
+            final_php = WINDOWS_PORTABLE_PHP_DIR / "php.exe"
+            if final_php.exists() and verify_php_bin(final_php):
+                print(f"[deps] PHP portable listo: {final_php}")
+                return str(final_php)
+            print("[deps] El fallback portable se descargó, pero php.exe no pasó verificación.")
+        except Exception as exc:
+            print(f"[deps] Fallback portable falló para {url}: {exc}")
+
+    return None
+
+
 def attempt_auto_install_php_windows() -> Optional[str]:
     if os.name != "nt":
         return None
@@ -284,6 +393,8 @@ def ensure_php_dependency(auto_install_deps: bool) -> Optional[str]:
     print("[deps] `php` no encontrado. Intentando auto-instalar dependencia...")
     if os.name == "nt":
         php_bin = attempt_auto_install_php_windows()
+        if php_bin is None:
+            php_bin = attempt_portable_php_windows()
     else:
         php_bin = None
 
@@ -300,7 +411,8 @@ def serve_basic_ui(base_url: str, *, auto_install_deps: bool) -> int:
         if os.name == "nt":
             raise RunnerError(
                 "No se encontró `php` para ejecutar el modo basic. "
-                "Instálalo con `winget install PHP.PHP` o lanza con `--auto-install-deps`."
+                "Prueba `--auto-install-deps`, instala con winget/choco/scoop o define "
+                "`PHP_WINDOWS_ZIP_URL` para fallback portable."
             )
         raise RunnerError("No se encontró `php` para ejecutar el modo basic.")
 
@@ -399,7 +511,7 @@ def main() -> int:
         "--auto-install-deps",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Auto-instala dependencias faltantes cuando sea posible (Windows: PHP via winget/choco/scoop).",
+        help="Auto-instala dependencias faltantes cuando sea posible (Windows: winget/choco/scoop + fallback PHP portable).",
     )
     args = parser.parse_args()
 

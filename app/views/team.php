@@ -192,7 +192,12 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     <?php foreach ((array) ($teamMemberDetail['achievements'] ?? []) as $achievement): ?>
                         <article class="achievement-card">
                             <?php if (!empty($achievement['image_path'])): ?>
-                                <img src="<?= e(media_url((string) $achievement['image_path'])) ?>" alt="<?= e((string) ($achievement['name'] ?? '')) ?>">
+                                <?php $teamAchievementImageUrl = media_url((string) ($achievement['image_path'] ?? '')); ?>
+                                <?php if ($teamAchievementImageUrl !== ''): ?>
+                                    <img src="<?= e($teamAchievementImageUrl) ?>" alt="<?= e((string) ($achievement['name'] ?? '')) ?>">
+                                <?php else: ?>
+                                    <span>*</span>
+                                <?php endif; ?>
                             <?php else: ?>
                                 <span>*</span>
                             <?php endif; ?>
@@ -461,7 +466,16 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     <?php foreach ($teamAchievements as $achievement): ?>
                         <?php $deleteFormId = 'delete-achievement-team-' . (int) $achievement['id']; ?>
                         <article class="achievement-card">
-                            <?php if (!empty($achievement['image_path'])): ?><img src="<?= e(media_url((string) $achievement['image_path'])) ?>" alt="<?= e((string) $achievement['name']) ?>"><?php else: ?><span>*</span><?php endif; ?>
+                            <?php if (!empty($achievement['image_path'])): ?>
+                                <?php $teamAwardImageUrl = media_url((string) ($achievement['image_path'] ?? '')); ?>
+                                <?php if ($teamAwardImageUrl !== ''): ?>
+                                    <img src="<?= e($teamAwardImageUrl) ?>" alt="<?= e((string) $achievement['name']) ?>">
+                                <?php else: ?>
+                                    <span>*</span>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <span>*</span>
+                            <?php endif; ?>
                             <strong><?= e((string) $achievement['name']) ?></strong>
                             <p><?= e((string) $achievement['description']) ?></p>
                             <?php if (!empty($achievement['reward_text'])): ?><small><?= e(t('achievements.reward')) ?>: <?= e((string) $achievement['reward_text']) ?></small><?php endif; ?>

@@ -74,6 +74,8 @@ $distanceValues = array_map(
 
 $compareName = $compareMetric !== null ? (string) $compareMetric['user']['display_name'] : null;
 $compareTitle = t('dashboard.compare', ['name' => $compareName !== null ? 'vs ' . $compareName : '']);
+$comparisonHelpLabel = t('dashboard.comparison_help_label');
+$comparisonHelpText = t('dashboard.comparison_help_text');
 
 $compareBar = [
     'labels' => [t('metric.steps') . ' %', t('metric.workouts') . ' %', t('metric.score')],
@@ -311,7 +313,13 @@ $topbarControls = ob_get_clean();
 
         <?php if ($showWidget('comparison')): ?>
         <article class="panel chart-card dashboard-panel" style="order: <?= $widgetOrder('comparison') ?>">
-            <h2><?= e(trim($compareTitle)) ?></h2>
+            <div class="panel-head panel-head-help">
+                <h2><?= e(trim($compareTitle)) ?></h2>
+                <details class="metric-help-popover">
+                    <summary aria-label="<?= e($comparisonHelpLabel) ?>" title="<?= e($comparisonHelpLabel) ?>">?</summary>
+                    <div class="metric-help-popover-content"><?= e($comparisonHelpText) ?></div>
+                </details>
+            </div>
             <canvas id="compareChart" height="170"></canvas>
         </article>
         <?php endif; ?>
@@ -363,12 +371,13 @@ $topbarControls = ob_get_clean();
                         $hasLog = !empty($dashboardMealLoggedDays[$dateKey]);
                         $photoCount = (int) ($day['count'] ?? 0);
                         $preview = $day['preview'] ?? null;
+                        $previewUrl = is_array($preview) ? media_url((string) ($preview['file_path'] ?? '')) : '';
                         ?>
                         <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?>" href="/?page=entries&mode=meal&date=<?= e((string) $dateKey) ?>">
                             <article>
                                 <strong><?= e(format_date_eu((string) $dateKey)) ?></strong>
-                                <?php if (is_array($preview) && !empty($preview['file_path'])): ?>
-                                    <img src="<?= e(media_url((string) $preview['file_path'])) ?>" alt="<?= e(t('common.photo')) ?>">
+                                <?php if ($previewUrl !== ''): ?>
+                                    <img src="<?= e($previewUrl) ?>" alt="<?= e(t('common.photo')) ?>">
                                 <?php else: ?>
                                     <div class="entries-calendar-empty">Sin foto</div>
                                 <?php endif; ?>

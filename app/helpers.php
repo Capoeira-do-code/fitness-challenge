@@ -127,20 +127,169 @@ function with_cache_buster(string $path, mixed $version = null): string
     return $cleanPath . $separator . 'v=' . rawurlencode((string) $version);
 }
 
+function media_debug_enabled(): bool
+{
+    $configFlag = $GLOBALS['config']['media_debug'] ?? null;
+    if (is_bool($configFlag)) {
+        return $configFlag;
+    }
+
+    $raw = strtolower(trim((string) ($configFlag ?? getenv('MEDIA_DEBUG') ?: '0')));
+
+    return in_array($raw, ['1', 'true', 'yes', 'on'], true);
+}
+
+function media_debug_template_from_trace(array $trace): string
+{
+    foreach ($trace as $frame) {
+        $file = (string) ($frame['file'] ?? '');
+        if ($file !== '' && str_contains(str_replace('\\', '/', $file), '/app/views/')) {
+            return $file;
+        }
+    }
+
+    return (string) ($trace[0]['file'] ?? '');
+}
+
+function media_debug_log(string $helper, array $payload): void
+{
+    if (!media_debug_enabled()) {
+        return;
+    }
+
+    $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 20);
+    $template = media_debug_template_from_trace($trace);
+    $record = array_merge(
+        [
+            'helper' => $helper,
+            'template' => $template,
+        ],
+        $payload
+    );
+
+    $encoded = json_encode($record, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($encoded === false) {
+        $encoded = print_r($record, true);
+    }
+
+    error_log('[media-debug] ' . $encoded);
+}
+
+function normalize_media_reference(?string $reference): array
+{
+    $raw = trim((string) $reference);
+    if ($raw === '') {
+        return [
+            'kind' => 'empty',
+            'raw' => $raw,
+            'normalized' => '',
+            'url' => '',
+        ];
+    }
+
+    $candidate = str_replace('\\', '/', $raw);
+    if (preg_match('~^https?://~i', $candidate) === 1) {
+        $parsed = parse_url($candidate);
+        if (is_array($parsed)) {
+            $query = [];
+            if (!empty($parsed['query'])) {
+                parse_str((string) $parsed['query'], $query);
+            }
+            $innerPath = isset($query['path']) && is_string($query['path']) ? trim((string) $query['path']) : '';
+            if ($innerPath !== '') {
+                $candidate = $innerPath;
+            } elseif (!empty($parsed['path'])) {
+                $candidate = (string) $parsed['path'];
+            }
+        }
+    } elseif (str_starts_with($candidate, '/?page=media') || str_starts_with($candidate, '?page=media')) {
+        $queryPart = (string) parse_url($candidate, PHP_URL_QUERY);
+        $query = [];
+        parse_str($queryPart, $query);
+        $innerPath = isset($query['path']) && is_string($query['path']) ? trim((string) $query['path']) : '';
+        $candidate = $innerPath;
+    }
+
+    if (preg_match('~^https?://~i', $candidate) === 1) {
+        return [
+            'kind' => 'absolute_url',
+            'raw' => $raw,
+            'normalized' => $candidate,
+            'url' => $candidate,
+        ];
+    }
+
+    $clean = preg_replace('/[#?].*$/', '', $candidate) ?? '';
+    $clean = trim(str_replace('\\', '/', $clean));
+    if ($clean === '') {
+        return [
+            'kind' => 'empty',
+            'raw' => $raw,
+            'normalized' => '',
+            'url' => '',
+        ];
+    }
+
+    $assetPath = ltrim($clean, '/');
+    if (str_starts_with($assetPath, 'assets/')) {
+        return [
+            'kind' => 'asset',
+            'raw' => $raw,
+            'normalized' => $assetPath,
+            'url' => '/' . $assetPath,
+        ];
+    }
+
+    $normalized = ltrim($clean, '/');
+    $prefixes = [
+        'public/uploads/',
+        'uploads/',
+        'storage/uploads/',
+        'var/www/storage/uploads/',
+        'var/www/public/uploads/',
+    ];
+    foreach ($prefixes as $prefix) {
+        if (str_starts_with($normalized, $prefix)) {
+            $normalized = substr($normalized, strlen($prefix));
+            break;
+        }
+    }
+
+    $normalized = ltrim($normalized, '/');
+    if ($normalized === '' || str_contains($normalized, '..')) {
+        return [
+            'kind' => 'invalid',
+            'raw' => $raw,
+            'normalized' => '',
+            'url' => '',
+        ];
+    }
+
+    return [
+        'kind' => 'media',
+        'raw' => $raw,
+        'normalized' => $normalized,
+        'url' => '/?page=media&path=' . rawurlencode($normalized),
+    ];
+}
+
 function media_url(?string $path, mixed $version = null): string
 {
-    $rawPath = trim((string) $path);
-    if ($rawPath === '') {
-        return '';
+    $normalized = normalize_media_reference($path);
+    $url = '';
+    if (($normalized['kind'] ?? '') === 'media' || ($normalized['kind'] ?? '') === 'asset' || ($normalized['kind'] ?? '') === 'absolute_url') {
+        $url = with_cache_buster((string) ($normalized['url'] ?? ''), $version);
     }
 
-    if (str_starts_with($rawPath, '/?page=media&path=')) {
-        return with_cache_buster($rawPath, $version);
-    }
+    media_debug_log('media_url', [
+        'stored_value' => (string) $path,
+        'helper_input' => (string) $path,
+        'normalized_value' => (string) ($normalized['normalized'] ?? ''),
+        'normalized_kind' => (string) ($normalized['kind'] ?? ''),
+        'final_url' => $url,
+    ]);
 
-    $url = '/?page=media&path=' . rawurlencode($rawPath);
-
-    return with_cache_buster($url, $version);
+    return $url;
 }
 
 function avatar_url(array $user): string
@@ -157,6 +306,14 @@ function avatar_url(array $user): string
     ) {
         $resolvedPath = resolve_media_storage_path((array) $GLOBALS['config'], $avatarPath);
         if ($resolvedPath === null || !is_file($resolvedPath)) {
+            media_debug_log('avatar_url', [
+                'stored_value' => $avatarPath,
+                'helper_input' => $avatarPath,
+                'normalized_value' => (string) (normalize_media_reference($avatarPath)['normalized'] ?? ''),
+                'final_url' => '',
+                'reason' => 'resolved_path_missing',
+            ]);
+
             return '';
         }
     }
@@ -169,7 +326,15 @@ function avatar_url(array $user): string
         }
     }
 
-    return media_url($avatarPath, $version);
+    $avatarUrl = media_url($avatarPath, $version);
+    media_debug_log('avatar_url', [
+        'stored_value' => $avatarPath,
+        'helper_input' => $avatarPath,
+        'normalized_value' => (string) (normalize_media_reference($avatarPath)['normalized'] ?? ''),
+        'final_url' => $avatarUrl,
+    ]);
+
+    return $avatarUrl;
 }
 
 function weekday_index(string $date): int

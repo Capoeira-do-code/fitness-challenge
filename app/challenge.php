@@ -207,14 +207,40 @@ function compute_user_metrics(
     $totalSteps = 0;
     $totalKm = 0.0;
     $habitCounts = [];
-    $primaryGoalType = in_array(($user['primary_goal_type'] ?? 'steps'), ['steps', 'km'], true) ? (string) ($user['primary_goal_type'] ?? 'steps') : 'steps';
-    $primaryGoalValue = $primaryGoalType === 'km'
-        ? (float) (($user['primary_goal_value'] ?? null) ?: 0)
-        : (float) ($user['step_goal'] ?? 0);
-    if ($primaryGoalValue <= 0 && $primaryGoalType === 'km') {
-        $primaryGoalValue = (float) ($user['step_goal'] ?? 0);
-        $primaryGoalType = 'steps';
-    }
+    $primaryGoals = function_exists('user_primary_goals') ? user_primary_goals($user) : [[
+        'type' => 'steps',
+        'value' => (float) max(1, (int) ($user['step_goal'] ?? 0)),
+    ]];
+    $primaryGoalType = (string) ($primaryGoals[0]['type'] ?? 'steps');
+    $primaryGoalValue = (float) ($primaryGoals[0]['value'] ?? (float) ($user['step_goal'] ?? 0));
+    $did_hit_primary_goals = static function (array $goals, ?array $log, bool $didWorkoutCounted): bool {
+        if ($goals === [] || $log === null) {
+            return false;
+        }
+
+        $steps = (int) ($log['steps'] ?? 0);
+        $km = (float) ($log['distance_km'] ?? 0);
+        $workouts = $didWorkoutCounted ? 1.0 : 0.0;
+        foreach ($goals as $goal) {
+            $type = (string) ($goal['type'] ?? '');
+            $value = (float) ($goal['value'] ?? 0);
+            if ($value <= 0) {
+                return false;
+            }
+
+            $isMet = match ($type) {
+                'steps' => (float) $steps >= $value,
+                'km' => $km >= $value,
+                'workouts' => $workouts >= $value,
+                default => false,
+            };
+            if (!$isMet) {
+                return false;
+            }
+        }
+
+        return true;
+    };
 
     foreach ($allDays as $day) {
         $date = $day->format('Y-m-d');
@@ -248,13 +274,9 @@ function compute_user_metrics(
             $latestWeight = $weight;
         }
 
-        $hitSteps = $log !== null && (
-            $primaryGoalType === 'km'
-                ? (float) ($log['distance_km'] ?? 0) >= $primaryGoalValue
-                : (int) $log['steps'] >= (int) $user['step_goal']
-        );
         $didWorkoutCounted = is_counted_workout($log, $approvalsByDate, $date);
-        $didSomething = $didWorkoutCounted || $hitSteps;
+        $hitPrimaryGoals = $did_hit_primary_goals($primaryGoals, $log, $didWorkoutCounted);
+        $didSomething = $didWorkoutCounted || $hitPrimaryGoals;
 
         if ($didSomething) {
             $skipStreak = 0;
@@ -286,6 +308,8 @@ function compute_user_metrics(
         $weekSteps = 0;
         $weekKm = 0.0;
         $weekHabitCounts = [];
+        $weekWorkoutTarget = 0;
+        $weekWorkoutSuccess = 0;
 
         foreach (day_sequence($weekStart, $effectiveEnd) as $day) {
             if ($day < $start || $day > $today) {
@@ -308,13 +332,9 @@ function compute_user_metrics(
             $workoutReason = trim((string) ($log['workout_exception_reason'] ?? ''));
 
             $countedWorkout = is_counted_workout($log, $approvalsByDate, $date);
-            $hitSteps = $log !== null && (
-                $primaryGoalType === 'km'
-                    ? (float) ($log['distance_km'] ?? 0) >= $primaryGoalValue
-                    : (int) $log['steps'] >= (int) $user['step_goal']
-            );
+            $hitPrimaryGoals = $did_hit_primary_goals($primaryGoals, $log, $countedWorkout);
 
-            if ($countedWorkout || $hitSteps) {
+            if ($countedWorkout || $hitPrimaryGoals) {
                 $weekSkipStreak = 0;
             } else {
                 $weekSkipStreak++;
@@ -327,7 +347,7 @@ function compute_user_metrics(
                 $stepsRequired++;
 
                 $stepExceptionApproved = $stepReason !== '' && is_approval_approved($approvalsByDate, $date, APPROVAL_TYPE_STEP_EXCEPTION);
-                $stepOk = $hitSteps || $stepExceptionApproved;
+                $stepOk = $hitPrimaryGoals || $stepExceptionApproved;
 
                 if ($stepOk) {
                     $stepsSuccess++;
@@ -349,10 +369,12 @@ function compute_user_metrics(
 
             if ((int) $user['workout_strict'] === 1 && mask_allows_day((string) $user['workout_days_mask'], $date)) {
                 $workoutTarget++;
+                $weekWorkoutTarget++;
                 $workoutOk = $countedWorkout || $workoutExceptionApproved;
 
                 if ($workoutOk) {
                     $workoutSuccess++;
+                    $weekWorkoutSuccess++;
                 } else {
                     $workoutFailures++;
                     $weekWorkoutFailures++;
@@ -362,10 +384,12 @@ function compute_user_metrics(
         }
 
         if ((int) $user['workout_strict'] !== 1) {
+            $weekTarget = (int) $user['workout_target'];
+            $weekWorkoutTarget = $weekTarget;
+            $weekWorkoutSuccess = min($weekTarget, $weekCountedWorkouts + $weekExcusedWorkouts);
             if ($isComplete) {
-                $weekTarget = (int) $user['workout_target'];
                 $workoutTarget += $weekTarget;
-                $workoutSuccess += min($weekTarget, $weekCountedWorkouts + $weekExcusedWorkouts);
+                $workoutSuccess += $weekWorkoutSuccess;
 
                 $missing = max(0, $weekTarget - $weekCountedWorkouts - $weekExcusedWorkouts);
                 $workoutFailures += $missing;
@@ -416,6 +440,8 @@ function compute_user_metrics(
             'steps' => $weekSteps,
             'km' => round($weekKm, 2),
             'workouts' => $weekCountedWorkouts,
+            'workout_target_week' => $weekWorkoutTarget,
+            'workout_success_week' => $weekWorkoutSuccess,
             'habit_counts' => $weekHabitCounts,
             'total_failures' => count($weekFailureEvents),
             'skip_warnings' => $weekSkipWarnings,
@@ -464,6 +490,7 @@ function compute_user_metrics(
         'steps_success' => $stepsSuccess,
         'primary_goal_type' => $primaryGoalType,
         'primary_goal_value' => $primaryGoalValue,
+        'primary_goals' => $primaryGoals,
         'total_steps' => $totalSteps,
         'total_km' => round($totalKm, 2),
         'habit_counts' => $habitCounts,

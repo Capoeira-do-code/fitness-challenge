@@ -13,6 +13,11 @@ $categoryLabels = [
 ];
 $entryMode = in_array(($entryMode ?? 'data'), ['data', 'meal', 'calendar'], true) ? (string) $entryMode : 'data';
 $calendarView = in_array(($calendarView ?? 'month'), ['month', 'week', 'day'], true) ? (string) $calendarView : 'month';
+$entryPrimaryGoals = is_array($entryPrimaryGoals ?? null) ? array_values((array) $entryPrimaryGoals) : [];
+$entryPrimaryGoalsJson = json_encode($entryPrimaryGoals, JSON_UNESCAPED_SLASHES);
+if (!is_string($entryPrimaryGoalsJson)) {
+    $entryPrimaryGoalsJson = '[]';
+}
 ?>
 <section class="screen stack-lg">
     <div class="hero-panel">
@@ -40,7 +45,7 @@ $calendarView = in_array(($calendarView ?? 'month'), ['month', 'week', 'day'], t
                 </label>
             </div>
 
-            <form method="post" action="/?page=entries" class="stack" data-testid="entry-form" data-primary-goal-type="<?= e((string) ($currentUser['primary_goal_type'] ?? 'steps')) ?>" data-step-goal="<?= e((string) ($currentUser['step_goal'] ?? 0)) ?>" data-km-goal="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>">
+            <form method="post" action="/?page=entries" class="stack" data-testid="entry-form" data-primary-goal-type="<?= e((string) ($currentUser['primary_goal_type'] ?? 'steps')) ?>" data-step-goal="<?= e((string) ($currentUser['step_goal'] ?? 0)) ?>" data-km-goal="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>" data-primary-goals="<?= e($entryPrimaryGoalsJson) ?>">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="save_log">
                 <input type="hidden" name="log_date" value="<?= e($selectedDate) ?>">
@@ -198,8 +203,13 @@ $calendarView = in_array(($calendarView ?? 'month'), ['month', 'week', 'day'], t
             <div class="photo-grid">
                 <?php foreach ($recentPhotos as $photo): ?>
                     <?php $category = (string) $photo['category']; ?>
+                    <?php $photoUrl = media_url((string) ($photo['file_path'] ?? '')); ?>
                     <figure>
-                        <img src="<?= e(media_url((string) $photo['file_path'])) ?>" alt="<?= e(t('common.photo')) ?>">
+                        <?php if ($photoUrl !== ''): ?>
+                            <img src="<?= e($photoUrl) ?>" alt="<?= e(t('common.photo')) ?>">
+                        <?php else: ?>
+                            <div class="entries-calendar-empty">Sin foto</div>
+                        <?php endif; ?>
                         <figcaption>
                             <strong><?= e((string) $photo['display_name']) ?></strong>
                             <span><?= e(format_date_eu((string) $photo['log_date'])) ?> · <?= e($categoryLabels[$category] ?? $category) ?></span>
@@ -252,12 +262,13 @@ $calendarView = in_array(($calendarView ?? 'month'), ['month', 'week', 'day'], t
                     $hasLog = !empty($loggedDays[$dateKey]);
                     $photoCount = (int) ($day['count'] ?? 0);
                     $preview = $day['preview'] ?? null;
+                    $previewUrl = is_array($preview) ? media_url((string) ($preview['file_path'] ?? '')) : '';
                     ?>
                     <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?>" href="/?page=entries&mode=meal&date=<?= e((string) $dateKey) ?>">
                         <article>
                             <strong><?= e(format_date_eu((string) $dateKey)) ?></strong>
-                            <?php if (is_array($preview) && !empty($preview['file_path'])): ?>
-                                <img src="<?= e(media_url((string) $preview['file_path'])) ?>" alt="<?= e(t('common.photo')) ?>">
+                            <?php if ($previewUrl !== ''): ?>
+                                <img src="<?= e($previewUrl) ?>" alt="<?= e(t('common.photo')) ?>">
                             <?php else: ?>
                                 <div class="entries-calendar-empty">Sin foto</div>
                             <?php endif; ?>
