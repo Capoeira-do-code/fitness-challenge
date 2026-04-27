@@ -160,6 +160,10 @@ $formatCalories = static function (float $value): string {
 $calorieRangeStart = (string) ($dashboardCalorieRangeStart ?? to_date(null));
 $calorieRangeEnd = (string) ($dashboardCalorieRangeEnd ?? $calorieRangeStart);
 $calorieRangeText = t('common.from_to', ['start' => format_date_eu($calorieRangeStart), 'end' => format_date_eu($calorieRangeEnd)]);
+$calorieConsumedTotal = (float) ($calorieStats['total_consumed'] ?? 0);
+$calorieBurnedTotal = (float) ($calorieStats['total_burned'] ?? 0);
+$calorieMaintenanceTotal = (float) ($calorieStats['maintenance_total'] ?? 0);
+$calorieDeficitTotal = (float) ($calorieStats['deficit'] ?? 0);
 
 $kpis = [
     [
@@ -201,14 +205,6 @@ $kpis = [
         'meta' => t('dashboard.accumulated_penalty', ['amount' => '€' . (string) $selectedMetric['total_penalty']]),
         'ring' => '€' . (string) $selectedMetric['total_penalty'],
         'progress' => max(0, 100 - ((int) $selectedMetric['current_strikes'] * 10)),
-    ],
-    [
-        'key' => 'score',
-        'label' => t('metric.discipline'),
-        'value' => (string) $selectedMetric['score'],
-        'meta' => t('dashboard.warning_count', ['count' => (string) ($selectedMetric['skip_warning_events'] ?? 0)]),
-        'ring' => (string) $selectedMetric['score'],
-        'progress' => (float) $selectedMetric['score'],
     ],
 ];
 $metricQueryBase = [
@@ -301,6 +297,16 @@ $topbarControls = ob_get_clean();
                     </div>
                 </a>
             <?php endforeach; ?>
+            <article class="metric-card metric-card-calorie-summary" data-testid="metric-card-calorie-summary">
+                <div class="metric-box">
+                    <span class="metric-title"><?= e(t('dashboard.calories_consumed')) ?></span>
+                    <strong class="metric-value"><?= e($formatCalories($calorieConsumedTotal)) ?> kcal</strong>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-title"><?= e(t('dashboard.calories_burned')) ?></span>
+                    <strong class="metric-value"><?= e($formatCalories($calorieBurnedTotal)) ?> kcal</strong>
+                </div>
+            </article>
         </div>
         <?php endif; ?>
 
@@ -321,28 +327,20 @@ $topbarControls = ob_get_clean();
                 </div>
                 <span class="badge"><?= e((string) ($calorieStats['tracked_days'] ?? 0)) ?> <?= e(t('dashboard.calories_tracked_days')) ?></span>
             </div>
-            <div class="calorie-kpis">
-                <article>
-                    <span><?= e(t('dashboard.calories_consumed')) ?></span>
-                    <strong><?= e($formatCalories((float) ($calorieStats['total_consumed'] ?? 0))) ?> kcal</strong>
-                </article>
-                <article>
-                    <span><?= e(t('dashboard.calories_burned')) ?></span>
-                    <strong><?= e($formatCalories((float) ($calorieStats['total_burned'] ?? 0))) ?> kcal</strong>
-                </article>
-                <article>
-                    <span><?= e(t('dashboard.calories_maintenance')) ?></span>
-                    <strong><?= e($formatCalories((float) ($calorieStats['maintenance_total'] ?? 0))) ?> kcal</strong>
-                </article>
-                <article>
-                    <span><?= e(t('dashboard.calories_deficit')) ?></span>
-                    <strong><?= e($formatCalories((float) ($calorieStats['deficit'] ?? 0))) ?> kcal</strong>
-                </article>
+            <div class="calories-overview">
+                <div class="metric-box">
+                    <span class="metric-title"><?= e(t('dashboard.calories_maintenance')) ?></span>
+                    <strong class="metric-value"><?= e($formatCalories($calorieMaintenanceTotal)) ?> kcal</strong>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-title"><?= e(t('dashboard.calories_deficit')) ?></span>
+                    <strong class="metric-value"><?= e($formatCalories($calorieDeficitTotal)) ?> kcal</strong>
+                </div>
             </div>
             <?php if ($calorieSeries === []): ?>
                 <p class="muted"><?= e(t('dashboard.no_calorie_data')) ?></p>
             <?php else: ?>
-                <canvas id="calorieChart" height="165"></canvas>
+                <canvas id="calorieChart" height="150"></canvas>
             <?php endif; ?>
             <p class="muted small"><?= e(t('dashboard.calories_hint')) ?></p>
         </article>
