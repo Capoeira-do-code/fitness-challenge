@@ -219,6 +219,69 @@ def verify_php_bin(php_path: Path | str) -> bool:
     return completed.returncode == 0
 
 
+def php_has_sqlite_driver(php_bin: str, extra_args: Optional[list[str]] = None) -> bool:
+    probe_script = (
+        "if (!class_exists('PDO')) {fwrite(STDERR, 'pdo_missing\\n'); exit(2);} "
+        "$drivers = PDO::getAvailableDrivers(); "
+        "if (!in_array('sqlite', $drivers, true)) {fwrite(STDERR, 'pdo_sqlite_missing\\n'); exit(3);} "
+        "echo 'ok';"
+    )
+    cmd = [php_bin]
+    if extra_args:
+        cmd.extend(extra_args)
+    cmd.extend(["-r", probe_script])
+
+    try:
+        completed = subprocess.run(
+            cmd,
+            cwd=str(ROOT),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+    except Exception:
+        return False
+
+    return completed.returncode == 0
+
+
+def windows_sqlite_extension_flags(php_bin: str) -> list[str]:
+    if os.name != "nt":
+        return []
+
+    php_dir = Path(php_bin).resolve().parent
+    ext_candidates = [
+        php_dir / "ext",
+        php_dir.parent / "ext",
+    ]
+
+    for ext_dir in ext_candidates:
+        if not ext_dir.exists() or not ext_dir.is_dir():
+            continue
+
+        required_dlls = [
+            ext_dir / "php_pdo_sqlite.dll",
+            ext_dir / "php_sqlite3.dll",
+        ]
+        if not all(dll.exists() for dll in required_dlls):
+            continue
+
+        flags = [
+            "-d",
+            f"extension_dir={ext_dir.as_posix()}",
+            "-d",
+            "extension=pdo_sqlite",
+            "-d",
+            "extension=sqlite3",
+        ]
+        if php_has_sqlite_driver(php_bin, flags):
+            print(f"[deps] SQLite habilitado con extensiones en: {ext_dir}")
+            return flags
+
+    return []
+
+
 def download_file(url: str, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     with urllib.request.urlopen(url, timeout=120) as response:
@@ -429,9 +492,28 @@ def serve_basic_ui(base_url: str, *, auto_install_deps: bool) -> int:
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env["DB_PATH"] = str(STORAGE_DIR / "fitness.sqlite")
+    php_runtime_flags: list[str] = []
+
+    if php_has_sqlite_driver(php_bin):
+        print("[deps] Driver SQLite disponible en PHP.")
+    elif os.name == "nt":
+        php_runtime_flags = windows_sqlite_extension_flags(php_bin)
+        if not php_runtime_flags:
+            raise RunnerError(
+                "PHP se encontró, pero no tiene el driver SQLite (`pdo_sqlite`). "
+                "No se pudo habilitar automáticamente con el paquete actual. "
+                "Usa un build completo de PHP para Windows (con carpeta `ext`) "
+                "o define `PHP_WINDOWS_ZIP_URL` a un ZIP oficial que incluya SQLite."
+            )
+    else:
+        raise RunnerError(
+            "El PHP encontrado no tiene soporte SQLite (`pdo_sqlite`). "
+            "Instala/habilita las extensiones `pdo_sqlite` y `sqlite3`."
+        )
 
     cmd = [
         php_bin,
+        *php_runtime_flags,
         "-d",
         "upload_max_filesize=20M",
         "-d",
