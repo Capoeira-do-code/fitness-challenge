@@ -789,33 +789,9 @@ img.settings-avatar-preview {
     line-height: 1.25;
 }
 
-.metric-card-calorie-summary {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: flex-start;
-    gap: 0.55rem;
-}
-
-.metric-card-calorie-summary .metric-box {
-    background: none;
-    border: none;
-    box-shadow: none;
-    padding: 0;
-    margin: 0;
-}
-
-.metric-card-calorie-summary .metric-title {
-    display: block;
-    color: var(--muted);
-    font-size: 0.78rem;
-    font-weight: 800;
-    text-transform: uppercase;
-}
-
-.metric-card-calorie-summary .metric-value {
-    display: block;
-    margin-top: 0.2rem;
+.metric-card-calorie-goal .progress-ring span {
+    width: 52px;
+    font-size: 0.74rem;
 }
 
 .progress-ring {

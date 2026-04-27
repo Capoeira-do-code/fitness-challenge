@@ -155,6 +155,8 @@ $profileExportPayload = [
         'primary_goals_spec' => $primaryGoalsSpec,
         'workout_target' => (int) ($profileUser['workout_target'] ?? 0),
         'maintenance_calories' => $profileUser['maintenance_calories'] !== null ? (float) $profileUser['maintenance_calories'] : null,
+        'calorie_burn_goal' => $profileUser['calorie_burn_goal'] !== null ? (float) $profileUser['calorie_burn_goal'] : null,
+        'calorie_consumed_max' => $profileUser['calorie_consumed_max'] !== null ? (float) $profileUser['calorie_consumed_max'] : null,
         'ideal_weight' => $profileUser['ideal_weight'] !== null ? (float) $profileUser['ideal_weight'] : null,
     ],
     'totals' => [
@@ -500,6 +502,8 @@ $profileExportPayload = [
                 <li><strong><?= e(t('settings.primary_goals_spec')) ?>:</strong> <?= e($primaryGoalsSpec !== '' ? $primaryGoalsSpec : '-') ?></li>
                 <li><strong><?= e(t('profile.workout_target')) ?>:</strong> <?= e((string) $profileUser['workout_target']) ?>/<?= e(strtolower(t('common.week'))) ?></li>
                 <li><strong><?= e(t('profile.maintenance_calories')) ?>:</strong> <?= $profileUser['maintenance_calories'] !== null ? e((string) $profileUser['maintenance_calories']) . ' kcal' : '-' ?></li>
+                <li><strong><?= e(t('settings.calorie_burn_goal')) ?>:</strong> <?= $profileUser['calorie_burn_goal'] !== null ? e((string) $profileUser['calorie_burn_goal']) . ' kcal' : '-' ?></li>
+                <li><strong><?= e(t('settings.calorie_consumed_max')) ?>:</strong> <?= $profileUser['calorie_consumed_max'] !== null ? e((string) $profileUser['calorie_consumed_max']) . ' kcal' : '-' ?></li>
                 <li><strong><?= e(t('metric.ideal_weight')) ?>:</strong> <?= $profileUser['ideal_weight'] !== null ? e((string) $profileUser['ideal_weight']) . ' kg' : '-' ?></li>
             </ul>
 
@@ -526,6 +530,8 @@ $profileExportPayload = [
                         </label>
                         <label><?= e(t('profile.workout_target')) ?><input type="number" min="0" name="workout_target" value="<?= e((string) ($profileUser['workout_target'] ?? 0)) ?>"></label>
                         <label><?= e(t('profile.maintenance_calories')) ?><input type="number" min="0" step="1" name="maintenance_calories" value="<?= e((string) ($profileUser['maintenance_calories'] ?? '')) ?>"></label>
+                        <label><?= e(t('settings.calorie_burn_goal')) ?><input type="number" min="0" step="1" name="calorie_burn_goal" value="<?= e((string) ($profileUser['calorie_burn_goal'] ?? '')) ?>"></label>
+                        <label><?= e(t('settings.calorie_consumed_max')) ?><input type="number" min="0" step="1" name="calorie_consumed_max" value="<?= e((string) ($profileUser['calorie_consumed_max'] ?? '')) ?>"></label>
                         <label><?= e(t('metric.ideal_weight')) ?><input type="number" step="0.1" name="ideal_weight" value="<?= e((string) ($profileUser['ideal_weight'] ?? '')) ?>"></label>
                     </div>
                     <div class="goal-editor-actions">

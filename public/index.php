@@ -745,6 +745,8 @@ if ($page === 'settings') {
                 'UPDATE users
                  SET primary_goal_type = :primary_goal_type,
                      primary_goal_value = :primary_goal_value,
+                     calorie_burn_goal = :calorie_burn_goal,
+                     calorie_consumed_max = :calorie_consumed_max,
                      dashboard_view = :dashboard_view,
                      dashboard_layout_json = :dashboard_layout_json,
                      updated_at = :updated_at
@@ -752,6 +754,8 @@ if ($page === 'settings') {
                 [
                     ':primary_goal_type' => $primaryType,
                     ':primary_goal_value' => ($_POST['primary_goal_value'] ?? '') !== '' ? (float) $_POST['primary_goal_value'] : null,
+                    ':calorie_burn_goal' => ($_POST['calorie_burn_goal'] ?? '') !== '' ? max(0.0, (float) $_POST['calorie_burn_goal']) : null,
+                    ':calorie_consumed_max' => ($_POST['calorie_consumed_max'] ?? '') !== '' ? max(0.0, (float) $_POST['calorie_consumed_max']) : null,
                     ':dashboard_view' => (string) ($_POST['dashboard_view'] ?? 'current_week'),
                     ':dashboard_layout_json' => $layoutJson,
                     ':updated_at' => now_iso(),
@@ -1038,6 +1042,8 @@ if ($page === 'profile') {
                      primary_goals_spec = :primary_goals_spec,
                      workout_target = :workout_target,
                      maintenance_calories = :maintenance_calories,
+                     calorie_burn_goal = :calorie_burn_goal,
+                     calorie_consumed_max = :calorie_consumed_max,
                      ideal_weight = :ideal_weight,
                      updated_at = :updated_at
                  WHERE id = :id',
@@ -1047,6 +1053,8 @@ if ($page === 'profile') {
                     ':primary_goals_spec' => $normalizedPrimaryGoalsSpec,
                     ':workout_target' => max(0, (int) ($_POST['workout_target'] ?? 0)),
                     ':maintenance_calories' => ($_POST['maintenance_calories'] ?? '') !== '' ? max(0.0, (float) $_POST['maintenance_calories']) : null,
+                    ':calorie_burn_goal' => ($_POST['calorie_burn_goal'] ?? '') !== '' ? max(0.0, (float) $_POST['calorie_burn_goal']) : null,
+                    ':calorie_consumed_max' => ($_POST['calorie_consumed_max'] ?? '') !== '' ? max(0.0, (float) $_POST['calorie_consumed_max']) : null,
                     ':ideal_weight' => ($_POST['ideal_weight'] ?? '') !== '' ? (float) $_POST['ideal_weight'] : null,
                     ':updated_at' => now_iso(),
                     ':id' => (int) $profileUser['id'],

@@ -164,6 +164,45 @@ $calorieConsumedTotal = (float) ($calorieStats['total_consumed'] ?? 0);
 $calorieBurnedTotal = (float) ($calorieStats['total_burned'] ?? 0);
 $calorieMaintenanceTotal = (float) ($calorieStats['maintenance_total'] ?? 0);
 $calorieDeficitTotal = (float) ($calorieStats['deficit'] ?? 0);
+$calorieRangeDays = 1;
+try {
+    $calorieRangeDays = max(
+        1,
+        ((new DateTimeImmutable($calorieRangeStart))->diff(new DateTimeImmutable($calorieRangeEnd))->days ?? 0) + 1
+    );
+} catch (Throwable) {
+    $calorieRangeDays = 1;
+}
+$calorieBurnGoalDaily = ($selectedUser['calorie_burn_goal'] ?? null) !== null
+    ? max(0.0, (float) $selectedUser['calorie_burn_goal'])
+    : null;
+$calorieConsumedMaxDaily = ($selectedUser['calorie_consumed_max'] ?? null) !== null
+    ? max(0.0, (float) $selectedUser['calorie_consumed_max'])
+    : null;
+$calorieBurnGoalTotal = $calorieBurnGoalDaily !== null ? $calorieBurnGoalDaily * $calorieRangeDays : 0.0;
+$calorieConsumedMaxTotal = $calorieConsumedMaxDaily !== null ? $calorieConsumedMaxDaily * $calorieRangeDays : 0.0;
+$calorieBurnProgress = $calorieBurnGoalTotal > 0
+    ? max(0.0, min(100.0, round(($calorieBurnedTotal / $calorieBurnGoalTotal) * 100, 1)))
+    : 0.0;
+$calorieConsumedProgress = 0.0;
+if ($calorieConsumedMaxTotal > 0) {
+    if ($calorieConsumedTotal <= $calorieConsumedMaxTotal) {
+        $calorieConsumedProgress = 100.0;
+    } else {
+        $calorieConsumedProgress = max(
+            0.0,
+            min(100.0, round(($calorieConsumedMaxTotal / max(0.001, $calorieConsumedTotal)) * 100, 1))
+        );
+    }
+}
+$calorieBurnRing = (string) round($calorieBurnProgress) . '%';
+$calorieConsumedRing = (string) round($calorieConsumedProgress) . '%';
+$calorieBurnMeta = $calorieBurnGoalTotal > 0
+    ? t('metric.goal') . ': ' . $formatCalories($calorieBurnGoalTotal) . ' kcal'
+    : t('dashboard.calories_goal_not_set');
+$calorieConsumedMeta = $calorieConsumedMaxTotal > 0
+    ? t('dashboard.calories_max') . ': ' . $formatCalories($calorieConsumedMaxTotal) . ' kcal'
+    : t('dashboard.calories_goal_not_set');
 
 $kpis = [
     [
@@ -297,14 +336,24 @@ $topbarControls = ob_get_clean();
                     </div>
                 </a>
             <?php endforeach; ?>
-            <article class="metric-card metric-card-calorie-summary" data-testid="metric-card-calorie-summary">
-                <div class="metric-box">
-                    <span class="metric-title"><?= e(t('dashboard.calories_consumed')) ?></span>
-                    <strong class="metric-value"><?= e($formatCalories($calorieConsumedTotal)) ?> kcal</strong>
+            <article class="metric-card metric-card-calorie-goal" data-testid="metric-card-calorie-consumed">
+                <div class="progress-ring" style="--value: <?= e((string) min(100, max(0, $calorieConsumedProgress))) ?>;">
+                    <span><?= e($calorieConsumedRing) ?></span>
                 </div>
-                <div class="metric-box">
-                    <span class="metric-title"><?= e(t('dashboard.calories_burned')) ?></span>
-                    <strong class="metric-value"><?= e($formatCalories($calorieBurnedTotal)) ?> kcal</strong>
+                <div>
+                    <span><?= e(t('dashboard.calories_consumed')) ?></span>
+                    <strong><?= e($formatCalories($calorieConsumedTotal)) ?> kcal</strong>
+                    <p><?= e($calorieConsumedMeta) ?></p>
+                </div>
+            </article>
+            <article class="metric-card metric-card-calorie-goal" data-testid="metric-card-calorie-burned">
+                <div class="progress-ring" style="--value: <?= e((string) min(100, max(0, $calorieBurnProgress))) ?>;">
+                    <span><?= e($calorieBurnRing) ?></span>
+                </div>
+                <div>
+                    <span><?= e(t('dashboard.calories_burned')) ?></span>
+                    <strong><?= e($formatCalories($calorieBurnedTotal)) ?> kcal</strong>
+                    <p><?= e($calorieBurnMeta) ?></p>
                 </div>
             </article>
         </div>

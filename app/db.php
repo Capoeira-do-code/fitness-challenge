@@ -43,6 +43,8 @@ function initialize_database(PDO $pdo, array $config): void
             workout_strict INTEGER NOT NULL DEFAULT 0,
             ideal_weight REAL,
             maintenance_calories REAL,
+            calorie_burn_goal REAL,
+            calorie_consumed_max REAL,
             motivation_quote TEXT DEFAULT "",
             locale TEXT NOT NULL DEFAULT "en",
             avatar_path TEXT,
@@ -472,6 +474,8 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'dashboard_layout_json', 'TEXT');
     ensure_column($pdo, 'users', 'meal_calendar_view', 'TEXT NOT NULL DEFAULT "week"');
     ensure_column($pdo, 'users', 'maintenance_calories', 'REAL');
+    ensure_column($pdo, 'users', 'calorie_burn_goal', 'REAL');
+    ensure_column($pdo, 'users', 'calorie_consumed_max', 'REAL');
 
     ensure_column($pdo, 'daily_logs', 'extra_workout', 'INTEGER NOT NULL DEFAULT 0');
     ensure_column($pdo, 'daily_logs', 'distance_km', 'REAL');
