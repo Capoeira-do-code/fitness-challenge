@@ -64,12 +64,12 @@ foreach ($nutritionFields as $field => $meta) {
 ?>
 <section class="screen stack-lg">
     <article class="panel photo-post">
-        <div class="panel-head">
+        <div class="panel-head photo-post-head">
             <div>
                 <p class="eyebrow"><?= e(t('common.photo')) ?></p>
                 <h1 class="photo-post-title"><?= e(t('photo.title')) ?></h1>
             </div>
-            <a class="btn btn-ghost" href="<?= e($backUrl) ?>">← <?= e(t('photo.back_to_entries')) ?></a>
+            <a class="btn btn-ghost small photo-back-btn" href="<?= e($backUrl) ?>">← <?= e(t('photo.back_to_entries')) ?></a>
         </div>
 
         <div class="photo-post-layout">
@@ -87,46 +87,52 @@ foreach ($nutritionFields as $field => $meta) {
 
             <div class="photo-post-side stack">
                 <article class="mini-card photo-post-meta">
-                    <div class="photo-post-author">
-                        <?php
-                        $authorForAvatar = [
-                            'display_name' => $ownerName,
-                            'avatar_path' => (string) ($photo['avatar_path'] ?? ''),
-                            'updated_at' => (string) ($photo['user_updated_at'] ?? ''),
-                        ];
-                        $authorAvatarUrl = avatar_url($authorForAvatar);
-                        ?>
-                        <?php if ($authorAvatarUrl !== ''): ?>
-                            <img class="profile-avatar" src="<?= e($authorAvatarUrl) ?>" alt="<?= e($ownerName) ?>">
-                        <?php else: ?>
-                            <span class="profile-avatar initials"><?= e(initials_for($ownerName)) ?></span>
-                        <?php endif; ?>
-                        <div>
-                            <strong><?= e($ownerName) ?></strong>
-                            <span><?= e($formatDateTime((string) ($photo['created_at'] ?? ''))) ?></span>
+                    <div class="photo-post-meta-main">
+                        <div class="photo-post-author">
+                            <?php
+                            $authorForAvatar = [
+                                'display_name' => $ownerName,
+                                'avatar_path' => (string) ($photo['avatar_path'] ?? ''),
+                                'updated_at' => (string) ($photo['user_updated_at'] ?? ''),
+                            ];
+                            $authorAvatarUrl = avatar_url($authorForAvatar);
+                            ?>
+                            <?php if ($authorAvatarUrl !== ''): ?>
+                                <img class="profile-avatar" src="<?= e($authorAvatarUrl) ?>" alt="<?= e($ownerName) ?>">
+                            <?php else: ?>
+                                <span class="profile-avatar initials"><?= e(initials_for($ownerName)) ?></span>
+                            <?php endif; ?>
+                            <div>
+                                <strong><?= e($ownerName) ?></strong>
+                                <span><?= e($formatDateTime((string) ($photo['created_at'] ?? ''))) ?></span>
+                            </div>
+                        </div>
+                        <div class="photo-post-tags">
+                            <span class="badge"><?= e($categoryLabel) ?></span>
+                            <span class="badge"><?= e(format_date_eu($photoLogDate)) ?></span>
                         </div>
                     </div>
-                    <div class="photo-post-tags">
-                        <span class="badge"><?= e($categoryLabel) ?></span>
-                        <span class="badge"><?= e(format_date_eu($photoLogDate)) ?></span>
-                    </div>
+                    <div class="photo-post-divider" aria-hidden="true"></div>
                     <?php if (!empty($photo['caption'])): ?>
                         <p class="photo-post-caption"><?= e((string) $photo['caption']) ?></p>
                     <?php endif; ?>
                     <?php if ($photoCanDelete): ?>
-                        <?php $photoDeleteFormId = 'photo-delete-form-page-' . $photoId; ?>
-                        <button
-                            type="button"
-                            class="btn btn-ghost photo-delete-text-btn"
-                            data-photo-delete-trigger
-                            data-photo-delete-form="<?= e($photoDeleteFormId) ?>"
-                            data-photo-delete-message="<?= e(t('entries.delete_photo_confirm')) ?>"
-                        ><?= e(t('photo.delete_photo')) ?></button>
-                        <form id="<?= e($photoDeleteFormId) ?>" method="post" action="/?page=photo&photo_id=<?= $photoId ?>" hidden>
-                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                            <input type="hidden" name="action" value="delete_photo">
-                            <input type="hidden" name="photo_id" value="<?= $photoId ?>">
-                        </form>
+                        <div class="photo-post-actions">
+                            <h3><?= e(t('photo.actions')) ?></h3>
+                            <?php $photoDeleteFormId = 'photo-delete-form-page-' . $photoId; ?>
+                            <button
+                                type="button"
+                                class="btn btn-ghost photo-delete-text-btn"
+                                data-photo-delete-trigger
+                                data-photo-delete-form="<?= e($photoDeleteFormId) ?>"
+                                data-photo-delete-message="<?= e(t('entries.delete_photo_confirm')) ?>"
+                            ><?= e(t('photo.delete_photo')) ?></button>
+                            <form id="<?= e($photoDeleteFormId) ?>" method="post" action="/?page=photo&photo_id=<?= $photoId ?>" hidden>
+                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="delete_photo">
+                                <input type="hidden" name="photo_id" value="<?= $photoId ?>">
+                            </form>
+                        </div>
                     <?php endif; ?>
                 </article>
 
@@ -147,7 +153,7 @@ foreach ($nutritionFields as $field => $meta) {
         </div>
 
         <article class="photo-comments stack">
-            <div class="panel-head compact-head">
+            <div class="panel-head photo-comments-head">
                 <h2><?= e(t('photo.comments')) ?></h2>
                 <span class="badge"><?= count($comments) ?></span>
             </div>
@@ -160,13 +166,16 @@ foreach ($nutritionFields as $field => $meta) {
                     <?= e(t('photo.add_comment')) ?>
                     <textarea name="comment" rows="3" maxlength="1200" placeholder="<?= e(t('photo.comment_placeholder')) ?>" required></textarea>
                 </label>
-                <div class="inline-actions">
+                <div class="inline-actions photo-comment-actions">
                     <button type="submit" class="btn btn-primary"><?= e(t('photo.comment_submit')) ?></button>
                 </div>
             </form>
 
             <?php if ($comments === []): ?>
-                <p class="muted"><?= e(t('photo.comments_empty')) ?></p>
+                <div class="photo-comments-empty">
+                    <strong><?= e(t('photo.comments_empty')) ?></strong>
+                    <span><?= e(t('photo.comments_empty_hint')) ?></span>
+                </div>
             <?php else: ?>
                 <div class="photo-comment-list">
                     <?php foreach ($comments as $comment): ?>

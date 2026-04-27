@@ -1065,7 +1065,13 @@ function save_photo_entry(
         $normalizedCategory = 'other';
     }
 
-    $storedPath = save_uploaded_image($config, $file, (new DateTimeImmutable($date))->format('Y/m'), (string) $userId);
+    $storedPath = save_uploaded_image(
+        $config,
+        $file,
+        (new DateTimeImmutable($date))->format('Y/m'),
+        (string) $userId,
+        image_upload_policy($config, 'photo_entry')
+    );
 
     db_execute(
         $pdo,
@@ -1395,16 +1401,85 @@ function detect_uploaded_image_mime(string $filePath): string
     return $mime;
 }
 
-function save_uploaded_image(array $config, array $file, string $subDir, string $prefix): string
+function image_upload_policy(array $config, string $context = 'default'): array
+{
+    $defaultAllowed = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+    ];
+
+    if ($context === 'photo_entry') {
+        $maxBytes = (int) ($config['photo_upload_max_bytes'] ?? 15728640);
+        if ($maxBytes <= 0) {
+            $maxBytes = 15728640;
+        }
+
+        return [
+            'allowed_mimes' => $defaultAllowed + [
+                'image/gif' => 'gif',
+                'image/heic' => 'heic',
+                'image/heif' => 'heif',
+                'image/x-heic' => 'heic',
+                'image/x-heif' => 'heif',
+                'image/heic-sequence' => 'heic',
+                'image/heif-sequence' => 'heif',
+            ],
+            'max_bytes' => $maxBytes,
+            'invalid_format_message' => t('upload.invalid_format_photo'),
+        ];
+    }
+
+    return [
+        'allowed_mimes' => $defaultAllowed,
+        'max_bytes' => 0,
+        'invalid_format_message' => t('upload.invalid_format'),
+    ];
+}
+
+function format_upload_size(int $bytes): string
+{
+    $safeBytes = max(0, $bytes);
+    if ($safeBytes >= 1048576) {
+        return rtrim(rtrim(number_format($safeBytes / 1048576, 1, '.', ''), '0'), '.') . ' MB';
+    }
+    if ($safeBytes >= 1024) {
+        return rtrim(rtrim(number_format($safeBytes / 1024, 1, '.', ''), '0'), '.') . ' KB';
+    }
+
+    return (string) $safeBytes . ' B';
+}
+
+function save_uploaded_image(array $config, array $file, string $subDir, string $prefix, array $options = []): string
 {
     $errorCode = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
     if ($errorCode !== UPLOAD_ERR_OK) {
         throw new RuntimeException(upload_error_message($errorCode));
     }
 
+    $policy = image_upload_policy($config, 'default');
+    if (isset($options['allowed_mimes']) && is_array($options['allowed_mimes'])) {
+        $policy['allowed_mimes'] = $options['allowed_mimes'];
+    }
+    if (array_key_exists('max_bytes', $options)) {
+        $policy['max_bytes'] = (int) $options['max_bytes'];
+    }
+    if (isset($options['invalid_format_message']) && is_string($options['invalid_format_message'])) {
+        $policy['invalid_format_message'] = $options['invalid_format_message'];
+    }
+
+    $maxBytes = max(0, (int) ($policy['max_bytes'] ?? 0));
     $tmpName = (string) ($file['tmp_name'] ?? '');
     if ($tmpName === '' || !is_uploaded_file($tmpName)) {
         throw new RuntimeException(t('upload.failed'));
+    }
+
+    $rawSize = (int) ($file['size'] ?? 0);
+    if ($maxBytes > 0) {
+        $effectiveSize = $rawSize > 0 ? $rawSize : (int) (@filesize($tmpName) ?: 0);
+        if ($effectiveSize > $maxBytes) {
+            throw new RuntimeException(t('upload.file_too_large', ['max' => format_upload_size($maxBytes)]));
+        }
     }
 
     $mime = detect_uploaded_image_mime($tmpName);
@@ -1412,14 +1487,14 @@ function save_uploaded_image(array $config, array $file, string $subDir, string 
         throw new RuntimeException(t('upload.invalid_image'));
     }
 
-    $allowed = [
-        'image/jpeg' => 'jpg',
-        'image/png' => 'png',
-        'image/webp' => 'webp',
-    ];
+    $allowed = is_array($policy['allowed_mimes'] ?? null) ? $policy['allowed_mimes'] : [];
+    $invalidFormatMessage = trim((string) ($policy['invalid_format_message'] ?? t('upload.invalid_format')));
+    if ($invalidFormatMessage === '') {
+        $invalidFormatMessage = t('upload.invalid_format');
+    }
 
     if (!isset($allowed[$mime])) {
-        throw new RuntimeException(t('upload.invalid_format'));
+        throw new RuntimeException($invalidFormatMessage);
     }
 
     $targetDir = ensure_upload_target_dir($config, $subDir);
@@ -1476,11 +1551,8 @@ function save_uploaded_image_from_data_url(array $config, string $dataUrl, strin
         throw new RuntimeException(t('upload.invalid_image'));
     }
 
-    $allowed = [
-        'image/jpeg' => 'jpg',
-        'image/png' => 'png',
-        'image/webp' => 'webp',
-    ];
+    $basePolicy = image_upload_policy($config, 'default');
+    $allowed = is_array($basePolicy['allowed_mimes'] ?? null) ? $basePolicy['allowed_mimes'] : [];
     if (!isset($allowed[$mime])) {
         throw new RuntimeException(t('upload.invalid_format'));
     }
@@ -1789,6 +1861,8 @@ function detect_media_mime_type(string $filePath): string
             'png' => 'image/png',
             'webp' => 'image/webp',
             'gif' => 'image/gif',
+            'heic' => 'image/heic',
+            'heif' => 'image/heif',
             'avif' => 'image/avif',
             'svg' => 'image/svg+xml',
             'ico' => 'image/x-icon',

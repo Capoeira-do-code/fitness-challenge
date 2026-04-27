@@ -1176,16 +1176,16 @@ textarea {
 .photo-grid {
     display: grid;
     gap: 0.8rem;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
 }
 
 .photo-grid figure {
-    position: relative;
     margin: 0;
     overflow: hidden;
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: #fff;
+    box-shadow: 0 8px 20px rgba(23, 33, 43, 0.08);
 }
 
 .photo-card-media {
@@ -1207,55 +1207,15 @@ textarea {
 
 .photo-grid figcaption {
     display: grid;
-    gap: 0.2rem;
-    padding: 0.55rem;
-    font-size: 0.78rem;
+    gap: 0.24rem;
+    padding: 0.62rem;
+    font-size: 0.8rem;
+    background: #fff;
 }
 
 .photo-nutrition-line {
     color: var(--primary-dark);
     font-weight: 700;
-}
-
-.photo-delete-btn {
-    position: absolute;
-    right: 0.55rem;
-    top: 0.55rem;
-    z-index: 2;
-    width: 30px;
-    height: 30px;
-    border: 0;
-    border-radius: 999px;
-    background: #ef4444;
-    color: #fff;
-    font-size: 1.05rem;
-    line-height: 1;
-    display: inline-grid;
-    place-items: center;
-    cursor: pointer;
-    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.22);
-    opacity: 0;
-    transform: translateY(-4px) scale(0.92);
-    transition: opacity 0.18s ease, transform 0.18s ease, background 0.15s ease;
-}
-
-.photo-card:hover .photo-delete-btn,
-.photo-card:focus-within .photo-delete-btn,
-.photo-delete-btn:focus-visible {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-}
-
-.photo-delete-btn:hover,
-.photo-delete-btn:focus-visible {
-    background: #dc2626;
-}
-
-@media (hover: none) {
-    .photo-delete-btn {
-        opacity: 1;
-        transform: none;
-    }
 }
 
 .proof-photo-grid {
@@ -1352,6 +1312,11 @@ textarea {
 
 .photo-placeholder-content small {
     color: var(--muted);
+}
+
+.photo-placeholder-unsupported {
+    border-style: dashed;
+    background: #fffaf7;
 }
 
 .chip-group {
@@ -2449,7 +2414,8 @@ textarea {
 
 .photo-post {
     display: grid;
-    gap: 1rem;
+    gap: 1.1rem;
+    padding: 0.95rem;
 }
 
 .photo-post-title {
@@ -2457,23 +2423,35 @@ textarea {
     font-size: clamp(1.5rem, 2.7vw, 2.1rem);
 }
 
+.photo-post-head {
+    align-items: center;
+}
+
+.photo-back-btn {
+    min-height: 34px;
+    padding: 0.42rem 0.62rem;
+}
+
 .photo-post-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
-    gap: 1rem;
+    grid-template-columns: minmax(0, 1.18fr) minmax(0, 0.82fr);
+    gap: 1.1rem;
+    align-items: start;
 }
 
 .photo-post-media {
     margin: 0;
     border: 1px solid var(--line);
-    border-radius: var(--radius);
+    border-radius: 14px;
     overflow: hidden;
     background: #fff;
+    box-shadow: 0 16px 36px rgba(23, 33, 43, 0.12);
 }
 
 .photo-post-media img {
     width: 100%;
-    max-height: 68vh;
+    min-height: 300px;
+    max-height: 72vh;
     object-fit: cover;
     display: block;
 }
@@ -2484,24 +2462,36 @@ textarea {
 
 .photo-post-meta {
     display: grid;
-    gap: 0.75rem;
+    gap: 0.8rem;
+    align-items: stretch;
+}
+
+.photo-post-meta-main {
+    display: grid;
+    gap: 0.72rem;
 }
 
 .photo-post-author {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.65rem;
 }
 
 .photo-post-author .profile-avatar {
-    width: 42px;
-    height: 42px;
-    flex: 0 0 42px;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
 }
 
 .photo-post-author span {
+    margin-top: 0;
     color: var(--muted);
     font-size: 0.82rem;
+}
+
+.photo-post-author strong {
+    display: block;
+    margin-bottom: 0.12rem;
 }
 
 .photo-post-tags {
@@ -2510,12 +2500,39 @@ textarea {
     flex-wrap: wrap;
 }
 
+.photo-post-tags .badge {
+    margin-top: 0;
+    display: inline-flex;
+}
+
+.photo-post-divider {
+    width: 100%;
+    height: 1px;
+    background: var(--line);
+}
+
 .photo-post-caption {
     margin: 0;
+    color: #26323d;
+}
+
+.photo-post-actions {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.photo-post-actions h3 {
+    margin: 0;
+    font-size: 0.82rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    color: var(--muted);
 }
 
 .photo-delete-text-btn {
     color: #b91c1c;
+    justify-self: start;
 }
 
 .photo-post-nutrition h3 {
@@ -2538,12 +2555,38 @@ textarea {
 }
 
 .photo-comments {
-    padding-top: 0.6rem;
+    padding-top: 0.72rem;
     border-top: 1px solid var(--line);
 }
 
+.photo-comments-head {
+    align-items: center;
+}
+
 .photo-comment-form {
-    margin-top: 0.2rem;
+    margin-top: 0.15rem;
+}
+
+.photo-comment-actions {
+    justify-content: flex-start;
+}
+
+.photo-comments-empty {
+    display: grid;
+    gap: 0.18rem;
+    padding: 0.72rem;
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+    background: #f8fcfa;
+}
+
+.photo-comments-empty strong {
+    font-size: 0.9rem;
+}
+
+.photo-comments-empty span {
+    color: var(--muted);
+    font-size: 0.82rem;
 }
 
 .photo-comment-list {
@@ -2555,9 +2598,10 @@ textarea {
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: #f9fcfb;
-    padding: 0.65rem;
+    padding: 0.72rem;
     display: grid;
-    gap: 0.45rem;
+    gap: 0.5rem;
+    box-shadow: 0 8px 18px rgba(23, 33, 43, 0.06);
 }
 
 .photo-comment-item p {
@@ -2894,6 +2938,33 @@ textarea {
         grid-template-columns: 1fr;
     }
 
+    .photo-post {
+        padding: 0.82rem;
+    }
+
+    .photo-post-head {
+        gap: 0.55rem;
+    }
+
+    .photo-back-btn {
+        width: fit-content;
+    }
+
+    .photo-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.6rem;
+    }
+
+    .photo-grid img,
+    .photo-card-media .entries-calendar-empty {
+        height: 132px;
+    }
+
+    .photo-grid figcaption {
+        padding: 0.5rem;
+        font-size: 0.76rem;
+    }
+
     .calories-overview .metric-box {
         flex-direction: column;
         align-items: flex-start;
@@ -2924,5 +2995,37 @@ textarea {
 
     .proof-photo-grid {
         grid-template-columns: 1fr;
+    }
+
+    .photo-post {
+        gap: 0.85rem;
+    }
+
+    .photo-post-layout {
+        gap: 0.85rem;
+    }
+
+    .photo-post-media img {
+        min-height: 220px;
+        max-height: 60vh;
+        object-fit: contain;
+        background: #edf3f0;
+    }
+
+    .photo-post-nutrition li {
+        font-size: 0.8rem;
+    }
+
+    .photo-comment-head {
+        flex-direction: column;
+        gap: 0.45rem;
+    }
+
+    .photo-comment-actions {
+        justify-content: stretch;
+    }
+
+    .photo-comment-actions .btn {
+        width: 100%;
     }
 }

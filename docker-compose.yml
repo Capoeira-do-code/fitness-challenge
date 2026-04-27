@@ -11,6 +11,7 @@ services:
       APP_DEFAULT_LOCALE: en
       SESSION_NAME: fitness_challenge_session
       DB_PATH: ${DB_PATH:-/var/www/storage/fitness.sqlite}
+      PHOTO_UPLOAD_MAX_BYTES: ${PHOTO_UPLOAD_MAX_BYTES:-15728640}
       CHALLENGE_START: 2026-04-13
       CHALLENGE_END: 2026-06-07
       SEED_PASSWORD: ChangeMe123!

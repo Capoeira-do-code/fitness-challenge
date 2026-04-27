@@ -54,7 +54,7 @@ $renderMobileIcon = static function (string $icon): string {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/styles.css?v=17">
+    <link rel="stylesheet" href="/assets/styles.css?v=18">
 </head>
 <body data-page="<?= e((string) $currentPage) ?>">
 <?php if ($loggedIn): ?>
@@ -149,6 +149,6 @@ $renderMobileIcon = static function (string $icon): string {
     </nav>
 <?php endif; ?>
 
-<script src="/assets/main.js?v=16"></script>
+<script src="/assets/main.js?v=17"></script>
 </body>
 </html>

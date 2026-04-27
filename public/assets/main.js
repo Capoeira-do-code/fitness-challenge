@@ -300,6 +300,12 @@
         const placeholderHint = previewContainer instanceof HTMLElement
             ? (previewContainer.dataset.placeholderHint || 'The image will be saved as proof')
             : 'The image will be saved as proof';
+        const unsupportedTitle = previewContainer instanceof HTMLElement
+            ? (previewContainer.dataset.previewUnsupportedTitle || 'Preview not available')
+            : 'Preview not available';
+        const unsupportedHint = previewContainer instanceof HTMLElement
+            ? (previewContainer.dataset.previewUnsupportedHint || 'This format can be uploaded, but your browser cannot preview it.')
+            : 'This format can be uploaded, but your browser cannot preview it.';
         const previewAlt = previewContainer instanceof HTMLElement
             ? (previewContainer.dataset.previewAlt || 'Photo preview')
             : 'Photo preview';
@@ -358,6 +364,33 @@
             `;
         };
 
+        const renderUnsupportedPreview = () => {
+            if (!(previewContainer instanceof HTMLElement)) {
+                return;
+            }
+            previewContainer.innerHTML = `
+                <div class="photo-placeholder photo-placeholder-unsupported">
+                    <div class="photo-placeholder-content">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm7 4a1 1 0 0 1 1 1v4.2a1 1 0 1 1-2 0V9a1 1 0 0 1 1-1Zm0 8.6a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Z"/></svg>
+                        <p>${escapeHtml(unsupportedTitle)}</p>
+                        <small>${escapeHtml(unsupportedHint)}</small>
+                    </div>
+                </div>
+            `;
+        };
+
+        const isHeicLikeFile = (file) => {
+            if (!(file instanceof File)) {
+                return false;
+            }
+            const normalizedType = String(file.type || '').toLowerCase();
+            if (['image/heic', 'image/heif', 'image/x-heic', 'image/x-heif', 'image/heic-sequence', 'image/heif-sequence'].includes(normalizedType)) {
+                return true;
+            }
+            const normalizedName = String(file.name || '').toLowerCase();
+            return normalizedName.endsWith('.heic') || normalizedName.endsWith('.heif');
+        };
+
         const renderPreview = () => {
             if (!(fileInput instanceof HTMLInputElement) || !(previewContainer instanceof HTMLElement)) {
                 return;
@@ -376,6 +409,14 @@
             const previewImage = document.createElement('img');
             previewImage.src = activeObjectUrl;
             previewImage.alt = previewAlt;
+            const heicLike = isHeicLikeFile(selectedFile);
+            previewImage.addEventListener('error', () => {
+                if (heicLike) {
+                    renderUnsupportedPreview();
+                    return;
+                }
+                renderPlaceholder();
+            });
             previewContainer.appendChild(previewImage);
         };
 

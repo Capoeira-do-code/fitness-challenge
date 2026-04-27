@@ -76,9 +76,6 @@ $nutritionSummary = static function (array $photo): string {
 
     return implode(' · ', $parts);
 };
-$canDeletePhoto = static function (array $photo, array $viewer): bool {
-    return is_admin($viewer) || (int) ($photo['user_id'] ?? 0) === (int) ($viewer['id'] ?? 0);
-};
 ?>
 <section class="screen stack-lg">
     <div class="hero-panel">
@@ -273,7 +270,7 @@ $canDeletePhoto = static function (array $photo, array $viewer): bool {
 
                         <label>
                             <?= e(t('entries.camera_hint')) ?>
-                            <input type="file" name="photo" accept="image/*" capture="environment" required data-proof-photo-input>
+                            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif" capture="environment" required data-proof-photo-input>
                         </label>
 
                         <div class="photo-nutrition-tools">
@@ -321,6 +318,8 @@ $canDeletePhoto = static function (array $photo, array $viewer): bool {
                         data-proof-photo-preview
                         data-placeholder-title="<?= e(t('entries.photo_preview_placeholder')) ?>"
                         data-placeholder-hint="<?= e(t('entries.photo_preview_hint')) ?>"
+                        data-preview-unsupported-title="<?= e(t('entries.photo_preview_unsupported_title')) ?>"
+                        data-preview-unsupported-hint="<?= e(t('entries.photo_preview_unsupported_hint')) ?>"
                         data-preview-alt="<?= e(t('common.photo')) ?>"
                     >
                         <div class="photo-placeholder">
@@ -356,7 +355,6 @@ $canDeletePhoto = static function (array $photo, array $viewer): bool {
                     $photoId = (int) ($photo['id'] ?? 0);
                     $category = (string) ($photo['category'] ?? 'other');
                     $photoUrl = media_url((string) ($photo['file_path'] ?? ''));
-                    $photoDeleteFormId = 'photo-delete-form-meal-' . $photoId;
                     $nutritionLine = $nutritionSummary($photo);
                     ?>
                     <figure class="photo-card">
@@ -367,23 +365,6 @@ $canDeletePhoto = static function (array $photo, array $viewer): bool {
                                 <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
                             <?php endif; ?>
                         </a>
-                        <?php if ($canDeletePhoto($photo, $currentUser)): ?>
-                            <button
-                                type="button"
-                                class="photo-delete-btn"
-                                data-photo-delete-trigger
-                                data-photo-delete-form="<?= e($photoDeleteFormId) ?>"
-                                data-photo-delete-message="<?= e(t('entries.delete_photo_confirm')) ?>"
-                                aria-label="<?= e(t('common.delete')) ?>"
-                            >×</button>
-                            <form id="<?= e($photoDeleteFormId) ?>" method="post" action="/?page=entries" hidden>
-                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                <input type="hidden" name="action" value="delete_photo">
-                                <input type="hidden" name="photo_id" value="<?= $photoId ?>">
-                                <input type="hidden" name="redirect_mode" value="meal">
-                                <input type="hidden" name="redirect_date" value="<?= e((string) $selectedDate) ?>">
-                            </form>
-                        <?php endif; ?>
                         <figcaption>
                             <strong><?= e((string) ($photo['display_name'] ?? '')) ?></strong>
                             <span><?= e(format_date_eu((string) ($photo['log_date'] ?? ''))) ?> · <?= e((string) ($categoryLabels[$category] ?? $category)) ?></span>
@@ -503,14 +484,3 @@ $canDeletePhoto = static function (array $photo, array $viewer): bool {
         </article>
     <?php endif; ?>
 </section>
-
-<div class="confirm-modal" hidden aria-hidden="true" data-photo-delete-modal>
-    <div class="confirm-modal-backdrop" data-photo-delete-cancel></div>
-    <div class="confirm-modal-card" role="dialog" aria-modal="true" aria-labelledby="photo-delete-title">
-        <h3 id="photo-delete-title"><?= e(t('entries.delete_photo_confirm')) ?></h3>
-        <div class="confirm-modal-actions">
-            <button type="button" class="btn btn-ghost" data-photo-delete-cancel><?= e(t('common.cancel')) ?></button>
-            <button type="button" class="btn btn-primary" data-photo-delete-confirm><?= e(t('common.delete')) ?></button>
-        </div>
-    </div>
-</div>
