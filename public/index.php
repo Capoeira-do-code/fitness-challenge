@@ -126,15 +126,35 @@ if ($page === 'api_save_row') {
     }
 
     $habitPayload = is_array($json['habits'] ?? null) ? (array) $json['habits'] : [];
+    $hasWorkoutsPayload = is_array($json['workouts'] ?? null);
+    $workoutsPayload = [];
+    if ($hasWorkoutsPayload) {
+        foreach (array_values((array) ($json['workouts'] ?? [])) as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $workoutsPayload[] = [
+                'workout_type_id' => $row['workout_type_id'] ?? null,
+                'workout_type' => trim((string) ($row['workout_type'] ?? '')),
+            ];
+        }
+    }
+    $derivedExtraWorkout = 0;
+    $derivedWorkoutDone = (int) ($json['workout_done'] ?? 0) === 1 ? 1 : 0;
+    if ($hasWorkoutsPayload) {
+        $derivedWorkoutDone = ($derivedWorkoutDone === 1 || count($workoutsPayload) > 0) ? 1 : 0;
+        $derivedExtraWorkout = ((int) ($json['extra_workout'] ?? 0) === 1 || count($workoutsPayload) > 1) ? 1 : 0;
+    }
+
     $payload = [
         'user_id' => $userId,
         'log_date' => to_date((string) ($json['log_date'] ?? null)),
         'steps' => max(0, (int) ($json['steps'] ?? 0)),
-        'workout_done' => (int) ($json['workout_done'] ?? 0) === 1 ? 1 : 0,
+        'workout_done' => $hasWorkoutsPayload ? $derivedWorkoutDone : ((int) ($json['workout_done'] ?? 0) === 1 ? 1 : 0),
         'workout_type_id' => !empty($json['workout_type_id']) ? (int) $json['workout_type_id'] : null,
         'workout_type' => trim((string) ($json['workout_type'] ?? '')),
         'junk_food' => (int) ($json['junk_food'] ?? 0) === 1 ? 1 : 0,
-        'extra_workout' => (int) ($json['extra_workout'] ?? 0) === 1 ? 1 : 0,
+        'extra_workout' => $hasWorkoutsPayload ? $derivedExtraWorkout : ((int) ($json['extra_workout'] ?? 0) === 1 ? 1 : 0),
         'distance_km' => ($json['distance_km'] ?? '') !== '' ? (float) $json['distance_km'] : null,
         'training_calories_burned' => ($json['training_calories_burned'] ?? '') !== '' ? (float) $json['training_calories_burned'] : null,
         'weight' => ($json['weight'] ?? '') !== '' ? (float) $json['weight'] : null,
@@ -147,6 +167,9 @@ if ($page === 'api_save_row') {
         'reading' => !empty($habitPayload['reading']) || (int) ($json['reading'] ?? 0) === 1 ? 1 : 0,
         'habits' => $habitPayload,
     ];
+    if ($hasWorkoutsPayload) {
+        $payload['workouts'] = $workoutsPayload;
+    }
 
     try {
         $before = fetch_log($pdo, $userId, (string) $payload['log_date']);
@@ -175,6 +198,51 @@ if ($page === 'api_save_row') {
     }
 
     json_response(['ok' => true]);
+}
+
+if ($page === 'api_create_habit') {
+    $currentUser = require_login($pdo);
+
+    if (!is_post()) {
+        json_response(['ok' => false, 'message' => t('flash.method_not_allowed')], 405);
+    }
+
+    $raw = file_get_contents('php://input');
+    if ($raw === false) {
+        json_response(['ok' => false, 'message' => t('flash.invalid_body')], 400);
+    }
+
+    $json = json_decode($raw, true);
+    if (!is_array($json)) {
+        json_response(['ok' => false, 'message' => t('flash.invalid_json')], 400);
+    }
+
+    if (!isset($json['csrf_token']) || !is_string($json['csrf_token']) || !hash_equals((string) ($_SESSION['csrf_token'] ?? ''), $json['csrf_token'])) {
+        json_response(['ok' => false, 'message' => t('flash.csrf')], 419);
+    }
+
+    $label = trim((string) ($json['label'] ?? ''));
+    if ($label === '') {
+        json_response(['ok' => false, 'message' => t('table.custom_habit_required')], 422);
+    }
+
+    try {
+        $habit = create_custom_habit_from_label($pdo, $label, (int) $currentUser['id']);
+        if ($habit === null) {
+            json_response(['ok' => false, 'message' => t('table.custom_habit_error')], 422);
+        }
+
+        json_response([
+            'ok' => true,
+            'habit' => [
+                'id' => (int) ($habit['id'] ?? 0),
+                'code' => (string) ($habit['code'] ?? ''),
+                'label' => (string) ($habit['label'] ?? ''),
+            ],
+        ]);
+    } catch (Throwable) {
+        json_response(['ok' => false, 'message' => t('table.custom_habit_error')], 500);
+    }
 }
 
 if ($page === 'login') {

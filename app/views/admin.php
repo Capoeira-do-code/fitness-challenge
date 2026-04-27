@@ -49,7 +49,10 @@ $sectionRows = [
     <article class="panel settings-panel<?= $activeSection === 'users' ? ' active' : '' ?>" data-spa-section="users" <?= $activeSection === 'users' ? '' : 'hidden' ?>>
         <div class="panel-head admin-section-list" data-spa-show-when-no-param="create_user,user_id" <?= ($createUserMode || $selectedUserId > 0) ? 'hidden' : '' ?>>
             <h2>Users</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+            <div class="inline-actions-mini">
+                <a class="btn btn-primary small" href="/?page=admin&section=users&create_user=1" data-spa-link><?= e(t('common.create')) ?></a>
+                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+            </div>
         </div>
 
         <div class="settings-list compact-list admin-section-list" data-spa-show-when-no-param="create_user,user_id" <?= ($createUserMode || $selectedUserId > 0) ? 'hidden' : '' ?>>
@@ -219,7 +222,10 @@ $sectionRows = [
     <article class="panel settings-panel<?= $activeSection === 'habits' ? ' active' : '' ?>" data-spa-section="habits" <?= $activeSection === 'habits' ? '' : 'hidden' ?>>
         <div class="panel-head admin-section-list" data-spa-show-when-no-param="habit_id" <?= $selectedHabitId !== '' ? 'hidden' : '' ?>>
             <h2>Habits</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+            <div class="inline-actions-mini">
+                <a class="btn btn-primary small" href="/?page=admin&section=habits&habit_id=new" data-spa-link><?= e(t('common.create')) ?></a>
+                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+            </div>
         </div>
 
         <div class="settings-list compact-list admin-section-list" data-spa-show-when-no-param="habit_id" <?= $selectedHabitId !== '' ? 'hidden' : '' ?>>
@@ -280,7 +286,10 @@ $sectionRows = [
     <article class="panel settings-panel<?= $activeSection === 'workout_types' ? ' active' : '' ?>" data-spa-section="workout_types" <?= $activeSection === 'workout_types' ? '' : 'hidden' ?>>
         <div class="panel-head admin-section-list" data-spa-show-when-no-param="type_id" <?= $selectedTypeId !== '' ? 'hidden' : '' ?>>
             <h2>Workout Types</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+            <div class="inline-actions-mini">
+                <a class="btn btn-primary small" href="/?page=admin&section=workout_types&type_id=new" data-spa-link><?= e(t('common.create')) ?></a>
+                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+            </div>
         </div>
 
         <div class="settings-list compact-list admin-section-list" data-spa-show-when-no-param="type_id" <?= $selectedTypeId !== '' ? 'hidden' : '' ?>>
@@ -336,10 +345,13 @@ $sectionRows = [
     <article class="panel settings-panel<?= $activeSection === 'achievements' ? ' active' : '' ?>" data-spa-section="achievements" <?= $activeSection === 'achievements' ? '' : 'hidden' ?>>
         <div class="panel-head admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
             <h2>Achievements</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+            <div class="inline-actions-mini">
+                <a class="btn btn-primary small" href="/?page=admin&section=achievements#achievement-create" data-spa-link><?= e(t('common.create')) ?></a>
+                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+            </div>
         </div>
 
-        <section class="stack compact-form admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
+        <section id="achievement-create" class="stack compact-form admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
             <h3>Crear achievement</h3>
             <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack" data-achievement-form>
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">

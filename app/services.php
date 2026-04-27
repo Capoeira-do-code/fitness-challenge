@@ -911,6 +911,34 @@ function save_habit_definition(PDO $pdo, ?int $habitId, string $code, string $la
     audit_log($pdo, $actorUserId, 'habit_updated', 'habit_definition', (string) $habitId, 'Habit definition updated.', audit_snapshot($before), audit_snapshot($after));
 }
 
+function create_custom_habit_from_label(PDO $pdo, string $label, int $actorUserId): ?array
+{
+    $normalizedLabel = trim(preg_replace('/\s+/', ' ', $label) ?? '');
+    if ($normalizedLabel === '') {
+        return null;
+    }
+
+    $baseCode = preg_replace('/[^a-z0-9_]+/', '_', strtolower($normalizedLabel)) ?: '';
+    $baseCode = trim($baseCode, '_');
+    if ($baseCode === '') {
+        $baseCode = 'custom_habit';
+    }
+
+    $code = $baseCode;
+    $suffix = 2;
+    while (db_fetch_one($pdo, 'SELECT id FROM habit_definitions WHERE code = :code', [':code' => $code]) !== null) {
+        $code = $baseCode . '_' . $suffix;
+        $suffix++;
+    }
+
+    $sortRow = db_fetch_one($pdo, 'SELECT MAX(sort_order) AS max_order FROM habit_definitions');
+    $nextSort = max(0, (int) ($sortRow['max_order'] ?? 0)) + 10;
+
+    save_habit_definition($pdo, null, $code, $normalizedLabel, true, $nextSort, $actorUserId);
+
+    return db_fetch_one($pdo, 'SELECT * FROM habit_definitions WHERE code = :code', [':code' => $code]);
+}
+
 function deactivate_habit_definition(PDO $pdo, int $habitId, int $actorUserId): void
 {
     $before = db_fetch_one($pdo, 'SELECT * FROM habit_definitions WHERE id = :id', [':id' => $habitId]);
