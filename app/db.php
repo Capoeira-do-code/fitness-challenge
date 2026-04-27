@@ -272,6 +272,20 @@ function initialize_database(PDO $pdo, array $config): void
     );
 
     $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS daily_log_workouts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            log_id INTEGER NOT NULL,
+            workout_type_id INTEGER,
+            workout_type TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (log_id) REFERENCES daily_logs(id) ON DELETE CASCADE,
+            FOREIGN KEY (workout_type_id) REFERENCES workout_types(id) ON DELETE SET NULL
+        )'
+    );
+
+    $pdo->exec(
         'CREATE TABLE IF NOT EXISTS audit_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             actor_user_id INTEGER,
@@ -459,6 +473,7 @@ function initialize_database(PDO $pdo, array $config): void
     seed_default_achievements($pdo);
     seed_workout_types_from_logs($pdo);
     backfill_workout_type_ids($pdo);
+    backfill_daily_log_workouts($pdo);
     backfill_daily_log_habits($pdo);
 }
 
@@ -549,6 +564,7 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity_type, entity_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_join_requests_team ON team_join_requests(team_id, status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_log_habits_log ON daily_log_habits(log_id)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_log_workouts_log ON daily_log_workouts(log_id, sort_order)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_rules_achievement ON achievement_rules(achievement_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_login_attempts_user_ip ON login_attempts(username, ip_address, attempted_at)');
 }
@@ -749,6 +765,56 @@ function backfill_workout_type_ids(PDO $pdo): void
         }
 
         db_execute($pdo, 'UPDATE daily_logs SET workout_type_id = :type_id WHERE id = :id', [':type_id' => (int) $type['id'], ':id' => (int) $log['id']]);
+    }
+}
+
+function backfill_daily_log_workouts(PDO $pdo): void
+{
+    $logs = db_fetch_all(
+        $pdo,
+        'SELECT id, workout_done, workout_type_id, workout_type, created_at, updated_at
+         FROM daily_logs
+         WHERE workout_done = 1
+            OR workout_type_id IS NOT NULL
+            OR (workout_type IS NOT NULL AND TRIM(workout_type) != "")'
+    );
+
+    foreach ($logs as $log) {
+        $existing = db_fetch_one(
+            $pdo,
+            'SELECT id FROM daily_log_workouts WHERE log_id = :log_id LIMIT 1',
+            [':log_id' => (int) $log['id']]
+        );
+        if ($existing !== null) {
+            continue;
+        }
+
+        $workoutType = trim((string) ($log['workout_type'] ?? ''));
+        if ($workoutType === '') {
+            $workoutType = 'Workout';
+        }
+
+        $createdAt = trim((string) ($log['created_at'] ?? ''));
+        $updatedAt = trim((string) ($log['updated_at'] ?? ''));
+        if ($createdAt === '') {
+            $createdAt = now_iso();
+        }
+        if ($updatedAt === '') {
+            $updatedAt = $createdAt;
+        }
+
+        db_execute(
+            $pdo,
+            'INSERT INTO daily_log_workouts (log_id, workout_type_id, workout_type, sort_order, created_at, updated_at)
+             VALUES (:log_id, :workout_type_id, :workout_type, 1, :created_at, :updated_at)',
+            [
+                ':log_id' => (int) $log['id'],
+                ':workout_type_id' => !empty($log['workout_type_id']) ? (int) $log['workout_type_id'] : null,
+                ':workout_type' => $workoutType,
+                ':created_at' => $createdAt,
+                ':updated_at' => $updatedAt,
+            ]
+        );
     }
 }
 

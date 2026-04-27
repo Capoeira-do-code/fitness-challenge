@@ -24,6 +24,218 @@ function normalize_mask(mixed $selectedDays): string
     return $mask;
 }
 
+function normalize_log_workouts_payload(PDO $pdo, array $payload, ?int $actorUserId = null): array
+{
+    $hasWorkouts = isset($payload['workouts']) && is_array($payload['workouts']);
+    $rawWorkouts = $hasWorkouts ? array_values((array) $payload['workouts']) : [];
+
+    if (!$hasWorkouts) {
+        $legacyWorkoutDone = (int) ($payload['workout_done'] ?? 0) === 1;
+        $legacyWorkoutDoneProvided = array_key_exists('workout_done', $payload);
+        $legacyWorkoutTypeId = !empty($payload['workout_type_id']) ? (int) $payload['workout_type_id'] : null;
+        $legacyWorkoutType = trim((string) ($payload['workout_type'] ?? ''));
+        if ($legacyWorkoutDone && $legacyWorkoutTypeId === null && $legacyWorkoutType === '') {
+            $legacyWorkoutType = 'Workout';
+            $rawWorkouts[] = [
+                'workout_type_id' => null,
+                'workout_type' => $legacyWorkoutType,
+                'skip_type_persist' => true,
+            ];
+        } elseif ($legacyWorkoutDone || (!$legacyWorkoutDoneProvided && ($legacyWorkoutTypeId !== null || $legacyWorkoutType !== ''))) {
+            $rawWorkouts[] = [
+                'workout_type_id' => $legacyWorkoutTypeId,
+                'workout_type' => $legacyWorkoutType,
+            ];
+        }
+    }
+
+    $normalized = [];
+    foreach ($rawWorkouts as $index => $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $normalizedRow = normalize_workout_row($pdo, $row, $actorUserId);
+        if ($normalizedRow === null) {
+            continue;
+        }
+        $normalizedRow['sort_order'] = $index + 1;
+        $normalized[] = $normalizedRow;
+    }
+
+    usort(
+        $normalized,
+        static fn(array $a, array $b): int => ((int) ($a['sort_order'] ?? 0)) <=> ((int) ($b['sort_order'] ?? 0))
+    );
+    $normalized = array_values(array_map(
+        static function (array $row, int $idx): array {
+            $row['sort_order'] = $idx + 1;
+            return $row;
+        },
+        $normalized,
+        array_keys($normalized)
+    ));
+
+    $payload['workouts'] = $normalized;
+    $payload['workout_done'] = $normalized !== [] ? 1 : 0;
+    $payload['workout_type_id'] = $normalized !== [] ? ($normalized[0]['workout_type_id'] ?? null) : null;
+    $payload['workout_type'] = $normalized !== [] ? (string) ($normalized[0]['workout_type'] ?? '') : '';
+
+    return $payload;
+}
+
+function normalize_workout_row(PDO $pdo, array $row, ?int $actorUserId = null): ?array
+{
+    $rawTypeId = $row['workout_type_id'] ?? null;
+    $rawType = trim((string) ($row['workout_type'] ?? ''));
+    $skipTypePersist = !empty($row['skip_type_persist']);
+
+    $workoutTypeId = null;
+    if (is_int($rawTypeId) && $rawTypeId > 0) {
+        $workoutTypeId = $rawTypeId;
+    } elseif (is_string($rawTypeId)) {
+        $trimmedTypeId = trim($rawTypeId);
+        if ($trimmedTypeId !== '' && $trimmedTypeId !== '__custom__' && ctype_digit($trimmedTypeId) && (int) $trimmedTypeId > 0) {
+            $workoutTypeId = (int) $trimmedTypeId;
+        }
+    } elseif (is_numeric($rawTypeId) && (int) $rawTypeId > 0) {
+        $workoutTypeId = (int) $rawTypeId;
+    }
+
+    if ($workoutTypeId !== null) {
+        $typeRow = db_fetch_one($pdo, 'SELECT id, name FROM workout_types WHERE id = :id', [':id' => $workoutTypeId]);
+        if ($typeRow === null) {
+            $workoutTypeId = null;
+        } elseif ($rawType === '') {
+            $rawType = trim((string) ($typeRow['name'] ?? ''));
+        }
+    }
+
+    if (!$skipTypePersist && $workoutTypeId === null && $rawType !== '') {
+        $savedTypeId = save_workout_type_if_needed($pdo, $rawType, $actorUserId);
+        if ($savedTypeId !== null) {
+            $workoutTypeId = $savedTypeId;
+        }
+    }
+
+    if ($workoutTypeId !== null && $rawType === '') {
+        $typeRow = db_fetch_one($pdo, 'SELECT name FROM workout_types WHERE id = :id', [':id' => $workoutTypeId]);
+        if ($typeRow !== null) {
+            $rawType = trim((string) ($typeRow['name'] ?? ''));
+        }
+    }
+
+    if ($workoutTypeId === null && $rawType === '') {
+        return null;
+    }
+
+    return [
+        'workout_type_id' => $workoutTypeId,
+        'workout_type' => $rawType !== '' ? $rawType : 'Workout',
+    ];
+}
+
+function sync_log_workouts(PDO $pdo, int $logId, array $workouts): void
+{
+    if ($logId <= 0) {
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'DELETE FROM daily_log_workouts WHERE log_id = :log_id',
+        [':log_id' => $logId]
+    );
+
+    if ($workouts === []) {
+        return;
+    }
+
+    $now = now_iso();
+    foreach (array_values($workouts) as $index => $workout) {
+        if (!is_array($workout)) {
+            continue;
+        }
+
+        $workoutTypeId = !empty($workout['workout_type_id']) ? (int) $workout['workout_type_id'] : null;
+        $workoutType = trim((string) ($workout['workout_type'] ?? ''));
+        if ($workoutType === '' && $workoutTypeId !== null) {
+            $typeRow = db_fetch_one($pdo, 'SELECT name FROM workout_types WHERE id = :id', [':id' => $workoutTypeId]);
+            if ($typeRow !== null) {
+                $workoutType = trim((string) ($typeRow['name'] ?? ''));
+            }
+        }
+        if ($workoutType === '' && $workoutTypeId === null) {
+            continue;
+        }
+        if ($workoutType === '') {
+            $workoutType = 'Workout';
+        }
+
+        db_execute(
+            $pdo,
+            'INSERT INTO daily_log_workouts (log_id, workout_type_id, workout_type, sort_order, created_at, updated_at)
+             VALUES (:log_id, :workout_type_id, :workout_type, :sort_order, :created_at, :updated_at)',
+            [
+                ':log_id' => $logId,
+                ':workout_type_id' => $workoutTypeId,
+                ':workout_type' => $workoutType,
+                ':sort_order' => $index + 1,
+                ':created_at' => $now,
+                ':updated_at' => $now,
+            ]
+        );
+    }
+}
+
+function evaluate_primary_goal_failures(array $user, array $payload): array
+{
+    $primaryGoals = user_primary_goals($user);
+    $stepsValue = max(0, (int) ($payload['steps'] ?? 0));
+    $kmValue = max(0.0, (float) ($payload['distance_km'] ?? 0));
+    $workoutCounted = (int) ($payload['workout_done'] ?? 0) === 1 ? 1.0 : 0.0;
+
+    $missingSteps = false;
+    $missingKm = false;
+    $missingWorkout = false;
+
+    foreach ($primaryGoals as $goal) {
+        $type = strtolower(trim((string) ($goal['type'] ?? '')));
+        $target = (float) ($goal['value'] ?? 0);
+        if ($target <= 0) {
+            continue;
+        }
+
+        if ($type === 'steps' && (float) $stepsValue < $target) {
+            $missingSteps = true;
+        } elseif ($type === 'km' && $kmValue < $target) {
+            $missingKm = true;
+        } elseif ($type === 'workouts' && $workoutCounted < $target) {
+            $missingWorkout = true;
+        }
+    }
+
+    $failedItems = [];
+    if ($missingSteps) {
+        $failedItems[] = 'steps';
+    }
+    if ($missingKm) {
+        $failedItems[] = 'km';
+    }
+    if ($missingWorkout) {
+        $failedItems[] = 'workouts';
+    }
+
+    return [
+        'steps' => $missingSteps || $missingKm,
+        'workout' => $missingWorkout,
+        'missing_steps' => $missingSteps,
+        'missing_km' => $missingKm,
+        'missing_workouts' => $missingWorkout,
+        'failed_items' => $failedItems,
+    ];
+}
+
 function upsert_daily_log(PDO $pdo, array $payload): void
 {
     $workoutTypeId = null;
@@ -134,14 +346,17 @@ function upsert_daily_log_and_sync_approvals(PDO $pdo, array $payload, int $acto
     $pdo->beginTransaction();
 
     try {
-        $workoutTypeId = save_workout_type_if_needed($pdo, trim((string) ($payload['workout_type'] ?? '')), $actorUserId);
-        if (empty($payload['workout_type_id']) && $workoutTypeId !== null) {
-            $payload['workout_type_id'] = $workoutTypeId;
-        }
+        $payload = normalize_log_workouts_payload($pdo, $payload, $actorUserId);
         upsert_daily_log($pdo, $payload);
-        $log = fetch_log($pdo, (int) $payload['user_id'], (string) $payload['log_date']);
+        $log = db_fetch_one(
+            $pdo,
+            'SELECT id FROM daily_logs WHERE user_id = :user_id AND log_date = :log_date LIMIT 1',
+            [':user_id' => (int) $payload['user_id'], ':log_date' => (string) $payload['log_date']]
+        );
         if ($log !== null) {
-            sync_log_habits($pdo, (int) $log['id'], $payload['habits'] ?? []);
+            $logId = (int) $log['id'];
+            sync_log_workouts($pdo, $logId, is_array($payload['workouts'] ?? null) ? (array) $payload['workouts'] : []);
+            sync_log_habits($pdo, $logId, is_array($payload['habits'] ?? null) ? (array) $payload['habits'] : []);
         }
         sync_log_approval_requests($pdo, (int) $payload['user_id'], (string) $payload['log_date'], $actorUserId, $payload);
         $pdo->commit();
@@ -442,6 +657,136 @@ function load_approval_status_by_user_date(PDO $pdo, string $startDate, string $
     return $result;
 }
 
+function fetch_log_workouts_for_logs(PDO $pdo, array $logs): array
+{
+    if ($logs === []) {
+        return [];
+    }
+
+    $logIds = [];
+    $legacyTypeIds = [];
+    foreach ($logs as $log) {
+        $logId = (int) ($log['id'] ?? 0);
+        if ($logId <= 0) {
+            continue;
+        }
+        $logIds[$logId] = true;
+        $legacyTypeId = !empty($log['workout_type_id']) ? (int) $log['workout_type_id'] : 0;
+        if ($legacyTypeId > 0) {
+            $legacyTypeIds[$legacyTypeId] = true;
+        }
+    }
+
+    if ($logIds === []) {
+        return [];
+    }
+
+    $params = [];
+    $logPlaceholders = [];
+    foreach (array_keys($logIds) as $index => $logId) {
+        $key = ':log_id_' . $index;
+        $logPlaceholders[] = $key;
+        $params[$key] = $logId;
+    }
+
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT dlw.log_id,
+                dlw.workout_type_id,
+                dlw.workout_type,
+                dlw.sort_order,
+                wt.name AS workout_type_name
+         FROM daily_log_workouts dlw
+         LEFT JOIN workout_types wt ON wt.id = dlw.workout_type_id
+         WHERE dlw.log_id IN (' . implode(',', $logPlaceholders) . ')
+         ORDER BY dlw.log_id ASC, dlw.sort_order ASC, dlw.id ASC',
+        $params
+    );
+
+    $legacyTypeNames = [];
+    if ($legacyTypeIds !== []) {
+        $legacyParams = [];
+        $legacyPlaceholders = [];
+        foreach (array_keys($legacyTypeIds) as $index => $typeId) {
+            $key = ':type_id_' . $index;
+            $legacyPlaceholders[] = $key;
+            $legacyParams[$key] = $typeId;
+        }
+        $legacyRows = db_fetch_all(
+            $pdo,
+            'SELECT id, name FROM workout_types WHERE id IN (' . implode(',', $legacyPlaceholders) . ')',
+            $legacyParams
+        );
+        foreach ($legacyRows as $legacyRow) {
+            $legacyTypeNames[(int) $legacyRow['id']] = trim((string) ($legacyRow['name'] ?? ''));
+        }
+    }
+
+    $workoutsByLogId = [];
+    foreach ($rows as $row) {
+        $logId = (int) ($row['log_id'] ?? 0);
+        if ($logId <= 0) {
+            continue;
+        }
+        $workoutTypeId = !empty($row['workout_type_id']) ? (int) $row['workout_type_id'] : null;
+        $workoutType = trim((string) ($row['workout_type'] ?? ''));
+        if ($workoutType === '') {
+            $workoutType = trim((string) ($row['workout_type_name'] ?? ''));
+        }
+        if ($workoutType === '') {
+            $workoutType = 'Workout';
+        }
+        if (!isset($workoutsByLogId[$logId])) {
+            $workoutsByLogId[$logId] = [];
+        }
+        $workoutsByLogId[$logId][] = [
+            'workout_type_id' => $workoutTypeId,
+            'workout_type' => $workoutType,
+        ];
+    }
+
+    foreach ($logs as $log) {
+        $logId = (int) ($log['id'] ?? 0);
+        if ($logId <= 0 || isset($workoutsByLogId[$logId])) {
+            continue;
+        }
+        if ((int) ($log['workout_done'] ?? 0) !== 1) {
+            continue;
+        }
+
+        $legacyTypeId = !empty($log['workout_type_id']) ? (int) $log['workout_type_id'] : null;
+        $legacyType = trim((string) ($log['workout_type'] ?? ''));
+        if ($legacyType === '' && $legacyTypeId !== null) {
+            $legacyType = $legacyTypeNames[$legacyTypeId] ?? '';
+        }
+        if ($legacyType === '') {
+            $legacyType = 'Workout';
+        }
+        $workoutsByLogId[$logId] = [[
+            'workout_type_id' => $legacyTypeId,
+            'workout_type' => $legacyType,
+        ]];
+    }
+
+    return $workoutsByLogId;
+}
+
+function attach_workouts_to_logs(PDO $pdo, array $logs): array
+{
+    if ($logs === []) {
+        return [];
+    }
+
+    $workoutsByLogId = fetch_log_workouts_for_logs($pdo, $logs);
+    foreach ($logs as &$log) {
+        $logId = (int) ($log['id'] ?? 0);
+        $log['workouts'] = array_values((array) ($workoutsByLogId[$logId] ?? []));
+    }
+    unset($log);
+
+    return $logs;
+}
+
 function fetch_logs_for_user_between(PDO $pdo, int $userId, string $startDate, string $endDate): array
 {
     $logs = db_fetch_all(
@@ -449,6 +794,7 @@ function fetch_logs_for_user_between(PDO $pdo, int $userId, string $startDate, s
         'SELECT * FROM daily_logs WHERE user_id = :user_id AND log_date BETWEEN :start AND :end ORDER BY log_date ASC',
         [':user_id' => $userId, ':start' => $startDate, ':end' => $endDate]
     );
+    $logs = attach_workouts_to_logs($pdo, $logs);
     foreach ($logs as &$log) {
         $log['habits'] = fetch_log_habit_values($pdo, (int) $log['id']);
     }
@@ -465,6 +811,8 @@ function fetch_log(PDO $pdo, int $userId, string $date): ?array
         [':user_id' => $userId, ':log_date' => $date]
     );
     if ($log !== null) {
+        $logsWithWorkouts = attach_workouts_to_logs($pdo, [$log]);
+        $log = $logsWithWorkouts[0] ?? $log;
         $log['habits'] = fetch_log_habit_values($pdo, (int) $log['id']);
     }
 

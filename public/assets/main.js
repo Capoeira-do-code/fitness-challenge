@@ -62,9 +62,19 @@
     if (entryForm) {
         const stepsInput = entryForm.querySelector('[name="steps"]');
         const kmInput = entryForm.querySelector('[name="distance_km"]');
-        const workoutInput = entryForm.querySelector('[name="workout_done"]');
-        const stepReason = entryForm.querySelector('[data-reason="steps"]');
-        const workoutReason = entryForm.querySelector('[data-reason="workout"]');
+        const missingReason = entryForm.querySelector('[data-reason="missing"]');
+        const missingReasonLabel = entryForm.querySelector('[data-missing-reason-label]');
+        const missingReasonItems = entryForm.querySelector('[data-missing-reason-items]');
+        const workoutRows = entryForm.querySelector('[data-workout-rows]');
+        const workoutTemplate = entryForm.querySelector('template[data-workout-template]');
+        const workoutAddButton = entryForm.querySelector('[data-workout-add]');
+        const labels = {
+            steps: String(entryForm.dataset.labelSteps || 'Steps'),
+            km: String(entryForm.dataset.labelKm || 'Distance'),
+            workouts: String(entryForm.dataset.labelWorkouts || 'Workouts'),
+        };
+        const missingLabel = String(entryForm.dataset.missingLabel || 'Valid reason');
+        const missingPrefix = String(entryForm.dataset.missingPrefix || 'Missing');
         let primaryGoals = [];
         try {
             const parsedGoals = JSON.parse(entryForm.dataset.primaryGoals || '[]');
@@ -74,19 +84,90 @@
         } catch {
             primaryGoals = [];
         }
-        const updateReasons = () => {
+
+        const getWorkoutRows = () => {
+            if (!(workoutRows instanceof HTMLElement)) {
+                return [];
+            }
+            return [...workoutRows.querySelectorAll('[data-workout-row]')];
+        };
+
+        const getWorkoutValueFromRow = (row) => {
+            if (!(row instanceof HTMLElement)) {
+                return 0;
+            }
+            const select = row.querySelector('[data-workout-select]');
+            const customInput = row.querySelector('[data-workout-custom-input]');
+            const selectedValue = select instanceof HTMLSelectElement ? String(select.value || '').trim() : '';
+            const customValue = customInput instanceof HTMLInputElement ? String(customInput.value || '').trim() : '';
+            if (selectedValue === '__custom__') {
+                return customValue !== '' ? 1 : 0;
+            }
+
+            return selectedValue !== '' ? 1 : 0;
+        };
+
+        const updateWorkoutRowVisibility = (row) => {
+            if (!(row instanceof HTMLElement)) {
+                return;
+            }
+            const select = row.querySelector('[data-workout-select]');
+            const customField = row.querySelector('[data-workout-custom]');
+            const customInput = row.querySelector('[data-workout-custom-input]');
+            const isCustom = select instanceof HTMLSelectElement && String(select.value || '').trim() === '__custom__';
+            if (customField instanceof HTMLElement) {
+                customField.hidden = !isCustom;
+            }
+            if (!isCustom && customInput instanceof HTMLInputElement) {
+                customInput.value = '';
+            }
+        };
+
+        const ensureOneWorkoutRow = () => {
+            if (!(workoutRows instanceof HTMLElement) || !(workoutTemplate instanceof HTMLTemplateElement)) {
+                return;
+            }
+            if (getWorkoutRows().length > 0) {
+                return;
+            }
+            const fragment = workoutTemplate.content.cloneNode(true);
+            workoutRows.appendChild(fragment);
+        };
+
+        const updateWorkoutRemoveButtons = () => {
+            const rows = getWorkoutRows();
+            rows.forEach((row) => {
+                const removeButton = row.querySelector('[data-workout-remove]');
+                if (!(removeButton instanceof HTMLButtonElement)) {
+                    return;
+                }
+                const disable = rows.length <= 1;
+                removeButton.disabled = disable;
+                removeButton.setAttribute('aria-disabled', disable ? 'true' : 'false');
+            });
+        };
+
+        const evaluateFailures = () => {
             const goalType = entryForm.dataset.primaryGoalType || 'steps';
             const stepGoal = Number(entryForm.dataset.stepGoal || 0);
             const kmGoal = Number(entryForm.dataset.kmGoal || 0);
             const stepsValue = Number(stepsInput?.value || 0);
             const kmValue = Number(kmInput?.value || 0);
-            const workoutValue = workoutInput && workoutInput.checked ? 1 : 0;
+            const workoutValue = getWorkoutRows().some((row) => getWorkoutValueFromRow(row) === 1) ? 1 : 0;
             let missingSteps = goalType === 'km' && kmGoal > 0 ? kmValue < kmGoal : stepsValue < stepGoal;
-            let missingWorkout = workoutInput ? !workoutInput.checked : false;
+            let missingWorkout = goalType === 'workouts' ? workoutValue < Math.max(1, Number(entryForm.dataset.primaryGoalValue || 1)) : false;
+            const missingItems = new Set();
+            if (missingSteps) {
+                missingItems.add(goalType === 'km' ? labels.km : labels.steps);
+            }
+            if (missingWorkout) {
+                missingItems.add(labels.workouts);
+            }
 
             if (primaryGoals.length > 0) {
                 missingSteps = false;
                 missingWorkout = false;
+                missingItems.clear();
                 primaryGoals.forEach((goal) => {
                     if (!goal || typeof goal !== 'object') {
                         return;
@@ -99,24 +180,107 @@
 
                     if (type === 'steps' && stepsValue < target) {
                         missingSteps = true;
+                        missingItems.add(labels.steps);
                     } else if (type === 'km' && kmValue < target) {
                         missingSteps = true;
+                        missingItems.add(labels.km);
                     } else if (type === 'workouts' && workoutValue < target) {
                         missingWorkout = true;
+                        missingItems.add(labels.workouts);
                     }
                 });
             }
-            if (stepReason) {
-                stepReason.hidden = !missingSteps;
+
+            return {
+                missingSteps,
+                missingWorkout,
+                items: [...missingItems],
+            };
+        };
+
+        const updateReasons = () => {
+            const result = evaluateFailures();
+            const isMissingAny = result.missingSteps || result.missingWorkout;
+            if (missingReason instanceof HTMLElement) {
+                missingReason.hidden = !isMissingAny;
             }
-            if (workoutReason) {
-                workoutReason.hidden = !missingWorkout;
+            if (missingReasonLabel instanceof HTMLElement) {
+                missingReasonLabel.textContent = missingLabel;
+            }
+            if (missingReasonItems instanceof HTMLElement) {
+                missingReasonItems.textContent = isMissingAny && result.items.length > 0
+                    ? `${missingPrefix}: ${result.items.join(' + ')}`
+                    : '';
             }
         };
-        [stepsInput, kmInput, workoutInput].forEach((input) => {
+
+        if (workoutRows instanceof HTMLElement) {
+            workoutRows.addEventListener('change', (event) => {
+                const target = event.target;
+                if (!(target instanceof HTMLElement)) {
+                    return;
+                }
+                const row = target.closest('[data-workout-row]');
+                if (row instanceof HTMLElement) {
+                    updateWorkoutRowVisibility(row);
+                }
+                updateWorkoutRemoveButtons();
+                updateReasons();
+            });
+            workoutRows.addEventListener('input', () => {
+                updateReasons();
+            });
+            workoutRows.addEventListener('click', (event) => {
+                const target = event.target;
+                if (!(target instanceof HTMLElement)) {
+                    return;
+                }
+                const removeButton = target.closest('[data-workout-remove]');
+                if (!(removeButton instanceof HTMLButtonElement)) {
+                    return;
+                }
+                const row = removeButton.closest('[data-workout-row]');
+                if (!(row instanceof HTMLElement)) {
+                    return;
+                }
+                const rows = getWorkoutRows();
+                if (rows.length <= 1) {
+                    return;
+                }
+                row.remove();
+                ensureOneWorkoutRow();
+                getWorkoutRows().forEach((workoutRow) => updateWorkoutRowVisibility(workoutRow));
+                updateWorkoutRemoveButtons();
+                updateReasons();
+            });
+        }
+
+        workoutAddButton?.addEventListener('click', () => {
+            if (!(workoutRows instanceof HTMLElement) || !(workoutTemplate instanceof HTMLTemplateElement)) {
+                return;
+            }
+            const fragment = workoutTemplate.content.cloneNode(true);
+            workoutRows.appendChild(fragment);
+            const rows = getWorkoutRows();
+            const lastRow = rows[rows.length - 1];
+            if (lastRow instanceof HTMLElement) {
+                updateWorkoutRowVisibility(lastRow);
+                const select = lastRow.querySelector('[data-workout-select]');
+                if (select instanceof HTMLSelectElement) {
+                    select.focus();
+                }
+            }
+            updateWorkoutRemoveButtons();
+            updateReasons();
+        });
+
+        [stepsInput, kmInput].forEach((input) => {
             input?.addEventListener('input', updateReasons);
             input?.addEventListener('change', updateReasons);
         });
+        ensureOneWorkoutRow();
+        getWorkoutRows().forEach((row) => updateWorkoutRowVisibility(row));
+        updateWorkoutRemoveButtons();
         updateReasons();
     }
 
@@ -1086,16 +1250,41 @@
             }
         };
 
+        const asNumber = (value, fallback = 0) => {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : fallback;
+        };
+
+        const formatNumber = (value, decimals = 0) => {
+            const parsed = asNumber(value, 0);
+            return parsed.toLocaleString(undefined, {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals,
+            });
+        };
+
+        const formatDate = (value) => {
+            const text = String(value || '').trim();
+            if (!text) {
+                return '-';
+            }
+            const date = new Date(text);
+            if (Number.isNaN(date.getTime())) {
+                return text;
+            }
+            return date.toLocaleDateString();
+        };
+
         const buildChartImage = async ({ title, rows, color, type = 'line' }) => {
             if (!Array.isArray(rows) || rows.length === 0) {
                 return null;
             }
             const labels = rows.map((row) => String(row.label || ''));
-            const values = rows.map((row) => Number(row.value || 0));
+            const values = rows.map((row) => asNumber(row.value, 0));
 
             const canvas = document.createElement('canvas');
             canvas.width = 1120;
-            canvas.height = 380;
+            canvas.height = 360;
             const ctx = canvas.getContext('2d');
             if (!ctx) {
                 return null;
@@ -1109,7 +1298,7 @@
                         label: title,
                         data: values,
                         borderColor: color,
-                        backgroundColor: `${color}33`,
+                        backgroundColor: `${color}2B`,
                         borderWidth: 2,
                         fill: type !== 'bar',
                         tension: 0.25,
@@ -1123,22 +1312,10 @@
                 },
             });
 
-            await new Promise((resolve) => window.setTimeout(resolve, 30));
+            await new Promise((resolve) => window.setTimeout(resolve, 40));
             const imageData = canvas.toDataURL('image/png');
             chart.destroy();
             return imageData;
-        };
-
-        const addTextBlock = (pdf, lines, x, y, maxWidth, lineHeight = 12) => {
-            let cursor = y;
-            lines.forEach((line) => {
-                const chunks = pdf.splitTextToSize(String(line), maxWidth);
-                chunks.forEach((chunk) => {
-                    pdf.text(chunk, x, cursor);
-                    cursor += lineHeight;
-                });
-            });
-            return cursor;
         };
 
         button.addEventListener('click', async () => {
@@ -1147,7 +1324,8 @@
             }
             button.disabled = true;
             const previousLabel = button.textContent;
-            button.textContent = 'Generando PDF...';
+            const i18n = payload.i18n || {};
+            button.textContent = String(i18n.pdf_generating || 'Generando PDF...');
 
             try {
                 await ensureDeps();
@@ -1156,7 +1334,8 @@
                 const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
                 const width = pdf.internal.pageSize.getWidth();
                 const height = pdf.internal.pageSize.getHeight();
-                const margin = 36;
+                const margin = 34;
+                const contentWidth = width - margin * 2;
                 let y = margin;
 
                 const addPageIfNeeded = (needed = 24) => {
@@ -1167,69 +1346,89 @@
                     y = margin;
                 };
 
+                const addLines = (lines, { font = 'normal', size = 10, lineHeight = 12 } = {}) => {
+                    pdf.setFont('helvetica', font);
+                    pdf.setFontSize(size);
+                    lines.forEach((line) => {
+                        const chunks = pdf.splitTextToSize(String(line), contentWidth);
+                        chunks.forEach((chunk) => {
+                            addPageIfNeeded(lineHeight);
+                            pdf.text(chunk, margin, y);
+                            y += lineHeight;
+                        });
+                    });
+                };
+
+                const addSectionTitle = (title) => {
+                    addPageIfNeeded(30);
+                    pdf.setFont('helvetica', 'bold');
+                    pdf.setFontSize(14);
+                    pdf.text(String(title), margin, y);
+                    y += 16;
+                };
+
                 const username = String(payload.username || 'user').trim() || 'user';
                 const displayName = String(payload.display_name || username);
-                const today = new Date().toISOString().slice(0, 10);
+                const generatedAt = formatDate(payload.generated_at || new Date().toISOString());
+                const challengeRange = payload.challenge_range || {};
+                const challengeRangeLabel = `${formatDate(challengeRange.start)} - ${formatDate(challengeRange.end)}`;
+                const config = payload.config || {};
+                const totals = payload.totals || {};
+                const pdfTitle = String(i18n.pdf_title || 'Challenge report');
+                const sectionOverview = String(i18n.pdf_section_overview || 'Configuracion y totales');
+                const sectionCharts = String(i18n.pdf_section_charts || 'Graficos semanales');
+                const sectionDaily = String(i18n.pdf_section_daily || 'Detalle diario');
+                const sectionNutrition = String(i18n.pdf_section_nutrition || 'Nutricion y fotos');
+                const sectionActivity = String(i18n.pdf_section_activity || 'Goals, logros y actividad');
 
                 pdf.setFillColor(20, 163, 139);
-                pdf.rect(0, 0, width, 92, 'F');
+                pdf.rect(0, 0, width, 104, 'F');
                 pdf.setTextColor(255, 255, 255);
                 pdf.setFont('helvetica', 'bold');
                 pdf.setFontSize(22);
-                pdf.text('Exportar datos de usuario', margin, 46);
+                pdf.text(pdfTitle, margin, 44);
                 pdf.setFont('helvetica', 'normal');
                 pdf.setFontSize(12);
-                pdf.text(`${displayName} (@${username})`, margin, 68);
-                pdf.text(`Fecha: ${today}`, width - margin - 130, 68);
+                pdf.text(`${displayName} (@${username})`, margin, 66);
+                pdf.text(`Generado: ${generatedAt}`, margin, 84);
+                pdf.text(`Rango challenge: ${challengeRangeLabel}`, margin + 240, 84);
+                pdf.setTextColor(25, 35, 45);
+                y = 128;
 
-                pdf.setTextColor(30, 41, 59);
-                y = 116;
-
-                const totals = payload.totals || {};
-                const config = payload.config || {};
-
-                pdf.setFont('helvetica', 'bold');
-                pdf.setFontSize(14);
-                pdf.text('Configuración', margin, y);
-                y += 14;
-                pdf.setFont('helvetica', 'normal');
-                pdf.setFontSize(11);
-                y = addTextBlock(pdf, [
+                addSectionTitle(`1) ${sectionOverview}`);
+                addLines([
                     `Objetivo principal: ${config.primary_goal_type || '-'}`,
                     `Valor objetivo: ${config.primary_goal_value ?? '-'}`,
-                    `Workouts objetivo/semana: ${config.workout_target ?? '-'}`,
-                    `Peso ideal: ${config.ideal_weight ?? '-'}`,
-                ], margin, y + 8, width - margin * 2, 13) + 8;
+                    `Primary goals spec: ${config.primary_goals_spec || '-'}`,
+                    `Workout target/semana: ${config.workout_target ?? '-'}`,
+                    `Mantenimiento: ${config.maintenance_calories ?? '-'} kcal`,
+                    `Goal quemar: ${config.calorie_burn_goal ?? '-'} kcal`,
+                    `Maximo consumir: ${config.calorie_consumed_max ?? '-'} kcal`,
+                    `Peso ideal: ${config.ideal_weight ?? '-'} kg`,
+                ], { size: 10, lineHeight: 12 });
+                y += 6;
+                addLines([
+                    `Pasos totales: ${formatNumber(totals.steps, 0)}`,
+                    `Distancia total: ${formatNumber(totals.distance_km, 2)} km`,
+                    `Workouts contados: ${formatNumber(totals.workouts, 0)}`,
+                    `Score: ${formatNumber(totals.score, 1)}`,
+                    `Strikes: ${formatNumber(totals.strikes, 0)}`,
+                    `Penalizacion: €${formatNumber(totals.penalty, 2)}`,
+                ], { size: 10, lineHeight: 12 });
 
-                addPageIfNeeded(120);
-                pdf.setFont('helvetica', 'bold');
-                pdf.setFontSize(14);
-                pdf.text('Totales', margin, y);
-                y += 16;
-                pdf.setFont('helvetica', 'normal');
-                pdf.setFontSize(11);
-                y = addTextBlock(pdf, [
-                    `Pasos: ${totals.steps ?? 0}`,
-                    `Distancia total: ${totals.distance_km ?? 0} km`,
-                    `Workouts: ${totals.workouts ?? 0}`,
-                    `Score: ${totals.score ?? 0}`,
-                    `Strikes: ${totals.strikes ?? 0}`,
-                    `Penalización: €${totals.penalty ?? 0}`,
-                ], margin, y, width - margin * 2, 13) + 8;
-
+                addSectionTitle(`2) ${sectionCharts}`);
                 const chartDefs = [
-                    { key: 'steps', title: 'Steps chart', color: '#14a38b', type: 'line' },
-                    { key: 'distance', title: 'Distance chart', color: '#3b82f6', type: 'line' },
-                    { key: 'workouts', title: 'Workouts chart', color: '#ec4899', type: 'bar' },
-                    { key: 'score', title: 'Score chart', color: '#0f766e', type: 'line' },
-                    { key: 'weight', title: 'Weight chart', color: '#22313f', type: 'line' },
+                    { key: 'steps', title: 'Steps', color: '#14a38b', type: 'line' },
+                    { key: 'distance', title: 'Distance', color: '#3b82f6', type: 'line' },
+                    { key: 'workouts', title: 'Workouts', color: '#ec4899', type: 'bar' },
+                    { key: 'score', title: 'Score', color: '#0f766e', type: 'line' },
+                    { key: 'weight', title: 'Weight', color: '#334155', type: 'line' },
                 ];
                 for (const chartDef of chartDefs) {
                     const rows = (payload.charts && payload.charts[chartDef.key]) || [];
                     if (!Array.isArray(rows) || rows.length === 0) {
                         continue;
                     }
-
                     const image = await buildChartImage({
                         title: chartDef.title,
                         rows,
@@ -1239,62 +1438,95 @@
                     if (!image) {
                         continue;
                     }
-
-                    addPageIfNeeded(230);
-                    pdf.setFont('helvetica', 'bold');
-                    pdf.setFontSize(13);
-                    pdf.text(chartDef.title, margin, y);
-                    y += 10;
-                    pdf.addImage(image, 'PNG', margin, y, width - margin * 2, 190);
-                    y += 206;
+                    addPageIfNeeded(220);
+                    addLines([chartDef.title], { font: 'bold', size: 11, lineHeight: 12 });
+                    addPageIfNeeded(190);
+                    pdf.addImage(image, 'PNG', margin, y, contentWidth, 180);
+                    y += 188;
                 }
 
-                addPageIfNeeded(100);
-                pdf.setFont('helvetica', 'bold');
-                pdf.setFontSize(14);
-                pdf.text('Goals and achievements', margin, y);
-                y += 14;
-                pdf.setFont('helvetica', 'normal');
-                pdf.setFontSize(11);
+                const dailyDetails = Array.isArray(payload.daily_details) ? payload.daily_details : [];
+                addSectionTitle(`3) ${sectionDaily}`);
+                if (dailyDetails.length === 0) {
+                    addLines(['Sin detalle diario disponible.'], { size: 10, lineHeight: 12 });
+                } else {
+                    dailyDetails.forEach((day) => {
+                        const date = formatDate(day.date);
+                        const workouts = Array.isArray(day.workout_types) && day.workout_types.length > 0
+                            ? day.workout_types.join(', ')
+                            : '-';
+                        const approvals = [
+                            day.approval_step_status ? `step:${day.approval_step_status}` : '',
+                            day.approval_workout_status ? `workout:${day.approval_workout_status}` : '',
+                            day.approval_extra_status ? `extra:${day.approval_extra_status}` : '',
+                        ].filter(Boolean).join(' | ') || '-';
+                        const detailLines = [
+                            `${date} | pasos ${formatNumber(day.steps, 0)} | km ${formatNumber(day.distance_km, 2)} | workouts ${formatNumber(day.workout_count, 0)} (contado ${formatNumber(day.workout_counted, 0)})`,
+                            `burned ${day.training_calories_burned == null ? '-' : `${formatNumber(day.training_calories_burned, 0)} kcal`} | peso ${day.weight == null ? '-' : `${formatNumber(day.weight, 1)} kg`} | junk ${day.junk_food ? 'si' : 'no'} | extra ${day.extra_workout ? 'si' : 'no'}`,
+                            `tipos: ${workouts}`,
+                            `missing reason: ${day.missing_reason || '-'}`,
+                            `approvals: ${approvals}`,
+                            `notes: ${day.notes || '-'}`,
+                        ];
+                        if (Array.isArray(day.habits) && day.habits.length > 0) {
+                            const habitLine = day.habits
+                                .map((habit) => `${habit.label || habit.code}: ${habit.value ? '1' : '0'}`)
+                                .join(' | ');
+                            detailLines.push(`habits: ${habitLine || '-'}`);
+                        }
+                        addPageIfNeeded(96);
+                        addLines(detailLines, { size: 9, lineHeight: 11 });
+                        y += 3;
+                    });
+                }
 
+                const dailyNutrition = Array.isArray(payload.daily_photo_nutrition) ? payload.daily_photo_nutrition : [];
+                addSectionTitle(`4) ${sectionNutrition}`);
+                if (dailyNutrition.length === 0) {
+                    addLines(['Sin datos de nutricion/fotos.'], { size: 10, lineHeight: 12 });
+                } else {
+                    dailyNutrition.forEach((day) => {
+                        const totalsByDay = day.totals || {};
+                        const header = `${formatDate(day.date)} | fotos ${formatNumber(day.photo_count, 0)} | kcal ${formatNumber(totalsByDay.calories, 0)} | P ${formatNumber(totalsByDay.protein_g, 1)}g / C ${formatNumber(totalsByDay.carbs_g, 1)}g / F ${formatNumber(totalsByDay.fat_g, 1)}g`;
+                        addPageIfNeeded(20);
+                        addLines([header], { font: 'bold', size: 9, lineHeight: 11 });
+                        const items = Array.isArray(day.items) ? day.items : [];
+                        if (items.length === 0) {
+                            addLines(['  - Sin fotos o entradas.'], { size: 9, lineHeight: 11 });
+                        } else {
+                            items.forEach((item) => {
+                                addLines([
+                                    `  - [${item.category || '-'}] ${item.caption || '-'} | kcal ${item.calories == null ? '-' : formatNumber(item.calories, 0)} | P/C/F ${item.protein_g == null ? '-' : formatNumber(item.protein_g, 1)}/${item.carbs_g == null ? '-' : formatNumber(item.carbs_g, 1)}/${item.fat_g == null ? '-' : formatNumber(item.fat_g, 1)}`
+                                ], { size: 9, lineHeight: 11 });
+                            });
+                        }
+                        y += 2;
+                    });
+                }
+
+                addSectionTitle(`5) ${sectionActivity}`);
                 const goalLines = Array.isArray(payload.goals)
-                    ? payload.goals.slice(0, 20).map((goal) => `• ${goal.title || '-'} (${goal.target_type || '-'}) target: ${goal.target_value || 0} · ${goal.status || 'active'}`)
+                    ? payload.goals.map((goal) => `- ${goal.title || '-'} (${goal.target_type || '-'}) target ${goal.target_value || 0} | ${goal.status || 'active'} | due ${formatDate(goal.due_date || '')}`)
                     : [];
                 const achievementLines = Array.isArray(payload.achievements)
-                    ? payload.achievements.slice(0, 20).map((achievement) => `• ${achievement.name || '-'}${achievement.reward_text ? ` · ${achievement.reward_text}` : ''}`)
+                    ? payload.achievements.map((achievement) => `- ${achievement.name || '-'}${achievement.reward_text ? ` | ${achievement.reward_text}` : ''} | ${formatDate(achievement.awarded_at || '')}`)
                     : [];
-
-                if (goalLines.length > 0) {
-                    y = addTextBlock(pdf, ['Goals:'].concat(goalLines), margin, y + 4, width - margin * 2, 13) + 6;
-                } else {
-                    y = addTextBlock(pdf, ['Goals: sin datos'], margin, y + 4, width - margin * 2, 13) + 6;
-                }
-
-                addPageIfNeeded(80);
-                if (achievementLines.length > 0) {
-                    y = addTextBlock(pdf, ['Achievements:'].concat(achievementLines), margin, y, width - margin * 2, 13) + 8;
-                } else {
-                    y = addTextBlock(pdf, ['Achievements: sin datos'], margin, y, width - margin * 2, 13) + 8;
-                }
-
-                addPageIfNeeded(90);
-                pdf.setFont('helvetica', 'bold');
-                pdf.setFontSize(14);
-                pdf.text('Recent activity', margin, y);
-                y += 14;
-                pdf.setFont('helvetica', 'normal');
-                pdf.setFontSize(11);
                 const activityLines = Array.isArray(payload.recent_activity)
-                    ? payload.recent_activity.slice(0, 35).map((item) => `• ${item.summary || '-'} · ${item.action || ''} · ${item.created_at || ''}`)
+                    ? payload.recent_activity.map((item) => `- ${item.summary || '-'} | ${item.action || '-'} | ${formatDate(item.created_at || '')}`)
                     : [];
-                if (activityLines.length > 0) {
-                    addTextBlock(pdf, activityLines, margin, y + 4, width - margin * 2, 13);
-                } else {
-                    addTextBlock(pdf, ['Sin actividad reciente.'], margin, y + 4, width - margin * 2, 13);
-                }
+
+                addLines(['Goals:'], { font: 'bold', size: 10, lineHeight: 12 });
+                addLines(goalLines.length > 0 ? goalLines : ['- Sin goals.'], { size: 9, lineHeight: 11 });
+                y += 4;
+                addLines(['Achievements:'], { font: 'bold', size: 10, lineHeight: 12 });
+                addLines(achievementLines.length > 0 ? achievementLines : ['- Sin logros.'], { size: 9, lineHeight: 11 });
+                y += 4;
+                addLines(['Actividad reciente:'], { font: 'bold', size: 10, lineHeight: 12 });
+                addLines(activityLines.length > 0 ? activityLines : ['- Sin actividad reciente.'], { size: 9, lineHeight: 11 });
 
                 const safeUsername = username.replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
-                pdf.save(`user-data-${safeUsername}-${today}.pdf`);
+                const today = new Date().toISOString().slice(0, 10);
+                pdf.save(`challenge-report-${safeUsername}-${today}.pdf`);
             } catch (error) {
                 console.error('PDF export failed', error);
                 window.alert('No se pudo generar el PDF en este momento.');

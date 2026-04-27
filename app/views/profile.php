@@ -145,10 +145,29 @@ foreach ((array) ($profileMetric['weight_series'] ?? []) as $row) {
         'value' => (float) ($row['weight'] ?? 0),
     ];
 }
+$profileChallengeRange = is_array($profileChallengeRange ?? null) ? (array) $profileChallengeRange : [
+    'start' => '',
+    'end' => '',
+];
+$profileDailyDetails = is_array($profileDailyDetails ?? null) ? array_values((array) $profileDailyDetails) : [];
+$profileDailyPhotoNutrition = is_array($profileDailyPhotoNutrition ?? null) ? array_values((array) $profileDailyPhotoNutrition) : [];
 $profileExportPayload = [
     'username' => (string) ($profileUser['username'] ?? ''),
     'display_name' => (string) ($profileUser['display_name'] ?? ''),
     'generated_at' => now_iso(),
+    'i18n' => [
+        'pdf_title' => (string) t('profile.pdf_title'),
+        'pdf_section_overview' => (string) t('profile.pdf_section_overview'),
+        'pdf_section_charts' => (string) t('profile.pdf_section_charts'),
+        'pdf_section_daily' => (string) t('profile.pdf_section_daily'),
+        'pdf_section_nutrition' => (string) t('profile.pdf_section_nutrition'),
+        'pdf_section_activity' => (string) t('profile.pdf_section_activity'),
+        'pdf_generating' => (string) t('profile.pdf_generating'),
+    ],
+    'challenge_range' => [
+        'start' => (string) ($profileChallengeRange['start'] ?? ''),
+        'end' => (string) ($profileChallengeRange['end'] ?? ''),
+    ],
     'config' => [
         'primary_goal_type' => (string) ($profileUser['primary_goal_type'] ?? 'steps'),
         'primary_goal_value' => (float) ($profileUser['primary_goal_value'] ?? 0),
@@ -174,6 +193,8 @@ $profileExportPayload = [
         'score' => array_values((array) ($profileScoreWeekly ?? [])),
         'weight' => $profileWeightChart,
     ],
+    'daily_details' => $profileDailyDetails,
+    'daily_photo_nutrition' => $profileDailyPhotoNutrition,
     'goals' => array_map(
         static function (array $goal): array {
             return [

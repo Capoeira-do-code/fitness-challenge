@@ -18,6 +18,38 @@ $entryPrimaryGoalsJson = json_encode($entryPrimaryGoals, JSON_UNESCAPED_SLASHES)
 if (!is_string($entryPrimaryGoalsJson)) {
     $entryPrimaryGoalsJson = '[]';
 }
+$workoutTypeById = [];
+foreach ((array) ($workoutTypes ?? []) as $type) {
+    $workoutTypeById[(int) ($type['id'] ?? 0)] = (string) ($type['name'] ?? '');
+}
+$entryWorkouts = is_array($log['workouts'] ?? null) ? array_values((array) $log['workouts']) : [];
+if ($entryWorkouts === [] && !empty($log)) {
+    $legacyWorkoutDone = (int) ($log['workout_done'] ?? 0) === 1;
+    $legacyWorkoutTypeId = !empty($log['workout_type_id']) ? (int) $log['workout_type_id'] : null;
+    $legacyWorkoutType = trim((string) ($log['workout_type'] ?? ''));
+    if ($legacyWorkoutDone || $legacyWorkoutTypeId !== null || $legacyWorkoutType !== '') {
+        if ($legacyWorkoutType === '' && $legacyWorkoutTypeId !== null) {
+            $legacyWorkoutType = trim((string) ($workoutTypeById[$legacyWorkoutTypeId] ?? ''));
+        }
+        if ($legacyWorkoutType === '') {
+            $legacyWorkoutType = 'Workout';
+        }
+        $entryWorkouts[] = [
+            'workout_type_id' => $legacyWorkoutTypeId,
+            'workout_type' => $legacyWorkoutType,
+        ];
+    }
+}
+if ($entryWorkouts === []) {
+    $entryWorkouts[] = [
+        'workout_type_id' => null,
+        'workout_type' => '',
+    ];
+}
+$missingReasonValue = trim((string) ($log['step_exception_reason'] ?? ''));
+if ($missingReasonValue === '') {
+    $missingReasonValue = trim((string) ($log['workout_exception_reason'] ?? ''));
+}
 $calendarSelectedPhotos = [];
 if ($entryMode === 'calendar') {
     $selectedDayData = is_array($mealCalendar[$selectedDate] ?? null) ? (array) $mealCalendar[$selectedDate] : [];
@@ -74,7 +106,7 @@ $canDeletePhoto = static function (array $photo, array $viewer): bool {
                 </label>
             </div>
 
-            <form method="post" action="/?page=entries" class="stack" data-testid="entry-form" data-primary-goal-type="<?= e((string) ($currentUser['primary_goal_type'] ?? 'steps')) ?>" data-step-goal="<?= e((string) ($currentUser['step_goal'] ?? 0)) ?>" data-km-goal="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>" data-primary-goals="<?= e($entryPrimaryGoalsJson) ?>">
+            <form method="post" action="/?page=entries" class="stack" data-testid="entry-form" data-primary-goal-type="<?= e((string) ($currentUser['primary_goal_type'] ?? 'steps')) ?>" data-primary-goal-value="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>" data-step-goal="<?= e((string) ($currentUser['step_goal'] ?? 0)) ?>" data-km-goal="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>" data-primary-goals="<?= e($entryPrimaryGoalsJson) ?>" data-label-steps="<?= e(t('metric.steps')) ?>" data-label-km="<?= e(t('metric.distance_km')) ?>" data-label-workouts="<?= e(t('metric.workouts')) ?>" data-missing-label="<?= e(t('entries.missing_reason')) ?>" data-missing-prefix="<?= e(t('entries.missing_reason_for')) ?>">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="save_log">
                 <input type="hidden" name="log_date" value="<?= e($selectedDate) ?>">
@@ -99,26 +131,68 @@ $canDeletePhoto = static function (array $photo, array $viewer): bool {
                         <?= e(t('metric.weight')) ?> (kg)
                         <input type="number" step="0.1" name="weight" value="<?= e((string) ($log['weight'] ?? '')) ?>">
                     </label>
-                    <label>
-                        <?= e(t('entries.workout_type')) ?>
-                        <select name="workout_type_id" onchange="document.getElementById('custom-workout-type').value = this.options[this.selectedIndex].dataset.name || '';">
-                            <option value=""><?= e(t('common.none')) ?></option>
-                            <?php foreach (($workoutTypes ?? []) as $type): ?>
-                                <option value="<?= (int) $type['id'] ?>" data-name="<?= e((string) $type['name']) ?>" <?= (int) ($log['workout_type_id'] ?? 0) === (int) $type['id'] ? 'selected' : '' ?>><?= e((string) $type['name']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </label>
-                    <label>
-                        <?= e(t('entries.custom_workout_type')) ?>
-                        <input id="custom-workout-type" type="text" name="workout_type" placeholder="<?= e(t('entries.workout_type_placeholder')) ?>" value="<?= e((string) ($log['workout_type'] ?? '')) ?>">
-                    </label>
+                </div>
+
+                <div class="workout-repeater" data-workout-repeater>
+                    <div class="panel-head workout-head">
+                        <div>
+                            <h3><?= e(t('entries.workout_type')) ?></h3>
+                            <p class="muted small"><?= e(t('entries.workout_repeater_hint')) ?></p>
+                        </div>
+                        <button type="button" class="btn btn-ghost small" data-workout-add><?= e(t('entries.add_workout')) ?></button>
+                    </div>
+
+                    <div class="workout-rows" data-workout-rows>
+                        <?php foreach ($entryWorkouts as $workoutRow): ?>
+                            <?php
+                            $rowTypeId = !empty($workoutRow['workout_type_id']) ? (int) $workoutRow['workout_type_id'] : null;
+                            $rowTypeName = trim((string) ($workoutRow['workout_type'] ?? ''));
+                            $isKnownType = $rowTypeId !== null && isset($workoutTypeById[$rowTypeId]);
+                            $selectValue = $isKnownType ? (string) $rowTypeId : ($rowTypeName !== '' ? '__custom__' : '');
+                            $customValue = $isKnownType ? '' : $rowTypeName;
+                            ?>
+                            <div class="workout-row" data-workout-row>
+                                <label>
+                                    <?= e(t('entries.workout_type')) ?>
+                                    <select name="workout_type_id[]" data-workout-select>
+                                        <option value=""><?= e(t('common.none')) ?></option>
+                                        <?php foreach (($workoutTypes ?? []) as $type): ?>
+                                            <option value="<?= (int) $type['id'] ?>" <?= $selectValue === (string) ((int) $type['id']) ? 'selected' : '' ?>><?= e((string) $type['name']) ?></option>
+                                        <?php endforeach; ?>
+                                        <option value="__custom__" <?= $selectValue === '__custom__' ? 'selected' : '' ?>><?= e(t('entries.workout_other')) ?></option>
+                                    </select>
+                                </label>
+                                <label class="workout-custom-field" data-workout-custom <?= $selectValue === '__custom__' ? '' : 'hidden' ?>>
+                                    <?= e(t('entries.custom_workout_type')) ?>
+                                    <input type="text" name="workout_type[]" placeholder="<?= e(t('entries.workout_type_placeholder')) ?>" value="<?= e($customValue) ?>" data-workout-custom-input>
+                                </label>
+                                <button type="button" class="btn btn-ghost small" data-workout-remove><?= e(t('entries.remove_workout')) ?></button>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <template data-workout-template>
+                        <div class="workout-row" data-workout-row>
+                            <label>
+                                <?= e(t('entries.workout_type')) ?>
+                                <select name="workout_type_id[]" data-workout-select>
+                                    <option value=""><?= e(t('common.none')) ?></option>
+                                    <?php foreach (($workoutTypes ?? []) as $type): ?>
+                                        <option value="<?= (int) $type['id'] ?>"><?= e((string) $type['name']) ?></option>
+                                    <?php endforeach; ?>
+                                    <option value="__custom__"><?= e(t('entries.workout_other')) ?></option>
+                                </select>
+                            </label>
+                            <label class="workout-custom-field" data-workout-custom hidden>
+                                <?= e(t('entries.custom_workout_type')) ?>
+                                <input type="text" name="workout_type[]" placeholder="<?= e(t('entries.workout_type_placeholder')) ?>" data-workout-custom-input>
+                            </label>
+                            <button type="button" class="btn btn-ghost small" data-workout-remove><?= e(t('entries.remove_workout')) ?></button>
+                        </div>
+                    </template>
                 </div>
 
                 <div class="toggle-row pill-toggles entries-toggles">
-                    <label class="check">
-                        <input type="checkbox" name="workout_done" value="1" <?= !empty($log) && (int) $log['workout_done'] === 1 ? 'checked' : '' ?> data-testid="entry-workout-done">
-                        <?= e(t('entries.workout_done')) ?>
-                    </label>
                     <label class="check">
                         <input type="checkbox" name="junk_food" value="1" <?= !empty($log) && (int) $log['junk_food'] === 1 ? 'checked' : '' ?> data-testid="entry-junk-food">
                         <?= e(t('entries.junk_food')) ?>
@@ -129,6 +203,9 @@ $canDeletePhoto = static function (array $photo, array $viewer): bool {
                     </label>
                     <?php foreach (($habits ?? []) as $habit): ?>
                         <?php $code = (string) $habit['code']; ?>
+                        <?php if ($code === 'morning_walk') {
+                            continue;
+                        } ?>
                         <label class="check">
                             <input type="checkbox" name="habit[<?= e($code) ?>]" value="1" <?= !empty($log['habits'][$code]) && (int) $log['habits'][$code]['value'] === 1 ? 'checked' : '' ?>>
                             <?= e((string) $habit['label']) ?>
@@ -137,14 +214,10 @@ $canDeletePhoto = static function (array $photo, array $viewer): bool {
                 </div>
 
                 <div class="grid-inline entries-two-col">
-                    <label class="conditional-reason" data-reason="steps">
-                        <?= e(t('entries.step_exception')) ?>
-                        <input type="text" name="step_exception_reason" placeholder="<?= e(t('entries.step_exception_placeholder')) ?>" value="<?= e((string) ($log['step_exception_reason'] ?? '')) ?>" data-testid="entry-step-exception">
-                    </label>
-
-                    <label class="conditional-reason" data-reason="workout">
-                        <?= e(t('entries.workout_exception')) ?>
-                        <input type="text" name="workout_exception_reason" placeholder="<?= e(t('entries.workout_exception_placeholder')) ?>" value="<?= e((string) ($log['workout_exception_reason'] ?? '')) ?>" data-testid="entry-workout-exception">
+                    <label class="conditional-reason" data-reason="missing" hidden>
+                        <span data-missing-reason-label><?= e(t('entries.missing_reason')) ?></span>
+                        <small class="muted" data-missing-reason-items></small>
+                        <input type="text" name="missing_reason" placeholder="<?= e(t('entries.missing_reason_placeholder')) ?>" value="<?= e($missingReasonValue) ?>" data-testid="entry-missing-reason">
                     </label>
                 </div>
 
