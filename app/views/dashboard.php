@@ -203,6 +203,12 @@ $calorieBurnMeta = $calorieBurnGoalTotal > 0
 $calorieConsumedMeta = $calorieConsumedMaxTotal > 0
     ? t('dashboard.calories_max') . ': ' . $formatCalories($calorieConsumedMaxTotal) . ' kcal'
     : t('dashboard.calories_goal_not_set');
+$viewSnapshot = is_array($selectedMetricSnapshot ?? null) ? (array) $selectedMetricSnapshot : [];
+$viewWorkoutSuccess = max(0, (int) ($viewSnapshot['workouts'] ?? ($selectedMetric['workout_success'] ?? 0)));
+$viewWorkoutTarget = max(0, (int) ($viewSnapshot['workout_target'] ?? ($selectedMetric['workout_target'] ?? 0)));
+$viewWorkoutCompletionPct = $viewWorkoutTarget > 0
+    ? round(($viewWorkoutSuccess / $viewWorkoutTarget) * 100, 1)
+    : (float) ($selectedMetric['workout_completion_pct'] ?? 0);
 
 $kpis = [
     [
@@ -224,10 +230,10 @@ $kpis = [
     [
         'key' => 'workouts',
         'label' => t('metric.workouts'),
-        'value' => (string) $selectedMetric['workout_success'] . ' / ' . (string) $selectedMetric['workout_target'],
-        'meta' => (string) $selectedMetric['workout_completion_pct'] . '%',
-        'ring' => (string) $selectedMetric['workout_completion_pct'] . '%',
-        'progress' => (float) $selectedMetric['workout_completion_pct'],
+        'value' => (string) $viewWorkoutSuccess . ' / ' . (string) $viewWorkoutTarget,
+        'meta' => (string) $viewWorkoutCompletionPct . '%',
+        'ring' => (string) $viewWorkoutCompletionPct . '%',
+        'progress' => (float) $viewWorkoutCompletionPct,
     ],
     [
         'key' => 'money',

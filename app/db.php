@@ -76,6 +76,7 @@ function initialize_database(PDO $pdo, array $config): void
             weight REAL,
             notes TEXT,
             step_exception_reason TEXT,
+            distance_exception_reason TEXT,
             workout_exception_reason TEXT,
             morning_walk INTEGER NOT NULL DEFAULT 0,
             journaling INTEGER NOT NULL DEFAULT 0,
@@ -96,6 +97,8 @@ function initialize_database(PDO $pdo, array $config): void
             user_id INTEGER NOT NULL,
             approval_type TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT "pending",
+            request_state TEXT NOT NULL DEFAULT "sent",
+            resent_count INTEGER NOT NULL DEFAULT 0,
             detail TEXT,
             requested_by INTEGER NOT NULL,
             approved_by INTEGER,
@@ -196,15 +199,35 @@ function initialize_database(PDO $pdo, array $config): void
             title TEXT NOT NULL,
             target_type TEXT NOT NULL,
             target_value REAL,
+            baseline_value REAL,
             current_value REAL NOT NULL DEFAULT 0,
+            unit_label TEXT,
+            reward_text TEXT,
             due_date TEXT,
             status TEXT NOT NULL DEFAULT "active",
+            completed_at TEXT,
             created_by INTEGER,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS user_notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            payload_json TEXT,
+            unique_key TEXT,
+            is_read INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            read_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )'
     );
 
@@ -496,6 +519,15 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'daily_logs', 'distance_km', 'REAL');
     ensure_column($pdo, 'daily_logs', 'workout_type_id', 'INTEGER');
     ensure_column($pdo, 'daily_logs', 'training_calories_burned', 'REAL');
+    ensure_column($pdo, 'daily_logs', 'distance_exception_reason', 'TEXT');
+
+    ensure_column($pdo, 'approval_requests', 'request_state', 'TEXT NOT NULL DEFAULT "sent"');
+    ensure_column($pdo, 'approval_requests', 'resent_count', 'INTEGER NOT NULL DEFAULT 0');
+
+    ensure_column($pdo, 'goals', 'baseline_value', 'REAL');
+    ensure_column($pdo, 'goals', 'unit_label', 'TEXT');
+    ensure_column($pdo, 'goals', 'reward_text', 'TEXT');
+    ensure_column($pdo, 'goals', 'completed_at', 'TEXT');
 
     ensure_column($pdo, 'photo_entries', 'calories', 'REAL');
     ensure_column($pdo, 'photo_entries', 'protein_g', 'REAL');
@@ -541,9 +573,11 @@ function ensure_indexes(PDO $pdo): void
 {
     deduplicate_achievement_awards($pdo);
     deduplicate_achievement_suppressions($pdo);
+    deduplicate_approval_requests($pdo);
 
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_approval_status ON approval_requests(status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_approval_user ON approval_requests(user_id)');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_approval_log_type_unique ON approval_requests(log_id, approval_type)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_logs_date ON daily_logs(log_date)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_entries_user_date ON photo_entries(user_id, log_date)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_comments_photo_created ON photo_comments(photo_id, created_at)');
@@ -551,6 +585,7 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_team_memberships_team ON team_memberships(team_id, active)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_team_memberships_user ON team_memberships(user_id, active)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_goals_scope ON goals(scope, status)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_goal_team ON goals(team_id, status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_awards_user ON achievement_awards(user_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_awards_team ON achievement_awards(team_id)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_achievement_awards_user_unique ON achievement_awards(achievement_id, user_id) WHERE user_id IS NOT NULL');
@@ -567,6 +602,9 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_log_workouts_log ON daily_log_workouts(log_id, sort_order)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_rules_achievement ON achievement_rules(achievement_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_login_attempts_user_ip ON login_attempts(username, ip_address, attempted_at)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON user_notifications(user_id, created_at)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON user_notifications(user_id, is_read)');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_user_unique_key ON user_notifications(user_id, unique_key) WHERE unique_key IS NOT NULL');
 }
 
 function migrate_photo_categories(PDO $pdo): void
@@ -583,6 +621,18 @@ function deduplicate_achievement_awards(PDO $pdo): void
              SELECT MIN(id)
              FROM achievement_awards
              GROUP BY achievement_id, COALESCE(user_id, 0), COALESCE(team_id, 0)
+         )'
+    );
+}
+
+function deduplicate_approval_requests(PDO $pdo): void
+{
+    $pdo->exec(
+        'DELETE FROM approval_requests
+         WHERE id NOT IN (
+             SELECT MIN(id)
+             FROM approval_requests
+             GROUP BY log_id, approval_type
          )'
     );
 }

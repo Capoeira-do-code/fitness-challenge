@@ -198,6 +198,7 @@ function compute_user_metrics(
     $perfectWeekStreak = 0;
 
     $stepsSeries = [];
+    $workoutSeries = [];
     $weightSeries = [];
     $firstWeight = null;
     $latestWeight = null;
@@ -206,11 +207,19 @@ function compute_user_metrics(
     $skipWarningEvents = 0;
     $totalSteps = 0;
     $totalKm = 0.0;
+    $workoutCount = 0;
     $habitCounts = [];
     $primaryGoals = function_exists('user_primary_goals') ? user_primary_goals($user) : [[
         'type' => 'steps',
         'value' => (float) max(1, (int) ($user['step_goal'] ?? 0)),
     ]];
+    $hasKmPrimaryGoal = false;
+    foreach ($primaryGoals as $goalDef) {
+        if ((string) ($goalDef['type'] ?? '') === 'km' && (float) ($goalDef['value'] ?? 0) > 0) {
+            $hasKmPrimaryGoal = true;
+            break;
+        }
+    }
     $primaryGoalType = (string) ($primaryGoals[0]['type'] ?? 'steps');
     $primaryGoalValue = (float) ($primaryGoals[0]['value'] ?? (float) ($user['step_goal'] ?? 0));
     $did_hit_primary_goals = static function (array $goals, ?array $log, bool $didWorkoutCounted): bool {
@@ -275,6 +284,13 @@ function compute_user_metrics(
         }
 
         $didWorkoutCounted = is_counted_workout($log, $approvalsByDate, $date);
+        $workoutSeries[] = [
+            'date' => $date,
+            'workouts' => $didWorkoutCounted ? 1 : 0,
+        ];
+        if ($didWorkoutCounted) {
+            $workoutCount++;
+        }
         $hitPrimaryGoals = $did_hit_primary_goals($primaryGoals, $log, $didWorkoutCounted);
         $didSomething = $didWorkoutCounted || $hitPrimaryGoals;
 
@@ -329,6 +345,7 @@ function compute_user_metrics(
                 }
             }
             $stepReason = trim((string) ($log['step_exception_reason'] ?? ''));
+            $distanceReason = trim((string) ($log['distance_exception_reason'] ?? ''));
             $workoutReason = trim((string) ($log['workout_exception_reason'] ?? ''));
 
             $countedWorkout = is_counted_workout($log, $approvalsByDate, $date);
@@ -347,7 +364,10 @@ function compute_user_metrics(
                 $stepsRequired++;
 
                 $stepExceptionApproved = $stepReason !== '' && is_approval_approved($approvalsByDate, $date, APPROVAL_TYPE_STEP_EXCEPTION);
-                $stepOk = $hitPrimaryGoals || $stepExceptionApproved;
+                $distanceExceptionApproved = $hasKmPrimaryGoal
+                    && $distanceReason !== ''
+                    && is_approval_approved($approvalsByDate, $date, APPROVAL_TYPE_DISTANCE_EXCEPTION);
+                $stepOk = $hitPrimaryGoals || $stepExceptionApproved || $distanceExceptionApproved;
 
                 if ($stepOk) {
                     $stepsSuccess++;
@@ -476,10 +496,10 @@ function compute_user_metrics(
     ];
 
     if ($weightProgressPct !== null) {
-        $scoreComponents['weight'] = max(0, min(100, $weightProgressPct)) * 0.15;
-        $scoreComponents['steps'] = $stepCompletionPct * 0.35;
-        $scoreComponents['workouts'] = $workoutCompletionPct * 0.35;
-        $scoreComponents['discipline'] = max(0, 100 - $disciplinePenalty) * 0.15;
+        $scoreComponents['weight'] = max(0, min(100, $weightProgressPct)) * 0.2;
+        $scoreComponents['steps'] = $stepCompletionPct * 0.3;
+        $scoreComponents['workouts'] = $workoutCompletionPct * 0.3;
+        $scoreComponents['discipline'] = max(0, 100 - $disciplinePenalty) * 0.2;
     }
 
     $score = round(array_sum($scoreComponents), 1);
@@ -497,6 +517,7 @@ function compute_user_metrics(
         'step_completion_pct' => $stepCompletionPct,
         'workout_target' => $workoutTarget,
         'workout_success' => $workoutSuccess,
+        'workout_count' => $workoutCount,
         'workout_completion_pct' => $workoutCompletionPct,
         'step_failures' => $stepFailures,
         'workout_failures' => $workoutFailures,
@@ -505,6 +526,7 @@ function compute_user_metrics(
         'total_penalty' => $totalPenalty,
         'weekly' => $weekly,
         'steps_series' => $stepsSeries,
+        'workout_series' => $workoutSeries,
         'weight_series' => $weightSeries,
         'first_weight' => $firstWeight,
         'latest_weight' => $latestWeight,

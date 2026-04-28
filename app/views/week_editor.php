@@ -8,6 +8,11 @@ for ($i = 0; $i < 7; $i++) {
 }
 
 $userStepGoal = max(0, (int) ($selectedUser['step_goal'] ?? 0));
+$userDistanceGoal = 0.0;
+if ((string) ($selectedUser['primary_goal_type'] ?? 'steps') === 'km') {
+    $userDistanceGoal = max(0.0, (float) ($selectedUser['primary_goal_value'] ?? 0));
+}
+$approvalRequestsByDate = is_array($approvalRequestsByDate ?? null) ? (array) $approvalRequestsByDate : [];
 $workoutTypeById = [];
 foreach ((array) ($workoutTypes ?? []) as $type) {
     $typeId = (int) ($type['id'] ?? 0);
@@ -96,9 +101,56 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                 $stepsRaw = isset($log['steps']) ? (string) $log['steps'] : '';
                 $stepValue = $stepsRaw === '' ? null : (int) $stepsRaw;
                 $showStepExcuse = $userStepGoal > 0 && ($stepValue === null || $stepValue < $userStepGoal);
+                $distanceRaw = isset($log['distance_km']) ? (string) $log['distance_km'] : '';
+                $distanceValue = $distanceRaw === '' ? null : (float) $distanceRaw;
+                $showDistanceExcuse = $userDistanceGoal > 0 && ($distanceValue === null || $distanceValue < $userDistanceGoal);
                 $showWorkoutExcuse = !$completedWorkout && !$primarySelection['is_filled'] && $extraWorkouts === [];
+                $dayApprovals = is_array($approvalRequestsByDate[$date] ?? null) ? (array) $approvalRequestsByDate[$date] : [];
+                $relevantApprovalTypes = [];
+                if ($showStepExcuse) {
+                    $relevantApprovalTypes[] = APPROVAL_TYPE_STEP_EXCEPTION;
+                }
+                if ($showDistanceExcuse) {
+                    $relevantApprovalTypes[] = APPROVAL_TYPE_DISTANCE_EXCEPTION;
+                }
+                if ($showWorkoutExcuse) {
+                    $relevantApprovalTypes[] = APPROVAL_TYPE_WORKOUT_EXCEPTION;
+                }
+                $requestState = 'not_sent';
+                $hasPendingRequest = false;
+                $hasResentRequest = false;
+                $hasRejectedRequest = false;
+                $hasApprovedRequest = false;
+                foreach ($relevantApprovalTypes as $approvalType) {
+                    $approvalRow = is_array($dayApprovals[$approvalType] ?? null) ? (array) $dayApprovals[$approvalType] : null;
+                    if ($approvalRow === null) {
+                        continue;
+                    }
+                    $status = (string) ($approvalRow['status'] ?? '');
+                    if ($status === APPROVAL_STATUS_PENDING) {
+                        $hasPendingRequest = true;
+                        if ((string) ($approvalRow['request_state'] ?? '') === 'resent' || (int) ($approvalRow['resent_count'] ?? 0) > 0) {
+                            $hasResentRequest = true;
+                        }
+                    } elseif ($status === APPROVAL_STATUS_REJECTED) {
+                        $hasRejectedRequest = true;
+                    } elseif ($status === APPROVAL_STATUS_APPROVED) {
+                        $hasApprovedRequest = true;
+                    }
+                }
+                if ($hasPendingRequest) {
+                    $requestState = $hasResentRequest ? 'resent' : 'sent';
+                } elseif ($hasRejectedRequest) {
+                    $requestState = 'rejected';
+                } elseif ($hasApprovedRequest) {
+                    $requestState = 'approved';
+                }
                 ?>
-                <article class="week-day-card" data-date="<?= e($date) ?>" data-step-goal="<?= $userStepGoal ?>">
+                <article class="week-day-card"
+                         data-date="<?= e($date) ?>"
+                         data-step-goal="<?= $userStepGoal ?>"
+                         data-distance-goal="<?= e((string) $userDistanceGoal) ?>"
+                         data-request-state="<?= e($requestState) ?>">
                     <header class="week-day-head">
                         <strong><?= e($weekdayNames[$idx] ?? $date) ?></strong>
                         <span class="muted small"><?= e(format_date_eu($date)) ?></span>
@@ -138,10 +190,6 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                             <label class="check week-check" data-help="<?= e(t('table.week_help_workout_excuse')) ?>">
                                 <input type="checkbox" name="workout_done" value="1" data-workout-done <?= $completedWorkout ? 'checked' : '' ?>>
                                 <?= e(t('table.completed_workout')) ?>
-                            </label>
-                            <label class="check week-check">
-                                <input type="checkbox" name="junk_food" value="1" <?= !empty($log) && (int) ($log['junk_food'] ?? 0) === 1 ? 'checked' : '' ?>>
-                                <?= e(t('table.junk')) ?>
                             </label>
 
                             <div class="week-help-wrap" data-help="<?= e(t('table.week_help_extra_workout')) ?>">
@@ -219,6 +267,18 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                         </div>
                     </section>
 
+                    <section class="week-section week-section-nutrition">
+                        <div class="week-section-head">
+                            <h3><?= e(t('table.food_nutrition_section')) ?></h3>
+                        </div>
+                        <div class="week-section-grid">
+                            <label class="check week-check">
+                                <input type="checkbox" name="junk_food" value="1" <?= !empty($log) && (int) ($log['junk_food'] ?? 0) === 1 ? 'checked' : '' ?>>
+                                <?= e(t('table.unhealthy_eating_label')) ?>
+                            </label>
+                        </div>
+                    </section>
+
                     <section class="week-section week-section-habits">
                         <div class="week-section-head">
                             <h3><?= e(t('table.habits_section')) ?></h3>
@@ -259,11 +319,35 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                                     <input type="text" name="step_exception_reason" value="<?= e((string) ($log['step_exception_reason'] ?? '')) ?>">
                                 </label>
                             </div>
+                            <div class="week-help-wrap" data-help="<?= e(t('table.week_help_distance_excuse')) ?>" data-distance-excuse-wrap <?= $showDistanceExcuse ? '' : 'hidden' ?>>
+                                <label class="week-field week-field-secondary">
+                                    <span><?= e(t('table.distance_excuse_label')) ?></span>
+                                    <input type="text" name="distance_exception_reason" value="<?= e((string) ($log['distance_exception_reason'] ?? '')) ?>">
+                                </label>
+                            </div>
                             <div class="week-help-wrap" data-help="<?= e(t('table.week_help_workout_excuse')) ?>" data-workout-excuse-wrap <?= $showWorkoutExcuse ? '' : 'hidden' ?>>
                                 <label class="week-field week-field-secondary">
                                     <span><?= e(t('table.workout_excuse_label')) ?></span>
                                     <input type="text" name="workout_exception_reason" value="<?= e((string) ($log['workout_exception_reason'] ?? '')) ?>">
                                 </label>
+                            </div>
+                            <div class="week-request-actions" data-request-actions <?= ($showStepExcuse || $showDistanceExcuse || $showWorkoutExcuse) ? '' : 'hidden' ?>>
+                                <span class="muted small" data-request-state-label>
+                                    <?php
+                                    $requestStateLabel = match ($requestState) {
+                                        'sent' => t('table.request_sent'),
+                                        'resent' => t('table.request_resent'),
+                                        'approved' => t('table.request_approved'),
+                                        'rejected' => t('table.request_rejected'),
+                                        default => t('table.request_not_sent'),
+                                    };
+                                    ?>
+                                    <?= e($requestStateLabel) ?>
+                                </span>
+                                <div class="inline-actions-mini">
+                                    <button type="button" class="btn btn-ghost small" data-request-send <?= $requestState === 'not_sent' ? '' : 'hidden' ?>><?= e(t('table.request_review')) ?></button>
+                                    <button type="button" class="btn btn-ghost small" data-request-resend <?= in_array($requestState, ['sent', 'resent', 'rejected'], true) ? '' : 'hidden' ?>><?= e(t('table.request_resend')) ?></button>
+                                </div>
                             </div>
                         </div>
                     </section>
@@ -316,6 +400,11 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
         customHabitCreated: <?= json_encode(t('table.custom_habit_created')) ?>,
         customHabitRequired: <?= json_encode(t('table.custom_habit_required')) ?>,
         customHabitError: <?= json_encode(t('table.custom_habit_error')) ?>,
+        requestNotSent: <?= json_encode(t('table.request_not_sent')) ?>,
+        requestSent: <?= json_encode(t('table.request_sent')) ?>,
+        requestResent: <?= json_encode(t('table.request_resent')) ?>,
+        requestApproved: <?= json_encode(t('table.request_approved')) ?>,
+        requestRejected: <?= json_encode(t('table.request_rejected')) ?>,
     };
 
     if (!grid) {
@@ -330,6 +419,15 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
     };
 
     const isFilled = (value) => String(value || '').trim() !== '';
+    const requestStateLabel = (state) => {
+        return {
+            sent: labels.requestSent,
+            resent: labels.requestResent,
+            approved: labels.requestApproved,
+            rejected: labels.requestRejected,
+            not_sent: labels.requestNotSent,
+        }[state] || labels.requestNotSent;
+    };
 
     const setWorkoutRowVisibility = (row) => {
         if (!(row instanceof HTMLElement)) {
@@ -422,11 +520,56 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
         counter.textContent = formatExtraCount(count);
     };
 
+    const setRequestState = (card, state) => {
+        const normalized = ['not_sent', 'sent', 'resent', 'approved', 'rejected'].includes(String(state))
+            ? String(state)
+            : 'not_sent';
+        card.dataset.requestState = normalized;
+        const stateLabel = card.querySelector('[data-request-state-label]');
+        if (stateLabel instanceof HTMLElement) {
+            stateLabel.textContent = requestStateLabel(normalized);
+        }
+        const sendButton = card.querySelector('[data-request-send]');
+        if (sendButton instanceof HTMLButtonElement) {
+            sendButton.hidden = normalized !== 'not_sent';
+        }
+        const resendButton = card.querySelector('[data-request-resend]');
+        if (resendButton instanceof HTMLButtonElement) {
+            resendButton.hidden = !['sent', 'resent', 'rejected'].includes(normalized);
+        }
+    };
+
+    const hasVisibleRequestReason = (card) => {
+        const checks = [
+            ['[data-step-excuse-wrap]', '[name="step_exception_reason"]'],
+            ['[data-distance-excuse-wrap]', '[name="distance_exception_reason"]'],
+            ['[data-workout-excuse-wrap]', '[name="workout_exception_reason"]'],
+        ];
+        for (const [wrapSelector, inputSelector] of checks) {
+            const wrap = card.querySelector(wrapSelector);
+            const input = card.querySelector(inputSelector);
+            if (!(wrap instanceof HTMLElement) || !(input instanceof HTMLInputElement)) {
+                continue;
+            }
+            if (wrap.hidden) {
+                continue;
+            }
+            if (isFilled(input.value)) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
     const updateExcuseVisibility = (card) => {
         const stepExcuseWrap = card.querySelector('[data-step-excuse-wrap]');
+        const distanceExcuseWrap = card.querySelector('[data-distance-excuse-wrap]');
         const workoutExcuseWrap = card.querySelector('[data-workout-excuse-wrap]');
         const stepsInput = card.querySelector('[data-steps-input]');
+        const distanceInput = card.querySelector('[name="distance_km"]');
         const workoutDoneInput = card.querySelector('[data-workout-done]');
+        const requestActions = card.querySelector('[data-request-actions]');
 
         const stepGoal = Number(card.dataset.stepGoal || 0);
         const rawSteps = stepsInput instanceof HTMLInputElement ? String(stepsInput.value || '').trim() : '';
@@ -436,12 +579,28 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
             stepExcuseWrap.hidden = !stepMissed;
         }
 
+        const distanceGoal = Number(card.dataset.distanceGoal || 0);
+        const rawDistance = distanceInput instanceof HTMLInputElement ? String(distanceInput.value || '').trim() : '';
+        const parsedDistance = rawDistance === '' ? null : Number(rawDistance);
+        const distanceMissed = distanceGoal > 0 && (parsedDistance === null || Number.isNaN(parsedDistance) || parsedDistance < distanceGoal);
+        if (distanceExcuseWrap instanceof HTMLElement) {
+            distanceExcuseWrap.hidden = !distanceMissed;
+        }
+
         const completedChecked = workoutDoneInput instanceof HTMLInputElement ? workoutDoneInput.checked : false;
         const primaryWorkout = getPrimaryWorkout(card);
         const extraWorkouts = getExtraWorkouts(card);
         const showWorkoutExcuse = !completedChecked && primaryWorkout === null && extraWorkouts.length === 0;
         if (workoutExcuseWrap instanceof HTMLElement) {
             workoutExcuseWrap.hidden = !showWorkoutExcuse;
+        }
+
+        const needsRequest = stepMissed || distanceMissed || showWorkoutExcuse;
+        if (requestActions instanceof HTMLElement) {
+            requestActions.hidden = !needsRequest;
+        }
+        if (!needsRequest) {
+            setRequestState(card, 'not_sent');
         }
     };
 
@@ -722,6 +881,11 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
             stepsInput.addEventListener('input', () => updateExcuseVisibility(card));
             stepsInput.addEventListener('change', () => updateExcuseVisibility(card));
         }
+        const distanceInput = card.querySelector('[name="distance_km"]');
+        if (distanceInput instanceof HTMLInputElement) {
+            distanceInput.addEventListener('input', () => updateExcuseVisibility(card));
+            distanceInput.addEventListener('change', () => updateExcuseVisibility(card));
+        }
 
         getExtraWorkoutRows(card).forEach((row) => setupExtraRow(card, row));
 
@@ -756,19 +920,41 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                 updateExcuseVisibility(card);
             });
         }
+        const requestSendButton = card.querySelector('[data-request-send]');
+        if (requestSendButton instanceof HTMLButtonElement) {
+            requestSendButton.addEventListener('click', async () => {
+                const ok = await saveRow(card, { forceResend: false });
+                if (ok) {
+                    setRequestState(card, hasVisibleRequestReason(card) ? 'sent' : 'not_sent');
+                    updateExcuseVisibility(card);
+                }
+            });
+        }
+        const requestResendButton = card.querySelector('[data-request-resend]');
+        if (requestResendButton instanceof HTMLButtonElement) {
+            requestResendButton.addEventListener('click', async () => {
+                const ok = await saveRow(card, { forceResend: true });
+                if (ok) {
+                    setRequestState(card, hasVisibleRequestReason(card) ? 'resent' : 'not_sent');
+                    updateExcuseVisibility(card);
+                }
+            });
+        }
 
         setupCustomHabitForm(card, cards);
 
+        setRequestState(card, String(card.dataset.requestState || 'not_sent'));
         enforceCompletedFromSelections(card);
         updateExtraCounter(card);
         updateExcuseVisibility(card);
     });
 
-    async function saveRow(row) {
+    async function saveRow(row, options = {}) {
         const workouts = collectWorkouts(row);
         const extraWorkouts = getExtraWorkouts(row);
         const primaryWorkout = getPrimaryWorkout(row);
         const workoutDoneInput = row.querySelector('[data-workout-done]');
+        const forceResend = Boolean(options && options.forceResend === true);
 
         const data = {
             csrf_token: csrf,
@@ -785,7 +971,9 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
             workout_type: primaryWorkout ? (primaryWorkout.workout_type || '') : '',
             workouts: workouts,
             step_exception_reason: row.querySelector('[name="step_exception_reason"]').value,
+            distance_exception_reason: row.querySelector('[name="distance_exception_reason"]').value,
             workout_exception_reason: row.querySelector('[name="workout_exception_reason"]').value,
+            resend_requests: forceResend ? 1 : 0,
             habits: {},
             notes: row.querySelector('[name="notes"]').value,
         };

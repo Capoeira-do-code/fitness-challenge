@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 const APPROVAL_TYPE_STEP_EXCEPTION = 'step_exception';
+const APPROVAL_TYPE_DISTANCE_EXCEPTION = 'distance_exception';
 const APPROVAL_TYPE_WORKOUT_EXCEPTION = 'workout_exception';
 const APPROVAL_TYPE_EXTRA_WORKOUT_OVERRIDE = 'extra_workout_override';
 
@@ -262,12 +263,12 @@ function upsert_daily_log(PDO $pdo, array $payload): void
             'INSERT INTO daily_logs (
                 user_id, log_date, steps, workout_done, workout_type_id, workout_type,
                 junk_food, extra_workout, distance_km, training_calories_burned, weight, notes, step_exception_reason,
-                workout_exception_reason, morning_walk, journaling,
+                distance_exception_reason, workout_exception_reason, morning_walk, journaling,
                 evening_chores, reading, created_at, updated_at
             ) VALUES (
                 :user_id, :log_date, :steps, :workout_done, :workout_type_id, :workout_type,
                 :junk_food, :extra_workout, :distance_km, :training_calories_burned, :weight, :notes, :step_exception_reason,
-                :workout_exception_reason, :morning_walk, :journaling,
+                :distance_exception_reason, :workout_exception_reason, :morning_walk, :journaling,
                 :evening_chores, :reading, :created_at, :updated_at
             )',
             [
@@ -284,6 +285,7 @@ function upsert_daily_log(PDO $pdo, array $payload): void
                 ':weight' => $payload['weight'],
                 ':notes' => $payload['notes'],
                 ':step_exception_reason' => $payload['step_exception_reason'],
+                ':distance_exception_reason' => $payload['distance_exception_reason'] ?? '',
                 ':workout_exception_reason' => $payload['workout_exception_reason'],
                 ':morning_walk' => $payload['morning_walk'],
                 ':journaling' => $payload['journaling'],
@@ -311,6 +313,7 @@ function upsert_daily_log(PDO $pdo, array $payload): void
              weight = :weight,
              notes = :notes,
              step_exception_reason = :step_exception_reason,
+             distance_exception_reason = :distance_exception_reason,
              workout_exception_reason = :workout_exception_reason,
              morning_walk = :morning_walk,
              journaling = :journaling,
@@ -330,6 +333,7 @@ function upsert_daily_log(PDO $pdo, array $payload): void
             ':weight' => $payload['weight'],
             ':notes' => $payload['notes'],
             ':step_exception_reason' => $payload['step_exception_reason'],
+            ':distance_exception_reason' => $payload['distance_exception_reason'] ?? '',
             ':workout_exception_reason' => $payload['workout_exception_reason'],
             ':morning_walk' => $payload['morning_walk'],
             ':journaling' => $payload['journaling'],
@@ -374,14 +378,20 @@ function sync_log_approval_requests(PDO $pdo, int $userId, string $date, int $ac
     }
 
     $stepReason = trim((string) ($payload['step_exception_reason'] ?? ''));
+    $distanceReason = trim((string) ($payload['distance_exception_reason'] ?? ''));
     $workoutReason = trim((string) ($payload['workout_exception_reason'] ?? ''));
     $extraWorkout = (int) ($payload['extra_workout'] ?? 0) === 1;
     $junkFood = (int) ($payload['junk_food'] ?? 0) === 1;
+    $forceResend = (int) ($payload['resend_requests'] ?? 0) === 1;
 
     $specs = [
         APPROVAL_TYPE_STEP_EXCEPTION => [
             'enabled' => $stepReason !== '',
             'detail' => $stepReason,
+        ],
+        APPROVAL_TYPE_DISTANCE_EXCEPTION => [
+            'enabled' => $distanceReason !== '',
+            'detail' => $distanceReason,
         ],
         APPROVAL_TYPE_WORKOUT_EXCEPTION => [
             'enabled' => $workoutReason !== '',
@@ -401,7 +411,8 @@ function sync_log_approval_requests(PDO $pdo, int $userId, string $date, int $ac
             $actorUserId,
             $type,
             (bool) $spec['enabled'],
-            (string) $spec['detail']
+            (string) $spec['detail'],
+            $forceResend
         );
     }
 }
@@ -413,7 +424,8 @@ function sync_single_approval_request(
     int $actorUserId,
     string $type,
     bool $enabled,
-    string $detail
+    string $detail,
+    bool $forceResend = false
 ): void {
     $existing = db_fetch_one(
         $pdo,
@@ -438,11 +450,11 @@ function sync_single_approval_request(
             $pdo,
             'INSERT INTO approval_requests (
                 log_id, user_id, approval_type, status,
-                detail, requested_by, approved_by, decision_note,
+                request_state, resent_count, detail, requested_by, approved_by, decision_note,
                 created_at, updated_at
             ) VALUES (
                 :log_id, :user_id, :approval_type, :status,
-                :detail, :requested_by, NULL, NULL,
+                :request_state, :resent_count, :detail, :requested_by, NULL, NULL,
                 :created_at, :updated_at
             )',
             [
@@ -450,6 +462,8 @@ function sync_single_approval_request(
                 ':user_id' => $userId,
                 ':approval_type' => $type,
                 ':status' => APPROVAL_STATUS_PENDING,
+                ':request_state' => 'sent',
+                ':resent_count' => 0,
                 ':detail' => $detail,
                 ':requested_by' => $actorUserId,
                 ':created_at' => $now,
@@ -460,13 +474,18 @@ function sync_single_approval_request(
         return;
     }
 
-    $mustReset = $existing['status'] !== APPROVAL_STATUS_PENDING || (string) $existing['detail'] !== $detail;
+    $mustReset = $forceResend
+        || $existing['status'] !== APPROVAL_STATUS_PENDING
+        || (string) $existing['detail'] !== $detail;
 
     if ($mustReset) {
+        $resentCount = max(0, (int) ($existing['resent_count'] ?? 0)) + 1;
         db_execute(
             $pdo,
             'UPDATE approval_requests
              SET status = :status,
+                 request_state = :request_state,
+                 resent_count = :resent_count,
                  detail = :detail,
                  requested_by = :requested_by,
                  approved_by = NULL,
@@ -475,6 +494,8 @@ function sync_single_approval_request(
              WHERE id = :id',
             [
                 ':status' => APPROVAL_STATUS_PENDING,
+                ':request_state' => 'resent',
+                ':resent_count' => $resentCount,
                 ':detail' => $detail,
                 ':requested_by' => $actorUserId,
                 ':updated_at' => $now,
@@ -500,6 +521,7 @@ function approval_type_label(string $type): string
 {
     return match ($type) {
         APPROVAL_TYPE_STEP_EXCEPTION => t('approval.step_exception'),
+        APPROVAL_TYPE_DISTANCE_EXCEPTION => t('approval.distance_exception'),
         APPROVAL_TYPE_WORKOUT_EXCEPTION => t('approval.workout_exception'),
         APPROVAL_TYPE_EXTRA_WORKOUT_OVERRIDE => t('approval.extra_workout_override'),
         default => $type,
@@ -567,6 +589,11 @@ function resolve_approval_request(PDO $pdo, array $actor, int $approvalId, strin
         $pdo,
         'UPDATE approval_requests
          SET status = :status,
+             request_state = CASE
+                WHEN :status = "approved" THEN "approved"
+                WHEN :status = "rejected" THEN "rejected"
+                ELSE request_state
+             END,
              approved_by = :approved_by,
              decision_note = :decision_note,
              updated_at = :updated_at
@@ -652,6 +679,43 @@ function load_approval_status_by_user_date(PDO $pdo, string $startDate, string $
         }
 
         $result[$userId][$date][$type] = $status;
+    }
+
+    return $result;
+}
+
+function fetch_approval_requests_by_user_between(PDO $pdo, int $userId, string $startDate, string $endDate): array
+{
+    if ($userId <= 0) {
+        return [];
+    }
+
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT ar.*, dl.log_date
+         FROM approval_requests ar
+         JOIN daily_logs dl ON dl.id = ar.log_id
+         WHERE ar.user_id = :user_id
+           AND dl.log_date BETWEEN :start AND :end
+         ORDER BY dl.log_date ASC, ar.created_at ASC',
+        [
+            ':user_id' => $userId,
+            ':start' => $startDate,
+            ':end' => $endDate,
+        ]
+    );
+
+    $result = [];
+    foreach ($rows as $row) {
+        $date = (string) ($row['log_date'] ?? '');
+        $type = (string) ($row['approval_type'] ?? '');
+        if ($date === '' || $type === '') {
+            continue;
+        }
+        if (!isset($result[$date])) {
+            $result[$date] = [];
+        }
+        $result[$date][$type] = $row;
     }
 
     return $result;
@@ -2407,8 +2471,16 @@ function create_goal(PDO $pdo, array $payload, int $actorUserId): void
     $now = now_iso();
     db_execute(
         $pdo,
-        'INSERT INTO goals (scope, team_id, user_id, title, target_type, target_value, current_value, due_date, status, created_by, created_at, updated_at)
-         VALUES (:scope, :team_id, :user_id, :title, :target_type, :target_value, :current_value, :due_date, "active", :created_by, :created_at, :updated_at)',
+        'INSERT INTO goals (
+            scope, team_id, user_id, title, target_type, target_value,
+            baseline_value, current_value, unit_label, reward_text, due_date,
+            status, completed_at, created_by, created_at, updated_at
+        )
+         VALUES (
+            :scope, :team_id, :user_id, :title, :target_type, :target_value,
+            :baseline_value, :current_value, :unit_label, :reward_text, :due_date,
+            "active", NULL, :created_by, :created_at, :updated_at
+        )',
         [
             ':scope' => $payload['scope'],
             ':team_id' => $payload['team_id'],
@@ -2416,7 +2488,10 @@ function create_goal(PDO $pdo, array $payload, int $actorUserId): void
             ':title' => $payload['title'],
             ':target_type' => $payload['target_type'],
             ':target_value' => $payload['target_value'],
+            ':baseline_value' => $payload['baseline_value'] ?? null,
             ':current_value' => $payload['current_value'] ?? 0,
+            ':unit_label' => $payload['unit_label'] ?? null,
+            ':reward_text' => $payload['reward_text'] ?? null,
             ':due_date' => $payload['due_date'],
             ':created_by' => $actorUserId,
             ':created_at' => $now,
@@ -2441,7 +2516,15 @@ function update_goal_status(PDO $pdo, int $goalId, string $status, int $actorUse
 
     db_execute(
         $pdo,
-        'UPDATE goals SET status = :status, updated_at = :updated_at WHERE id = :id',
+        'UPDATE goals
+         SET status = :status,
+             completed_at = CASE
+                WHEN :status = "complete" AND completed_at IS NULL THEN :updated_at
+                WHEN :status != "complete" THEN NULL
+                ELSE completed_at
+             END,
+             updated_at = :updated_at
+         WHERE id = :id',
         [':status' => $status, ':updated_at' => now_iso(), ':id' => $goalId]
     );
     $after = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = :id', [':id' => $goalId]);
@@ -2458,12 +2541,20 @@ function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): v
     db_execute(
         $pdo,
         'UPDATE goals
-         SET title = :title, target_type = :target_type, target_value = :target_value, due_date = :due_date, updated_at = :updated_at
+         SET title = :title,
+             target_type = :target_type,
+             target_value = :target_value,
+             unit_label = :unit_label,
+             reward_text = :reward_text,
+             due_date = :due_date,
+             updated_at = :updated_at
          WHERE id = :id',
         [
             ':title' => trim((string) $payload['title']),
             ':target_type' => trim((string) $payload['target_type']),
             ':target_value' => $payload['target_value'],
+            ':unit_label' => $payload['unit_label'] ?? null,
+            ':reward_text' => $payload['reward_text'] ?? null,
             ':due_date' => $payload['due_date'],
             ':updated_at' => now_iso(),
             ':id' => $goalId,
@@ -2487,10 +2578,16 @@ function delete_goal(PDO $pdo, int $goalId, int $actorUserId): void
 function normalize_goal_target_type(string $targetType): string
 {
     $normalized = strtolower(trim($targetType));
-    if ($normalized === 'distance_km') {
+    if ($normalized === 'distance_km' || $normalized === 'distance') {
         $normalized = 'km';
     }
-    if (in_array($normalized, ['steps', 'km', 'workouts', 'score', 'strikes', 'penalties', 'weight'], true)) {
+    if ($normalized === 'penalty') {
+        $normalized = 'penalties';
+    }
+    if ($normalized === 'weight_progress') {
+        $normalized = 'weight';
+    }
+    if (in_array($normalized, ['steps', 'km', 'workouts', 'score', 'strikes', 'penalties', 'weight', 'calories_burned', 'calories_consumed', 'custom'], true)) {
         return $normalized;
     }
     if (str_starts_with($normalized, 'habit:')) {
@@ -2514,9 +2611,73 @@ function goal_progress_value_from_metric(array $goal, array $metric): float
         $type === 'strikes' => (float) ($metric['current_strikes'] ?? 0),
         $type === 'penalties' => (float) ($metric['total_penalty'] ?? 0),
         $type === 'weight' => (float) ($metric['latest_weight'] ?? 0),
+        $type === 'calories_burned' => (float) ($metric['training_calories_burned_total'] ?? 0),
+        $type === 'calories_consumed' => (float) ($metric['calories_consumed_total'] ?? 0),
         str_starts_with($type, 'habit:') => (float) (($metric['habit_counts'][substr($type, 6)] ?? 0)),
         default => (float) ($goal['current_value'] ?? 0),
     };
+}
+
+function goal_target_type_is_lower_better(string $targetType): bool
+{
+    $type = normalize_goal_target_type($targetType);
+    return in_array($type, ['penalties', 'strikes', 'calories_consumed'], true);
+}
+
+function goal_target_default_unit(string $targetType): string
+{
+    $type = normalize_goal_target_type($targetType);
+    return match ($type) {
+        'steps' => 'steps',
+        'km' => 'km',
+        'workouts' => 'workouts',
+        'score' => 'pts',
+        'calories_burned', 'calories_consumed' => 'kcal',
+        'penalties' => '€',
+        'strikes' => 'strikes',
+        'weight' => '%',
+        default => '',
+    };
+}
+
+function goal_team_metric_value(array $goal, array $teamSummary): float
+{
+    $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
+    return match ($type) {
+        'steps' => (float) ($teamSummary['total_steps'] ?? 0),
+        'km' => (float) ($teamSummary['total_km'] ?? 0),
+        'workouts' => (float) ($teamSummary['workout_success'] ?? 0),
+        'score' => (float) ($teamSummary['score_avg'] ?? 0),
+        'strikes' => (float) ($teamSummary['strikes'] ?? 0),
+        'penalties' => (float) ($teamSummary['penalty'] ?? 0),
+        'calories_burned' => (float) ($teamSummary['calories_burned'] ?? 0),
+        'calories_consumed' => (float) ($teamSummary['calories_consumed'] ?? 0),
+        'weight' => (float) ($teamSummary['weight_progress'] ?? 0),
+        default => (float) ($goal['current_value'] ?? 0),
+    };
+}
+
+function goal_progress_from_baseline(array $goal, float $currentMetricValue): float
+{
+    $baseline = is_numeric($goal['baseline_value'] ?? null)
+        ? (float) $goal['baseline_value']
+        : $currentMetricValue;
+
+    if (goal_target_type_is_lower_better((string) ($goal['target_type'] ?? 'custom'))) {
+        return max(0.0, $baseline - $currentMetricValue);
+    }
+
+    return max(0.0, $currentMetricValue - $baseline);
+}
+
+function goal_target_reached_from_progress(array $goal, float $progressValue): bool
+{
+    $target = (float) ($goal['target_value'] ?? 0);
+    if ($target <= 0) {
+        return false;
+    }
+
+    return $progressValue >= $target;
 }
 
 function goal_target_reached(array $goal, array $metric, float $progressValue): bool
@@ -2547,7 +2708,7 @@ function goal_target_reached(array $goal, array $metric, float $progressValue): 
         return $latestWeight <= $target;
     }
 
-    if (in_array($type, ['strikes', 'penalties'], true)) {
+    if (in_array($type, ['strikes', 'penalties', 'calories_consumed'], true)) {
         return $progressValue <= $target;
     }
 
@@ -2596,10 +2757,12 @@ function auto_complete_user_goals(PDO $pdo, int $userId, string $startDate, stri
             'UPDATE goals
              SET status = "complete",
                  current_value = :current_value,
+                 completed_at = COALESCE(completed_at, :completed_at),
                  updated_at = :updated_at
              WHERE id = :id AND status = "active"',
             [
                 ':current_value' => round($progressValue, 2),
+                ':completed_at' => now_iso(),
                 ':updated_at' => now_iso(),
                 ':id' => (int) $goal['id'],
             ]
@@ -3685,6 +3848,7 @@ function team_summary_from_metrics(array $metrics): array
         'steps_required' => 0,
         'total_steps' => 0,
         'total_km' => 0,
+        'workout_count' => 0,
         'workout_success' => 0,
         'workout_target' => 0,
         'strikes' => 0,
@@ -3697,6 +3861,7 @@ function team_summary_from_metrics(array $metrics): array
         $totals['steps_required'] += (int) $metric['steps_required'];
         $totals['total_steps'] += (int) ($metric['total_steps'] ?? 0);
         $totals['total_km'] += (float) ($metric['total_km'] ?? 0);
+        $totals['workout_count'] += (int) ($metric['workout_count'] ?? $metric['workout_success'] ?? 0);
         $totals['workout_success'] += (int) $metric['workout_success'];
         $totals['workout_target'] += (int) $metric['workout_target'];
         $totals['strikes'] += (int) $metric['current_strikes'];
@@ -3709,4 +3874,452 @@ function team_summary_from_metrics(array $metrics): array
     $totals['total_km'] = round((float) $totals['total_km'], 2);
 
     return $totals;
+}
+
+function metric_week_row_for_view(array $metric, string $view, ?string $selectedWeekStart = null): ?array
+{
+    $weekly = array_values((array) ($metric['weekly'] ?? []));
+    if ($weekly === []) {
+        return null;
+    }
+
+    usort(
+        $weekly,
+        static fn(array $left, array $right): int => strcmp((string) ($left['week_start'] ?? ''), (string) ($right['week_start'] ?? ''))
+    );
+
+    if ($view === 'current_week') {
+        return $weekly[count($weekly) - 1];
+    }
+
+    if ($view !== 'total') {
+        $needle = to_date($view, (string) ($weekly[count($weekly) - 1]['week_start'] ?? to_date(null)));
+        try {
+            $needle = week_start_for(new DateTimeImmutable($needle))->format('Y-m-d');
+        } catch (Throwable) {
+            // Keep the normalized date fallback from to_date.
+        }
+        foreach ($weekly as $row) {
+            if ((string) ($row['week_start'] ?? '') === $needle) {
+                return $row;
+            }
+        }
+    }
+
+    return $weekly[count($weekly) - 1];
+}
+
+function metric_snapshot_for_view(array $metric, string $view): array
+{
+    $scoreForWeek = static fn(array $row): float => round(
+        max(
+            0.0,
+            100 - (
+                ((int) ($row['step_failures'] ?? 0) * 6) +
+                ((int) ($row['workout_failures'] ?? 0) * 8) +
+                ((int) ($row['skip_warnings'] ?? 0) * 3) +
+                ((int) ($row['strikes_after_week'] ?? 0) * 4)
+            )
+        ),
+        1
+    );
+    $workoutsForWeek = static function (array $row): int {
+        if (array_key_exists('workout_success_week', $row)) {
+            return max(0, (int) ($row['workout_success_week'] ?? 0));
+        }
+        if (array_key_exists('workout_target_week', $row)) {
+            return max(0, (int) ($row['workout_target_week'] ?? 0) - (int) ($row['workout_failures'] ?? 0));
+        }
+
+        return max(0, (int) ($row['workouts'] ?? 0));
+    };
+    $strikesForWeek = static fn(array $row): int => max(
+        0,
+        (int) ($row['total_failures'] ?? ((int) ($row['step_failures'] ?? 0) + (int) ($row['workout_failures'] ?? 0)))
+        - (int) ($row['strike_reduction'] ?? 0)
+    );
+
+    if ($view === 'total') {
+        return [
+            'steps' => (int) ($metric['total_steps'] ?? 0),
+            'distance_km' => round((float) ($metric['total_km'] ?? 0), 2),
+            'workouts' => (int) ($metric['workout_success'] ?? 0),
+            'workout_target' => max(0, (int) ($metric['workout_target'] ?? 0)),
+            'score' => round((float) ($metric['score'] ?? 0), 1),
+            'strikes' => max(0, (int) ($metric['current_strikes'] ?? 0)),
+            'penalty' => max(0.0, (float) ($metric['total_penalty'] ?? 0)),
+            'weight_progress' => (float) ($metric['weight_progress_pct'] ?? 0),
+        ];
+    }
+
+    $weekRow = metric_week_row_for_view($metric, $view, $view);
+    if (!is_array($weekRow)) {
+        return [
+            'steps' => 0,
+            'distance_km' => 0.0,
+            'workouts' => 0,
+            'workout_target' => 0,
+            'score' => 0.0,
+            'strikes' => 0,
+            'penalty' => 0.0,
+            'weight_progress' => (float) ($metric['weight_progress_pct'] ?? 0),
+        ];
+    }
+
+    return [
+        'steps' => (int) ($weekRow['steps'] ?? 0),
+        'distance_km' => round((float) ($weekRow['km'] ?? 0), 2),
+        'workouts' => $workoutsForWeek($weekRow),
+        'workout_target' => max(0, (int) ($weekRow['workout_target_week'] ?? 0)),
+        'score' => $scoreForWeek($weekRow),
+        'strikes' => $strikesForWeek($weekRow),
+        'penalty' => max(0.0, (float) ($weekRow['penalty'] ?? 0)),
+        'weight_progress' => (float) ($metric['weight_progress_pct'] ?? 0),
+    ];
+}
+
+function team_rows_for_view(array $metrics, string $view): array
+{
+    $rows = [];
+    foreach ($metrics as $metric) {
+        $snapshot = metric_snapshot_for_view($metric, $view);
+        if ($view === 'total') {
+            $snapshot['workouts'] = max(0, (int) ($metric['workout_count'] ?? $metric['workout_success'] ?? 0));
+        } else {
+            $workoutWeekRow = metric_week_row_for_view($metric, $view);
+            if (is_array($workoutWeekRow)) {
+                $snapshot['workouts'] = max(0, (int) ($workoutWeekRow['workouts'] ?? 0));
+                $snapshot['workout_target'] = max(0, (int) ($workoutWeekRow['workout_target_week'] ?? 0));
+            }
+        }
+        $rows[] = [
+            'user_id' => (int) ($metric['user']['id'] ?? 0),
+            'display_name' => (string) ($metric['user']['display_name'] ?? ''),
+            'username' => (string) ($metric['user']['username'] ?? ''),
+            'avatar_path' => (string) ($metric['user']['avatar_path'] ?? ''),
+            'updated_at' => (string) ($metric['user']['updated_at'] ?? ''),
+            'score' => (float) ($snapshot['score'] ?? 0),
+            'steps' => (int) ($snapshot['steps'] ?? 0),
+            'distance' => (float) ($snapshot['distance_km'] ?? 0),
+            'workouts' => (int) ($snapshot['workouts'] ?? 0),
+            'workout_target' => (int) ($snapshot['workout_target'] ?? 0),
+            'strikes' => (int) ($snapshot['strikes'] ?? 0),
+            'penalties' => (float) ($snapshot['penalty'] ?? 0),
+            'weight_progress' => (float) ($snapshot['weight_progress'] ?? 0),
+        ];
+    }
+
+    return $rows;
+}
+
+function team_summary_from_rows(array $rows): array
+{
+    $members = count($rows);
+    $totals = [
+        'members' => $members,
+        'score_avg' => 0.0,
+        'total_steps' => 0,
+        'total_km' => 0.0,
+        'workout_success' => 0,
+        'workout_target' => 0,
+        'strikes' => 0,
+        'penalty' => 0.0,
+        'calories_burned' => 0.0,
+        'calories_consumed' => 0.0,
+        'weight_progress' => 0.0,
+    ];
+
+    foreach ($rows as $row) {
+        $totals['score_avg'] += (float) ($row['score'] ?? 0);
+        $totals['total_steps'] += (int) ($row['steps'] ?? 0);
+        $totals['total_km'] += (float) ($row['distance'] ?? 0);
+        $totals['workout_success'] += (int) ($row['workouts'] ?? 0);
+        $totals['workout_target'] += (int) ($row['workout_target'] ?? 0);
+        $totals['strikes'] += (int) ($row['strikes'] ?? 0);
+        $totals['penalty'] += (float) ($row['penalties'] ?? 0);
+        $totals['weight_progress'] += (float) ($row['weight_progress'] ?? 0);
+    }
+
+    if ($members > 0) {
+        $totals['score_avg'] = round($totals['score_avg'] / $members, 1);
+        $totals['weight_progress'] = round($totals['weight_progress'] / $members, 1);
+    } else {
+        $totals['score_avg'] = 0.0;
+        $totals['weight_progress'] = 0.0;
+    }
+    $totals['total_km'] = round((float) $totals['total_km'], 2);
+    $totals['penalty'] = round((float) $totals['penalty'], 2);
+
+    return $totals;
+}
+
+function user_notifications(PDO $pdo, int $userId, int $limit = 20, bool $includeRead = false): array
+{
+    $limit = max(1, min(100, $limit));
+    $conditions = ['user_id = :user_id'];
+    $params = [':user_id' => $userId];
+    if (!$includeRead) {
+        $conditions[] = 'is_read = 0';
+    }
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT * FROM user_notifications
+         WHERE ' . implode(' AND ', $conditions) . '
+         ORDER BY created_at DESC
+         LIMIT ' . $limit,
+        $params
+    );
+}
+
+function create_user_notification(
+    PDO $pdo,
+    int $userId,
+    string $kind,
+    string $title,
+    string $message,
+    ?string $uniqueKey = null,
+    array $payload = []
+): bool {
+    if ($userId <= 0 || trim($title) === '' || trim($message) === '') {
+        return false;
+    }
+
+    $now = now_iso();
+    $jsonPayload = $payload !== [] ? json_encode($payload, JSON_UNESCAPED_SLASHES) : null;
+    if (!is_string($jsonPayload) && $jsonPayload !== null) {
+        $jsonPayload = null;
+    }
+
+    db_execute(
+        $pdo,
+        'INSERT OR IGNORE INTO user_notifications (
+            user_id, kind, title, message, payload_json, unique_key, is_read, created_at, read_at
+        ) VALUES (
+            :user_id, :kind, :title, :message, :payload_json, :unique_key, 0, :created_at, NULL
+        )',
+        [
+            ':user_id' => $userId,
+            ':kind' => trim($kind) !== '' ? trim($kind) : 'info',
+            ':title' => trim($title),
+            ':message' => trim($message),
+            ':payload_json' => $jsonPayload,
+            ':unique_key' => $uniqueKey,
+            ':created_at' => $now,
+        ]
+    );
+
+    return $pdo->lastInsertId() !== '0';
+}
+
+function mark_user_notification_read(PDO $pdo, int $notificationId, int $userId): void
+{
+    if ($notificationId <= 0 || $userId <= 0) {
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE user_notifications
+         SET is_read = 1, read_at = :read_at
+         WHERE id = :id AND user_id = :user_id',
+        [
+            ':read_at' => now_iso(),
+            ':id' => $notificationId,
+            ':user_id' => $userId,
+        ]
+    );
+}
+
+function resolve_team_calories_summary(PDO $pdo, int $teamId, string $startDate, string $endDate): array
+{
+    if ($teamId <= 0) {
+        return ['burned' => 0.0, 'consumed' => 0.0];
+    }
+
+    $teamUsers = list_active_team_users($pdo, $teamId);
+    if ($teamUsers === []) {
+        return ['burned' => 0.0, 'consumed' => 0.0];
+    }
+    $ids = array_values(array_unique(array_map(static fn(array $user): int => (int) ($user['id'] ?? 0), $teamUsers)));
+    $ids = array_values(array_filter($ids, static fn(int $id): bool => $id > 0));
+    if ($ids === []) {
+        return ['burned' => 0.0, 'consumed' => 0.0];
+    }
+
+    $params = [':start' => $startDate, ':end' => $endDate];
+    $placeholders = [];
+    foreach ($ids as $index => $id) {
+        $key = ':uid_' . $index;
+        $placeholders[] = $key;
+        $params[$key] = $id;
+    }
+
+    $burnedRow = db_fetch_one(
+        $pdo,
+        'SELECT SUM(COALESCE(training_calories_burned, 0)) AS total
+         FROM daily_logs
+         WHERE log_date BETWEEN :start AND :end
+           AND user_id IN (' . implode(',', $placeholders) . ')',
+        $params
+    );
+
+    $consumedRow = db_fetch_one(
+        $pdo,
+        'SELECT SUM(COALESCE(calories, 0)) AS total
+         FROM photo_entries
+         WHERE log_date BETWEEN :start AND :end
+           AND user_id IN (' . implode(',', $placeholders) . ')',
+        $params
+    );
+
+    return [
+        'burned' => round((float) ($burnedRow['total'] ?? 0), 2),
+        'consumed' => round((float) ($consumedRow['total'] ?? 0), 2),
+    ];
+}
+
+function auto_complete_team_goals(PDO $pdo, int $teamId, array $teamSummary, ?int $actorUserId = null): int
+{
+    if ($teamId <= 0) {
+        return 0;
+    }
+
+    $activeGoals = db_fetch_all(
+        $pdo,
+        'SELECT * FROM goals WHERE scope = "team" AND team_id = :team_id AND status = "active" ORDER BY created_at ASC',
+        [':team_id' => $teamId]
+    );
+    if ($activeGoals === []) {
+        return 0;
+    }
+
+    $completedCount = 0;
+    foreach ($activeGoals as $goal) {
+        $currentMetricValue = goal_team_metric_value($goal, $teamSummary);
+        $progressValue = goal_progress_from_baseline($goal, $currentMetricValue);
+        $goalId = (int) ($goal['id'] ?? 0);
+        if ($goalId <= 0) {
+            continue;
+        }
+
+        if (goal_target_reached_from_progress($goal, $progressValue)) {
+            db_execute(
+                $pdo,
+                'UPDATE goals
+                 SET status = "complete",
+                     current_value = :current_value,
+                     completed_at = COALESCE(completed_at, :completed_at),
+                     updated_at = :updated_at
+                 WHERE id = :id AND status = "active"',
+                [
+                    ':current_value' => round($progressValue, 2),
+                    ':completed_at' => now_iso(),
+                    ':updated_at' => now_iso(),
+                    ':id' => $goalId,
+                ]
+            );
+
+            $after = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = :id', [':id' => $goalId]);
+            if ($after === null || (string) ($after['status'] ?? '') !== 'complete') {
+                continue;
+            }
+
+            $completedCount++;
+            audit_log(
+                $pdo,
+                $actorUserId,
+                'goal_complete_auto',
+                'goal',
+                (string) $goalId,
+                'Team goal auto-completed from progress metrics.',
+                audit_snapshot($goal),
+                audit_snapshot($after)
+            );
+
+            $members = list_active_team_users($pdo, $teamId);
+            $title = 'Team goal completed!';
+            $message = 'Your team reached: ' . (string) ($after['title'] ?? '');
+            $rewardText = trim((string) ($after['reward_text'] ?? ''));
+            if ($rewardText !== '') {
+                $message .= ' | Reward unlocked: ' . $rewardText;
+            }
+            foreach ($members as $member) {
+                $memberId = (int) ($member['id'] ?? 0);
+                if ($memberId <= 0) {
+                    continue;
+                }
+                create_user_notification(
+                    $pdo,
+                    $memberId,
+                    'team_goal_completed',
+                    $title,
+                    $message,
+                    'team_goal_completed:' . $goalId,
+                    [
+                        'goal_id' => $goalId,
+                        'team_id' => $teamId,
+                    ]
+                );
+            }
+        } else {
+            db_execute(
+                $pdo,
+                'UPDATE goals SET current_value = :current_value, updated_at = :updated_at WHERE id = :id AND status = "active"',
+                [
+                    ':current_value' => round($progressValue, 2),
+                    ':updated_at' => now_iso(),
+                    ':id' => $goalId,
+                ]
+            );
+        }
+    }
+
+    return $completedCount;
+}
+
+function auto_complete_team_goals_for_team(PDO $pdo, int $teamId, string $startDate, string $endDate, ?int $actorUserId = null): int
+{
+    if ($teamId <= 0) {
+        return 0;
+    }
+
+    $teamUsers = list_active_team_users($pdo, $teamId);
+    if ($teamUsers === []) {
+        return 0;
+    }
+
+    $metricsByUser = compute_challenge_metrics($pdo, $teamUsers, $startDate, $endDate);
+    $rows = team_rows_for_view(array_values($metricsByUser), 'total');
+    $summary = team_summary_from_rows($rows);
+    $calories = resolve_team_calories_summary($pdo, $teamId, $startDate, $endDate);
+    $summary['calories_burned'] = (float) ($calories['burned'] ?? 0);
+    $summary['calories_consumed'] = (float) ($calories['consumed'] ?? 0);
+
+    return auto_complete_team_goals($pdo, $teamId, $summary, $actorUserId);
+}
+
+function auto_complete_team_goals_for_user(PDO $pdo, int $userId, string $startDate, string $endDate, ?int $actorUserId = null): int
+{
+    if ($userId <= 0) {
+        return 0;
+    }
+
+    $teams = list_user_teams($pdo, $userId);
+    if ($teams === []) {
+        return 0;
+    }
+
+    $completed = 0;
+    $seenTeam = [];
+    foreach ($teams as $team) {
+        $teamId = (int) ($team['id'] ?? 0);
+        if ($teamId <= 0 || isset($seenTeam[$teamId])) {
+            continue;
+        }
+        $seenTeam[$teamId] = true;
+        $completed += auto_complete_team_goals_for_team($pdo, $teamId, $startDate, $endDate, $actorUserId);
+    }
+
+    return $completed;
 }

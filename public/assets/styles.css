@@ -1860,6 +1860,30 @@ textarea {
     gap: 0.8rem;
 }
 
+.team-notifications-panel .card-list {
+    gap: 0.6rem;
+}
+
+.team-notification-card {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.7rem;
+}
+
+.team-notification-main {
+    display: grid;
+    gap: 0.2rem;
+}
+
+.team-notification-main p {
+    margin: 0;
+}
+
+.team-notification-action {
+    flex: 0 0 auto;
+}
+
 .team-goal-card {
     display: grid;
     gap: 0.75rem;
@@ -1907,6 +1931,19 @@ textarea {
 
 .team-goal-actions {
     justify-content: flex-start;
+}
+
+.team-goal-reward {
+    color: #0f766e;
+    font-weight: 700;
+}
+
+.team-goal-form-helper {
+    margin: -0.2rem 0 0;
+}
+
+.team-goal-reward-toggle {
+    margin-top: -0.15rem;
 }
 
 .team-goal-modal-card {
@@ -2731,6 +2768,17 @@ textarea {
     grid-column: 1 / -1;
 }
 
+.week-request-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    border-top: 1px dashed var(--line);
+    padding-top: 0.45rem;
+}
+
 .workout-type-control {
     display: grid;
     gap: 0.48rem;
@@ -2917,6 +2965,15 @@ textarea {
 
     .week-day-actions .btn {
         width: 100%;
+    }
+
+    .week-request-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .team-notification-card {
+        flex-direction: column;
     }
 }
 

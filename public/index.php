@@ -160,7 +160,9 @@ if ($page === 'api_save_row') {
         'weight' => ($json['weight'] ?? '') !== '' ? (float) $json['weight'] : null,
         'notes' => trim((string) ($json['notes'] ?? '')),
         'step_exception_reason' => trim((string) ($json['step_exception_reason'] ?? '')),
+        'distance_exception_reason' => trim((string) ($json['distance_exception_reason'] ?? '')),
         'workout_exception_reason' => trim((string) ($json['workout_exception_reason'] ?? '')),
+        'resend_requests' => (int) ($json['resend_requests'] ?? 0) === 1 ? 1 : 0,
         'morning_walk' => !empty($habitPayload['morning_walk']) || (int) ($json['morning_walk'] ?? 0) === 1 ? 1 : 0,
         'journaling' => !empty($habitPayload['journaling']) || (int) ($json['journaling'] ?? 0) === 1 ? 1 : 0,
         'evening_chores' => !empty($habitPayload['evening_chores']) || (int) ($json['evening_chores'] ?? 0) === 1 ? 1 : 0,
@@ -187,6 +189,13 @@ if ($page === 'api_save_row') {
         );
         $settings = challenge_settings($pdo, $config);
         auto_complete_user_goals(
+            $pdo,
+            $userId,
+            (string) $settings['challenge_start'],
+            (string) $settings['challenge_end'],
+            (int) $currentUser['id']
+        );
+        auto_complete_team_goals_for_user(
             $pdo,
             $userId,
             (string) $settings['challenge_start'],
@@ -429,7 +438,9 @@ if ($page === 'entries') {
                     'weight' => ($_POST['weight'] ?? '') !== '' ? (float) $_POST['weight'] : null,
                     'notes' => trim((string) ($_POST['notes'] ?? '')),
                     'step_exception_reason' => '',
+                    'distance_exception_reason' => '',
                     'workout_exception_reason' => '',
+                    'resend_requests' => 0,
                     'morning_walk' => (int) ($habitValues['morning_walk'] ?? 0) === 1 ? 1 : 0,
                     'journaling' => (int) ($habitValues['journaling'] ?? 0) === 1 ? 1 : 0,
                     'evening_chores' => (int) ($habitValues['evening_chores'] ?? 0) === 1 ? 1 : 0,
@@ -442,6 +453,9 @@ if ($page === 'entries') {
                 if ($missingReason !== '') {
                     if (!empty($goalFailures['steps'])) {
                         $payload['step_exception_reason'] = $missingReason;
+                    }
+                    if (!empty($goalFailures['missing_km'])) {
+                        $payload['distance_exception_reason'] = $missingReason;
                     }
                     if (!empty($goalFailures['workout'])) {
                         $payload['workout_exception_reason'] = $missingReason;
@@ -462,6 +476,13 @@ if ($page === 'entries') {
                 );
                 $settings = challenge_settings($pdo, $config);
                 auto_complete_user_goals(
+                    $pdo,
+                    $userId,
+                    (string) $settings['challenge_start'],
+                    (string) $settings['challenge_end'],
+                    (int) $currentUser['id']
+                );
+                auto_complete_team_goals_for_user(
                     $pdo,
                     $userId,
                     (string) $settings['challenge_start'],
@@ -769,6 +790,7 @@ if ($page === 'table' || $page === 'week_editor') {
     foreach ($logs as $log) {
         $logsByDate[$log['log_date']] = $log;
     }
+    $approvalRequestsByDate = fetch_approval_requests_by_user_between($pdo, $selectedUserId, $weekStart, $weekEnd);
 
     $settings = challenge_settings($pdo, $config);
     if (!challenge_is_active($settings)) {
@@ -788,6 +810,7 @@ if ($page === 'table' || $page === 'week_editor') {
         'weekEnd' => $weekEnd,
         'weekDates' => $weekDates,
         'logsByDate' => $logsByDate,
+        'approvalRequestsByDate' => $approvalRequestsByDate,
         'selectedMetric' => array_values($metrics)[0] ?? null,
         'workoutTypes' => list_workout_types($pdo, true),
         'habits' => list_habit_definitions($pdo, true),
@@ -1964,6 +1987,15 @@ if ($page === 'team') {
 
         $userTeamsForPost = list_user_teams($pdo, (int) $currentUser['id']);
         $team = $userTeamsForPost !== [] ? $userTeamsForPost[0] : default_team($pdo);
+        $requestedTeamId = (int) ($_POST['team_id'] ?? ($_GET['team_id'] ?? 0));
+        if ($requestedTeamId > 0) {
+            foreach ($userTeamsForPost as $candidateTeam) {
+                if ((int) ($candidateTeam['id'] ?? 0) === $requestedTeamId) {
+                    $team = $candidateTeam;
+                    break;
+                }
+            }
+        }
 
         if ($action === 'team_membership') {
             require_admin($currentUser);
@@ -1981,26 +2013,77 @@ if ($page === 'team') {
         if ($action === 'create_goal') {
             $title = trim((string) ($_POST['title'] ?? ''));
             if ($title !== '') {
+                $goalType = normalize_goal_target_type((string) ($_POST['target_type'] ?? 'custom'));
+                $targetValue = ($_POST['target_value'] ?? '') !== '' ? (float) $_POST['target_value'] : null;
+                $rewardEnabled = bool_from_form('reward_enabled');
+                $rewardTextRaw = trim((string) ($_POST['reward_text'] ?? ''));
+                $rewardText = $rewardEnabled && $rewardTextRaw !== '' ? substr($rewardTextRaw, 0, 120) : null;
+                $customUnit = trim((string) ($_POST['custom_unit'] ?? ''));
+                $unitLabel = $goalType === 'custom'
+                    ? ($customUnit !== '' ? substr($customUnit, 0, 24) : null)
+                    : goal_target_default_unit($goalType);
+
+                $settingsForGoal = challenge_settings($pdo, $config);
+                $teamUsersForGoal = list_active_team_users($pdo, (int) $team['id']);
+                $metricsForGoal = compute_challenge_metrics(
+                    $pdo,
+                    $teamUsersForGoal,
+                    (string) $settingsForGoal['challenge_start'],
+                    (string) $settingsForGoal['challenge_end']
+                );
+                $teamRowsForGoal = team_rows_for_view(array_values($metricsForGoal), 'total');
+                $teamSummaryForGoal = team_summary_from_rows($teamRowsForGoal);
+                $teamCaloriesForGoal = resolve_team_calories_summary(
+                    $pdo,
+                    (int) $team['id'],
+                    (string) $settingsForGoal['challenge_start'],
+                    (string) $settingsForGoal['challenge_end']
+                );
+                $teamSummaryForGoal['calories_burned'] = (float) ($teamCaloriesForGoal['burned'] ?? 0);
+                $teamSummaryForGoal['calories_consumed'] = (float) ($teamCaloriesForGoal['consumed'] ?? 0);
+                $baselineValue = goal_team_metric_value(['target_type' => $goalType], $teamSummaryForGoal);
+
                 create_goal($pdo, [
                     'scope' => 'team',
                     'team_id' => (int) $team['id'],
                     'user_id' => null,
                     'title' => $title,
-                    'target_type' => normalize_goal_target_type((string) ($_POST['target_type'] ?? 'custom')),
-                    'target_value' => ($_POST['target_value'] ?? '') !== '' ? (float) $_POST['target_value'] : null,
+                    'target_type' => $goalType,
+                    'target_value' => $targetValue,
+                    'baseline_value' => $baselineValue,
                     'current_value' => 0,
+                    'unit_label' => $unitLabel,
+                    'reward_text' => $rewardText,
                     'due_date' => ($_POST['due_date'] ?? '') !== '' ? to_date((string) $_POST['due_date']) : null,
                 ], (int) $currentUser['id']);
+
+                auto_complete_team_goals_for_team(
+                    $pdo,
+                    (int) $team['id'],
+                    (string) $settingsForGoal['challenge_start'],
+                    (string) $settingsForGoal['challenge_end'],
+                    (int) $currentUser['id']
+                );
                 flash_set('success', t('flash.goal_created'));
             }
             redirect('/?page=team');
         }
 
         if ($action === 'update_goal') {
+            $goalType = normalize_goal_target_type((string) ($_POST['target_type'] ?? 'custom'));
+            $rewardEnabled = bool_from_form('reward_enabled');
+            $rewardTextRaw = trim((string) ($_POST['reward_text'] ?? ''));
+            $rewardText = $rewardEnabled && $rewardTextRaw !== '' ? substr($rewardTextRaw, 0, 120) : null;
+            $customUnit = trim((string) ($_POST['custom_unit'] ?? ''));
+            $unitLabel = $goalType === 'custom'
+                ? ($customUnit !== '' ? substr($customUnit, 0, 24) : null)
+                : goal_target_default_unit($goalType);
             update_goal($pdo, (int) ($_POST['goal_id'] ?? 0), [
                 'title' => trim((string) ($_POST['title'] ?? '')),
-                'target_type' => normalize_goal_target_type((string) ($_POST['target_type'] ?? 'custom')),
+                'target_type' => $goalType,
                 'target_value' => ($_POST['target_value'] ?? '') !== '' ? (float) $_POST['target_value'] : null,
+                'unit_label' => $unitLabel,
+                'reward_text' => $rewardText,
                 'due_date' => ($_POST['due_date'] ?? '') !== '' ? to_date((string) $_POST['due_date']) : null,
             ], (int) $currentUser['id']);
             flash_set('success', t('flash.goal_updated'));
@@ -2050,6 +2133,19 @@ if ($page === 'team') {
             }
             redirect('/?page=team');
         }
+
+        if ($action === 'mark_notification_read') {
+            $notificationId = (int) ($_POST['notification_id'] ?? 0);
+            mark_user_notification_read($pdo, $notificationId, (int) $currentUser['id']);
+            $redirectParams = [
+                'page' => 'team',
+                'team_id' => (int) $team['id'],
+            ];
+            if (!empty($_POST['redirect_view'])) {
+                $redirectParams['view'] = (string) $_POST['redirect_view'];
+            }
+            redirect('/?' . http_build_query($redirectParams));
+        }
     }
 
     $userTeams = list_user_teams($pdo, (int) $currentUser['id']);
@@ -2089,7 +2185,19 @@ if ($page === 'team') {
     );
     evaluate_automatic_achievements($pdo, $metricsByUser, (int) $team['id']);
     $metricsOrdered = array_values($metricsByUser);
-    $teamSummary = team_summary_from_metrics($metricsOrdered);
+    $teamSummaryTotalRows = team_rows_for_view($metricsOrdered, 'total');
+    $teamSummaryTotal = team_summary_from_rows($teamSummaryTotalRows);
+    $teamCaloriesTotal = resolve_team_calories_summary(
+        $pdo,
+        (int) $team['id'],
+        (string) $settings['challenge_start'],
+        (string) $settings['challenge_end']
+    );
+    $teamSummaryTotal['calories_burned'] = (float) ($teamCaloriesTotal['burned'] ?? 0);
+    $teamSummaryTotal['calories_consumed'] = (float) ($teamCaloriesTotal['consumed'] ?? 0);
+    auto_complete_team_goals($pdo, (int) $team['id'], $teamSummaryTotal, (int) $currentUser['id']);
+    $teamNotifications = user_notifications($pdo, (int) $currentUser['id'], 20, false);
+    $teamSummary = $teamSummaryTotal;
 
     $weekOptionsMap = [];
     foreach ($metricsOrdered as $metric) {
@@ -2103,14 +2211,27 @@ if ($page === 'team') {
     $weekOptions = array_keys($weekOptionsMap);
     sort($weekOptions);
     $defaultWeekStart = $weekOptions !== [] ? $weekOptions[count($weekOptions) - 1] : to_date(null);
+    $normalizeTeamWeekView = static function (string $rawView, string $fallback): string {
+        $normalizedDate = to_date($rawView, $fallback);
+        try {
+            return week_start_for(new DateTimeImmutable($normalizedDate))->format('Y-m-d');
+        } catch (Throwable) {
+            return $fallback;
+        }
+    };
     $teamView = (string) ($_GET['view'] ?? 'current_week');
     if (!in_array($teamView, ['current_week', 'total'], true)) {
-        $teamView = to_date($teamView, $defaultWeekStart);
+        $teamView = $normalizeTeamWeekView($teamView, $defaultWeekStart);
     }
-    $selectedWeekStart = $teamView === 'current_week' ? $defaultWeekStart : ($teamView === 'total' ? $defaultWeekStart : to_date($teamView, $defaultWeekStart));
+    $selectedWeekStart = $teamView === 'current_week'
+        ? $defaultWeekStart
+        : ($teamView === 'total' ? $defaultWeekStart : $normalizeTeamWeekView($teamView, $defaultWeekStart));
     if (!in_array($selectedWeekStart, $weekOptions, true) && $weekOptions !== []) {
         $selectedWeekStart = $defaultWeekStart;
     }
+    $effectiveTeamView = $teamView === 'total' ? 'total' : $selectedWeekStart;
+    $teamComparisonRows = team_rows_for_view($metricsOrdered, $effectiveTeamView);
+    $teamSummary = team_summary_from_rows($teamComparisonRows);
 
     $challengeStart = new DateTimeImmutable((string) $settings['challenge_start']);
     $challengeConfiguredEnd = new DateTimeImmutable((string) $settings['challenge_end']);
@@ -2125,38 +2246,24 @@ if ($page === 'team') {
         $dailyTotals[$day->format('Y-m-d')] = ['steps' => 0, 'distance' => 0.0, 'workouts' => 0];
     }
 
-    if ($teamUsers !== []) {
-        $ids = array_values(array_unique(array_map(static fn(array $user): int => (int) $user['id'], $teamUsers)));
-        $in = [];
-        $params = [':start' => $challengeStart->format('Y-m-d'), ':end' => $challengeEnd->format('Y-m-d')];
-        foreach ($ids as $idx => $id) {
-            $key = ':uid' . $idx;
-            $in[] = $key;
-            $params[$key] = $id;
-        }
-        $dailyRows = db_fetch_all(
-            $pdo,
-            'SELECT log_date,
-                    SUM(steps) AS steps,
-                    SUM(COALESCE(distance_km, 0)) AS distance_km,
-                    SUM(CASE WHEN workout_done = 1 THEN 1 ELSE 0 END) AS workouts
-             FROM daily_logs
-             WHERE log_date BETWEEN :start AND :end
-               AND user_id IN (' . implode(',', $in) . ')
-             GROUP BY log_date
-             ORDER BY log_date ASC',
-            $params
-        );
-        foreach ($dailyRows as $row) {
-            $date = (string) ($row['log_date'] ?? '');
-            if (!isset($dailyTotals[$date])) {
+    foreach ($metricsOrdered as $metric) {
+        $workoutsByDate = [];
+        foreach ((array) ($metric['workout_series'] ?? []) as $workoutPoint) {
+            $date = (string) ($workoutPoint['date'] ?? '');
+            if ($date === '') {
                 continue;
             }
-            $dailyTotals[$date] = [
-                'steps' => (int) ($row['steps'] ?? 0),
-                'distance' => (float) ($row['distance_km'] ?? 0),
-                'workouts' => (int) ($row['workouts'] ?? 0),
-            ];
+            $workoutsByDate[$date] = max(0, (int) ($workoutPoint['workouts'] ?? 0));
+        }
+
+        foreach ((array) ($metric['steps_series'] ?? []) as $seriesPoint) {
+            $date = (string) ($seriesPoint['date'] ?? '');
+            if ($date === '' || !isset($dailyTotals[$date])) {
+                continue;
+            }
+            $dailyTotals[$date]['steps'] += max(0, (int) ($seriesPoint['steps'] ?? 0));
+            $dailyTotals[$date]['distance'] += max(0.0, (float) ($seriesPoint['km'] ?? 0));
+            $dailyTotals[$date]['workouts'] += $workoutsByDate[$date] ?? 0;
         }
     }
 
@@ -2240,26 +2347,6 @@ if ($page === 'team') {
         $teamWeeklyPenalties[] = (int) ($row['penalties'] ?? 0);
     }
 
-    $teamComparisonRows = array_map(
-        static function (array $metric): array {
-            return [
-                'user_id' => (int) ($metric['user']['id'] ?? 0),
-                'display_name' => (string) ($metric['user']['display_name'] ?? ''),
-                'username' => (string) ($metric['user']['username'] ?? ''),
-                'avatar_path' => (string) ($metric['user']['avatar_path'] ?? ''),
-                'updated_at' => (string) ($metric['user']['updated_at'] ?? ''),
-                'score' => (float) ($metric['score'] ?? 0),
-                'steps' => (int) ($metric['total_steps'] ?? 0),
-                'distance' => (float) ($metric['total_km'] ?? 0),
-                'workouts' => (int) ($metric['workout_success'] ?? 0),
-                'strikes' => (int) ($metric['current_strikes'] ?? 0),
-                'penalties' => (int) ($metric['total_penalty'] ?? 0),
-                'warnings' => (int) ($metric['skip_warning_events'] ?? 0),
-            ];
-        },
-        $metricsOrdered
-    );
-
     $formatTeamMetricValue = static function (string $metricKey, float|int $value): string {
         return match ($metricKey) {
             'distance' => number_format((float) $value, 2) . ' km',
@@ -2339,18 +2426,18 @@ if ($page === 'team') {
         }
 
         $comparisonRows = [];
-        foreach ($metricsOrdered as $metric) {
+        foreach ($teamComparisonRows as $row) {
             $value = match ($teamMetricKey) {
-                'distance' => (float) ($metric['total_km'] ?? 0),
-                'workouts' => (float) ($metric['workout_success'] ?? 0),
-                'score' => (float) ($metric['score'] ?? 0),
-                'strikes' => (float) ($metric['current_strikes'] ?? 0),
-                'penalty' => (float) ($metric['total_penalty'] ?? 0),
-                default => (float) ($metric['total_steps'] ?? 0),
+                'distance' => (float) ($row['distance'] ?? 0),
+                'workouts' => (float) ($row['workouts'] ?? 0),
+                'score' => (float) ($row['score'] ?? 0),
+                'strikes' => (float) ($row['strikes'] ?? 0),
+                'penalty' => (float) ($row['penalties'] ?? 0),
+                default => (float) ($row['steps'] ?? 0),
             };
             $comparisonRows[] = [
-                'user_id' => (int) ($metric['user']['id'] ?? 0),
-                'display_name' => (string) ($metric['user']['display_name'] ?? ''),
+                'user_id' => (int) ($row['user_id'] ?? 0),
+                'display_name' => (string) ($row['display_name'] ?? ''),
                 'value' => $value,
                 'value_display' => $formatTeamMetricValue($teamMetricKey, $value),
             ];
@@ -2435,10 +2522,7 @@ if ($page === 'team') {
         $memberPenaltyWeekly = [];
         foreach ($memberWeeklyRows as $weeklyRow) {
             $memberWeeklyLabels[] = format_date_eu((string) ($weeklyRow['week_start'] ?? ''));
-            $memberWorkoutWeekly[] = max(
-                0,
-                (int) ($memberMetric['workout_target'] ?? 0) - (int) ($weeklyRow['workout_failures'] ?? 0)
-            );
+            $memberWorkoutWeekly[] = max(0, (int) ($weeklyRow['workouts'] ?? 0));
             $memberScoreWeekly[] = round(max(
                 0.0,
                 100 - (
@@ -2473,6 +2557,70 @@ if ($page === 'team') {
         ];
     }
 
+    $goalTypeLabel = static function (string $targetType): string {
+        return match (normalize_goal_target_type($targetType)) {
+            'steps' => t('metric.steps'),
+            'km' => t('metric.distance_km'),
+            'workouts' => t('metric.workouts'),
+            'score' => t('metric.score'),
+            'calories_burned' => t('dashboard.calories_burned'),
+            'calories_consumed' => t('dashboard.calories_consumed'),
+            'penalties' => t('metric.penalty'),
+            'strikes' => t('metric.strikes'),
+            'weight' => t('metric.weight'),
+            default => t('common.other'),
+        };
+    };
+    $formatGoalValue = static function (float $value, string $targetType, ?string $unitLabel = null): string {
+        $normalizedType = normalize_goal_target_type($targetType);
+        $unit = trim((string) $unitLabel);
+        if ($unit === '') {
+            $unit = goal_target_default_unit($normalizedType);
+        }
+        $rounded = match ($normalizedType) {
+            'steps', 'workouts', 'strikes', 'calories_burned', 'calories_consumed' => (string) ((int) round($value)),
+            'score', 'weight' => number_format($value, 1, '.', ''),
+            'km' => number_format($value, 2, '.', ''),
+            'penalties' => number_format($value, 2, '.', ''),
+            default => fmod($value, 1.0) === 0.0 ? (string) ((int) $value) : number_format($value, 2, '.', ''),
+        };
+        if ($normalizedType === 'penalties') {
+            return '€' . $rounded;
+        }
+
+        return $unit !== '' ? $rounded . ' ' . $unit : $rounded;
+    };
+    $teamGoalsRaw = list_goals($pdo, 'team', null, (int) $team['id']);
+    $teamGoals = [];
+    foreach ($teamGoalsRaw as $goal) {
+        $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
+        $unitLabel = trim((string) ($goal['unit_label'] ?? ''));
+        if ($unitLabel === '') {
+            $unitLabel = goal_target_default_unit($type);
+        }
+        $currentMetricValue = goal_team_metric_value($goal, $teamSummaryTotal);
+        $progressValue = goal_progress_from_baseline($goal, $currentMetricValue);
+        $targetValue = max(0.0, (float) ($goal['target_value'] ?? 0));
+        if ((string) ($goal['status'] ?? '') === 'complete' && $targetValue > 0 && $progressValue < $targetValue) {
+            $progressValue = $targetValue;
+        }
+        $baselineValue = is_numeric($goal['baseline_value'] ?? null)
+            ? (float) $goal['baseline_value']
+            : $currentMetricValue;
+        $teamGoals[] = array_merge($goal, [
+            'target_type_normalized' => $type,
+            'target_type_label' => $goalTypeLabel($type),
+            'unit_label_resolved' => $unitLabel,
+            'is_lower_better' => goal_target_type_is_lower_better($type),
+            'direction_label' => goal_target_type_is_lower_better($type) ? t('goals.lower_better') : t('goals.higher_better'),
+            'progress_value' => $progressValue,
+            'progress_pct' => $targetValue > 0 ? min(100.0, round(($progressValue / $targetValue) * 100, 1)) : 0.0,
+            'progress_display' => $formatGoalValue($progressValue, $type, $unitLabel),
+            'target_display' => $formatGoalValue($targetValue, $type, $unitLabel),
+            'baseline_display' => $formatGoalValue($baselineValue, $type, $unitLabel),
+        ]);
+    }
+
     render_view('team', [
         'title' => t('team.title'),
         'currentPage' => 'team',
@@ -2497,7 +2645,8 @@ if ($page === 'team') {
         'teamMetricDetail' => $teamMetricDetail,
         'teamSection' => $teamSection,
         'teamMemberDetail' => $teamMemberDetail,
-        'teamGoals' => list_goals($pdo, 'team', null, (int) $team['id']),
+        'teamGoals' => $teamGoals,
+        'teamNotifications' => $teamNotifications,
         'teamAchievements' => list_awarded_achievements($pdo, null, (int) $team['id']),
         'canDeleteAchievements' => can_manage_team($pdo, $currentUser, (int) $team['id']),
         'canManageTeam' => can_manage_team($pdo, $currentUser, (int) $team['id']),
@@ -2573,15 +2722,23 @@ if ($page === 'metric') {
     $weekOptions = array_keys($weekOptionsMap);
     sort($weekOptions);
     $defaultWeekStart = $weekOptions !== [] ? $weekOptions[count($weekOptions) - 1] : to_date(null);
+    $normalizeDashboardWeekView = static function (string $rawView, string $fallback): string {
+        $normalizedDate = to_date($rawView, $fallback);
+        try {
+            return week_start_for(new DateTimeImmutable($normalizedDate))->format('Y-m-d');
+        } catch (Throwable) {
+            return $fallback;
+        }
+    };
     $dashboardView = (string) ($_GET['view'] ?? ($currentUser['dashboard_view'] ?? 'current_week'));
     if (!in_array($dashboardView, ['current_week', 'total'], true)) {
-        $dashboardView = to_date($dashboardView, $defaultWeekStart);
+        $dashboardView = $normalizeDashboardWeekView($dashboardView, $defaultWeekStart);
     }
     $selectedWeekStart = $defaultWeekStart;
     if ($dashboardView !== 'total') {
         $selectedWeekStart = $dashboardView === 'current_week'
             ? $defaultWeekStart
-            : to_date($dashboardView, $defaultWeekStart);
+            : $normalizeDashboardWeekView($dashboardView, $defaultWeekStart);
         if (!in_array($selectedWeekStart, $weekOptions, true) && $weekOptions !== []) {
             $selectedWeekStart = $defaultWeekStart;
         }
@@ -2754,17 +2911,25 @@ if ($page === 'penalties') {
     $weekOptions = array_keys($weekOptionsMap);
     sort($weekOptions);
     $defaultWeekStart = $weekOptions !== [] ? $weekOptions[count($weekOptions) - 1] : to_date(null);
+    $normalizeDashboardWeekView = static function (string $rawView, string $fallback): string {
+        $normalizedDate = to_date($rawView, $fallback);
+        try {
+            return week_start_for(new DateTimeImmutable($normalizedDate))->format('Y-m-d');
+        } catch (Throwable) {
+            return $fallback;
+        }
+    };
 
     $dashboardView = (string) ($_GET['view'] ?? ($currentUser['dashboard_view'] ?? 'current_week'));
     if (!in_array($dashboardView, ['current_week', 'total'], true)) {
-        $dashboardView = to_date($dashboardView, $defaultWeekStart);
+        $dashboardView = $normalizeDashboardWeekView($dashboardView, $defaultWeekStart);
     }
 
     $selectedWeekStart = $defaultWeekStart;
     if ($dashboardView !== 'total') {
         $selectedWeekStart = $dashboardView === 'current_week'
             ? $defaultWeekStart
-            : to_date($dashboardView, $defaultWeekStart);
+            : $normalizeDashboardWeekView($dashboardView, $defaultWeekStart);
         if (!in_array($selectedWeekStart, $weekOptions, true) && $weekOptions !== []) {
             $selectedWeekStart = $defaultWeekStart;
         }
@@ -2957,15 +3122,32 @@ if ($page === 'dashboard') {
 
     $weekOptions = week_starts_from_metrics($selectedMetric);
     $defaultWeekStart = $weekOptions !== [] ? $weekOptions[count($weekOptions) - 1] : to_date(null);
+    $normalizeDashboardWeekView = static function (string $rawView, string $fallback): string {
+        $normalizedDate = to_date($rawView, $fallback);
+        try {
+            return week_start_for(new DateTimeImmutable($normalizedDate))->format('Y-m-d');
+        } catch (Throwable) {
+            return $fallback;
+        }
+    };
     $dashboardView = (string) ($_GET['view'] ?? ($currentUser['dashboard_view'] ?? 'current_week'));
     if (!in_array($dashboardView, ['current_week', 'total'], true)) {
-        $dashboardView = to_date($dashboardView, $defaultWeekStart);
+        $dashboardView = $normalizeDashboardWeekView($dashboardView, $defaultWeekStart);
     }
-    $selectedWeekStart = $dashboardView === 'current_week' ? $defaultWeekStart : ($dashboardView === 'total' ? $defaultWeekStart : to_date($dashboardView, $defaultWeekStart));
+    $selectedWeekStart = $dashboardView === 'current_week'
+        ? $defaultWeekStart
+        : ($dashboardView === 'total' ? $defaultWeekStart : $normalizeDashboardWeekView($dashboardView, $defaultWeekStart));
 
     if (!in_array($selectedWeekStart, $weekOptions, true) && $weekOptions !== []) {
         $selectedWeekStart = $defaultWeekStart;
     }
+    $dashboardMetricView = $dashboardView === 'total' ? 'total' : $selectedWeekStart;
+    $selectedMetricSnapshot = metric_snapshot_for_view($selectedMetric, $dashboardMetricView);
+    $snapshotWorkoutTarget = max(0, (int) ($selectedMetricSnapshot['workout_target'] ?? 0));
+    $snapshotWorkoutSuccess = max(0, (int) ($selectedMetricSnapshot['workouts'] ?? 0));
+    $selectedMetricSnapshot['workout_completion_pct'] = $snapshotWorkoutTarget > 0
+        ? round(($snapshotWorkoutSuccess / $snapshotWorkoutTarget) * 100, 1)
+        : 0.0;
 
     $compareMetric = null;
     foreach ($metricsByUser as $metric) {
@@ -3044,6 +3226,7 @@ if ($page === 'dashboard') {
         'settings' => $settings,
         'users' => $users,
         'selectedMetric' => $selectedMetric,
+        'selectedMetricSnapshot' => $selectedMetricSnapshot,
         'compareMetric' => $compareMetric,
         'metricsOrdered' => array_values($metricsByUser),
         'selectedWeekStart' => $selectedWeekStart,
