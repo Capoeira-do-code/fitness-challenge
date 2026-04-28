@@ -2755,6 +2755,11 @@ textarea {
     min-width: 220px;
 }
 
+.strike-review-form textarea {
+    min-height: 110px;
+    resize: vertical;
+}
+
 .strike-review-vote .btn {
     min-width: 88px;
 }

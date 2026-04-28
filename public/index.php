@@ -3073,7 +3073,7 @@ if ($page === 'strikes_detail') {
 
         if ($action === 'create_strike_review_request') {
             $targetUserId = (int) ($_POST['target_user_id'] ?? 0);
-            if (!is_admin($currentUser) && $targetUserId !== (int) $currentUser['id']) {
+            if ($targetUserId !== (int) $currentUser['id']) {
                 flash_set('error', t('flash.no_permission'));
                 redirect('/?' . http_build_query($redirectQuery));
             }
@@ -3085,19 +3085,6 @@ if ($page === 'strikes_detail') {
                 (string) ($_POST['reason'] ?? 'step_miss'),
                 (string) ($_POST['request_comment'] ?? ''),
                 (int) $currentUser['id']
-            );
-            flash_set(!empty($result['ok']) ? 'success' : 'error', (string) ($result['message'] ?? t('flash.save_failed')));
-            redirect('/?' . http_build_query($redirectQuery));
-        }
-
-        if ($action === 'resend_strike_review_request') {
-            $requestId = (int) ($_POST['request_id'] ?? 0);
-            $result = resend_strike_review_request(
-                $pdo,
-                $requestId,
-                (string) ($_POST['request_comment'] ?? ''),
-                (int) $currentUser['id'],
-                is_admin($currentUser)
             );
             flash_set(!empty($result['ok']) ? 'success' : 'error', (string) ($result['message'] ?? t('flash.save_failed')));
             redirect('/?' . http_build_query($redirectQuery));

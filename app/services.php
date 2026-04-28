@@ -4254,6 +4254,9 @@ function create_strike_review_request(
     if ($targetUserId <= 0 || $requesterUserId <= 0) {
         return ['ok' => false, 'message' => t('flash.no_permission')];
     }
+    if ($targetUserId !== $requesterUserId) {
+        return ['ok' => false, 'message' => t('strikes.request_only_owner')];
+    }
     $trimmedComment = trim($comment);
     if (function_exists('mb_substr')) {
         $trimmedComment = mb_substr($trimmedComment, 0, 1200);
@@ -4280,11 +4283,7 @@ function create_strike_review_request(
         $normalizedReason
     );
     if ($existing !== null) {
-        if ((string) ($existing['status'] ?? '') === 'pending') {
-            return ['ok' => false, 'message' => t('strikes.request_already_sent'), 'request' => $existing];
-        }
-
-        return ['ok' => false, 'message' => t('strikes.request_use_resend'), 'request' => $existing];
+        return ['ok' => false, 'message' => t('strikes.request_already_exists'), 'request' => $existing];
     }
 
     $eligibleVoters = build_strike_review_eligible_voters($pdo, $requesterUserId);

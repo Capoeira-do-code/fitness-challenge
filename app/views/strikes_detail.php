@@ -12,6 +12,7 @@ $dashboardView = (string) ($dashboardView ?? 'current_week');
 $weekOptions = array_values((array) ($weekOptions ?? []));
 $backUrl = (string) ($backUrl ?? '/?page=dashboard');
 $currentUserId = (int) ($currentUser['id'] ?? 0);
+$canRequestForSelectedUser = $currentUserId === $selectedUserId;
 
 $statusClass = static function (string $status): string {
     return match ($status) {
@@ -79,15 +80,36 @@ $statusClass = static function (string $status): string {
                         <th><?= e(t('common.date')) ?></th>
                         <th><?= e(t('common.category')) ?></th>
                         <th><?= e(t('common.status')) ?></th>
+                        <th><?= e(t('photo.actions')) ?></th>
                     </tr>
                     </thead>
                     <tbody>
                     <?php foreach ($pendingVotes as $pending): ?>
+                        <?php
+                        $pendingRequestId = (int) ($pending['id'] ?? 0);
+                        $pendingRequestedBy = (int) ($pending['requested_by'] ?? 0);
+                        $canVotePending = $pendingRequestId > 0 && $pendingRequestedBy !== $currentUserId;
+                        ?>
                         <tr>
                             <td><?= e((string) ($pending['target_name'] ?? t('common.user'))) ?></td>
                             <td><?= e(format_date_eu((string) ($pending['event_date'] ?? ''))) ?></td>
                             <td><?= e(strike_review_reason_label((string) ($pending['reason'] ?? 'step_miss'))) ?></td>
                             <td><span class="badge badge-warn"><?= e(strike_review_status_label((string) ($pending['status'] ?? 'pending'))) ?></span></td>
+                            <td>
+                                <?php if ($canVotePending): ?>
+                                    <form method="post" action="/?page=strikes_detail" class="inline-actions strike-review-vote">
+                                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                        <input type="hidden" name="action" value="vote_strike_review_request">
+                                        <input type="hidden" name="request_id" value="<?= $pendingRequestId ?>">
+                                        <input type="hidden" name="redirect_user_id" value="<?= $selectedUserId ?>">
+                                        <input type="hidden" name="redirect_view" value="<?= e($dashboardView) ?>">
+                                        <button type="submit" class="btn btn-primary small" name="decision" value="accept"><?= e(t('common.approve')) ?></button>
+                                        <button type="submit" class="btn btn-ghost small" name="decision" value="reject"><?= e(t('common.reject')) ?></button>
+                                    </form>
+                                <?php else: ?>
+                                    <small class="muted">-</small>
+                                <?php endif; ?>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
@@ -119,8 +141,7 @@ $statusClass = static function (string $status): string {
                         <?php
                         $status = (string) ($row['status'] ?? 'confirmed');
                         $requestId = (int) ($row['request_id'] ?? 0);
-                        $eligibleVoters = array_values((array) ($row['eligible_voters'] ?? []));
-                        $canVote = $status === 'pending' && in_array($currentUserId, $eligibleVoters, true) && (int) ($row['requested_by'] ?? 0) !== $currentUserId;
+                        $canRequest = $requestId <= 0 && $canRequestForSelectedUser;
                         ?>
                         <tr>
                             <td><?= e(format_date_eu((string) ($row['event_date'] ?? ''))) ?></td>
@@ -135,45 +156,18 @@ $statusClass = static function (string $status): string {
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <?php if ($requestId <= 0): ?>
-                                    <form method="post" action="/?page=strikes_detail" class="stack strike-review-form">
-                                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                        <input type="hidden" name="action" value="create_strike_review_request">
-                                        <input type="hidden" name="target_user_id" value="<?= $selectedUserId ?>">
-                                        <input type="hidden" name="week_start" value="<?= e((string) ($row['week_start'] ?? '')) ?>">
-                                        <input type="hidden" name="event_date" value="<?= e((string) ($row['event_date'] ?? '')) ?>">
-                                        <input type="hidden" name="reason" value="<?= e((string) ($row['reason'] ?? 'step_miss')) ?>">
-                                        <input type="hidden" name="redirect_user_id" value="<?= $selectedUserId ?>">
-                                        <input type="hidden" name="redirect_view" value="<?= e($dashboardView) ?>">
-                                        <input type="text" name="request_comment" placeholder="<?= e(t('strikes.request_comment_placeholder')) ?>" required>
-                                        <button type="submit" class="btn btn-ghost small"><?= e(t('strikes.request_review')) ?></button>
-                                    </form>
+                                <?php if ($canRequest): ?>
+                                    <button
+                                        type="button"
+                                        class="btn btn-ghost small"
+                                        data-strike-review-open
+                                        data-target-user-id="<?= $selectedUserId ?>"
+                                        data-week-start="<?= e((string) ($row['week_start'] ?? '')) ?>"
+                                        data-event-date="<?= e((string) ($row['event_date'] ?? '')) ?>"
+                                        data-reason="<?= e((string) ($row['reason'] ?? 'step_miss')) ?>"
+                                    ><?= e(t('strikes.request_review')) ?></button>
                                 <?php else: ?>
-                                    <div class="stack">
-                                        <?php if ($status === 'pending'): ?>
-                                            <small class="muted"><?= e(t('strikes.request_sent')) ?></small>
-                                        <?php endif; ?>
-                                        <form method="post" action="/?page=strikes_detail" class="stack strike-review-form">
-                                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                            <input type="hidden" name="action" value="resend_strike_review_request">
-                                            <input type="hidden" name="request_id" value="<?= $requestId ?>">
-                                            <input type="hidden" name="redirect_user_id" value="<?= $selectedUserId ?>">
-                                            <input type="hidden" name="redirect_view" value="<?= e($dashboardView) ?>">
-                                            <input type="text" name="request_comment" placeholder="<?= e(t('strikes.request_comment_placeholder')) ?>" required>
-                                            <button type="submit" class="btn btn-ghost small"><?= e(t('strikes.resend_request')) ?></button>
-                                        </form>
-                                        <?php if ($canVote): ?>
-                                            <form method="post" action="/?page=strikes_detail" class="inline-actions strike-review-vote">
-                                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                                <input type="hidden" name="action" value="vote_strike_review_request">
-                                                <input type="hidden" name="request_id" value="<?= $requestId ?>">
-                                                <input type="hidden" name="redirect_user_id" value="<?= $selectedUserId ?>">
-                                                <input type="hidden" name="redirect_view" value="<?= e($dashboardView) ?>">
-                                                <button type="submit" class="btn btn-primary small" name="decision" value="accept"><?= e(t('common.approve')) ?></button>
-                                                <button type="submit" class="btn btn-ghost small" name="decision" value="reject"><?= e(t('common.reject')) ?></button>
-                                            </form>
-                                        <?php endif; ?>
-                                    </div>
+                                    <small class="muted">-</small>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -184,3 +178,28 @@ $statusClass = static function (string $status): string {
         </article>
     <?php endif; ?>
 </section>
+
+<div class="confirm-modal" hidden aria-hidden="true" data-strike-review-modal>
+    <div class="confirm-modal-backdrop" data-strike-review-cancel></div>
+    <div class="confirm-modal-card" role="dialog" aria-modal="true" aria-labelledby="strike-review-title">
+        <h3 id="strike-review-title"><?= e(t('strikes.request_review')) ?></h3>
+        <form method="post" action="/?page=strikes_detail" class="stack strike-review-form" data-strike-review-form>
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="create_strike_review_request">
+            <input type="hidden" name="target_user_id" value="<?= $selectedUserId ?>" data-strike-review-target-user>
+            <input type="hidden" name="week_start" value="" data-strike-review-week-start>
+            <input type="hidden" name="event_date" value="" data-strike-review-event-date>
+            <input type="hidden" name="reason" value="" data-strike-review-reason>
+            <input type="hidden" name="redirect_user_id" value="<?= $selectedUserId ?>">
+            <input type="hidden" name="redirect_view" value="<?= e($dashboardView) ?>">
+            <label>
+                <?= e(t('common.notes')) ?>
+                <textarea name="request_comment" rows="4" maxlength="1200" placeholder="<?= e(t('strikes.request_comment_placeholder')) ?>" required data-strike-review-comment></textarea>
+            </label>
+            <div class="confirm-modal-actions">
+                <button type="button" class="btn btn-ghost" data-strike-review-cancel><?= e(t('common.cancel')) ?></button>
+                <button type="submit" class="btn btn-primary"><?= e(t('common.save')) ?></button>
+            </div>
+        </form>
+    </div>
+</div>

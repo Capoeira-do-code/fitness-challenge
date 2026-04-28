@@ -537,6 +537,96 @@
         });
     };
 
+    const initStrikeReviewModal = () => {
+        const modal = document.querySelector('[data-strike-review-modal]');
+        const triggers = document.querySelectorAll('[data-strike-review-open]');
+        if (!(modal instanceof HTMLElement) || triggers.length === 0) {
+            return;
+        }
+
+        const form = modal.querySelector('[data-strike-review-form]');
+        const targetUserInput = modal.querySelector('[data-strike-review-target-user]');
+        const weekStartInput = modal.querySelector('[data-strike-review-week-start]');
+        const eventDateInput = modal.querySelector('[data-strike-review-event-date]');
+        const reasonInput = modal.querySelector('[data-strike-review-reason]');
+        const commentInput = modal.querySelector('[data-strike-review-comment]');
+        const cancelButtons = modal.querySelectorAll('[data-strike-review-cancel]');
+        let opener = null;
+
+        if (!(form instanceof HTMLFormElement)) {
+            return;
+        }
+
+        const closeModal = () => {
+            if (weekStartInput instanceof HTMLInputElement) {
+                weekStartInput.value = '';
+            }
+            if (eventDateInput instanceof HTMLInputElement) {
+                eventDateInput.value = '';
+            }
+            if (reasonInput instanceof HTMLInputElement) {
+                reasonInput.value = '';
+            }
+            if (commentInput instanceof HTMLTextAreaElement) {
+                commentInput.value = '';
+            }
+            modal.hidden = true;
+            modal.setAttribute('aria-hidden', 'true');
+            modal.classList.remove('is-open');
+            if (opener instanceof HTMLElement) {
+                opener.focus();
+            }
+            opener = null;
+        };
+
+        const openModal = (trigger) => {
+            if (!(trigger instanceof HTMLElement)) {
+                return;
+            }
+            if (targetUserInput instanceof HTMLInputElement) {
+                targetUserInput.value = String(trigger.dataset.targetUserId || targetUserInput.value || '').trim();
+            }
+            if (weekStartInput instanceof HTMLInputElement) {
+                weekStartInput.value = String(trigger.dataset.weekStart || '').trim();
+            }
+            if (eventDateInput instanceof HTMLInputElement) {
+                eventDateInput.value = String(trigger.dataset.eventDate || '').trim();
+            }
+            if (reasonInput instanceof HTMLInputElement) {
+                reasonInput.value = String(trigger.dataset.reason || '').trim();
+            }
+            if (commentInput instanceof HTMLTextAreaElement) {
+                commentInput.value = '';
+            }
+            opener = trigger;
+            modal.hidden = false;
+            modal.setAttribute('aria-hidden', 'false');
+            modal.classList.add('is-open');
+            if (commentInput instanceof HTMLTextAreaElement) {
+                commentInput.focus();
+            }
+        };
+
+        triggers.forEach((trigger) => {
+            if (!(trigger instanceof HTMLButtonElement)) {
+                return;
+            }
+            trigger.addEventListener('click', () => {
+                openModal(trigger);
+            });
+        });
+
+        cancelButtons.forEach((button) => {
+            button.addEventListener('click', closeModal);
+        });
+
+        window.addEventListener('keydown', (event) => {
+            if (!modal.hidden && event.key === 'Escape') {
+                closeModal();
+            }
+        });
+    };
+
     const lightbox = document.getElementById('mealLightbox');
     if (lightbox) {
         let photos = [];
@@ -1615,6 +1705,7 @@
         safeInit(initAdminAchievementFields);
         safeInit(initAchievementDeleteModal);
         safeInit(initPhotoDeleteModal);
+        safeInit(initStrikeReviewModal);
         safeInit(initProfileGoalsSection);
         safeInit(initProfileConfigEditor);
         safeInit(initImageCroppers);
