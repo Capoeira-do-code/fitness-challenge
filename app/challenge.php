@@ -326,6 +326,9 @@ function compute_user_metrics(
         $weekHabitCounts = [];
         $weekWorkoutTarget = 0;
         $weekWorkoutSuccess = 0;
+        $weekStepRequired = 0;
+        $weekStepSuccess = 0;
+        $weekWarningEvents = [];
 
         foreach (day_sequence($weekStart, $effectiveEnd) as $day) {
             if ($day < $start || $day > $today) {
@@ -357,11 +360,16 @@ function compute_user_metrics(
                 $weekSkipStreak++;
                 if ($weekSkipStreak === 2) {
                     $weekSkipWarnings++;
+                    $weekWarningEvents[] = [
+                        'date' => $date,
+                        'reason' => 'warning',
+                    ];
                 }
             }
 
             if (mask_allows_day((string) $user['step_days_mask'], $date)) {
                 $stepsRequired++;
+                $weekStepRequired++;
 
                 $stepExceptionApproved = $stepReason !== '' && is_approval_approved($approvalsByDate, $date, APPROVAL_TYPE_STEP_EXCEPTION);
                 $distanceExceptionApproved = $hasKmPrimaryGoal
@@ -371,6 +379,7 @@ function compute_user_metrics(
 
                 if ($stepOk) {
                     $stepsSuccess++;
+                    $weekStepSuccess++;
                 } else {
                     $stepFailures++;
                     $weekStepFailures++;
@@ -431,11 +440,18 @@ function compute_user_metrics(
             }
         );
 
+        $failureEventsDetailed = [];
         foreach ($weekFailureEvents as $event) {
             $strikes++;
             $penalty = penalty_for_strike($strikes);
             $totalPenalty += $penalty;
             $weekPenalty += $penalty;
+            $failureEventsDetailed[] = [
+                'date' => (string) ($event['date'] ?? ''),
+                'reason' => (string) ($event['type'] ?? ''),
+                'strike_number' => $strikes,
+                'amount' => $penalty,
+            ];
         }
 
         if ($isComplete) {
@@ -462,12 +478,16 @@ function compute_user_metrics(
             'workouts' => $weekCountedWorkouts,
             'workout_target_week' => $weekWorkoutTarget,
             'workout_success_week' => $weekWorkoutSuccess,
+            'step_days_required_week' => $weekStepRequired,
+            'step_days_success_week' => $weekStepSuccess,
             'habit_counts' => $weekHabitCounts,
             'total_failures' => count($weekFailureEvents),
             'skip_warnings' => $weekSkipWarnings,
             'penalty' => $weekPenalty,
             'strike_reduction' => $weekReduction,
             'strikes_after_week' => $strikes,
+            'failure_events' => $failureEventsDetailed,
+            'warning_events' => $weekWarningEvents,
         ];
     }
 
@@ -488,21 +508,17 @@ function compute_user_metrics(
     }
 
     $disciplinePenalty = min(100, ($strikes * 10) + ($skipWarningEvents * 3));
-
-    $scoreComponents = [
-        'steps' => $stepCompletionPct * 0.4,
-        'workouts' => $workoutCompletionPct * 0.4,
-        'discipline' => max(0, 100 - $disciplinePenalty) * 0.2,
-    ];
-
-    if ($weightProgressPct !== null) {
-        $scoreComponents['weight'] = max(0, min(100, $weightProgressPct)) * 0.2;
-        $scoreComponents['steps'] = $stepCompletionPct * 0.3;
-        $scoreComponents['workouts'] = $workoutCompletionPct * 0.3;
-        $scoreComponents['discipline'] = max(0, 100 - $disciplinePenalty) * 0.2;
-    }
-
-    $score = round(array_sum($scoreComponents), 1);
+    $disciplineScore = max(0.0, 100.0 - $disciplinePenalty);
+    $scoreComponents = function_exists('score_components_from_progress')
+        ? score_components_from_progress($stepCompletionPct, $workoutCompletionPct, $disciplineScore, $weightProgressPct)
+        : [
+            'steps' => round($stepCompletionPct * 0.4, 2),
+            'workouts' => round($workoutCompletionPct * 0.4, 2),
+            'discipline' => round($disciplineScore * 0.2, 2),
+        ];
+    $score = function_exists('score_value_from_components')
+        ? score_value_from_components($scoreComponents)
+        : round(array_sum($scoreComponents), 1);
 
     return [
         'user' => $user,
@@ -534,6 +550,8 @@ function compute_user_metrics(
         'weight_progress_pct' => $weightProgressPct,
         'max_skip_streak' => $maxSkipStreak,
         'skip_warning_events' => $skipWarningEvents,
+        'discipline_score' => round($disciplineScore, 1),
+        'score_components' => $scoreComponents,
         'score' => $score,
     ];
 }

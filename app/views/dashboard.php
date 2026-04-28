@@ -124,6 +124,8 @@ $compareName = $compareMetric !== null ? (string) $compareMetric['user']['displa
 $compareTitle = t('dashboard.compare', ['name' => $compareName !== null ? 'vs ' . $compareName : '']);
 $comparisonHelpLabel = t('dashboard.comparison_help_label');
 $comparisonHelpText = t('dashboard.comparison_help_text');
+$viewSnapshot = is_array($selectedMetricSnapshot ?? null) ? (array) $selectedMetricSnapshot : [];
+$compareSnapshot = is_array($compareMetricSnapshot ?? null) ? (array) $compareMetricSnapshot : [];
 
 $compareBar = [
     'labels' => [t('metric.steps') . ' %', t('metric.workouts') . ' %', t('metric.score')],
@@ -131,9 +133,9 @@ $compareBar = [
         [
             'label' => (string) $selectedUser['display_name'],
             'data' => [
-                (float) $selectedMetric['step_completion_pct'],
-                (float) $selectedMetric['workout_completion_pct'],
-                (float) $selectedMetric['score'],
+                (float) ($viewSnapshot['step_completion_pct'] ?? $selectedMetric['step_completion_pct'] ?? 0),
+                (float) ($viewSnapshot['workout_completion_pct'] ?? $selectedMetric['workout_completion_pct'] ?? 0),
+                (float) ($viewSnapshot['score'] ?? $selectedMetric['score'] ?? 0),
             ],
         ],
     ],
@@ -142,9 +144,9 @@ if ($compareMetric !== null) {
     $compareBar['datasets'][] = [
         'label' => (string) $compareMetric['user']['display_name'],
         'data' => [
-            (float) $compareMetric['step_completion_pct'],
-            (float) $compareMetric['workout_completion_pct'],
-            (float) $compareMetric['score'],
+            (float) ($compareSnapshot['step_completion_pct'] ?? $compareMetric['step_completion_pct'] ?? 0),
+            (float) ($compareSnapshot['workout_completion_pct'] ?? $compareMetric['workout_completion_pct'] ?? 0),
+            (float) ($compareSnapshot['score'] ?? $compareMetric['score'] ?? 0),
         ],
     ];
 }
@@ -203,29 +205,39 @@ $calorieBurnMeta = $calorieBurnGoalTotal > 0
 $calorieConsumedMeta = $calorieConsumedMaxTotal > 0
     ? t('dashboard.calories_max') . ': ' . $formatCalories($calorieConsumedMaxTotal) . ' kcal'
     : t('dashboard.calories_goal_not_set');
-$viewSnapshot = is_array($selectedMetricSnapshot ?? null) ? (array) $selectedMetricSnapshot : [];
+$viewSteps = max(0, (int) ($viewSnapshot['steps'] ?? ($selectedMetric['total_steps'] ?? 0)));
+$viewDistance = round((float) ($viewSnapshot['distance_km'] ?? ($selectedMetric['total_km'] ?? 0)), 2);
 $viewWorkoutSuccess = max(0, (int) ($viewSnapshot['workouts'] ?? ($selectedMetric['workout_success'] ?? 0)));
 $viewWorkoutTarget = max(0, (int) ($viewSnapshot['workout_target'] ?? ($selectedMetric['workout_target'] ?? 0)));
+$viewStepCompletionPct = (float) ($viewSnapshot['step_completion_pct'] ?? ($selectedMetric['step_completion_pct'] ?? 0));
 $viewWorkoutCompletionPct = $viewWorkoutTarget > 0
     ? round(($viewWorkoutSuccess / $viewWorkoutTarget) * 100, 1)
     : (float) ($selectedMetric['workout_completion_pct'] ?? 0);
+$viewStrikes = max(0, (int) ($viewSnapshot['strikes'] ?? ($selectedMetric['current_strikes'] ?? 0)));
+$viewPenalty = max(0.0, (float) ($viewSnapshot['penalty'] ?? ($selectedMetric['total_penalty'] ?? 0)));
+$viewPenaltyLabel = '€' . number_format($viewPenalty, 2, '.', '');
+$comparisonDetailHref = '/?' . http_build_query([
+    'page' => 'comparison_detail',
+    'user_id' => (int) ($selectedUser['id'] ?? 0),
+    'view' => (string) ($dashboardView ?? 'current_week'),
+]);
 
 $kpis = [
     [
         'key' => 'steps',
         'label' => t('metric.steps'),
-        'value' => (string) ($selectedMetric['total_steps'] ?? 0),
-        'meta' => (string) ($selectedMetric['steps_success'] ?? 0) . ' / ' . (string) ($selectedMetric['steps_required'] ?? 0) . ' · ' . (string) ($selectedMetric['step_completion_pct'] ?? 0) . '%',
-        'ring' => (string) ($selectedMetric['step_completion_pct'] ?? 0) . '%',
-        'progress' => (float) $selectedMetric['step_completion_pct'],
+        'value' => (string) $viewSteps,
+        'meta' => number_format($viewStepCompletionPct, 1, '.', '') . '%',
+        'ring' => number_format($viewStepCompletionPct, 1, '.', '') . '%',
+        'progress' => $viewStepCompletionPct,
     ],
     [
         'key' => 'distance',
         'label' => t('metric.total_km'),
-        'value' => (string) ($selectedMetric['total_km'] ?? 0) . ' km',
+        'value' => number_format($viewDistance, 2, '.', '') . ' km',
         'meta' => t('metric.distance_km'),
-        'ring' => (string) ($selectedMetric['total_km'] ?? 0),
-        'progress' => min(100, (float) ($selectedMetric['total_km'] ?? 0)),
+        'ring' => number_format($viewDistance, 1, '.', ''),
+        'progress' => min(100, $viewDistance),
     ],
     [
         'key' => 'workouts',
@@ -236,20 +248,12 @@ $kpis = [
         'progress' => (float) $viewWorkoutCompletionPct,
     ],
     [
-        'key' => 'money',
-        'label' => t('metric.penalty'),
-        'value' => '€' . (string) ($selectedMetric['total_penalty'] ?? 0),
-        'meta' => t('metric.total_penalty'),
-        'ring' => '€' . (string) ($selectedMetric['total_penalty'] ?? 0),
-        'progress' => min(100, (float) ($selectedMetric['total_penalty'] ?? 0)),
-    ],
-    [
         'key' => 'strikes',
         'label' => t('metric.strikes'),
-        'value' => (string) $selectedMetric['current_strikes'],
-        'meta' => t('dashboard.accumulated_penalty', ['amount' => '€' . (string) $selectedMetric['total_penalty']]),
-        'ring' => '€' . (string) $selectedMetric['total_penalty'],
-        'progress' => max(0, 100 - ((int) $selectedMetric['current_strikes'] * 10)),
+        'value' => (string) $viewStrikes,
+        'meta' => t('dashboard.accumulated_penalty', ['amount' => $viewPenaltyLabel]),
+        'ring' => (string) $viewStrikes,
+        'progress' => max(0, 100 - ($viewStrikes * 10)),
     ],
 ];
 $metricQueryBase = [
@@ -257,12 +261,12 @@ $metricQueryBase = [
     'user_id' => (int) ($selectedUser['id'] ?? 0),
     'view' => (string) ($dashboardView ?? 'current_week'),
 ];
-$penaltiesQueryBase = [
-    'page' => 'penalties',
+$strikesQueryBase = [
+    'page' => 'strikes_detail',
     'user_id' => (int) ($selectedUser['id'] ?? 0),
     'view' => (string) ($dashboardView ?? 'current_week'),
 ];
-$penaltiesHref = '/?' . http_build_query($penaltiesQueryBase);
+$strikesHref = '/?' . http_build_query($strikesQueryBase);
 
 ob_start();
 ?>
@@ -327,8 +331,8 @@ $topbarControls = ob_get_clean();
             <?php foreach ($kpis as $kpi): ?>
                 <?php
                 $metricHref = '/?' . http_build_query($metricQueryBase + ['metric' => (string) $kpi['key']]);
-                if ((string) ($kpi['key'] ?? '') === 'money') {
-                    $metricHref = $penaltiesHref;
+                if ((string) ($kpi['key'] ?? '') === 'strikes') {
+                    $metricHref = $strikesHref;
                 }
                 ?>
                 <a class="metric-card metric-card-link" href="<?= e($metricHref) ?>" data-testid="metric-card-link-<?= e((string) $kpi['key']) ?>">
@@ -397,7 +401,13 @@ $topbarControls = ob_get_clean();
             <?php else: ?>
                 <canvas id="calorieChart" height="150"></canvas>
             <?php endif; ?>
-            <p class="muted small"><?= e(t('dashboard.calories_hint')) ?></p>
+            <div class="panel-head panel-head-help">
+                <span class="muted small"><?= e(t('dashboard.calories_hint_label')) ?></span>
+                <details class="metric-help-popover">
+                    <summary aria-label="<?= e(t('dashboard.calories_hint_label')) ?>" title="<?= e(t('dashboard.calories_hint_label')) ?>">?</summary>
+                    <div class="metric-help-popover-content"><?= e(t('dashboard.calories_hint')) ?></div>
+                </details>
+            </div>
         </article>
         <?php endif; ?>
 
@@ -499,7 +509,13 @@ $topbarControls = ob_get_clean();
                 <h2><?= e(trim($compareTitle)) ?></h2>
                 <details class="metric-help-popover">
                     <summary aria-label="<?= e($comparisonHelpLabel) ?>" title="<?= e($comparisonHelpLabel) ?>">?</summary>
-                    <div class="metric-help-popover-content"><?= e($comparisonHelpText) ?></div>
+                    <div class="metric-help-popover-content">
+                        <p><?= e($comparisonHelpText) ?></p>
+                        <p class="small">
+                            Score = (steps_weight x steps_progress) + (workouts_weight x workouts_progress) + (discipline_weight x discipline_score) + (weight_weight x weight_progress_if_available)
+                        </p>
+                        <a class="btn btn-ghost small btn-block" href="<?= e($comparisonDetailHref) ?>"><?= e(t('dashboard.view_full_breakdown')) ?></a>
+                    </div>
                 </details>
             </div>
             <canvas id="compareChart" height="170"></canvas>
@@ -512,8 +528,8 @@ $topbarControls = ob_get_clean();
             <div class="leaderboard-list">
                 <?php foreach ($metricsOrdered as $metric): ?>
                     <?php
-                    $rankingPenaltiesHref = '/?' . http_build_query([
-                        'page' => 'penalties',
+                    $rankingStrikesHref = '/?' . http_build_query([
+                        'page' => 'strikes_detail',
                         'user_id' => (int) ($metric['user']['id'] ?? 0),
                         'view' => (string) ($dashboardView ?? 'current_week'),
                     ]);
@@ -525,8 +541,9 @@ $topbarControls = ob_get_clean();
                         </div>
                         <div class="leaderboard-stats">
                             <span class="badge"><?= e(t('metric.score')) ?> <?= e((string) $metric['score']) ?></span>
-                            <span class="badge"><?= e(t('metric.strikes')) ?> <?= e((string) $metric['current_strikes']) ?></span>
-                            <a class="badge" href="<?= e($rankingPenaltiesHref) ?>">€<?= e((string) $metric['total_penalty']) ?></a>
+                            <a class="badge" href="<?= e($rankingStrikesHref) ?>">
+                                <?= e(t('metric.strikes')) ?> <?= e((string) $metric['current_strikes']) ?> · €<?= e(number_format((float) ($metric['total_penalty'] ?? 0), 2, '.', '')) ?>
+                            </a>
                         </div>
                     </article>
                 <?php endforeach; ?>
@@ -603,7 +620,7 @@ $topbarControls = ob_get_clean();
                         <th><?= e(t('metric.step_failures')) ?></th>
                         <th><?= e(t('metric.workout_failures')) ?></th>
                         <th><?= e(t('metric.warnings')) ?></th>
-                        <th><?= e(t('metric.penalty')) ?></th>
+                        <th><?= e(t('strikes.economic_impact')) ?></th>
                         <th><?= e(t('dashboard.strike_reduction')) ?></th>
                         <th><?= e(t('dashboard.strikes_after_week')) ?></th>
                     </tr>
@@ -611,19 +628,19 @@ $topbarControls = ob_get_clean();
                     <tbody>
                     <?php foreach ($selectedMetric['weekly'] as $week): ?>
                         <?php
-                        $weekPenaltiesHref = '/?' . http_build_query([
-                            'page' => 'penalties',
+                        $weekStrikesHref = '/?' . http_build_query([
+                            'page' => 'strikes_detail',
                             'user_id' => (int) ($selectedUser['id'] ?? 0),
                             'view' => (string) ($week['week_start'] ?? ''),
                         ]);
                         ?>
-                        <tr>
-                            <td><?= e(format_date_eu((string) $week['week_start'])) ?> -> <?= e(format_date_eu((string) $week['week_end'])) ?></td>
+                        <tr onclick="window.location='<?= e($weekStrikesHref) ?>'" style="cursor:pointer;">
+                            <td><a href="<?= e($weekStrikesHref) ?>"><?= e(format_date_eu((string) $week['week_start'])) ?> -> <?= e(format_date_eu((string) $week['week_end'])) ?></a></td>
                             <td><?= e(label_for_status((string) $week['status'])) ?></td>
                             <td><?= e((string) $week['step_failures']) ?></td>
                             <td><?= e((string) $week['workout_failures']) ?></td>
                             <td><?= e((string) ($week['skip_warnings'] ?? 0)) ?></td>
-                            <td><a href="<?= e($weekPenaltiesHref) ?>" class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) ($week['penalty'] ?? 0))) ?>">€<?= e((string) $week['penalty']) ?></a></td>
+                            <td><a href="<?= e($weekStrikesHref) ?>" class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) ($week['penalty'] ?? 0))) ?>">€<?= e(number_format((float) ($week['penalty'] ?? 0), 2, '.', '')) ?></a></td>
                             <td><?= (int) $week['strike_reduction'] > 0 ? '-1' : '-' ?></td>
                             <td><?= e((string) $week['strikes_after_week']) ?></td>
                         </tr>
@@ -637,9 +654,9 @@ $topbarControls = ob_get_clean();
         <article class="panel dashboard-panel dashboard-settlement dashboard-span-full" data-testid="settlement-panel" style="order: 9999">
             <div class="panel-head">
                 <div>
-                    <p class="eyebrow"><?= e(t('metric.penalty')) ?></p>
-                    <h2><?= e(t('dashboard.settlement_title')) ?></h2>
-                    <p class="muted small">Menor penalización es mejor.</p>
+                    <p class="eyebrow"><?= e(t('metric.strikes')) ?></p>
+                    <h2><?= e(t('dashboard.strikes_summary_title')) ?></h2>
+                    <p class="muted small"><?= e(t('strikes.lower_better_hint')) ?></p>
                 </div>
                 <?php if ($isTotalMoneyView): ?>
                     <span class="badge"><?= e(t('metric.total')) ?></span>
@@ -651,9 +668,9 @@ $topbarControls = ob_get_clean();
             </div>
             <p class="muted">
                 <?php if ($isTotalMoneyView): ?>
-                    <a href="<?= e($penaltiesHref) ?>" class="penalty-link-inline"><?= e(t('dashboard.accumulated_penalty', ['amount' => '€' . (string) ($selectedMetric['total_penalty'] ?? 0)])) ?></a>
+                    <a href="<?= e($strikesHref) ?>" class="penalty-link-inline"><?= e(t('dashboard.accumulated_penalty', ['amount' => '€' . number_format((float) ($selectedMetric['total_penalty'] ?? 0), 2, '.', '')])) ?></a>
                 <?php else: ?>
-                    <a href="<?= e($penaltiesHref) ?>" class="penalty-link-inline"><?= e(t('dashboard.settlement_hint', ['week' => format_date_eu((string) $selectedWeekStart), 'amount' => '€' . (string) ($settlementSummary['total_penalty'] ?? 0)])) ?></a>
+                    <a href="<?= e($strikesHref) ?>" class="penalty-link-inline"><?= e(t('dashboard.settlement_hint', ['week' => format_date_eu((string) $selectedWeekStart), 'amount' => '€' . number_format((float) ($settlementSummary['total_penalty'] ?? 0), 2, '.', '')])) ?></a>
                 <?php endif; ?>
             </p>
 
@@ -665,7 +682,7 @@ $topbarControls = ob_get_clean();
                         <th><?= e(t('common.user')) ?></th>
                         <th><?= e(t('metric.strikes')) ?></th>
                         <th><?= e(t('metric.skip_warnings')) ?></th>
-                        <th><?= e(t('metric.total_penalty')) ?></th>
+                        <th><?= e(t('strikes.economic_impact')) ?></th>
                         <th><?= e(t('metric.score')) ?></th>
                     </tr>
                     </thead>
@@ -673,17 +690,17 @@ $topbarControls = ob_get_clean();
                     <?php foreach ($metricsOrdered as $metric): ?>
                         <?php
                         $penaltyValue = (int) ($metric['total_penalty'] ?? 0);
-                        $metricPenaltiesHref = '/?' . http_build_query([
-                            'page' => 'penalties',
+                        $metricStrikesHref = '/?' . http_build_query([
+                            'page' => 'strikes_detail',
                             'user_id' => (int) ($metric['user']['id'] ?? 0),
                             'view' => (string) ($dashboardView ?? 'current_week'),
                         ]);
                         ?>
-                        <tr>
+                        <tr onclick="window.location='<?= e($metricStrikesHref) ?>'" style="cursor:pointer;">
                             <td><?= e((string) $metric['user']['display_name']) ?></td>
                             <td><?= e((string) $metric['current_strikes']) ?></td>
                             <td><?= e((string) ($metric['skip_warning_events'] ?? 0)) ?></td>
-                            <td><a href="<?= e($metricPenaltiesHref) ?>" class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">€<?= e((string) $penaltyValue) ?></a></td>
+                            <td><a href="<?= e($metricStrikesHref) ?>" class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">€<?= e(number_format((float) $penaltyValue, 2, '.', '')) ?></a></td>
                             <td><?= e((string) $metric['score']) ?></td>
                         </tr>
                     <?php endforeach; ?>
@@ -695,7 +712,7 @@ $topbarControls = ob_get_clean();
                         <th><?= e(t('metric.step_failures')) ?></th>
                         <th><?= e(t('metric.workout_failures')) ?></th>
                         <th><?= e(t('metric.skip_warnings')) ?></th>
-                        <th><?= e(t('metric.week_penalty')) ?></th>
+                        <th><?= e(t('strikes.economic_impact')) ?></th>
                         <th><?= e(t('common.status')) ?></th>
                     </tr>
                     </thead>
@@ -703,18 +720,18 @@ $topbarControls = ob_get_clean();
                     <?php foreach (($settlementSummary['entries'] ?? []) as $entry): ?>
                         <?php
                         $penaltyValue = (int) ($entry['penalty'] ?? 0);
-                        $entryPenaltiesHref = '/?' . http_build_query([
-                            'page' => 'penalties',
+                        $entryStrikesHref = '/?' . http_build_query([
+                            'page' => 'strikes_detail',
                             'user_id' => (int) ($entry['user_id'] ?? 0),
                             'view' => (string) ($selectedWeekStart ?? 'current_week'),
                         ]);
                         ?>
-                        <tr>
+                        <tr onclick="window.location='<?= e($entryStrikesHref) ?>'" style="cursor:pointer;">
                             <td><?= e((string) $entry['display_name']) ?></td>
                             <td><?= e((string) $entry['step_failures']) ?></td>
                             <td><?= e((string) $entry['workout_failures']) ?></td>
                             <td><?= e((string) $entry['skip_warnings']) ?></td>
-                            <td><a href="<?= e($entryPenaltiesHref) ?>" class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">€<?= e((string) $penaltyValue) ?></a></td>
+                            <td><a href="<?= e($entryStrikesHref) ?>" class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">€<?= e(number_format((float) $penaltyValue, 2, '.', '')) ?></a></td>
                             <td><?= e(label_for_status((string) $entry['status'])) ?></td>
                         </tr>
                     <?php endforeach; ?>

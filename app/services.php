@@ -1143,7 +1143,7 @@ function save_photo_entry(
     string $caption,
     array $file,
     array $nutrition = []
-): void
+): array
 {
     $normalizedCategory = strtolower(trim($category));
     if ($normalizedCategory === 'meal') {
@@ -1190,6 +1190,13 @@ function save_photo_entry(
             ':created_at' => now_iso(),
         ]
     );
+
+    $created = db_fetch_one($pdo, 'SELECT * FROM photo_entries WHERE id = last_insert_rowid()');
+    if ($created === null) {
+        throw new RuntimeException(t('flash.save_failed'));
+    }
+
+    return $created;
 }
 
 function delete_photo_entry(PDO $pdo, array $config, int $photoId): ?array
@@ -2740,6 +2747,7 @@ function auto_complete_user_goals(PDO $pdo, int $userId, string $startDate, stri
     }
 
     $metricsByUser = compute_challenge_metrics($pdo, [$user], $startDate, $endDate);
+    $metricsByUser = apply_strike_review_overrides_to_metrics($pdo, $metricsByUser);
     $metric = $metricsByUser[$userId] ?? array_values($metricsByUser)[0] ?? null;
     if (!is_array($metric)) {
         return 0;
@@ -3909,20 +3917,91 @@ function metric_week_row_for_view(array $metric, string $view, ?string $selected
     return $weekly[count($weekly) - 1];
 }
 
+function score_weights_for_progress(?float $weightProgressPct): array
+{
+    if ($weightProgressPct === null) {
+        return [
+            'steps' => 0.4,
+            'workouts' => 0.4,
+            'discipline' => 0.2,
+            'weight' => 0.0,
+        ];
+    }
+
+    return [
+        'steps' => 0.3,
+        'workouts' => 0.3,
+        'discipline' => 0.2,
+        'weight' => 0.2,
+    ];
+}
+
+function score_components_from_progress(
+    float $stepsProgressPct,
+    float $workoutsProgressPct,
+    float $disciplineScore,
+    ?float $weightProgressPct
+): array {
+    $normalize = static fn(float $value): float => max(0.0, min(100.0, $value));
+    $steps = $normalize($stepsProgressPct);
+    $workouts = $normalize($workoutsProgressPct);
+    $discipline = $normalize($disciplineScore);
+    $weight = $weightProgressPct !== null ? $normalize($weightProgressPct) : null;
+    $weights = score_weights_for_progress($weight);
+
+    $components = [
+        'steps' => round($steps * (float) ($weights['steps'] ?? 0), 2),
+        'workouts' => round($workouts * (float) ($weights['workouts'] ?? 0), 2),
+        'discipline' => round($discipline * (float) ($weights['discipline'] ?? 0), 2),
+    ];
+    if ($weight !== null && (float) ($weights['weight'] ?? 0) > 0) {
+        $components['weight'] = round($weight * (float) $weights['weight'], 2);
+    }
+
+    return $components;
+}
+
+function score_value_from_components(array $components): float
+{
+    return round(array_sum(array_map(static fn(mixed $value): float => (float) $value, $components)), 1);
+}
+
+function score_breakdown_from_snapshot(array $metric, array $snapshot): array
+{
+    $stepsProgress = max(0.0, min(100.0, (float) ($snapshot['step_completion_pct'] ?? 0)));
+    $workoutsProgress = max(0.0, min(100.0, (float) ($snapshot['workout_completion_pct'] ?? 0)));
+    $disciplineScore = max(0.0, min(100.0, (float) ($snapshot['discipline_score'] ?? 0)));
+    $weightProgress = null;
+    if (array_key_exists('weight_progress', $snapshot) && $snapshot['weight_progress'] !== null && is_numeric($snapshot['weight_progress'])) {
+        $weightProgress = max(0.0, min(100.0, (float) $snapshot['weight_progress']));
+    }
+    $weights = score_weights_for_progress($weightProgress);
+    $components = score_components_from_progress($stepsProgress, $workoutsProgress, $disciplineScore, $weightProgress);
+    $score = score_value_from_components($components);
+
+    return [
+        'steps_progress' => round($stepsProgress, 1),
+        'workouts_progress' => round($workoutsProgress, 1),
+        'discipline_score' => round($disciplineScore, 1),
+        'weight_progress' => $weightProgress !== null ? round($weightProgress, 1) : null,
+        'weights' => $weights,
+        'components' => $components,
+        'score' => $score,
+        'formula' => $weightProgress === null
+            ? 'Score = (Steps x 40%) + (Workouts x 40%) + (Discipline x 20%)'
+            : 'Score = (Steps x 30%) + (Workouts x 30%) + (Discipline x 20%) + (Weight x 20%)',
+        'has_weight' => $weightProgress !== null,
+        'current_strikes' => max(0, (int) ($snapshot['strikes'] ?? 0)),
+        'current_penalty' => max(0.0, (float) ($snapshot['penalty'] ?? 0)),
+    ];
+}
+
 function metric_snapshot_for_view(array $metric, string $view): array
 {
-    $scoreForWeek = static fn(array $row): float => round(
-        max(
-            0.0,
-            100 - (
-                ((int) ($row['step_failures'] ?? 0) * 6) +
-                ((int) ($row['workout_failures'] ?? 0) * 8) +
-                ((int) ($row['skip_warnings'] ?? 0) * 3) +
-                ((int) ($row['strikes_after_week'] ?? 0) * 4)
-            )
-        ),
-        1
-    );
+    $weightProgress = null;
+    if (array_key_exists('weight_progress_pct', $metric) && $metric['weight_progress_pct'] !== null && is_numeric($metric['weight_progress_pct'])) {
+        $weightProgress = (float) $metric['weight_progress_pct'];
+    }
     $workoutsForWeek = static function (array $row): int {
         if (array_key_exists('workout_success_week', $row)) {
             return max(0, (int) ($row['workout_success_week'] ?? 0));
@@ -3940,15 +4019,32 @@ function metric_snapshot_for_view(array $metric, string $view): array
     );
 
     if ($view === 'total') {
+        $stepsCompletionPct = round((float) ($metric['step_completion_pct'] ?? 0), 1);
+        $workoutCompletionPct = round((float) ($metric['workout_completion_pct'] ?? 0), 1);
+        $disciplineScore = max(
+            0.0,
+            100.0 - min(
+                100.0,
+                (max(0, (int) ($metric['current_strikes'] ?? 0)) * 10)
+                + (max(0, (int) ($metric['skip_warning_events'] ?? 0)) * 3)
+            )
+        );
+        $scoreComponents = score_components_from_progress($stepsCompletionPct, $workoutCompletionPct, $disciplineScore, $weightProgress);
+        $score = score_value_from_components($scoreComponents);
+
         return [
             'steps' => (int) ($metric['total_steps'] ?? 0),
             'distance_km' => round((float) ($metric['total_km'] ?? 0), 2),
             'workouts' => (int) ($metric['workout_success'] ?? 0),
             'workout_target' => max(0, (int) ($metric['workout_target'] ?? 0)),
-            'score' => round((float) ($metric['score'] ?? 0), 1),
+            'score' => $score,
             'strikes' => max(0, (int) ($metric['current_strikes'] ?? 0)),
             'penalty' => max(0.0, (float) ($metric['total_penalty'] ?? 0)),
-            'weight_progress' => (float) ($metric['weight_progress_pct'] ?? 0),
+            'weight_progress' => $weightProgress,
+            'step_completion_pct' => $stepsCompletionPct,
+            'workout_completion_pct' => $workoutCompletionPct,
+            'discipline_score' => round($disciplineScore, 1),
+            'score_components' => $scoreComponents,
         ];
     }
 
@@ -3962,20 +4058,879 @@ function metric_snapshot_for_view(array $metric, string $view): array
             'score' => 0.0,
             'strikes' => 0,
             'penalty' => 0.0,
-            'weight_progress' => (float) ($metric['weight_progress_pct'] ?? 0),
+            'weight_progress' => $weightProgress,
+            'step_completion_pct' => 0.0,
+            'workout_completion_pct' => 0.0,
+            'discipline_score' => 100.0,
+            'score_components' => score_components_from_progress(0.0, 0.0, 100.0, $weightProgress),
         ];
     }
+
+    $weekStepRequired = max(
+        0,
+        (int) ($weekRow['step_days_required_week'] ?? ((int) ($weekRow['step_days_success_week'] ?? 0) + (int) ($weekRow['step_failures'] ?? 0)))
+    );
+    $weekStepSuccess = max(
+        0,
+        min($weekStepRequired, (int) ($weekRow['step_days_success_week'] ?? ($weekStepRequired - (int) ($weekRow['step_failures'] ?? 0))))
+    );
+    $weekWorkoutTarget = max(0, (int) ($weekRow['workout_target_week'] ?? 0));
+    $weekWorkouts = $workoutsForWeek($weekRow);
+    $stepCompletionPct = $weekStepRequired > 0 ? round(($weekStepSuccess / $weekStepRequired) * 100, 1) : 0.0;
+    $workoutCompletionPct = $weekWorkoutTarget > 0 ? round(($weekWorkouts / $weekWorkoutTarget) * 100, 1) : 0.0;
+    $weekStrikes = $strikesForWeek($weekRow);
+    $weekWarnings = max(0, (int) ($weekRow['skip_warnings'] ?? 0));
+    $disciplineScore = max(0.0, 100.0 - min(100.0, ($weekStrikes * 10) + ($weekWarnings * 3)));
+    $scoreComponents = score_components_from_progress($stepCompletionPct, $workoutCompletionPct, $disciplineScore, $weightProgress);
+    $weekScore = score_value_from_components($scoreComponents);
 
     return [
         'steps' => (int) ($weekRow['steps'] ?? 0),
         'distance_km' => round((float) ($weekRow['km'] ?? 0), 2),
-        'workouts' => $workoutsForWeek($weekRow),
-        'workout_target' => max(0, (int) ($weekRow['workout_target_week'] ?? 0)),
-        'score' => $scoreForWeek($weekRow),
-        'strikes' => $strikesForWeek($weekRow),
+        'workouts' => $weekWorkouts,
+        'workout_target' => $weekWorkoutTarget,
+        'score' => $weekScore,
+        'strikes' => $weekStrikes,
         'penalty' => max(0.0, (float) ($weekRow['penalty'] ?? 0)),
-        'weight_progress' => (float) ($metric['weight_progress_pct'] ?? 0),
+        'weight_progress' => $weightProgress,
+        'step_completion_pct' => $stepCompletionPct,
+        'workout_completion_pct' => $workoutCompletionPct,
+        'discipline_score' => round($disciplineScore, 1),
+        'score_components' => $scoreComponents,
     ];
+}
+
+function normalize_strike_review_reason(string $reason): string
+{
+    $normalized = strtolower(trim($reason));
+    if (in_array($normalized, ['steps', 'step', 'step_miss'], true)) {
+        return 'step_miss';
+    }
+    if (in_array($normalized, ['workout', 'workouts', 'workout_miss'], true)) {
+        return 'workout_miss';
+    }
+    if ($normalized === 'warning') {
+        return 'warning';
+    }
+
+    return 'step_miss';
+}
+
+function strike_event_reason_from_review_reason(string $reason): string
+{
+    return match (normalize_strike_review_reason($reason)) {
+        'workout_miss' => 'workout',
+        'warning' => 'warning',
+        default => 'steps',
+    };
+}
+
+function strike_review_reason_from_event_reason(string $reason): string
+{
+    $normalized = strtolower(trim($reason));
+
+    return match ($normalized) {
+        'workout', 'workout_miss' => 'workout_miss',
+        'warning' => 'warning',
+        default => 'step_miss',
+    };
+}
+
+function strike_review_reason_label(string $reason): string
+{
+    return match (normalize_strike_review_reason($reason)) {
+        'workout_miss' => t('strikes.reason_workout_miss'),
+        'warning' => t('strikes.reason_warning'),
+        default => t('strikes.reason_step_miss'),
+    };
+}
+
+function strike_review_status_label(string $status): string
+{
+    $normalized = strtolower(trim($status));
+
+    return match ($normalized) {
+        'pending' => t('strikes.status_pending'),
+        'accepted' => t('strikes.status_accepted'),
+        'rejected' => t('strikes.status_rejected'),
+        default => t('strikes.status_confirmed'),
+    };
+}
+
+function strike_review_event_key(int $targetUserId, string $weekStart, string $eventDate, string $reason): string
+{
+    return $targetUserId . '|' . $weekStart . '|' . $eventDate . '|' . normalize_strike_review_reason($reason);
+}
+
+function decode_int_list_json(?string $json): array
+{
+    if ($json === null || trim($json) === '') {
+        return [];
+    }
+    $decoded = json_decode($json, true);
+    if (!is_array($decoded)) {
+        return [];
+    }
+    $ids = array_map(static fn(mixed $value): int => (int) $value, $decoded);
+    $ids = array_values(array_filter($ids, static fn(int $id): bool => $id > 0));
+
+    return array_values(array_unique($ids));
+}
+
+function build_strike_review_eligible_voters(PDO $pdo, int $requesterUserId): array
+{
+    $rows = db_fetch_all($pdo, 'SELECT id FROM users WHERE active = 1 ORDER BY display_name ASC');
+    $ids = [];
+    foreach ($rows as $row) {
+        $id = (int) ($row['id'] ?? 0);
+        if ($id <= 0 || $id === $requesterUserId) {
+            continue;
+        }
+        $ids[] = $id;
+    }
+
+    return array_values(array_unique($ids));
+}
+
+function fetch_strike_review_request_for_event(
+    PDO $pdo,
+    int $targetUserId,
+    string $weekStart,
+    string $eventDate,
+    string $reason
+): ?array {
+    if ($targetUserId <= 0) {
+        return null;
+    }
+
+    return db_fetch_one(
+        $pdo,
+        'SELECT * FROM strike_review_requests
+         WHERE target_user_id = :target_user_id
+           AND week_start = :week_start
+           AND event_date = :event_date
+           AND reason = :reason
+         LIMIT 1',
+        [
+            ':target_user_id' => $targetUserId,
+            ':week_start' => to_date($weekStart),
+            ':event_date' => to_date($eventDate),
+            ':reason' => normalize_strike_review_reason($reason),
+        ]
+    );
+}
+
+function fetch_strike_review_requests_for_user_between(PDO $pdo, int $targetUserId, string $startDate, string $endDate): array
+{
+    if ($targetUserId <= 0) {
+        return [];
+    }
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT r.*, requester.display_name AS requested_by_name
+         FROM strike_review_requests r
+         LEFT JOIN users requester ON requester.id = r.requested_by
+         WHERE r.target_user_id = :target_user_id
+           AND r.event_date BETWEEN :start_date AND :end_date
+         ORDER BY r.event_date ASC, r.created_at ASC',
+        [
+            ':target_user_id' => $targetUserId,
+            ':start_date' => to_date($startDate),
+            ':end_date' => to_date($endDate),
+        ]
+    );
+}
+
+function create_strike_review_request(
+    PDO $pdo,
+    int $targetUserId,
+    string $weekStart,
+    string $eventDate,
+    string $reason,
+    string $comment,
+    int $requesterUserId
+): array {
+    if ($targetUserId <= 0 || $requesterUserId <= 0) {
+        return ['ok' => false, 'message' => t('flash.no_permission')];
+    }
+    $trimmedComment = trim($comment);
+    if (function_exists('mb_substr')) {
+        $trimmedComment = mb_substr($trimmedComment, 0, 1200);
+    } else {
+        $trimmedComment = substr($trimmedComment, 0, 1200);
+    }
+    if ($trimmedComment === '') {
+        return ['ok' => false, 'message' => t('strikes.comment_required')];
+    }
+
+    $normalizedWeekStart = to_date($weekStart);
+    try {
+        $normalizedWeekStart = week_start_for(new DateTimeImmutable($normalizedWeekStart))->format('Y-m-d');
+    } catch (Throwable) {
+        // Keep normalized date.
+    }
+    $normalizedEventDate = to_date($eventDate);
+    $normalizedReason = normalize_strike_review_reason($reason);
+    $existing = fetch_strike_review_request_for_event(
+        $pdo,
+        $targetUserId,
+        $normalizedWeekStart,
+        $normalizedEventDate,
+        $normalizedReason
+    );
+    if ($existing !== null) {
+        if ((string) ($existing['status'] ?? '') === 'pending') {
+            return ['ok' => false, 'message' => t('strikes.request_already_sent'), 'request' => $existing];
+        }
+
+        return ['ok' => false, 'message' => t('strikes.request_use_resend'), 'request' => $existing];
+    }
+
+    $eligibleVoters = build_strike_review_eligible_voters($pdo, $requesterUserId);
+    $status = $eligibleVoters === [] ? 'rejected' : 'pending';
+    $now = now_iso();
+    db_execute(
+        $pdo,
+        'INSERT INTO strike_review_requests (
+            target_user_id, week_start, event_date, reason, comment, status, requested_by, eligible_voters_json, resent_count, resolved_at, created_at, updated_at
+        ) VALUES (
+            :target_user_id, :week_start, :event_date, :reason, :comment, :status, :requested_by, :eligible_voters_json, 0, :resolved_at, :created_at, :updated_at
+        )',
+        [
+            ':target_user_id' => $targetUserId,
+            ':week_start' => $normalizedWeekStart,
+            ':event_date' => $normalizedEventDate,
+            ':reason' => $normalizedReason,
+            ':comment' => $trimmedComment,
+            ':status' => $status,
+            ':requested_by' => $requesterUserId,
+            ':eligible_voters_json' => json_encode($eligibleVoters, JSON_UNESCAPED_SLASHES),
+            ':resolved_at' => $status === 'pending' ? null : $now,
+            ':created_at' => $now,
+            ':updated_at' => $now,
+        ]
+    );
+    $created = db_fetch_one($pdo, 'SELECT * FROM strike_review_requests WHERE id = last_insert_rowid()');
+    if ($created === null) {
+        return ['ok' => false, 'message' => t('flash.save_failed')];
+    }
+
+    if ($status === 'pending') {
+        foreach ($eligibleVoters as $voterId) {
+            upsert_user_notification(
+                $pdo,
+                $voterId,
+                'strike_review_request',
+                t('strikes.notification_request_title'),
+                t('strikes.notification_request_message'),
+                'strike_review_request:' . (int) $created['id'],
+                [
+                    'request_id' => (int) $created['id'],
+                    'target_user_id' => $targetUserId,
+                    'event_date' => $normalizedEventDate,
+                    'reason' => $normalizedReason,
+                ]
+            );
+        }
+    }
+
+    return [
+        'ok' => true,
+        'message' => $status === 'pending' ? t('strikes.request_sent') : t('strikes.request_auto_rejected'),
+        'request' => $created,
+    ];
+}
+
+function resend_strike_review_request(PDO $pdo, int $requestId, string $comment, int $actorUserId, bool $isAdmin = false): array
+{
+    if ($requestId <= 0 || $actorUserId <= 0) {
+        return ['ok' => false, 'message' => t('flash.no_permission')];
+    }
+    $request = db_fetch_one($pdo, 'SELECT * FROM strike_review_requests WHERE id = :id', [':id' => $requestId]);
+    if ($request === null) {
+        return ['ok' => false, 'message' => t('flash.not_found')];
+    }
+    $ownerId = (int) ($request['requested_by'] ?? 0);
+    if ($ownerId !== $actorUserId && !$isAdmin) {
+        return ['ok' => false, 'message' => t('flash.no_permission')];
+    }
+    $trimmedComment = trim($comment);
+    if (function_exists('mb_substr')) {
+        $trimmedComment = mb_substr($trimmedComment, 0, 1200);
+    } else {
+        $trimmedComment = substr($trimmedComment, 0, 1200);
+    }
+    if ($trimmedComment === '') {
+        return ['ok' => false, 'message' => t('strikes.comment_required')];
+    }
+
+    $eligibleVoters = build_strike_review_eligible_voters($pdo, $ownerId);
+    $status = $eligibleVoters === [] ? 'rejected' : 'pending';
+    $now = now_iso();
+    db_execute($pdo, 'DELETE FROM strike_review_votes WHERE request_id = :request_id', [':request_id' => $requestId]);
+    db_execute(
+        $pdo,
+        'UPDATE strike_review_requests
+         SET comment = :comment,
+             status = :status,
+             eligible_voters_json = :eligible_voters_json,
+             resent_count = resent_count + 1,
+             resolved_at = :resolved_at,
+             updated_at = :updated_at
+         WHERE id = :id',
+        [
+            ':comment' => $trimmedComment,
+            ':status' => $status,
+            ':eligible_voters_json' => json_encode($eligibleVoters, JSON_UNESCAPED_SLASHES),
+            ':resolved_at' => $status === 'pending' ? null : $now,
+            ':updated_at' => $now,
+            ':id' => $requestId,
+        ]
+    );
+
+    $updated = db_fetch_one($pdo, 'SELECT * FROM strike_review_requests WHERE id = :id', [':id' => $requestId]);
+    if ($updated === null) {
+        return ['ok' => false, 'message' => t('flash.save_failed')];
+    }
+
+    if ($status === 'pending') {
+        foreach ($eligibleVoters as $voterId) {
+            upsert_user_notification(
+                $pdo,
+                $voterId,
+                'strike_review_request',
+                t('strikes.notification_request_title'),
+                t('strikes.notification_resend_message'),
+                'strike_review_request:' . $requestId,
+                [
+                    'request_id' => $requestId,
+                    'target_user_id' => (int) ($updated['target_user_id'] ?? 0),
+                    'event_date' => (string) ($updated['event_date'] ?? ''),
+                    'reason' => (string) ($updated['reason'] ?? ''),
+                ]
+            );
+        }
+    }
+
+    return [
+        'ok' => true,
+        'message' => $status === 'pending' ? t('strikes.request_resent') : t('strikes.request_auto_rejected'),
+        'request' => $updated,
+    ];
+}
+
+function vote_strike_review_request(PDO $pdo, int $requestId, int $voterUserId, string $vote): array
+{
+    if ($requestId <= 0 || $voterUserId <= 0) {
+        return ['ok' => false, 'message' => t('flash.no_permission')];
+    }
+    $normalizedVote = strtolower(trim($vote));
+    if (!in_array($normalizedVote, ['accept', 'reject'], true)) {
+        return ['ok' => false, 'message' => t('approval.invalid_decision')];
+    }
+
+    $request = db_fetch_one($pdo, 'SELECT * FROM strike_review_requests WHERE id = :id', [':id' => $requestId]);
+    if ($request === null) {
+        return ['ok' => false, 'message' => t('flash.not_found')];
+    }
+    if ((string) ($request['status'] ?? '') !== 'pending') {
+        return ['ok' => false, 'message' => t('strikes.request_not_pending')];
+    }
+
+    $eligibleVoters = decode_int_list_json((string) ($request['eligible_voters_json'] ?? '[]'));
+    if (!in_array($voterUserId, $eligibleVoters, true)) {
+        return ['ok' => false, 'message' => t('flash.no_permission')];
+    }
+
+    $now = now_iso();
+    db_execute(
+        $pdo,
+        'INSERT INTO strike_review_votes (request_id, voter_user_id, vote, created_at, updated_at)
+         VALUES (:request_id, :voter_user_id, :vote, :created_at, :updated_at)
+         ON CONFLICT(request_id, voter_user_id) DO UPDATE SET
+            vote = excluded.vote,
+            updated_at = excluded.updated_at',
+        [
+            ':request_id' => $requestId,
+            ':voter_user_id' => $voterUserId,
+            ':vote' => $normalizedVote,
+            ':created_at' => $now,
+            ':updated_at' => $now,
+        ]
+    );
+
+    $votes = db_fetch_all($pdo, 'SELECT * FROM strike_review_votes WHERE request_id = :request_id', [':request_id' => $requestId]);
+    $votedUserIds = [];
+    $acceptCount = 0;
+    $rejectCount = 0;
+    foreach ($votes as $row) {
+        $uid = (int) ($row['voter_user_id'] ?? 0);
+        if ($uid > 0) {
+            $votedUserIds[$uid] = true;
+        }
+        if ((string) ($row['vote'] ?? '') === 'accept') {
+            $acceptCount++;
+        } else {
+            $rejectCount++;
+        }
+    }
+
+    $allVoted = true;
+    foreach ($eligibleVoters as $eligibleId) {
+        if (!isset($votedUserIds[$eligibleId])) {
+            $allVoted = false;
+            break;
+        }
+    }
+
+    if (!$allVoted) {
+        return ['ok' => true, 'message' => t('strikes.vote_saved_pending'), 'resolved' => false];
+    }
+
+    $finalStatus = $acceptCount > $rejectCount ? 'accepted' : 'rejected';
+    db_execute(
+        $pdo,
+        'UPDATE strike_review_requests
+         SET status = :status, resolved_at = :resolved_at, updated_at = :updated_at
+         WHERE id = :id',
+        [
+            ':status' => $finalStatus,
+            ':resolved_at' => $now,
+            ':updated_at' => $now,
+            ':id' => $requestId,
+        ]
+    );
+
+    $resolved = db_fetch_one($pdo, 'SELECT * FROM strike_review_requests WHERE id = :id', [':id' => $requestId]);
+    if ($resolved !== null) {
+        $requesterId = (int) ($resolved['requested_by'] ?? 0);
+        if ($requesterId > 0) {
+            upsert_user_notification(
+                $pdo,
+                $requesterId,
+                'strike_review_resolved',
+                t('strikes.notification_resolved_title'),
+                t(
+                    'strikes.notification_resolved_message',
+                    ['status' => strike_review_status_label((string) ($resolved['status'] ?? 'rejected'))]
+                ),
+                'strike_review_resolved:' . $requestId,
+                [
+                    'request_id' => $requestId,
+                    'status' => (string) ($resolved['status'] ?? 'rejected'),
+                ]
+            );
+        }
+    }
+
+    return [
+        'ok' => true,
+        'message' => t(
+            'strikes.request_resolved_with_status',
+            ['status' => strike_review_status_label($finalStatus)]
+        ),
+        'resolved' => true,
+        'status' => $finalStatus,
+    ];
+}
+
+function apply_strike_review_overrides_to_metric(PDO $pdo, array $metric): array
+{
+    $userId = (int) ($metric['user']['id'] ?? 0);
+    if ($userId <= 0) {
+        return $metric;
+    }
+
+    $acceptedRows = db_fetch_all(
+        $pdo,
+        'SELECT week_start, event_date, reason
+         FROM strike_review_requests
+         WHERE target_user_id = :target_user_id AND status = "accepted"',
+        [':target_user_id' => $userId]
+    );
+    if ($acceptedRows === []) {
+        return $metric;
+    }
+
+    $accepted = [];
+    foreach ($acceptedRows as $row) {
+        $weekStart = to_date((string) ($row['week_start'] ?? ''));
+        try {
+            $weekStart = week_start_for(new DateTimeImmutable($weekStart))->format('Y-m-d');
+        } catch (Throwable) {
+            // Keep normalized date.
+        }
+        $eventDate = to_date((string) ($row['event_date'] ?? ''));
+        $reason = normalize_strike_review_reason((string) ($row['reason'] ?? 'step_miss'));
+        $accepted[strike_review_event_key($userId, $weekStart, $eventDate, $reason)] = true;
+    }
+
+    $weekly = array_values((array) ($metric['weekly'] ?? []));
+    if ($weekly === []) {
+        return $metric;
+    }
+    usort(
+        $weekly,
+        static fn(array $left, array $right): int => strcmp((string) ($left['week_start'] ?? ''), (string) ($right['week_start'] ?? ''))
+    );
+
+    $runningStrikes = 0;
+    $totalPenalty = 0;
+    $perfectWeekStreak = 0;
+    $stepFailuresTotal = 0;
+    $workoutFailuresTotal = 0;
+    $warningTotal = 0;
+    $rebuiltWeekly = [];
+
+    foreach ($weekly as $weekRow) {
+        $weekStart = to_date((string) ($weekRow['week_start'] ?? ''));
+        $failureEvents = array_values(is_array($weekRow['failure_events'] ?? null) ? (array) $weekRow['failure_events'] : []);
+        $warningEvents = array_values(is_array($weekRow['warning_events'] ?? null) ? (array) $weekRow['warning_events'] : []);
+
+        $remainingFailureEvents = [];
+        foreach ($failureEvents as $event) {
+            $eventDate = to_date((string) ($event['date'] ?? $weekStart), $weekStart);
+            $reason = strike_review_reason_from_event_reason((string) ($event['reason'] ?? 'steps'));
+            $key = strike_review_event_key($userId, $weekStart, $eventDate, $reason);
+            if (isset($accepted[$key])) {
+                continue;
+            }
+            $remainingFailureEvents[] = [
+                'date' => $eventDate,
+                'reason' => strike_event_reason_from_review_reason($reason),
+            ];
+        }
+        usort(
+            $remainingFailureEvents,
+            static function (array $a, array $b): int {
+                if ((string) ($a['date'] ?? '') === (string) ($b['date'] ?? '')) {
+                    return strcmp((string) ($a['reason'] ?? ''), (string) ($b['reason'] ?? ''));
+                }
+
+                return strcmp((string) ($a['date'] ?? ''), (string) ($b['date'] ?? ''));
+            }
+        );
+
+        $remainingWarningEvents = [];
+        foreach ($warningEvents as $event) {
+            $eventDate = to_date((string) ($event['date'] ?? $weekStart), $weekStart);
+            $reason = normalize_strike_review_reason((string) ($event['reason'] ?? 'warning'));
+            $key = strike_review_event_key($userId, $weekStart, $eventDate, $reason);
+            if (isset($accepted[$key])) {
+                continue;
+            }
+            $remainingWarningEvents[] = [
+                'date' => $eventDate,
+                'reason' => 'warning',
+            ];
+        }
+        usort(
+            $remainingWarningEvents,
+            static fn(array $a, array $b): int => strcmp((string) ($a['date'] ?? ''), (string) ($b['date'] ?? ''))
+        );
+
+        $weekStepFailures = 0;
+        $weekWorkoutFailures = 0;
+        foreach ($remainingFailureEvents as $event) {
+            if ((string) ($event['reason'] ?? '') === 'workout') {
+                $weekWorkoutFailures++;
+            } else {
+                $weekStepFailures++;
+            }
+        }
+
+        $weekPenalty = 0;
+        $weekFailureDetailed = [];
+        foreach ($remainingFailureEvents as $event) {
+            $runningStrikes++;
+            $amount = penalty_for_strike($runningStrikes);
+            $totalPenalty += $amount;
+            $weekPenalty += $amount;
+            $weekFailureDetailed[] = [
+                'date' => (string) ($event['date'] ?? ''),
+                'reason' => (string) ($event['reason'] ?? ''),
+                'strike_number' => $runningStrikes,
+                'amount' => $amount,
+            ];
+        }
+
+        $weekReduction = 0;
+        $isComplete = (string) ($weekRow['status'] ?? '') === 'complete';
+        if ($isComplete) {
+            if (count($remainingFailureEvents) === 0) {
+                $perfectWeekStreak++;
+                if ($perfectWeekStreak === 2 && $runningStrikes > 0) {
+                    $runningStrikes--;
+                    $weekReduction = 1;
+                    $perfectWeekStreak = 0;
+                }
+            } else {
+                $perfectWeekStreak = 0;
+            }
+        }
+
+        $weekStepRequired = max(
+            0,
+            (int) ($weekRow['step_days_required_week'] ?? ((int) ($weekRow['step_days_success_week'] ?? 0) + (int) ($weekRow['step_failures'] ?? 0)))
+        );
+        $weekStepSuccess = max(0, min($weekStepRequired, $weekStepRequired - $weekStepFailures));
+        $weekWorkoutTarget = max(0, (int) ($weekRow['workout_target_week'] ?? 0));
+        $weekWorkoutSuccess = max(0, min($weekWorkoutTarget, $weekWorkoutTarget - $weekWorkoutFailures));
+        $weekWarnings = count($remainingWarningEvents);
+
+        $stepFailuresTotal += $weekStepFailures;
+        $workoutFailuresTotal += $weekWorkoutFailures;
+        $warningTotal += $weekWarnings;
+
+        $weekRow['step_failures'] = $weekStepFailures;
+        $weekRow['workout_failures'] = $weekWorkoutFailures;
+        $weekRow['total_failures'] = $weekStepFailures + $weekWorkoutFailures;
+        $weekRow['skip_warnings'] = $weekWarnings;
+        $weekRow['penalty'] = $weekPenalty;
+        $weekRow['strike_reduction'] = $weekReduction;
+        $weekRow['strikes_after_week'] = $runningStrikes;
+        $weekRow['step_days_required_week'] = $weekStepRequired;
+        $weekRow['step_days_success_week'] = $weekStepSuccess;
+        $weekRow['workout_success_week'] = $weekWorkoutSuccess;
+        $weekRow['failure_events'] = $weekFailureDetailed;
+        $weekRow['warning_events'] = $remainingWarningEvents;
+        $rebuiltWeekly[] = $weekRow;
+    }
+
+    $stepsRequired = max(0, (int) ($metric['steps_required'] ?? 0));
+    $workoutTarget = max(0, (int) ($metric['workout_target'] ?? 0));
+    $stepsSuccess = max(0, min($stepsRequired, $stepsRequired - $stepFailuresTotal));
+    $workoutSuccess = max(0, min($workoutTarget, $workoutTarget - $workoutFailuresTotal));
+    $stepCompletionPct = $stepsRequired > 0 ? round(($stepsSuccess / $stepsRequired) * 100, 1) : 0.0;
+    $workoutCompletionPct = $workoutTarget > 0 ? round(($workoutSuccess / $workoutTarget) * 100, 1) : 0.0;
+    $disciplinePenalty = min(100.0, ($runningStrikes * 10) + ($warningTotal * 3));
+    $disciplineScore = max(0.0, 100.0 - $disciplinePenalty);
+    $weightProgress = null;
+    if (array_key_exists('weight_progress_pct', $metric) && $metric['weight_progress_pct'] !== null && is_numeric($metric['weight_progress_pct'])) {
+        $weightProgress = (float) $metric['weight_progress_pct'];
+    }
+    $scoreComponents = score_components_from_progress($stepCompletionPct, $workoutCompletionPct, $disciplineScore, $weightProgress);
+    $score = score_value_from_components($scoreComponents);
+
+    $metric['weekly'] = $rebuiltWeekly;
+    $metric['step_failures'] = $stepFailuresTotal;
+    $metric['workout_failures'] = $workoutFailuresTotal;
+    $metric['total_failures'] = $stepFailuresTotal + $workoutFailuresTotal;
+    $metric['skip_warning_events'] = $warningTotal;
+    $metric['current_strikes'] = $runningStrikes;
+    $metric['total_penalty'] = $totalPenalty;
+    $metric['steps_success'] = $stepsSuccess;
+    $metric['workout_success'] = $workoutSuccess;
+    $metric['step_completion_pct'] = $stepCompletionPct;
+    $metric['workout_completion_pct'] = $workoutCompletionPct;
+    $metric['discipline_score'] = round($disciplineScore, 1);
+    $metric['score_components'] = $scoreComponents;
+    $metric['score'] = $score;
+
+    return $metric;
+}
+
+function apply_strike_review_overrides_to_metrics(PDO $pdo, array $metricsByUser): array
+{
+    $adjusted = [];
+    foreach ($metricsByUser as $userId => $metric) {
+        $adjusted[$userId] = apply_strike_review_overrides_to_metric($pdo, is_array($metric) ? $metric : []);
+    }
+
+    uasort(
+        $adjusted,
+        static function (array $a, array $b): int {
+            $scoreOrder = ((float) ($b['score'] ?? 0)) <=> ((float) ($a['score'] ?? 0));
+            if ($scoreOrder !== 0) {
+                return $scoreOrder;
+            }
+
+            $penaltyOrder = ((int) ($a['total_penalty'] ?? 0)) <=> ((int) ($b['total_penalty'] ?? 0));
+            if ($penaltyOrder !== 0) {
+                return $penaltyOrder;
+            }
+
+            return strcmp(
+                strtolower((string) ($a['user']['display_name'] ?? '')),
+                strtolower((string) ($b['user']['display_name'] ?? ''))
+            );
+        }
+    );
+
+    return $adjusted;
+}
+
+function metric_week_rows_for_view(array $metric, string $view): array
+{
+    $weekly = array_values((array) ($metric['weekly'] ?? []));
+    if ($weekly === []) {
+        return [];
+    }
+    usort(
+        $weekly,
+        static fn(array $left, array $right): int => strcmp((string) ($left['week_start'] ?? ''), (string) ($right['week_start'] ?? ''))
+    );
+    if ($view === 'total') {
+        return $weekly;
+    }
+
+    $selected = metric_week_row_for_view($metric, $view, $view);
+
+    return is_array($selected) ? [$selected] : [];
+}
+
+function build_strike_detail_rows_for_view(PDO $pdo, array $rawMetric, array $adjustedMetric, string $view): array
+{
+    $userId = (int) ($rawMetric['user']['id'] ?? $adjustedMetric['user']['id'] ?? 0);
+    if ($userId <= 0) {
+        return [];
+    }
+
+    $rawWeekRows = metric_week_rows_for_view($rawMetric, $view);
+    $adjustedWeekRows = metric_week_rows_for_view($adjustedMetric, $view);
+    if ($rawWeekRows === []) {
+        return [];
+    }
+
+    $adjustedByKey = [];
+    foreach ($adjustedWeekRows as $row) {
+        $weekStart = to_date((string) ($row['week_start'] ?? ''));
+        foreach ((array) ($row['failure_events'] ?? []) as $event) {
+            $eventDate = to_date((string) ($event['date'] ?? $weekStart), $weekStart);
+            $reason = strike_review_reason_from_event_reason((string) ($event['reason'] ?? 'steps'));
+            $key = strike_review_event_key($userId, $weekStart, $eventDate, $reason);
+            $adjustedByKey[$key] = [
+                'amount' => max(0.0, (float) ($event['amount'] ?? 0)),
+                'strike_number' => max(0, (int) ($event['strike_number'] ?? 0)),
+                'counted' => true,
+            ];
+        }
+        foreach ((array) ($row['warning_events'] ?? []) as $event) {
+            $eventDate = to_date((string) ($event['date'] ?? $weekStart), $weekStart);
+            $key = strike_review_event_key($userId, $weekStart, $eventDate, 'warning');
+            $adjustedByKey[$key] = [
+                'amount' => 0.0,
+                'strike_number' => 0,
+                'counted' => true,
+            ];
+        }
+    }
+
+    $startDate = to_date((string) ($rawWeekRows[0]['week_start'] ?? to_date(null)));
+    $endDate = to_date((string) ($rawWeekRows[count($rawWeekRows) - 1]['week_end'] ?? $startDate), $startDate);
+    $requestsRows = fetch_strike_review_requests_for_user_between($pdo, $userId, $startDate, $endDate);
+    $requestsByKey = [];
+    foreach ($requestsRows as $request) {
+        $weekStart = to_date((string) ($request['week_start'] ?? $startDate), $startDate);
+        $eventDate = to_date((string) ($request['event_date'] ?? $startDate), $startDate);
+        $reason = normalize_strike_review_reason((string) ($request['reason'] ?? 'step_miss'));
+        $requestsByKey[strike_review_event_key($userId, $weekStart, $eventDate, $reason)] = $request;
+    }
+
+    $rowsByKey = [];
+    foreach ($rawWeekRows as $row) {
+        $weekStart = to_date((string) ($row['week_start'] ?? ''));
+        foreach ((array) ($row['failure_events'] ?? []) as $event) {
+            $eventDate = to_date((string) ($event['date'] ?? $weekStart), $weekStart);
+            $reason = strike_review_reason_from_event_reason((string) ($event['reason'] ?? 'steps'));
+            $key = strike_review_event_key($userId, $weekStart, $eventDate, $reason);
+            $request = $requestsByKey[$key] ?? null;
+            $adjusted = $adjustedByKey[$key] ?? null;
+            $rowsByKey[$key] = [
+                'key' => $key,
+                'week_start' => $weekStart,
+                'event_date' => $eventDate,
+                'reason' => $reason,
+                'reason_label' => strike_review_reason_label($reason),
+                'base_amount' => max(0.0, (float) ($event['amount'] ?? 0)),
+                'amount' => $adjusted !== null ? (float) ($adjusted['amount'] ?? 0) : 0.0,
+                'strike_number' => $adjusted !== null ? (int) ($adjusted['strike_number'] ?? 0) : 0,
+                'is_counted' => $adjusted !== null,
+                'status' => $request !== null ? (string) ($request['status'] ?? 'pending') : 'confirmed',
+                'status_label' => $request !== null
+                    ? strike_review_status_label((string) ($request['status'] ?? 'pending'))
+                    : strike_review_status_label('confirmed'),
+                'request_id' => $request !== null ? (int) ($request['id'] ?? 0) : 0,
+                'request_comment' => $request !== null ? (string) ($request['comment'] ?? '') : '',
+                'requested_by_name' => $request !== null ? (string) ($request['requested_by_name'] ?? '') : '',
+                'requested_by' => $request !== null ? (int) ($request['requested_by'] ?? 0) : 0,
+                'eligible_voters' => $request !== null ? decode_int_list_json((string) ($request['eligible_voters_json'] ?? '[]')) : [],
+                'resent_count' => $request !== null ? (int) ($request['resent_count'] ?? 0) : 0,
+            ];
+        }
+
+        foreach ((array) ($row['warning_events'] ?? []) as $event) {
+            $eventDate = to_date((string) ($event['date'] ?? $weekStart), $weekStart);
+            $key = strike_review_event_key($userId, $weekStart, $eventDate, 'warning');
+            $request = $requestsByKey[$key] ?? null;
+            $adjusted = $adjustedByKey[$key] ?? null;
+            $rowsByKey[$key] = [
+                'key' => $key,
+                'week_start' => $weekStart,
+                'event_date' => $eventDate,
+                'reason' => 'warning',
+                'reason_label' => strike_review_reason_label('warning'),
+                'base_amount' => 0.0,
+                'amount' => $adjusted !== null ? 0.0 : 0.0,
+                'strike_number' => 0,
+                'is_counted' => $adjusted !== null,
+                'status' => $request !== null ? (string) ($request['status'] ?? 'pending') : 'confirmed',
+                'status_label' => $request !== null
+                    ? strike_review_status_label((string) ($request['status'] ?? 'pending'))
+                    : strike_review_status_label('confirmed'),
+                'request_id' => $request !== null ? (int) ($request['id'] ?? 0) : 0,
+                'request_comment' => $request !== null ? (string) ($request['comment'] ?? '') : '',
+                'requested_by_name' => $request !== null ? (string) ($request['requested_by_name'] ?? '') : '',
+                'requested_by' => $request !== null ? (int) ($request['requested_by'] ?? 0) : 0,
+                'eligible_voters' => $request !== null ? decode_int_list_json((string) ($request['eligible_voters_json'] ?? '[]')) : [],
+                'resent_count' => $request !== null ? (int) ($request['resent_count'] ?? 0) : 0,
+            ];
+        }
+    }
+
+    foreach ($requestsByKey as $key => $request) {
+        if (isset($rowsByKey[$key])) {
+            continue;
+        }
+        $weekStart = to_date((string) ($request['week_start'] ?? $startDate), $startDate);
+        $eventDate = to_date((string) ($request['event_date'] ?? $startDate), $startDate);
+        $reason = normalize_strike_review_reason((string) ($request['reason'] ?? 'step_miss'));
+        $rowsByKey[$key] = [
+            'key' => $key,
+            'week_start' => $weekStart,
+            'event_date' => $eventDate,
+            'reason' => $reason,
+            'reason_label' => strike_review_reason_label($reason),
+            'base_amount' => 0.0,
+            'amount' => 0.0,
+            'strike_number' => 0,
+            'is_counted' => false,
+            'status' => (string) ($request['status'] ?? 'pending'),
+            'status_label' => strike_review_status_label((string) ($request['status'] ?? 'pending')),
+            'request_id' => (int) ($request['id'] ?? 0),
+            'request_comment' => (string) ($request['comment'] ?? ''),
+            'requested_by_name' => (string) ($request['requested_by_name'] ?? ''),
+            'requested_by' => (int) ($request['requested_by'] ?? 0),
+            'eligible_voters' => decode_int_list_json((string) ($request['eligible_voters_json'] ?? '[]')),
+            'resent_count' => (int) ($request['resent_count'] ?? 0),
+        ];
+    }
+
+    $rows = array_values($rowsByKey);
+    usort(
+        $rows,
+        static function (array $left, array $right): int {
+            $dateOrder = strcmp((string) ($left['event_date'] ?? ''), (string) ($right['event_date'] ?? ''));
+            if ($dateOrder !== 0) {
+                return $dateOrder;
+            }
+
+            return strcmp((string) ($left['reason'] ?? ''), (string) ($right['reason'] ?? ''));
+        }
+    );
+
+    return $rows;
 }
 
 function team_rows_for_view(array $metrics, string $view): array
@@ -4110,6 +5065,58 @@ function create_user_notification(
     );
 
     return $pdo->lastInsertId() !== '0';
+}
+
+function upsert_user_notification(
+    PDO $pdo,
+    int $userId,
+    string $kind,
+    string $title,
+    string $message,
+    ?string $uniqueKey = null,
+    array $payload = []
+): bool {
+    if ($userId <= 0 || trim($title) === '' || trim($message) === '') {
+        return false;
+    }
+
+    if ($uniqueKey === null || trim($uniqueKey) === '') {
+        return create_user_notification($pdo, $userId, $kind, $title, $message, null, $payload);
+    }
+
+    $now = now_iso();
+    $jsonPayload = $payload !== [] ? json_encode($payload, JSON_UNESCAPED_SLASHES) : null;
+    if (!is_string($jsonPayload) && $jsonPayload !== null) {
+        $jsonPayload = null;
+    }
+
+    db_execute(
+        $pdo,
+        'INSERT INTO user_notifications (
+            user_id, kind, title, message, payload_json, unique_key, is_read, created_at, read_at
+        ) VALUES (
+            :user_id, :kind, :title, :message, :payload_json, :unique_key, 0, :created_at, NULL
+        )
+        ON CONFLICT(user_id, unique_key) WHERE unique_key IS NOT NULL DO UPDATE SET
+            kind = excluded.kind,
+            title = excluded.title,
+            message = excluded.message,
+            payload_json = excluded.payload_json,
+            is_read = 0,
+            read_at = NULL,
+            created_at = excluded.created_at',
+        [
+            ':user_id' => $userId,
+            ':kind' => trim($kind) !== '' ? trim($kind) : 'info',
+            ':title' => trim($title),
+            ':message' => trim($message),
+            ':payload_json' => $jsonPayload,
+            ':unique_key' => trim($uniqueKey),
+            ':created_at' => $now,
+        ]
+    );
+
+    return true;
 }
 
 function mark_user_notification_read(PDO $pdo, int $notificationId, int $userId): void
@@ -4290,6 +5297,7 @@ function auto_complete_team_goals_for_team(PDO $pdo, int $teamId, string $startD
     }
 
     $metricsByUser = compute_challenge_metrics($pdo, $teamUsers, $startDate, $endDate);
+    $metricsByUser = apply_strike_review_overrides_to_metrics($pdo, $metricsByUser);
     $rows = team_rows_for_view(array_values($metricsByUser), 'total');
     $summary = team_summary_from_rows($rows);
     $calories = resolve_team_calories_summary($pdo, $teamId, $startDate, $endDate);

@@ -7,7 +7,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 $page = $_GET['page'] ?? null;
 if ($page === null) {
     $pathPage = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/');
-    if (in_array($pathPage, ['dashboard', 'entries', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'login'], true)) {
+    if (in_array($pathPage, ['dashboard', 'entries', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'login'], true)) {
         $page = $pathPage;
     }
 }
@@ -513,17 +513,20 @@ if ($page === 'entries') {
                 'sodium_mg' => $_POST['photo_sodium_mg'] ?? null,
             ];
 
+            $createdPhotoId = 0;
             try {
-                save_photo_entry($pdo, $config, $userId, $date, $category, $caption, $_FILES['photo'] ?? [], $nutrition);
+                $createdPhoto = save_photo_entry($pdo, $config, $userId, $date, $category, $caption, $_FILES['photo'] ?? [], $nutrition);
+                $createdPhotoId = (int) ($createdPhoto['id'] ?? 0);
                 audit_log(
                     $pdo,
                     (int) $currentUser['id'],
                     'photo_uploaded',
                     'photo_entry',
-                    $userId . ':' . $date,
+                    $createdPhotoId > 0 ? (string) $createdPhotoId : ($userId . ':' . $date),
                     'Proof photo uploaded.',
                     null,
                     [
+                        'photo_id' => $createdPhotoId,
                         'user_id' => $userId,
                         'log_date' => $date,
                         'category' => $category,
@@ -536,6 +539,9 @@ if ($page === 'entries') {
                 flash_set('error', $e->getMessage());
             }
 
+            if ($createdPhotoId > 0) {
+                redirect('/?page=photo&photo_id=' . $createdPhotoId);
+            }
             redirect('/?page=entries&mode=' . rawurlencode($entryMode) . '&date=' . $date);
         }
 
@@ -798,6 +804,7 @@ if ($page === 'table' || $page === 'week_editor') {
         redirect('/?page=admin');
     }
     $metrics = compute_challenge_metrics($pdo, [$selectedUser], (string) $settings['challenge_start'], (string) $settings['challenge_end']);
+    $metrics = apply_strike_review_overrides_to_metrics($pdo, $metrics);
     $viewName = $page === 'week_editor' ? 'week_editor' : 'table';
 
     render_view($viewName, [
@@ -853,7 +860,7 @@ if ($page === 'settings') {
             $layoutJson = (string) ($before['dashboard_layout_json'] ?? '[]');
             $hasWidgetPayload = array_key_exists('dashboard_widgets', $_POST) || array_key_exists('dashboard_order', $_POST);
             if ($hasWidgetPayload) {
-                $allowedWidgets = ['kpis', 'distance_walked', 'money', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories'];
+                $allowedWidgets = ['kpis', 'distance_walked', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories'];
                 $selectedWidgets = array_values(array_intersect(array_map('strval', (array) ($_POST['dashboard_widgets'] ?? [])), $allowedWidgets));
                 $selectedWidgets = array_values(array_unique(array_map(
                     static fn(string $widget): string => $widget === 'money' ? 'distance_walked' : $widget,
@@ -1237,6 +1244,7 @@ if ($page === 'profile') {
         (string) $settings['challenge_start'],
         (string) $settings['challenge_end']
     );
+    $metrics = apply_strike_review_overrides_to_metrics($pdo, $metrics);
     $profileMetric = array_values($metrics)[0] ?? null;
     $profileDistanceWeekly = [];
     $profileWorkoutWeekly = [];
@@ -2031,6 +2039,7 @@ if ($page === 'team') {
                     (string) $settingsForGoal['challenge_start'],
                     (string) $settingsForGoal['challenge_end']
                 );
+                $metricsForGoal = apply_strike_review_overrides_to_metrics($pdo, $metricsForGoal);
                 $teamRowsForGoal = team_rows_for_view(array_values($metricsForGoal), 'total');
                 $teamSummaryForGoal = team_summary_from_rows($teamRowsForGoal);
                 $teamCaloriesForGoal = resolve_team_calories_summary(
@@ -2183,6 +2192,7 @@ if ($page === 'team') {
         (string) $settings['challenge_start'],
         (string) $settings['challenge_end']
     );
+    $metricsByUser = apply_strike_review_overrides_to_metrics($pdo, $metricsByUser);
     evaluate_automatic_achievements($pdo, $metricsByUser, (int) $team['id']);
     $metricsOrdered = array_values($metricsByUser);
     $teamSummaryTotalRows = team_rows_for_view($metricsOrdered, 'total');
@@ -2673,6 +2683,7 @@ if ($page === 'metric') {
         (string) $settings['challenge_start'],
         (string) $settings['challenge_end']
     );
+    $metricsByUser = apply_strike_review_overrides_to_metrics($pdo, $metricsByUser);
 
     $metricsById = [];
     foreach ($metricsByUser as $userId => $metric) {
@@ -2762,18 +2773,36 @@ if ($page === 'metric') {
     $currentValue = 0;
     $currentValueSuffix = '';
     $chartLabel = $allowedMetrics[$metricKey];
-    $score_for_week = static fn(array $row): float => round(
-        max(
-            0.0,
-            100 - (
-                ((int) ($row['step_failures'] ?? 0) * 6)
-                + ((int) ($row['workout_failures'] ?? 0) * 8)
-                + ((int) ($row['skip_warnings'] ?? 0) * 3)
-                + ((int) ($row['strikes_after_week'] ?? 0) * 4)
-            )
-        ),
-        1
-    );
+    $score_for_week = static function (array $row) use ($selectedMetric): float {
+        $stepRequired = max(
+            0,
+            (int) ($row['step_days_required_week'] ?? ((int) ($row['step_days_success_week'] ?? 0) + (int) ($row['step_failures'] ?? 0)))
+        );
+        $stepSuccess = max(
+            0,
+            min($stepRequired, (int) ($row['step_days_success_week'] ?? ($stepRequired - (int) ($row['step_failures'] ?? 0))))
+        );
+        $stepPct = $stepRequired > 0 ? round(($stepSuccess / $stepRequired) * 100, 1) : 0.0;
+        $workoutTarget = max(0, (int) ($row['workout_target_week'] ?? 0));
+        $workoutSuccess = isset($row['workout_success_week'])
+            ? max(0, (int) ($row['workout_success_week'] ?? 0))
+            : max(0, $workoutTarget - (int) ($row['workout_failures'] ?? 0));
+        $workoutPct = $workoutTarget > 0 ? round(($workoutSuccess / $workoutTarget) * 100, 1) : 0.0;
+        $strikesNet = max(
+            0,
+            (int) ($row['total_failures'] ?? ((int) ($row['step_failures'] ?? 0) + (int) ($row['workout_failures'] ?? 0)))
+            - (int) ($row['strike_reduction'] ?? 0)
+        );
+        $warnings = max(0, (int) ($row['skip_warnings'] ?? 0));
+        $disciplineScore = max(0.0, 100.0 - min(100.0, ($strikesNet * 10) + ($warnings * 3)));
+        $weightProgress = null;
+        if (array_key_exists('weight_progress_pct', $selectedMetric) && $selectedMetric['weight_progress_pct'] !== null && is_numeric($selectedMetric['weight_progress_pct'])) {
+            $weightProgress = (float) $selectedMetric['weight_progress_pct'];
+        }
+        $components = score_components_from_progress($stepPct, $workoutPct, $disciplineScore, $weightProgress);
+
+        return score_value_from_components($components);
+    };
     $workout_success_for_week = static function (array $row): int {
         if (isset($row['workout_success_week'])) {
             return (int) ($row['workout_success_week'] ?? 0);
@@ -2857,6 +2886,296 @@ if ($page === 'metric') {
     ]);
 }
 
+if ($page === 'comparison_detail') {
+    $settings = challenge_settings($pdo, $config);
+    if (!challenge_is_active($settings)) {
+        flash_set('error', t('flash.challenge_inactive'));
+        redirect('/?page=admin');
+    }
+
+    $team = default_team($pdo);
+    $users = list_active_team_users($pdo, (int) $team['id']);
+    if ($users === []) {
+        $users = list_active_users($pdo);
+    }
+    $metricsByUser = compute_challenge_metrics(
+        $pdo,
+        $users,
+        (string) $settings['challenge_start'],
+        (string) $settings['challenge_end']
+    );
+    $metricsByUser = apply_strike_review_overrides_to_metrics($pdo, $metricsByUser);
+
+    $metricsById = [];
+    foreach ($metricsByUser as $userId => $metric) {
+        $metricsById[(int) $userId] = $metric;
+    }
+
+    $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
+    if (!is_admin($currentUser) && $selectedUserId !== (int) $currentUser['id']) {
+        $selectedUserId = (int) $currentUser['id'];
+    }
+    $selectedMetric = $metricsById[$selectedUserId] ?? null;
+    if ($selectedMetric === null) {
+        $selectedMetric = count($metricsByUser) > 0 ? array_values($metricsByUser)[0] : null;
+    }
+    if ($selectedMetric === null) {
+        flash_set('error', t('flash.no_active_users'));
+        redirect('/?page=dashboard');
+    }
+
+    $weekOptions = week_starts_from_metrics($selectedMetric);
+    $defaultWeekStart = $weekOptions !== [] ? $weekOptions[count($weekOptions) - 1] : to_date(null);
+    $normalizeView = static function (string $rawView, string $fallback): string {
+        $normalizedDate = to_date($rawView, $fallback);
+        try {
+            return week_start_for(new DateTimeImmutable($normalizedDate))->format('Y-m-d');
+        } catch (Throwable) {
+            return $fallback;
+        }
+    };
+    $dashboardView = (string) ($_GET['view'] ?? ($currentUser['dashboard_view'] ?? 'current_week'));
+    if (!in_array($dashboardView, ['current_week', 'total'], true)) {
+        $dashboardView = $normalizeView($dashboardView, $defaultWeekStart);
+    }
+    $selectedWeekStart = $dashboardView === 'current_week'
+        ? $defaultWeekStart
+        : ($dashboardView === 'total' ? $defaultWeekStart : $normalizeView($dashboardView, $defaultWeekStart));
+    if (!in_array($selectedWeekStart, $weekOptions, true) && $weekOptions !== []) {
+        $selectedWeekStart = $defaultWeekStart;
+    }
+    $effectiveView = $dashboardView === 'total' ? 'total' : $selectedWeekStart;
+    $selectedSnapshot = metric_snapshot_for_view($selectedMetric, $effectiveView);
+    $selectedBreakdown = score_breakdown_from_snapshot($selectedMetric, $selectedSnapshot);
+
+    $compareMetric = null;
+    foreach ($metricsByUser as $metric) {
+        if ((int) ($metric['user']['id'] ?? 0) !== (int) ($selectedMetric['user']['id'] ?? 0)) {
+            $compareMetric = $metric;
+            break;
+        }
+    }
+    $compareSnapshot = $compareMetric !== null ? metric_snapshot_for_view($compareMetric, $effectiveView) : null;
+    $compareBreakdown = $compareMetric !== null && is_array($compareSnapshot)
+        ? score_breakdown_from_snapshot($compareMetric, $compareSnapshot)
+        : null;
+
+    render_view('comparison_detail', [
+        'title' => t('dashboard.comparison_detail_title'),
+        'currentPage' => 'dashboard',
+        'currentUser' => $currentUser,
+        'users' => $users,
+        'selectedMetric' => $selectedMetric,
+        'selectedSnapshot' => $selectedSnapshot,
+        'selectedBreakdown' => $selectedBreakdown,
+        'compareMetric' => $compareMetric,
+        'compareSnapshot' => $compareSnapshot,
+        'compareBreakdown' => $compareBreakdown,
+        'dashboardView' => $dashboardView,
+        'weekOptions' => $weekOptions,
+        'selectedWeekStart' => $selectedWeekStart,
+        'backUrl' => '/?' . http_build_query([
+            'page' => 'dashboard',
+            'user_id' => (int) ($selectedMetric['user']['id'] ?? 0),
+            'view' => $dashboardView,
+        ]),
+        'config' => $config,
+    ]);
+}
+
+if ($page === 'strikes_detail') {
+    $settings = challenge_settings($pdo, $config);
+    if (!challenge_is_active($settings)) {
+        flash_set('error', t('flash.challenge_inactive'));
+        redirect('/?page=admin');
+    }
+
+    $team = default_team($pdo);
+    $users = list_active_team_users($pdo, (int) $team['id']);
+    if ($users === []) {
+        $users = list_active_users($pdo);
+    }
+    $rawMetricsByUser = compute_challenge_metrics(
+        $pdo,
+        $users,
+        (string) $settings['challenge_start'],
+        (string) $settings['challenge_end']
+    );
+    $metricsByUser = apply_strike_review_overrides_to_metrics($pdo, $rawMetricsByUser);
+
+    $metricsRawById = [];
+    $metricsById = [];
+    foreach ($rawMetricsByUser as $userId => $metric) {
+        $metricsRawById[(int) $userId] = $metric;
+    }
+    foreach ($metricsByUser as $userId => $metric) {
+        $metricsById[(int) $userId] = $metric;
+    }
+
+    $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
+    if (!is_admin($currentUser) && $selectedUserId !== (int) $currentUser['id']) {
+        $selectedUserId = (int) $currentUser['id'];
+    }
+
+    $selectedRawMetric = $metricsRawById[$selectedUserId] ?? null;
+    $selectedMetric = $metricsById[$selectedUserId] ?? null;
+    if ($selectedRawMetric === null || $selectedMetric === null) {
+        $fallbackRaw = count($rawMetricsByUser) > 0 ? array_values($rawMetricsByUser)[0] : null;
+        $fallbackAdjusted = count($metricsByUser) > 0 ? array_values($metricsByUser)[0] : null;
+        $selectedRawMetric = is_array($fallbackRaw) ? $fallbackRaw : null;
+        $selectedMetric = is_array($fallbackAdjusted) ? $fallbackAdjusted : null;
+    }
+    if ($selectedRawMetric === null || $selectedMetric === null) {
+        flash_set('error', t('flash.no_active_users'));
+        redirect('/?page=dashboard');
+    }
+
+    $weekOptions = week_starts_from_metrics($selectedMetric);
+    $defaultWeekStart = $weekOptions !== [] ? $weekOptions[count($weekOptions) - 1] : to_date(null);
+    $normalizeView = static function (string $rawView, string $fallback): string {
+        $normalizedDate = to_date($rawView, $fallback);
+        try {
+            return week_start_for(new DateTimeImmutable($normalizedDate))->format('Y-m-d');
+        } catch (Throwable) {
+            return $fallback;
+        }
+    };
+    $dashboardView = (string) ($_GET['view'] ?? ($currentUser['dashboard_view'] ?? 'current_week'));
+    if (!in_array($dashboardView, ['current_week', 'total'], true)) {
+        $dashboardView = $normalizeView($dashboardView, $defaultWeekStart);
+    }
+    $selectedWeekStart = $dashboardView === 'current_week'
+        ? $defaultWeekStart
+        : ($dashboardView === 'total' ? $defaultWeekStart : $normalizeView($dashboardView, $defaultWeekStart));
+    if (!in_array($selectedWeekStart, $weekOptions, true) && $weekOptions !== []) {
+        $selectedWeekStart = $defaultWeekStart;
+    }
+    $effectiveView = $dashboardView === 'total' ? 'total' : $selectedWeekStart;
+
+    if (is_post()) {
+        if (!csrf_verify()) {
+            flash_set('error', t('flash.csrf'));
+            redirect('/?' . http_build_query([
+                'page' => 'strikes_detail',
+                'user_id' => (int) ($selectedMetric['user']['id'] ?? (int) $currentUser['id']),
+                'view' => $dashboardView,
+            ]));
+        }
+
+        $action = (string) ($_POST['action'] ?? '');
+        $redirectUserId = (int) ($_POST['redirect_user_id'] ?? (int) ($selectedMetric['user']['id'] ?? (int) $currentUser['id']));
+        $redirectView = (string) ($_POST['redirect_view'] ?? $dashboardView);
+        $redirectQuery = [
+            'page' => 'strikes_detail',
+            'user_id' => $redirectUserId,
+            'view' => $redirectView,
+        ];
+
+        if ($action === 'create_strike_review_request') {
+            $targetUserId = (int) ($_POST['target_user_id'] ?? 0);
+            if (!is_admin($currentUser) && $targetUserId !== (int) $currentUser['id']) {
+                flash_set('error', t('flash.no_permission'));
+                redirect('/?' . http_build_query($redirectQuery));
+            }
+            $result = create_strike_review_request(
+                $pdo,
+                $targetUserId,
+                (string) ($_POST['week_start'] ?? ''),
+                (string) ($_POST['event_date'] ?? ''),
+                (string) ($_POST['reason'] ?? 'step_miss'),
+                (string) ($_POST['request_comment'] ?? ''),
+                (int) $currentUser['id']
+            );
+            flash_set(!empty($result['ok']) ? 'success' : 'error', (string) ($result['message'] ?? t('flash.save_failed')));
+            redirect('/?' . http_build_query($redirectQuery));
+        }
+
+        if ($action === 'resend_strike_review_request') {
+            $requestId = (int) ($_POST['request_id'] ?? 0);
+            $result = resend_strike_review_request(
+                $pdo,
+                $requestId,
+                (string) ($_POST['request_comment'] ?? ''),
+                (int) $currentUser['id'],
+                is_admin($currentUser)
+            );
+            flash_set(!empty($result['ok']) ? 'success' : 'error', (string) ($result['message'] ?? t('flash.save_failed')));
+            redirect('/?' . http_build_query($redirectQuery));
+        }
+
+        if ($action === 'vote_strike_review_request') {
+            $requestId = (int) ($_POST['request_id'] ?? 0);
+            $decision = (string) ($_POST['decision'] ?? '');
+            $result = vote_strike_review_request($pdo, $requestId, (int) $currentUser['id'], $decision);
+            flash_set(!empty($result['ok']) ? 'success' : 'error', (string) ($result['message'] ?? t('flash.save_failed')));
+            redirect('/?' . http_build_query($redirectQuery));
+        }
+    }
+
+    // Refresh metrics after potential POST actions.
+    $rawMetricsByUser = compute_challenge_metrics(
+        $pdo,
+        $users,
+        (string) $settings['challenge_start'],
+        (string) $settings['challenge_end']
+    );
+    $metricsByUser = apply_strike_review_overrides_to_metrics($pdo, $rawMetricsByUser);
+    $metricsRawById = [];
+    $metricsById = [];
+    foreach ($rawMetricsByUser as $userId => $metric) {
+        $metricsRawById[(int) $userId] = $metric;
+    }
+    foreach ($metricsByUser as $userId => $metric) {
+        $metricsById[(int) $userId] = $metric;
+    }
+    $selectedRawMetric = $metricsRawById[$selectedUserId] ?? (count($rawMetricsByUser) > 0 ? array_values($rawMetricsByUser)[0] : null);
+    $selectedMetric = $metricsById[$selectedUserId] ?? (count($metricsByUser) > 0 ? array_values($metricsByUser)[0] : null);
+    if (!is_array($selectedRawMetric) || !is_array($selectedMetric)) {
+        flash_set('error', t('flash.no_active_users'));
+        redirect('/?page=dashboard');
+    }
+
+    $snapshot = metric_snapshot_for_view($selectedMetric, $effectiveView);
+    $rows = build_strike_detail_rows_for_view($pdo, $selectedRawMetric, $selectedMetric, $effectiveView);
+    $pendingRows = db_fetch_all(
+        $pdo,
+        'SELECT r.*, requester.display_name AS requested_by_name, target.display_name AS target_name
+         FROM strike_review_requests r
+         LEFT JOIN users requester ON requester.id = r.requested_by
+         LEFT JOIN users target ON target.id = r.target_user_id
+         WHERE r.status = "pending"
+         ORDER BY r.updated_at DESC
+         LIMIT 200'
+    );
+    $pendingVotes = [];
+    foreach ($pendingRows as $pendingRow) {
+        $eligible = decode_int_list_json((string) ($pendingRow['eligible_voters_json'] ?? '[]'));
+        if (in_array((int) $currentUser['id'], $eligible, true)) {
+            $pendingVotes[] = $pendingRow;
+        }
+    }
+
+    render_view('strikes_detail', [
+        'title' => t('strikes.detail_title'),
+        'currentPage' => 'dashboard',
+        'currentUser' => $currentUser,
+        'users' => $users,
+        'selectedMetric' => $selectedMetric,
+        'selectedSnapshot' => $snapshot,
+        'dashboardView' => $dashboardView,
+        'weekOptions' => $weekOptions,
+        'selectedWeekStart' => $selectedWeekStart,
+        'strikeRows' => $rows,
+        'pendingStrikeVotes' => $pendingVotes,
+        'backUrl' => '/?' . http_build_query([
+            'page' => 'dashboard',
+            'user_id' => (int) ($selectedMetric['user']['id'] ?? 0),
+            'view' => $dashboardView,
+        ]),
+        'config' => $config,
+    ]);
+}
+
 if ($page === 'penalties') {
     $settings = challenge_settings($pdo, $config);
     if (!challenge_is_active($settings)) {
@@ -2876,6 +3195,7 @@ if ($page === 'penalties') {
         (string) $settings['challenge_start'],
         (string) $settings['challenge_end']
     );
+    $metricsByUser = apply_strike_review_overrides_to_metrics($pdo, $metricsByUser);
 
     $metricsById = [];
     foreach ($metricsByUser as $userId => $metric) {
@@ -3055,7 +3375,7 @@ if ($page === 'dashboard') {
         }
 
         if ($action === 'save_dashboard_layout' || $action === 'save_dashboard_prefs') {
-            $allowedWidgets = ['kpis', 'distance_walked', 'money', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories'];
+            $allowedWidgets = ['kpis', 'distance_walked', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories'];
             $widgets = array_values(array_intersect(array_map('strval', (array) ($_POST['dashboard_widgets'] ?? [])), $allowedWidgets));
             $widgets = array_values(array_unique(array_map(
                 static fn(string $widget): string => $widget === 'money' ? 'distance_walked' : $widget,
@@ -3099,6 +3419,7 @@ if ($page === 'dashboard') {
         (string) $settings['challenge_start'],
         (string) $settings['challenge_end']
     );
+    $metricsByUser = apply_strike_review_overrides_to_metrics($pdo, $metricsByUser);
 
     $metricsById = [];
     foreach ($metricsByUser as $userId => $metric) {
@@ -3156,6 +3477,7 @@ if ($page === 'dashboard') {
             break;
         }
     }
+    $compareMetricSnapshot = $compareMetric !== null ? metric_snapshot_for_view($compareMetric, $dashboardMetricView) : null;
 
     $settlementSummary = weekly_settlement_summary(array_values($metricsByUser), $selectedWeekStart);
     $pendingApprovals = fetch_pending_approvals($pdo, $currentUser, null, 80);
@@ -3228,6 +3550,7 @@ if ($page === 'dashboard') {
         'selectedMetric' => $selectedMetric,
         'selectedMetricSnapshot' => $selectedMetricSnapshot,
         'compareMetric' => $compareMetric,
+        'compareMetricSnapshot' => $compareMetricSnapshot,
         'metricsOrdered' => array_values($metricsByUser),
         'selectedWeekStart' => $selectedWeekStart,
         'dashboardView' => $dashboardView,

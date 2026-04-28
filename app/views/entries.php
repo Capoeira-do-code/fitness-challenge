@@ -268,10 +268,14 @@ $nutritionSummary = static function (array $photo): string {
                             <input type="text" name="caption" placeholder="<?= e(t('entries.caption_placeholder')) ?>">
                         </label>
 
-                        <label>
-                            <?= e(t('entries.camera_hint')) ?>
-                            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif" capture="environment" required data-proof-photo-input>
-                        </label>
+                        <div class="proof-photo-upload-block">
+                            <label class="proof-photo-upload-label">
+                                <span><?= e(t('entries.camera_hint')) ?></span>
+                                <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif" capture="environment" required data-proof-photo-input>
+                            </label>
+                            <p class="proof-photo-upload-state muted small" data-proof-photo-state><?= e(t('entries.photo_upload_idle')) ?></p>
+                            <p class="muted small"><?= e(t('entries.photo_upload_help')) ?></p>
+                        </div>
 
                         <div class="photo-nutrition-tools">
                             <button type="button" class="btn btn-ghost small" data-photo-nutrition-toggle><?= e(t('entries.add_calorie_info')) ?></button>
@@ -321,6 +325,10 @@ $nutritionSummary = static function (array $photo): string {
                         data-preview-unsupported-title="<?= e(t('entries.photo_preview_unsupported_title')) ?>"
                         data-preview-unsupported-hint="<?= e(t('entries.photo_preview_unsupported_hint')) ?>"
                         data-preview-alt="<?= e(t('common.photo')) ?>"
+                        data-state-idle="<?= e(t('entries.photo_upload_idle')) ?>"
+                        data-state-selected="<?= e(t('entries.photo_upload_selected')) ?>"
+                        data-state-unsupported="<?= e(t('entries.photo_upload_unsupported')) ?>"
+                        data-state-error="<?= e(t('entries.photo_upload_error')) ?>"
                     >
                         <div class="photo-placeholder">
                             <div class="photo-placeholder-content">

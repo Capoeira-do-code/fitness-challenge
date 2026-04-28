@@ -147,6 +147,39 @@ function initialize_database(PDO $pdo, array $config): void
     );
 
     $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS strike_review_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_user_id INTEGER NOT NULL,
+            week_start TEXT NOT NULL,
+            event_date TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            comment TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT "pending",
+            requested_by INTEGER NOT NULL,
+            eligible_voters_json TEXT NOT NULL DEFAULT "[]",
+            resent_count INTEGER NOT NULL DEFAULT 0,
+            resolved_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (requested_by) REFERENCES users(id) ON DELETE CASCADE
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS strike_review_votes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id INTEGER NOT NULL,
+            voter_user_id INTEGER NOT NULL,
+            vote TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (request_id) REFERENCES strike_review_requests(id) ON DELETE CASCADE,
+            FOREIGN KEY (voter_user_id) REFERENCES users(id) ON DELETE CASCADE
+        )'
+    );
+
+    $pdo->exec(
         'CREATE TABLE IF NOT EXISTS challenge_settings (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             challenge_name TEXT NOT NULL,
@@ -555,6 +588,10 @@ function ensure_schema_columns(PDO $pdo, array $config): void
 
     ensure_column($pdo, 'challenge_settings', 'active', 'INTEGER NOT NULL DEFAULT 1');
     ensure_column($pdo, 'challenge_settings', 'deleted_at', 'TEXT');
+
+    ensure_column($pdo, 'strike_review_requests', 'eligible_voters_json', 'TEXT NOT NULL DEFAULT "[]"');
+    ensure_column($pdo, 'strike_review_requests', 'resent_count', 'INTEGER NOT NULL DEFAULT 0');
+    ensure_column($pdo, 'strike_review_requests', 'resolved_at', 'TEXT');
 }
 
 function ensure_column(PDO $pdo, string $table, string $column, string $definition): void
@@ -605,6 +642,11 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON user_notifications(user_id, created_at)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON user_notifications(user_id, is_read)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_user_unique_key ON user_notifications(user_id, unique_key) WHERE unique_key IS NOT NULL');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_requests_target ON strike_review_requests(target_user_id, week_start, event_date)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_requests_status ON strike_review_requests(status)');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_strike_review_requests_event_unique ON strike_review_requests(target_user_id, week_start, event_date, reason)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_votes_request ON strike_review_votes(request_id)');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_strike_review_votes_unique ON strike_review_votes(request_id, voter_user_id)');
 }
 
 function migrate_photo_categories(PDO $pdo): void

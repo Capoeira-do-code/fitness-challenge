@@ -288,6 +288,7 @@
     if (proofPhotoForm) {
         const fileInput = proofPhotoForm.querySelector('[data-proof-photo-input]');
         const previewContainer = proofPhotoForm.querySelector('[data-proof-photo-preview]');
+        const uploadState = proofPhotoForm.querySelector('[data-proof-photo-state]');
         const nutritionToggle = proofPhotoForm.querySelector('[data-photo-nutrition-toggle]');
         const nutritionPanel = proofPhotoForm.querySelector('[data-photo-nutrition-panel]');
         const nutritionAdvancedToggle = proofPhotoForm.querySelector('[data-photo-nutrition-advanced-toggle]');
@@ -309,12 +310,30 @@
         const previewAlt = previewContainer instanceof HTMLElement
             ? (previewContainer.dataset.previewAlt || 'Photo preview')
             : 'Photo preview';
+        const stateIdle = previewContainer instanceof HTMLElement
+            ? (previewContainer.dataset.stateIdle || 'No photo selected.')
+            : 'No photo selected.';
+        const stateSelected = previewContainer instanceof HTMLElement
+            ? (previewContainer.dataset.stateSelected || 'Photo selected.')
+            : 'Photo selected.';
+        const stateUnsupported = previewContainer instanceof HTMLElement
+            ? (previewContainer.dataset.stateUnsupported || 'Selected file cannot be previewed in this browser.')
+            : 'Selected file cannot be previewed in this browser.';
+        const stateError = previewContainer instanceof HTMLElement
+            ? (previewContainer.dataset.stateError || 'Unable to preview this file.')
+            : 'Unable to preview this file.';
         const escapeHtml = (value) => String(value)
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
+        const setUploadState = (message) => {
+            if (!(uploadState instanceof HTMLElement)) {
+                return;
+            }
+            uploadState.textContent = String(message || '').trim();
+        };
 
         const hasFilledValues = (root) => {
             if (!(root instanceof HTMLElement)) {
@@ -362,6 +381,7 @@
                     </div>
                 </div>
             `;
+            setUploadState(stateIdle);
         };
 
         const renderUnsupportedPreview = () => {
@@ -377,6 +397,7 @@
                     </div>
                 </div>
             `;
+            setUploadState(stateUnsupported);
         };
 
         const isHeicLikeFile = (file) => {
@@ -409,6 +430,7 @@
             const previewImage = document.createElement('img');
             previewImage.src = activeObjectUrl;
             previewImage.alt = previewAlt;
+            setUploadState(`${stateSelected} ${selectedFile.name || ''}`.trim());
             const heicLike = isHeicLikeFile(selectedFile);
             previewImage.addEventListener('error', () => {
                 if (heicLike) {
@@ -416,6 +438,7 @@
                     return;
                 }
                 renderPlaceholder();
+                setUploadState(stateError);
             });
             previewContainer.appendChild(previewImage);
         };

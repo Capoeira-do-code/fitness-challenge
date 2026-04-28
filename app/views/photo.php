@@ -118,15 +118,19 @@ foreach ($nutritionFields as $field => $meta) {
                     <?php endif; ?>
                     <?php if ($photoCanDelete): ?>
                         <div class="photo-post-actions">
-                            <h3><?= e(t('photo.actions')) ?></h3>
                             <?php $photoDeleteFormId = 'photo-delete-form-page-' . $photoId; ?>
-                            <button
-                                type="button"
-                                class="btn btn-ghost photo-delete-text-btn"
-                                data-photo-delete-trigger
-                                data-photo-delete-form="<?= e($photoDeleteFormId) ?>"
-                                data-photo-delete-message="<?= e(t('entries.delete_photo_confirm')) ?>"
-                            ><?= e(t('photo.delete_photo')) ?></button>
+                            <details class="photo-post-menu">
+                                <summary class="btn btn-ghost small" aria-label="<?= e(t('photo.actions')) ?>">•••</summary>
+                                <div class="photo-post-menu-panel">
+                                    <button
+                                        type="button"
+                                        class="btn btn-ghost photo-delete-text-btn"
+                                        data-photo-delete-trigger
+                                        data-photo-delete-form="<?= e($photoDeleteFormId) ?>"
+                                        data-photo-delete-message="<?= e(t('entries.delete_photo_confirm')) ?>"
+                                    ><?= e(t('photo.delete_photo')) ?></button>
+                                </div>
+                            </details>
                             <form id="<?= e($photoDeleteFormId) ?>" method="post" action="/?page=photo&photo_id=<?= $photoId ?>" hidden>
                                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                                 <input type="hidden" name="action" value="delete_photo">
@@ -164,7 +168,7 @@ foreach ($nutritionFields as $field => $meta) {
                 <input type="hidden" name="photo_id" value="<?= $photoId ?>">
                 <label>
                     <?= e(t('photo.add_comment')) ?>
-                    <textarea name="comment" rows="3" maxlength="1200" placeholder="<?= e(t('photo.comment_placeholder')) ?>" required></textarea>
+                    <input type="text" name="comment" maxlength="1200" placeholder="<?= e(t('photo.comment_placeholder')) ?>" required>
                 </label>
                 <div class="inline-actions photo-comment-actions">
                     <button type="submit" class="btn btn-primary"><?= e(t('photo.comment_submit')) ?></button>
