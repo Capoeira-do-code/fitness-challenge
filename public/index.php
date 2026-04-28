@@ -432,7 +432,7 @@ if ($page === 'entries') {
                     'workout_type' => '',
                     'workouts' => $rawWorkouts,
                     'junk_food' => bool_from_form('junk_food'),
-                    'extra_workout' => bool_from_form('extra_workout'),
+                    'extra_workout' => 0,
                     'distance_km' => ($_POST['distance_km'] ?? '') !== '' ? (float) $_POST['distance_km'] : null,
                     'training_calories_burned' => ($_POST['training_calories_burned'] ?? '') !== '' ? (float) $_POST['training_calories_burned'] : null,
                     'weight' => ($_POST['weight'] ?? '') !== '' ? (float) $_POST['weight'] : null,
@@ -2004,6 +2004,16 @@ if ($page === 'team') {
                 }
             }
         }
+        $canManageTeamForPost = can_manage_team($pdo, $currentUser, (int) $team['id']);
+        $redirectTeamParams = [
+            'page' => 'team',
+            'team_id' => (int) $team['id'],
+        ];
+        $redirectTeamView = trim((string) ($_POST['redirect_view'] ?? ($_GET['view'] ?? '')));
+        if ($redirectTeamView !== '') {
+            $redirectTeamParams['view'] = $redirectTeamView;
+        }
+        $teamRedirectUrl = '/?' . http_build_query($redirectTeamParams);
 
         if ($action === 'team_membership') {
             require_admin($currentUser);
@@ -2019,6 +2029,10 @@ if ($page === 'team') {
         }
 
         if ($action === 'create_goal') {
+            if (!$canManageTeamForPost) {
+                flash_set('error', t('flash.no_permission'));
+                redirect($teamRedirectUrl);
+            }
             $title = trim((string) ($_POST['title'] ?? ''));
             if ($title !== '') {
                 $goalType = normalize_goal_target_type((string) ($_POST['target_type'] ?? 'custom'));
@@ -2030,6 +2044,8 @@ if ($page === 'team') {
                 $unitLabel = $goalType === 'custom'
                     ? ($customUnit !== '' ? substr($customUnit, 0, 24) : null)
                     : goal_target_default_unit($goalType);
+                $dueDate = ($_POST['due_date'] ?? '') !== '' ? to_date((string) $_POST['due_date']) : null;
+                $dueTime = normalize_goal_due_time($dueDate, (string) ($_POST['due_time'] ?? ''));
 
                 $settingsForGoal = challenge_settings($pdo, $config);
                 $teamUsersForGoal = list_active_team_users($pdo, (int) $team['id']);
@@ -2063,7 +2079,8 @@ if ($page === 'team') {
                     'current_value' => 0,
                     'unit_label' => $unitLabel,
                     'reward_text' => $rewardText,
-                    'due_date' => ($_POST['due_date'] ?? '') !== '' ? to_date((string) $_POST['due_date']) : null,
+                    'due_date' => $dueDate,
+                    'due_time' => $dueTime,
                 ], (int) $currentUser['id']);
 
                 auto_complete_team_goals_for_team(
@@ -2075,10 +2092,20 @@ if ($page === 'team') {
                 );
                 flash_set('success', t('flash.goal_created'));
             }
-            redirect('/?page=team');
+            redirect($teamRedirectUrl);
         }
 
         if ($action === 'update_goal') {
+            if (!$canManageTeamForPost) {
+                flash_set('error', t('flash.no_permission'));
+                redirect($teamRedirectUrl);
+            }
+            $goalId = (int) ($_POST['goal_id'] ?? 0);
+            $goal = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = :id', [':id' => $goalId]);
+            if ($goal === null || (string) ($goal['scope'] ?? '') !== 'team' || (int) ($goal['team_id'] ?? 0) !== (int) $team['id']) {
+                flash_set('error', t('flash.no_permission'));
+                redirect($teamRedirectUrl);
+            }
             $goalType = normalize_goal_target_type((string) ($_POST['target_type'] ?? 'custom'));
             $rewardEnabled = bool_from_form('reward_enabled');
             $rewardTextRaw = trim((string) ($_POST['reward_text'] ?? ''));
@@ -2087,20 +2114,26 @@ if ($page === 'team') {
             $unitLabel = $goalType === 'custom'
                 ? ($customUnit !== '' ? substr($customUnit, 0, 24) : null)
                 : goal_target_default_unit($goalType);
-            update_goal($pdo, (int) ($_POST['goal_id'] ?? 0), [
+            $dueDate = ($_POST['due_date'] ?? '') !== '' ? to_date((string) $_POST['due_date']) : null;
+            $dueTime = normalize_goal_due_time($dueDate, (string) ($_POST['due_time'] ?? ''));
+            update_goal($pdo, $goalId, [
                 'title' => trim((string) ($_POST['title'] ?? '')),
                 'target_type' => $goalType,
                 'target_value' => ($_POST['target_value'] ?? '') !== '' ? (float) $_POST['target_value'] : null,
                 'unit_label' => $unitLabel,
                 'reward_text' => $rewardText,
-                'due_date' => ($_POST['due_date'] ?? '') !== '' ? to_date((string) $_POST['due_date']) : null,
+                'due_date' => $dueDate,
+                'due_time' => $dueTime,
             ], (int) $currentUser['id']);
             flash_set('success', t('flash.goal_updated'));
-            redirect('/?page=team');
+            redirect($teamRedirectUrl);
         }
 
         if ($action === 'delete_goal') {
-            require_team_manager($pdo, $currentUser, (int) $team['id']);
+            if (!$canManageTeamForPost) {
+                flash_set('error', t('flash.no_permission'));
+                redirect($teamRedirectUrl);
+            }
             $goalId = (int) ($_POST['goal_id'] ?? 0);
             $goal = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = :id', [':id' => $goalId]);
             if ($goal !== null && (string) $goal['scope'] === 'team' && (int) ($goal['team_id'] ?? 0) === (int) $team['id']) {
@@ -2109,13 +2142,23 @@ if ($page === 'team') {
             } else {
                 flash_set('error', t('flash.no_permission'));
             }
-            redirect('/?page=team');
+            redirect($teamRedirectUrl);
         }
 
         if ($action === 'goal_status') {
-            update_goal_status($pdo, (int) ($_POST['goal_id'] ?? 0), (string) ($_POST['status'] ?? 'active'), (int) $currentUser['id']);
-            flash_set('success', t('flash.goal_updated'));
-            redirect('/?page=team');
+            if (!$canManageTeamForPost) {
+                flash_set('error', t('flash.no_permission'));
+                redirect($teamRedirectUrl);
+            }
+            $goalId = (int) ($_POST['goal_id'] ?? 0);
+            $goal = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = :id', [':id' => $goalId]);
+            if ($goal !== null && (string) ($goal['scope'] ?? '') === 'team' && (int) ($goal['team_id'] ?? 0) === (int) $team['id']) {
+                update_goal_status($pdo, $goalId, (string) ($_POST['status'] ?? 'active'), (int) $currentUser['id']);
+                flash_set('success', t('flash.goal_updated'));
+            } else {
+                flash_set('error', t('flash.no_permission'));
+            }
+            redirect($teamRedirectUrl);
         }
 
         if ($action === 'create_team_achievement') {
@@ -2605,6 +2648,8 @@ if ($page === 'team') {
     foreach ($teamGoalsRaw as $goal) {
         $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
         $unitLabel = trim((string) ($goal['unit_label'] ?? ''));
+        $goalDueDate = trim((string) ($goal['due_date'] ?? ''));
+        $goalDueTime = normalize_goal_due_time($goalDueDate !== '' ? $goalDueDate : null, (string) ($goal['due_time'] ?? ''));
         if ($unitLabel === '') {
             $unitLabel = goal_target_default_unit($type);
         }
@@ -2628,6 +2673,8 @@ if ($page === 'team') {
             'progress_display' => $formatGoalValue($progressValue, $type, $unitLabel),
             'target_display' => $formatGoalValue($targetValue, $type, $unitLabel),
             'baseline_display' => $formatGoalValue($baselineValue, $type, $unitLabel),
+            'due_time_resolved' => $goalDueTime,
+            'due_at' => $goalDueDate !== '' && $goalDueTime !== null ? ($goalDueDate . ' ' . $goalDueTime) : null,
         ]);
     }
 

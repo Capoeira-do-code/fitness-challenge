@@ -69,7 +69,29 @@ foreach ($nutritionFields as $field => $meta) {
                 <p class="eyebrow"><?= e(t('common.photo')) ?></p>
                 <h1 class="photo-post-title"><?= e(t('photo.title')) ?></h1>
             </div>
-            <a class="btn btn-ghost small photo-back-btn" href="<?= e($backUrl) ?>">← <?= e(t('photo.back_to_entries')) ?></a>
+            <div class="photo-post-head-actions">
+                <a class="btn btn-ghost small photo-back-btn" href="<?= e($backUrl) ?>">← <?= e(t('photo.back_to_entries')) ?></a>
+                <?php if ($photoCanDelete): ?>
+                    <?php $photoDeleteFormId = 'photo-delete-form-page-' . $photoId; ?>
+                    <details class="photo-post-menu photo-post-head-menu">
+                        <summary class="btn btn-ghost small" aria-label="<?= e(t('photo.actions')) ?>">•••</summary>
+                        <div class="photo-post-menu-panel">
+                            <button
+                                type="button"
+                                class="btn btn-ghost photo-delete-text-btn"
+                                data-photo-delete-trigger
+                                data-photo-delete-form="<?= e($photoDeleteFormId) ?>"
+                                data-photo-delete-message="<?= e(t('entries.delete_photo_confirm')) ?>"
+                            ><?= e(t('photo.delete_photo')) ?></button>
+                        </div>
+                    </details>
+                    <form id="<?= e($photoDeleteFormId) ?>" method="post" action="/?page=photo&photo_id=<?= $photoId ?>" hidden>
+                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                        <input type="hidden" name="action" value="delete_photo">
+                        <input type="hidden" name="photo_id" value="<?= $photoId ?>">
+                    </form>
+                <?php endif; ?>
+            </div>
         </div>
 
         <div class="photo-post-layout">
@@ -115,28 +137,6 @@ foreach ($nutritionFields as $field => $meta) {
                     <div class="photo-post-divider" aria-hidden="true"></div>
                     <?php if (!empty($photo['caption'])): ?>
                         <p class="photo-post-caption"><?= e((string) $photo['caption']) ?></p>
-                    <?php endif; ?>
-                    <?php if ($photoCanDelete): ?>
-                        <div class="photo-post-actions">
-                            <?php $photoDeleteFormId = 'photo-delete-form-page-' . $photoId; ?>
-                            <details class="photo-post-menu">
-                                <summary class="btn btn-ghost small" aria-label="<?= e(t('photo.actions')) ?>">•••</summary>
-                                <div class="photo-post-menu-panel">
-                                    <button
-                                        type="button"
-                                        class="btn btn-ghost photo-delete-text-btn"
-                                        data-photo-delete-trigger
-                                        data-photo-delete-form="<?= e($photoDeleteFormId) ?>"
-                                        data-photo-delete-message="<?= e(t('entries.delete_photo_confirm')) ?>"
-                                    ><?= e(t('photo.delete_photo')) ?></button>
-                                </div>
-                            </details>
-                            <form id="<?= e($photoDeleteFormId) ?>" method="post" action="/?page=photo&photo_id=<?= $photoId ?>" hidden>
-                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                <input type="hidden" name="action" value="delete_photo">
-                                <input type="hidden" name="photo_id" value="<?= $photoId ?>">
-                            </form>
-                        </div>
                     <?php endif; ?>
                 </article>
 

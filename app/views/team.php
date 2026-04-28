@@ -5,11 +5,11 @@ declare(strict_types=1);
 $summary = $teamSummary ?? [];
 $teamView = (string) ($teamView ?? 'current_week');
 $teamWeekOptions = (array) ($teamWeekOptions ?? []);
-$today = to_date(null);
 $goals = (array) ($teamGoals ?? []);
 $teamNotifications = (array) ($teamNotifications ?? []);
 $teamSection = (string) ($teamSection ?? '');
 $teamMemberDetail = is_array($teamMemberDetail ?? null) ? (array) $teamMemberDetail : null;
+$nowDateTime = new DateTimeImmutable('now');
 
 $formatInt = static fn(float|int $value): string => number_format((int) round((float) $value), 0, '.', '');
 $formatKm = static fn(float|int $value): string => number_format((float) $value, 2, '.', '');
@@ -457,7 +457,9 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                         <p class="eyebrow"><?= e(t('goals.team')) ?></p>
                         <h2><?= e(t('goals.team')) ?></h2>
                     </div>
-                    <button class="btn btn-primary" type="button" data-team-goal-open><?= e(t('common.create')) ?></button>
+                    <?php if (!empty($canManageTeam)): ?>
+                        <button class="btn btn-primary" type="button" data-team-goal-open data-goal-mode="create"><?= e(t('common.create')) ?></button>
+                    <?php endif; ?>
                 </div>
 
                 <?php if ($goals === []): ?>
@@ -468,8 +470,20 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                             <?php
                             $status = (string) ($goal['status'] ?? 'active');
                             $progress = (float) ($goal['progress_pct'] ?? 0);
-                            $isExpired = !empty($goal['due_date']) && (string) $goal['due_date'] < $today && $status !== 'complete';
                             $rewardText = trim((string) ($goal['reward_text'] ?? ''));
+                            $dueDate = trim((string) ($goal['due_date'] ?? ''));
+                            $dueTime = trim((string) ($goal['due_time_resolved'] ?? $goal['due_time'] ?? ''));
+                            $dueAtRaw = trim((string) ($goal['due_at'] ?? ''));
+                            $isExpired = false;
+                            if ($status !== 'complete' && $dueAtRaw !== '') {
+                                try {
+                                    $isExpired = new DateTimeImmutable($dueAtRaw) < $nowDateTime;
+                                } catch (Throwable) {
+                                    $isExpired = false;
+                                }
+                            }
+                            $goalTargetType = (string) ($goal['target_type_normalized'] ?? normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom')));
+                            $goalCustomUnit = $goalTargetType === 'custom' ? trim((string) ($goal['unit_label'] ?? '')) : '';
                             ?>
                             <article class="mini-card team-goal-card">
                                 <div class="team-goal-main">
@@ -480,7 +494,9 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                     <span>
                                         <?= e((string) ($goal['target_type_label'] ?? t('common.other'))) ?>
                                         · <?= e((string) ($goal['target_display'] ?? '-')) ?>
-                                        <?php if (!empty($goal['due_date'])): ?> · <?= e(format_date_eu((string) $goal['due_date'])) ?><?php endif; ?>
+                                        <?php if ($dueDate !== ''): ?>
+                                            · <?= e(format_date_eu($dueDate)) ?><?= $dueTime !== '' ? ' ' . e($dueTime) : '' ?>
+                                        <?php endif; ?>
                                         <?php if ($isExpired): ?> · <?= e(t('goals.expired')) ?><?php endif; ?>
                                     </span>
                                     <span><?= e((string) ($goal['progress_display'] ?? '0')) ?> / <?= e((string) ($goal['target_display'] ?? '-')) ?></span>
@@ -492,15 +508,32 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                     <div class="goal-progress"><span style="width: <?= e((string) $progress) ?>%"></span></div>
                                 </div>
                                 <?php if (!empty($canManageTeam)): ?>
-                                    <form method="post" action="/?page=team" class="inline-actions-mini team-goal-actions">
-                                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                        <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
-                                        <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
-                                        <input type="hidden" name="status" value="active">
-                                        <button class="btn small btn-ghost" name="action" value="goal_status" type="submit" onclick="this.form.status.value='complete'"><?= e(t('common.complete')) ?></button>
-                                        <button class="btn small btn-ghost" name="action" value="goal_status" type="submit" onclick="this.form.status.value='archived'"><?= e(t('goals.archive')) ?></button>
-                                        <button class="btn small btn-ghost" name="action" value="delete_goal" type="submit" onclick="return window.confirm('¿Eliminar objetivo?');"><?= e(t('common.delete')) ?></button>
-                                    </form>
+                                    <div class="team-goal-actions">
+                                        <button
+                                            class="btn small btn-ghost"
+                                            type="button"
+                                            data-team-goal-open
+                                            data-goal-mode="edit"
+                                            data-goal-id="<?= (int) $goal['id'] ?>"
+                                            data-goal-title="<?= e((string) ($goal['title'] ?? '')) ?>"
+                                            data-goal-target-type="<?= e($goalTargetType) ?>"
+                                            data-goal-target-value="<?= e((string) ($goal['target_value'] ?? '')) ?>"
+                                            data-goal-custom-unit="<?= e($goalCustomUnit) ?>"
+                                            data-goal-reward-text="<?= e($rewardText) ?>"
+                                            data-goal-due-date="<?= e($dueDate) ?>"
+                                            data-goal-due-time="<?= e($dueTime) ?>"
+                                        ><?= e(t('common.edit')) ?></button>
+                                        <form method="post" action="/?page=team" class="inline-actions-mini">
+                                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                            <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
+                                            <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
+                                            <input type="hidden" name="redirect_view" value="<?= e($teamView) ?>">
+                                            <input type="hidden" name="status" value="active">
+                                            <button class="btn small btn-ghost" name="action" value="goal_status" type="submit" onclick="this.form.status.value='complete'"><?= e(t('common.complete')) ?></button>
+                                            <button class="btn small btn-ghost" name="action" value="goal_status" type="submit" onclick="this.form.status.value='archived'"><?= e(t('goals.archive')) ?></button>
+                                            <button class="btn small btn-ghost" name="action" value="delete_goal" type="submit" onclick="return window.confirm('¿Eliminar objetivo?');"><?= e(t('common.delete')) ?></button>
+                                        </form>
+                                    </div>
                                 <?php endif; ?>
                             </article>
                         <?php endforeach; ?>
@@ -559,27 +592,29 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         <div class="confirm-modal" hidden aria-hidden="true" data-team-goal-modal>
             <div class="confirm-modal-backdrop" data-team-goal-close></div>
             <div class="confirm-modal-card team-goal-modal-card" role="dialog" aria-modal="true" aria-labelledby="team-goal-title">
-                <h3 id="team-goal-title"><?= e(t('goals.create_team_goal')) ?></h3>
+                <h3 id="team-goal-title" data-team-goal-modal-title data-title-create="<?= e(t('goals.create_team_goal')) ?>" data-title-edit="<?= e(t('goals.edit_team_goal')) ?>"><?= e(t('goals.create_team_goal')) ?></h3>
                 <form method="post" action="/?page=team" class="stack compact-form" data-team-goal-form>
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
-                    <input type="hidden" name="action" value="create_goal">
+                    <input type="hidden" name="redirect_view" value="<?= e($teamView) ?>">
+                    <input type="hidden" name="action" value="create_goal" data-team-goal-action>
+                    <input type="hidden" name="goal_id" value="" data-team-goal-id>
                     <label>
                         <?= e(t('goals.goal_name')) ?>
-                        <input type="text" name="title" placeholder="<?= e(t('goals.team_placeholder')) ?>" required>
+                        <input type="text" name="title" placeholder="<?= e(t('goals.team_placeholder')) ?>" required data-goal-title-input>
                     </label>
                     <label>
                         <?= e(t('goals.type')) ?>
                         <select name="target_type" data-goal-type-select>
                             <option value="steps" data-goal-placeholder="200000" data-goal-lower-better="0"><?= e(t('metric.steps')) ?></option>
-                            <option value="distance" data-goal-placeholder="50 km" data-goal-lower-better="0"><?= e(t('metric.distance_km')) ?></option>
+                            <option value="km" data-goal-placeholder="50 km" data-goal-lower-better="0"><?= e(t('metric.distance_km')) ?></option>
                             <option value="workouts" data-goal-placeholder="12 workouts" data-goal-lower-better="0"><?= e(t('metric.workouts')) ?></option>
                             <option value="score" data-goal-placeholder="40 pts" data-goal-lower-better="0"><?= e(t('metric.score')) ?></option>
                             <option value="calories_burned" data-goal-placeholder="12000 kcal" data-goal-lower-better="0"><?= e(t('dashboard.calories_burned')) ?></option>
                             <option value="calories_consumed" data-goal-placeholder="12000 kcal" data-goal-lower-better="1"><?= e(t('dashboard.calories_consumed')) ?></option>
-                            <option value="penalty" data-goal-placeholder="30 €" data-goal-lower-better="1"><?= e(t('metric.penalty')) ?></option>
+                            <option value="penalties" data-goal-placeholder="30 €" data-goal-lower-better="1"><?= e(t('metric.penalty')) ?></option>
                             <option value="strikes" data-goal-placeholder="3 strikes" data-goal-lower-better="1"><?= e(t('metric.strikes')) ?></option>
-                            <option value="weight_progress" data-goal-placeholder="4 %" data-goal-lower-better="0"><?= e(t('metric.weight')) ?></option>
+                            <option value="weight" data-goal-placeholder="4 %" data-goal-lower-better="0"><?= e(t('metric.weight')) ?></option>
                             <option value="custom"><?= e(t('common.other')) ?></option>
                         </select>
                     </label>
@@ -603,11 +638,15 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     </label>
                     <label>
                         <?= e(t('goals.due_date')) ?>
-                        <input type="date" name="due_date">
+                        <input type="date" name="due_date" data-goal-due-date-input>
+                    </label>
+                    <label>
+                        <?= e(t('goals.due_time')) ?>
+                        <input type="time" name="due_time" data-goal-due-time-input>
                     </label>
                     <div class="confirm-modal-actions">
                         <button class="btn btn-ghost" type="button" data-team-goal-close><?= e(t('common.cancel')) ?></button>
-                        <button class="btn btn-primary" type="submit"><?= e(t('common.create')) ?></button>
+                        <button class="btn btn-primary" type="submit" data-team-goal-submit data-label-create="<?= e(t('common.create')) ?>" data-label-save="<?= e(t('common.save')) ?>"><?= e(t('common.create')) ?></button>
                     </div>
                 </form>
             </div>
@@ -859,18 +898,26 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         const openButtons = document.querySelectorAll('[data-team-goal-open]');
         const closeButtons = goalModal.querySelectorAll('[data-team-goal-close]');
         const goalForm = goalModal.querySelector('[data-team-goal-form]');
-        const firstInput = goalModal.querySelector('input[name="title"]');
+        const firstInput = goalModal.querySelector('[data-goal-title-input]');
+        const modalTitle = goalModal.querySelector('[data-team-goal-modal-title]');
+        const goalActionInput = goalModal.querySelector('[data-team-goal-action]');
+        const goalIdInput = goalModal.querySelector('[data-team-goal-id]');
         const goalTypeSelect = goalModal.querySelector('[data-goal-type-select]');
         const targetInput = goalModal.querySelector('[data-goal-target-input]');
+        const dueDateInput = goalModal.querySelector('[data-goal-due-date-input]');
+        const dueTimeInput = goalModal.querySelector('[data-goal-due-time-input]');
         const directionLabel = goalModal.querySelector('[data-goal-direction-label]');
         const customUnitWrap = goalModal.querySelector('[data-goal-custom-unit-wrap]');
         const customUnitInput = goalModal.querySelector('input[name="custom_unit"]');
         const rewardToggle = goalModal.querySelector('[data-goal-reward-toggle]');
         const rewardWrap = goalModal.querySelector('[data-goal-reward-wrap]');
         const rewardInput = goalModal.querySelector('input[name="reward_text"]');
+        const submitButton = goalModal.querySelector('[data-team-goal-submit]');
+        const modalCard = goalModal.querySelector('.confirm-modal-card');
         const directionLowerText = <?= json_encode(t('goals.lower_better')) ?>;
         const directionHigherText = <?= json_encode(t('goals.higher_better')) ?>;
         const defaultPlaceholder = '100';
+        let opener = null;
 
         const updateGoalFormByType = () => {
             if (!(goalTypeSelect instanceof HTMLSelectElement)) {
@@ -910,28 +957,115 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             }
         };
 
+        const resetAnchoredPosition = () => {
+            goalModal.classList.remove('team-goal-modal-anchored');
+            if (modalCard instanceof HTMLElement) {
+                modalCard.style.top = '';
+                modalCard.style.left = '';
+            }
+        };
+
+        const applyAnchoredPosition = (trigger) => {
+            resetAnchoredPosition();
+            if (!(trigger instanceof HTMLElement) || !(modalCard instanceof HTMLElement)) {
+                return;
+            }
+            if (!window.matchMedia('(max-width: 768px)').matches) {
+                return;
+            }
+            const triggerRect = trigger.getBoundingClientRect();
+            goalModal.classList.add('team-goal-modal-anchored');
+            window.requestAnimationFrame(() => {
+                const padding = 10;
+                const cardRect = modalCard.getBoundingClientRect();
+                const baseTop = triggerRect.bottom + 8;
+                const baseLeft = triggerRect.left;
+                const maxTop = Math.max(padding, window.innerHeight - padding - cardRect.height);
+                const maxLeft = Math.max(padding, window.innerWidth - padding - cardRect.width);
+                const top = Math.max(padding, Math.min(baseTop, maxTop));
+                const left = Math.max(padding, Math.min(baseLeft, maxLeft));
+                modalCard.style.top = `${top}px`;
+                modalCard.style.left = `${left}px`;
+            });
+        };
+
         const closeModal = () => {
             goalModal.hidden = true;
             goalModal.setAttribute('aria-hidden', 'true');
             goalModal.classList.remove('is-open');
+            resetAnchoredPosition();
+            if (opener instanceof HTMLElement) {
+                opener.focus();
+            }
+            opener = null;
         };
 
-        const openModal = () => {
+        const openModal = (trigger) => {
+            const mode = trigger instanceof HTMLElement
+                ? String(trigger.dataset.goalMode || 'create').trim().toLowerCase()
+                : 'create';
+            const isEdit = mode === 'edit';
+            opener = trigger instanceof HTMLElement ? trigger : null;
             if (goalForm instanceof HTMLFormElement) {
                 goalForm.reset();
+            }
+            if (goalActionInput instanceof HTMLInputElement) {
+                goalActionInput.value = isEdit ? 'update_goal' : 'create_goal';
+            }
+            if (goalIdInput instanceof HTMLInputElement) {
+                goalIdInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalId || '').trim() : '';
+            }
+            if (firstInput instanceof HTMLInputElement) {
+                firstInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalTitle || '').trim() : '';
+            }
+            if (goalTypeSelect instanceof HTMLSelectElement) {
+                const nextType = isEdit && trigger instanceof HTMLElement
+                    ? String(trigger.dataset.goalTargetType || '').trim()
+                    : 'steps';
+                const hasOption = [...goalTypeSelect.options].some((option) => option.value === nextType);
+                goalTypeSelect.value = hasOption ? nextType : 'custom';
+            }
+            if (targetInput instanceof HTMLInputElement) {
+                targetInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalTargetValue || '').trim() : '';
+            }
+            if (customUnitInput instanceof HTMLInputElement) {
+                customUnitInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalCustomUnit || '').trim() : '';
+            }
+            if (dueDateInput instanceof HTMLInputElement) {
+                dueDateInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalDueDate || '').trim() : '';
+            }
+            if (dueTimeInput instanceof HTMLInputElement) {
+                dueTimeInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalDueTime || '').trim() : '';
+            }
+            if (rewardInput instanceof HTMLInputElement) {
+                rewardInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalRewardText || '').trim() : '';
+            }
+            if (rewardToggle instanceof HTMLInputElement) {
+                rewardToggle.checked = rewardInput instanceof HTMLInputElement && rewardInput.value.trim() !== '';
+            }
+            if (submitButton instanceof HTMLButtonElement) {
+                submitButton.textContent = isEdit
+                    ? String(submitButton.dataset.labelSave || 'Save')
+                    : String(submitButton.dataset.labelCreate || 'Create');
+            }
+            if (modalTitle instanceof HTMLElement) {
+                modalTitle.textContent = isEdit
+                    ? String(modalTitle.dataset.titleEdit || 'Edit team goal')
+                    : String(modalTitle.dataset.titleCreate || 'Create team goal');
             }
             goalModal.hidden = false;
             goalModal.setAttribute('aria-hidden', 'false');
             goalModal.classList.add('is-open');
             updateGoalFormByType();
             updateRewardVisibility();
+            applyAnchoredPosition(trigger);
             if (firstInput instanceof HTMLElement) {
                 window.setTimeout(() => firstInput.focus(), 0);
             }
         };
 
         openButtons.forEach((button) => {
-            button.addEventListener('click', openModal);
+            button.addEventListener('click', () => openModal(button));
         });
         closeButtons.forEach((button) => {
             button.addEventListener('click', closeModal);
@@ -948,6 +1082,12 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         window.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && !goalModal.hidden) {
                 closeModal();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            if (!goalModal.hidden && opener instanceof HTMLElement) {
+                applyAnchoredPosition(opener);
             }
         });
     }

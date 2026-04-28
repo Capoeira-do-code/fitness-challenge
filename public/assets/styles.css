@@ -1969,6 +1969,11 @@ textarea {
 }
 
 .team-goal-actions {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.team-goal-actions .inline-actions-mini {
     justify-content: flex-start;
 }
 
@@ -2420,6 +2425,14 @@ textarea {
     gap: 0.9rem;
 }
 
+.confirm-modal.team-goal-modal-anchored {
+    place-items: unset;
+}
+
+.confirm-modal.team-goal-modal-anchored .confirm-modal-card {
+    position: fixed;
+}
+
 .confirm-modal-actions {
     display: flex;
     justify-content: flex-end;
@@ -2501,6 +2514,13 @@ textarea {
 
 .photo-post-head {
     align-items: center;
+}
+
+.photo-post-head-actions {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
 }
 
 .photo-back-btn {
@@ -2632,6 +2652,11 @@ textarea {
     padding: 0.35rem;
     box-shadow: 0 10px 22px rgba(20, 30, 40, 0.16);
     min-width: 170px;
+}
+
+.photo-post-head-menu > summary {
+    min-width: 34px;
+    padding-inline: 0.42rem;
 }
 
 .photo-delete-text-btn {
@@ -3324,6 +3349,14 @@ textarea {
 
     .photo-post-head {
         gap: 0.55rem;
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .photo-post-head-actions {
+        margin-left: 0;
+        width: 100%;
+        justify-content: flex-end;
     }
 
     .photo-back-btn {
@@ -3379,6 +3412,10 @@ textarea {
 
     .photo-post {
         gap: 0.85rem;
+    }
+
+    .photo-post-head-actions {
+        gap: 0.35rem;
     }
 
     .photo-post-layout {

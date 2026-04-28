@@ -194,10 +194,6 @@ $nutritionSummary = static function (array $photo): string {
                         <input type="checkbox" name="junk_food" value="1" <?= !empty($log) && (int) $log['junk_food'] === 1 ? 'checked' : '' ?> data-testid="entry-junk-food">
                         <?= e(t('entries.junk_food')) ?>
                     </label>
-                    <label class="check">
-                        <input type="checkbox" name="extra_workout" value="1" <?= !empty($log) && (int) ($log['extra_workout'] ?? 0) === 1 ? 'checked' : '' ?> data-testid="entry-extra-workout">
-                        <?= e(t('entries.extra_workout')) ?>
-                    </label>
                     <?php foreach (($habits ?? []) as $habit): ?>
                         <?php $code = (string) $habit['code']; ?>
                         <?php if ($code === 'morning_walk') {

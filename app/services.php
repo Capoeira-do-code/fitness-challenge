@@ -81,6 +81,7 @@ function normalize_log_workouts_payload(PDO $pdo, array $payload, ?int $actorUse
     $payload['workout_done'] = $normalized !== [] ? 1 : 0;
     $payload['workout_type_id'] = $normalized !== [] ? ($normalized[0]['workout_type_id'] ?? null) : null;
     $payload['workout_type'] = $normalized !== [] ? (string) ($normalized[0]['workout_type'] ?? '') : '';
+    $payload['extra_workout'] = count($normalized) > 1 ? 1 : 0;
 
     return $payload;
 }
@@ -2449,6 +2450,25 @@ function pending_team_join_requests(PDO $pdo, int $teamId): array
     );
 }
 
+function normalize_goal_due_time(?string $dueDate, mixed $dueTimeRaw): ?string
+{
+    $date = trim((string) $dueDate);
+    if ($date === '') {
+        return null;
+    }
+
+    $time = trim((string) $dueTimeRaw);
+    if ($time === '') {
+        return '23:59';
+    }
+
+    if (preg_match('/^([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/', $time, $matches) === 1) {
+        return sprintf('%02d:%02d', (int) $matches[1], (int) $matches[2]);
+    }
+
+    return '23:59';
+}
+
 function list_goals(PDO $pdo, string $scope, ?int $userId = null, ?int $teamId = null, bool $includeArchived = false): array
 {
     $conditions = ['scope = :scope'];
@@ -2468,7 +2488,7 @@ function list_goals(PDO $pdo, string $scope, ?int $userId = null, ?int $teamId =
 
     return db_fetch_all(
         $pdo,
-        'SELECT * FROM goals WHERE ' . implode(' AND ', $conditions) . ' ORDER BY status ASC, due_date IS NULL, due_date ASC, created_at DESC',
+        'SELECT * FROM goals WHERE ' . implode(' AND ', $conditions) . ' ORDER BY status ASC, due_date IS NULL, due_date ASC, COALESCE(due_time, "23:59") ASC, created_at DESC',
         $params
     );
 }
@@ -2480,12 +2500,12 @@ function create_goal(PDO $pdo, array $payload, int $actorUserId): void
         $pdo,
         'INSERT INTO goals (
             scope, team_id, user_id, title, target_type, target_value,
-            baseline_value, current_value, unit_label, reward_text, due_date,
+            baseline_value, current_value, unit_label, reward_text, due_date, due_time,
             status, completed_at, created_by, created_at, updated_at
         )
          VALUES (
             :scope, :team_id, :user_id, :title, :target_type, :target_value,
-            :baseline_value, :current_value, :unit_label, :reward_text, :due_date,
+            :baseline_value, :current_value, :unit_label, :reward_text, :due_date, :due_time,
             "active", NULL, :created_by, :created_at, :updated_at
         )',
         [
@@ -2500,6 +2520,7 @@ function create_goal(PDO $pdo, array $payload, int $actorUserId): void
             ':unit_label' => $payload['unit_label'] ?? null,
             ':reward_text' => $payload['reward_text'] ?? null,
             ':due_date' => $payload['due_date'],
+            ':due_time' => $payload['due_time'] ?? null,
             ':created_by' => $actorUserId,
             ':created_at' => $now,
             ':updated_at' => $now,
@@ -2554,6 +2575,7 @@ function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): v
              unit_label = :unit_label,
              reward_text = :reward_text,
              due_date = :due_date,
+             due_time = :due_time,
              updated_at = :updated_at
          WHERE id = :id',
         [
@@ -2563,6 +2585,7 @@ function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): v
             ':unit_label' => $payload['unit_label'] ?? null,
             ':reward_text' => $payload['reward_text'] ?? null,
             ':due_date' => $payload['due_date'],
+            ':due_time' => $payload['due_time'] ?? null,
             ':updated_at' => now_iso(),
             ':id' => $goalId,
         ]
