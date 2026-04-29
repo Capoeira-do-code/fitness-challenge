@@ -2165,7 +2165,10 @@ if ($page === 'team') {
             $teamSummaryForGoal['calories_burned'] = (float) ($teamCaloriesForGoal['burned'] ?? 0);
             $teamSummaryForGoal['calories_consumed'] = (float) ($teamCaloriesForGoal['consumed'] ?? 0);
 
-            return $teamSummaryForGoal;
+            return [
+                'summary' => $teamSummaryForGoal,
+                'users' => $teamUsersForGoal,
+            ];
         };
 
         if ($action === 'create_goal') {
@@ -2203,8 +2206,21 @@ if ($page === 'team') {
                 $startsInFuture = $startAt instanceof DateTimeImmutable && $startAt > $nowDateTime;
                 $baselineValue = null;
                 if (!$startsInFuture) {
-                    $teamSummaryForGoal = $buildTeamSummaryForGoal();
-                    $baselineValue = goal_team_metric_value(['target_type' => $goalType], $teamSummaryForGoal);
+                    $teamMetricsContext = $buildTeamSummaryForGoal();
+                    $teamSummaryForGoal = is_array($teamMetricsContext['summary'] ?? null) ? $teamMetricsContext['summary'] : [];
+                    $teamUsersForGoal = is_array($teamMetricsContext['users'] ?? null) ? $teamMetricsContext['users'] : [];
+                    $currentMetricValue = goal_team_metric_value(['target_type' => $goalType], $teamSummaryForGoal);
+                    $baselineValue = goal_team_baseline_from_start(
+                        $pdo,
+                        [
+                            'target_type' => $goalType,
+                            'start_date' => $startDate,
+                            'start_time' => $startTime,
+                        ],
+                        $teamUsersForGoal,
+                        $currentMetricValue,
+                        $nowDateTime
+                    );
                 }
 
                 create_goal($pdo, [
@@ -2289,10 +2305,26 @@ if ($page === 'team') {
                 $updatePayload['baseline_value'] = null;
                 $updatePayload['current_value'] = 0;
             } else {
-                $shouldResetBaseline = $goalType !== $goalTypeBefore || !is_numeric($goal['baseline_value'] ?? null);
-                if ($shouldResetBaseline) {
-                    $teamSummaryForGoal = $buildTeamSummaryForGoal();
-                    $updatePayload['baseline_value'] = goal_team_metric_value(['target_type' => $goalType], $teamSummaryForGoal);
+                $shouldResetToNow = $goalType !== $goalTypeBefore;
+                $shouldBackfillFromStart = !is_numeric($goal['baseline_value'] ?? null);
+                if ($shouldResetToNow || $shouldBackfillFromStart) {
+                    $teamMetricsContext = $buildTeamSummaryForGoal();
+                    $teamSummaryForGoal = is_array($teamMetricsContext['summary'] ?? null) ? $teamMetricsContext['summary'] : [];
+                    $teamUsersForGoal = is_array($teamMetricsContext['users'] ?? null) ? $teamMetricsContext['users'] : [];
+                    $currentMetricValue = goal_team_metric_value(['target_type' => $goalType], $teamSummaryForGoal);
+                    $updatePayload['baseline_value'] = $shouldResetToNow
+                        ? round($currentMetricValue, 2)
+                        : goal_team_baseline_from_start(
+                            $pdo,
+                            [
+                                'target_type' => $goalType,
+                                'start_date' => $startDate,
+                                'start_time' => $startTime,
+                            ],
+                            $teamUsersForGoal,
+                            $currentMetricValue,
+                            $nowDateTime
+                        );
                     $updatePayload['current_value'] = 0;
                 }
             }

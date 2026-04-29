@@ -2995,6 +2995,42 @@ function goal_window_metric_value_for_team(PDO $pdo, array $goal, array $teamUse
     };
 }
 
+function goal_team_baseline_from_start(
+    PDO $pdo,
+    array $goal,
+    array $teamUsers,
+    float $currentMetricValue,
+    ?DateTimeImmutable $now = null
+): float {
+    $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
+    if (!goal_target_type_uses_time_window($type)) {
+        return round($currentMetricValue, 2);
+    }
+
+    $startAt = goal_start_datetime($goal);
+    if (!($startAt instanceof DateTimeImmutable)) {
+        return round($currentMetricValue, 2);
+    }
+
+    $nowDateTime = $now ?? new DateTimeImmutable('now');
+    if ($startAt >= $nowDateTime) {
+        return round($currentMetricValue, 2);
+    }
+
+    $windowValueSinceStart = goal_window_metric_value_for_team(
+        $pdo,
+        [
+            'target_type' => $type,
+            'created_at' => $startAt->format('Y-m-d H:i:s'),
+            'due_date' => $nowDateTime->format('Y-m-d'),
+            'due_time' => $nowDateTime->format('H:i'),
+        ],
+        $teamUsers
+    );
+
+    return round(max(0.0, $currentMetricValue - $windowValueSinceStart), 2);
+}
+
 function goal_team_progress_value(PDO $pdo, array $goal, array $teamSummary, array $teamUsers): float
 {
     unset($pdo, $teamUsers);
@@ -3055,6 +3091,12 @@ function goal_team_progress_state(PDO $pdo, array $goal, array $teamSummary, ?Da
 
     if (!is_numeric($goal['baseline_value'] ?? null)) {
         $goalId = (int) ($goal['id'] ?? 0);
+        $baselineValue = $currentMetricValue;
+        $teamId = (int) ($goal['team_id'] ?? 0);
+        if ($teamId > 0) {
+            $teamUsers = list_active_team_users($pdo, $teamId);
+            $baselineValue = goal_team_baseline_from_start($pdo, $goal, $teamUsers, $currentMetricValue, $nowDateTime);
+        }
         if ($goalId > 0) {
             db_execute(
                 $pdo,
@@ -3064,13 +3106,13 @@ function goal_team_progress_state(PDO $pdo, array $goal, array $teamSummary, ?Da
                      updated_at = :updated_at
                  WHERE id = :id AND baseline_value IS NULL',
                 [
-                    ':baseline_value' => round($currentMetricValue, 2),
+                    ':baseline_value' => $baselineValue,
                     ':updated_at' => now_iso(),
                     ':id' => $goalId,
                 ]
             );
         }
-        $goal['baseline_value'] = $currentMetricValue;
+        $goal['baseline_value'] = $baselineValue;
     }
 
     return [
