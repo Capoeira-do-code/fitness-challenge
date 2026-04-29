@@ -251,6 +251,8 @@ function initialize_database(PDO $pdo, array $config): void
             current_value REAL NOT NULL DEFAULT 0,
             unit_label TEXT,
             reward_text TEXT,
+            start_date TEXT,
+            start_time TEXT,
             due_date TEXT,
             due_time TEXT,
             status TEXT NOT NULL DEFAULT "active",
@@ -578,6 +580,8 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'goals', 'unit_label', 'TEXT');
     ensure_column($pdo, 'goals', 'reward_text', 'TEXT');
     ensure_column($pdo, 'goals', 'completed_at', 'TEXT');
+    ensure_column($pdo, 'goals', 'start_date', 'TEXT');
+    ensure_column($pdo, 'goals', 'start_time', 'TEXT');
     ensure_column($pdo, 'goals', 'due_time', 'TEXT');
 
     ensure_column($pdo, 'photo_entries', 'calories', 'REAL');

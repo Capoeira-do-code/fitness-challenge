@@ -113,10 +113,20 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         $activeRewardText = trim((string) ($activeChallenge['reward_text'] ?? ''));
         $activeProgressRaw = (float) ($activeChallenge['progress_pct_raw'] ?? 0);
         $activeProgressVisual = (float) ($activeChallenge['progress_pct_visual'] ?? max(0, min(100, $activeProgressRaw)));
-        $activeStatus = (string) ($activeChallenge['status'] ?? 'active');
+        $activeIsPreStart = !empty($activeChallenge['is_pre_start']);
         $activeIsExpired = (bool) ($activeChallenge['is_expired'] ?? false);
-        $activeStatusText = $activeIsExpired ? t('goals.expired') : $goalStatusLabel($activeStatus);
+        $activeStatusText = $activeIsExpired
+            ? t('goals.expired')
+            : ($activeIsPreStart ? t('team.active_challenge_starts_in') : t('team.active_challenge_started'));
+        $activeStatusClass = $activeIsExpired
+            ? 'status-expired'
+            : ($activeIsPreStart ? 'status-pending' : 'status-active');
+        $activeStartDate = trim((string) ($activeChallenge['start_date_resolved'] ?? ''));
+        $activeStartTime = trim((string) ($activeChallenge['start_time_resolved'] ?? ''));
+        $activeCountdownLabel = trim((string) ($activeChallenge['countdown_label'] ?? t('team.active_challenge_time_left')));
+        $activeCountdownMode = trim((string) ($activeChallenge['countdown_mode'] ?? ($activeIsPreStart ? 'start' : 'end')));
         $countdownDeadlineIso = trim((string) ($activeChallenge['countdown_deadline_iso'] ?? ''));
+        $countdownNextDeadlineIso = trim((string) ($activeChallenge['countdown_next_deadline_iso'] ?? ''));
         $countdownDeadline = null;
         if ($countdownDeadlineIso !== '') {
             try {
@@ -127,13 +137,13 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         }
         $countdownText = $formatCountdownFromNow($countdownDeadline, $nowDateTime);
         ?>
-        <article class="panel team-active-challenge-panel<?= $activeIsExpired ? ' is-expired' : '' ?>" data-active-challenge-panel>
+        <article class="panel team-active-challenge-panel<?= $activeIsExpired ? ' is-expired' : '' ?><?= $activeIsPreStart ? ' is-pending' : '' ?>" data-active-challenge-panel>
             <div class="panel-head team-active-challenge-head">
                 <div>
                     <p class="eyebrow"><?= e(t('team.active_challenge_title')) ?></p>
                     <h2><?= e((string) ($activeChallenge['title'] ?? t('team.challenges'))) ?></h2>
                 </div>
-                <span class="team-active-challenge-status<?= $activeIsExpired ? ' status-expired' : ' status-active' ?>" data-active-challenge-status><?= e((string) $activeStatusText) ?></span>
+                <span class="team-active-challenge-status <?= e($activeStatusClass) ?>" data-active-challenge-status><?= e((string) $activeStatusText) ?></span>
             </div>
             <div class="team-active-challenge-grid">
                 <div class="team-active-challenge-main">
@@ -149,9 +159,10 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 <div class="team-active-challenge-meta">
                     <span><strong><?= e(t('team.active_challenge_metric')) ?></strong><small><?= e((string) ($activeChallenge['target_type_label'] ?? t('common.other'))) ?></small></span>
                     <span><strong><?= e(t('team.active_challenge_target')) ?></strong><small><?= e((string) ($activeChallenge['target_display'] ?? '-')) ?></small></span>
+                    <span><strong><?= e(t('goals.start_date')) ?></strong><small><?= $activeStartDate !== '' ? e(format_date_eu($activeStartDate)) . ($activeStartTime !== '' ? ' ' . e($activeStartTime) : '') : '-' ?></small></span>
                     <span><strong><?= e(t('team.active_challenge_reward')) ?></strong><small><?= e($activeRewardText !== '' ? $activeRewardText : t('team.active_challenge_reward_none')) ?></small></span>
                     <span><strong><?= e(t('team.active_challenge_status')) ?></strong><small data-active-challenge-status-text><?= e((string) $activeStatusText) ?></small></span>
-                    <span><strong><?= e(t('team.active_challenge_time_left')) ?></strong><small data-challenge-countdown data-countdown-expired-label="<?= e(t('goals.expired')) ?>"<?= $countdownDeadlineIso !== '' ? ' data-deadline="' . e($countdownDeadlineIso) . '"' : '' ?>><?= e($countdownText) ?></small></span>
+                    <span><strong data-active-challenge-countdown-label><?= e($activeCountdownLabel) ?></strong><small data-active-challenge-countdown data-challenge-countdown data-countdown-mode="<?= e($activeCountdownMode) ?>" data-countdown-pending-label="<?= e(t('team.active_challenge_starts_in')) ?>" data-countdown-active-label="<?= e(t('team.active_challenge_started')) ?>" data-countdown-expired-label="<?= e(t('goals.expired')) ?>"<?= $countdownNextDeadlineIso !== '' ? ' data-countdown-next-deadline="' . e($countdownNextDeadlineIso) . '"' : '' ?><?= $countdownDeadlineIso !== '' ? ' data-deadline="' . e($countdownDeadlineIso) . '"' : '' ?>><?= e($countdownText) ?></small></span>
                 </div>
             </div>
         </article>
@@ -513,16 +524,31 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                             $progressRaw = (float) ($goal['progress_pct_raw'] ?? $goal['progress_pct'] ?? 0);
                             $progressVisual = (float) ($goal['progress_pct_visual'] ?? max(0, min(100, $progressRaw)));
                             $rewardText = trim((string) ($goal['reward_text'] ?? ''));
+                            $startDate = trim((string) ($goal['start_date_resolved'] ?? $goal['start_date'] ?? ''));
+                            $startTime = trim((string) ($goal['start_time_resolved'] ?? $goal['start_time'] ?? ''));
+                            $hasStarted = !empty($goal['has_started']);
                             $dueDate = trim((string) ($goal['due_date'] ?? ''));
                             $dueTime = trim((string) ($goal['due_time_resolved'] ?? $goal['due_time'] ?? ''));
-                            $dueAtRaw = trim((string) ($goal['due_at'] ?? ''));
-                            $isExpired = false;
-                            if ($status !== 'complete' && $dueAtRaw !== '') {
+                            $countdownMode = trim((string) ($goal['countdown_mode'] ?? 'end'));
+                            $countdownDeadlineIso = trim((string) ($goal['countdown_deadline_iso'] ?? ''));
+                            $countdownDeadline = null;
+                            if ($countdownDeadlineIso !== '') {
                                 try {
-                                    $isExpired = new DateTimeImmutable($dueAtRaw) < $nowDateTime;
+                                    $countdownDeadline = new DateTimeImmutable($countdownDeadlineIso);
                                 } catch (Throwable) {
-                                    $isExpired = false;
+                                    $countdownDeadline = null;
                                 }
+                            }
+                            $countdownText = $formatCountdownFromNow($countdownDeadline, $nowDateTime);
+                            $isExpired = (bool) ($goal['is_expired'] ?? false);
+                            $statusBadgeClass = $status;
+                            $statusBadgeText = $goalStatusLabel($status);
+                            if ($status === 'active' && !$hasStarted) {
+                                $statusBadgeClass = 'pending';
+                                $statusBadgeText = t('common.pending');
+                            } elseif ($status === 'active' && $isExpired) {
+                                $statusBadgeClass = 'expired';
+                                $statusBadgeText = t('goals.expired');
                             }
                             $goalTargetType = (string) ($goal['target_type_normalized'] ?? normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom')));
                             $goalCustomUnit = $goalTargetType === 'custom' ? trim((string) ($goal['unit_label'] ?? '')) : '';
@@ -531,16 +557,32 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                 <div class="team-goal-main">
                                     <div class="team-goal-head">
                                         <strong><?= e((string) $goal['title']) ?></strong>
-                                        <span class="team-goal-status status-<?= e($status) ?>"><?= e($goalStatusLabel($status)) ?></span>
+                                        <span class="team-goal-status status-<?= e($statusBadgeClass) ?>"><?= e($statusBadgeText) ?></span>
                                     </div>
                                     <span>
                                         <?= e((string) ($goal['target_type_label'] ?? t('common.other'))) ?>
                                         · <?= e((string) ($goal['target_display'] ?? '-')) ?>
+                                        <?php if ($startDate !== ''): ?>
+                                            · <?= e(t('goals.start_date')) ?>: <?= e(format_date_eu($startDate)) ?><?= $startTime !== '' ? ' ' . e($startTime) : '' ?>
+                                        <?php endif; ?>
                                         <?php if ($dueDate !== ''): ?>
-                                            · <?= e(format_date_eu($dueDate)) ?><?= $dueTime !== '' ? ' ' . e($dueTime) : '' ?>
+                                            · <?= e(t('goals.due_date')) ?>: <?= e(format_date_eu($dueDate)) ?><?= $dueTime !== '' ? ' ' . e($dueTime) : '' ?>
                                         <?php endif; ?>
                                         <?php if ($isExpired): ?> · <?= e(t('goals.expired')) ?><?php endif; ?>
                                     </span>
+                                    <?php if ($status === 'active' && !$hasStarted): ?>
+                                        <small class="muted">
+                                            <?= e(t('team.active_challenge_starts_in')) ?>:
+                                            <span
+                                                data-challenge-countdown
+                                                data-countdown-mode="<?= e($countdownMode) ?>"
+                                                data-countdown-pending-label="<?= e(t('team.active_challenge_starts_in')) ?>"
+                                                data-countdown-active-label="<?= e(t('common.in_progress')) ?>"
+                                                data-countdown-expired-label="<?= e(t('goals.expired')) ?>"
+                                                <?= $countdownDeadlineIso !== '' ? ' data-deadline="' . e($countdownDeadlineIso) . '"' : '' ?>
+                                            ><?= e($countdownText) ?></span>
+                                        </small>
+                                    <?php endif; ?>
                                     <span><?= e((string) ($goal['progress_display'] ?? '0')) ?> / <?= e((string) ($goal['target_display'] ?? '-')) ?></span>
                                     <small class="muted"><?= e(t('goals.started_from')) ?>: <?= e((string) ($goal['baseline_display'] ?? '0')) ?></small>
                                     <small class="muted"><?= e((string) ($goal['direction_label'] ?? '')) ?></small>
@@ -567,6 +609,8 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                                 data-goal-target-value="<?= e((string) ($goal['target_value'] ?? '')) ?>"
                                                 data-goal-custom-unit="<?= e($goalCustomUnit) ?>"
                                                 data-goal-reward-text="<?= e($rewardText) ?>"
+                                                data-goal-start-date="<?= e($startDate) ?>"
+                                                data-goal-start-time="<?= e($startTime) ?>"
                                                 data-goal-due-date="<?= e($dueDate) ?>"
                                                 data-goal-due-time="<?= e($dueTime) ?>"
                                             ><?= e(t('common.edit')) ?></button>
@@ -700,6 +744,14 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     <label data-goal-reward-wrap hidden>
                         <?= e(t('achievements.reward')) ?>
                         <input type="text" name="reward_text" maxlength="120" placeholder="<?= e(t('goals.reward_placeholder')) ?>">
+                    </label>
+                    <label>
+                        <?= e(t('goals.start_date')) ?>
+                        <input type="date" name="start_date" data-goal-start-date-input>
+                    </label>
+                    <label>
+                        <?= e(t('goals.start_time')) ?>
+                        <input type="time" name="start_time" data-goal-start-time-input>
                     </label>
                     <label>
                         <?= e(t('goals.due_date')) ?>
@@ -963,7 +1015,11 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         const panelNode = document.querySelector('[data-active-challenge-panel]');
         const statusNode = document.querySelector('[data-active-challenge-status]');
         const statusTextNode = document.querySelector('[data-active-challenge-status-text]');
+        const countdownLabelNode = document.querySelector('[data-active-challenge-countdown-label]');
+        const activeCountdownNode = document.querySelector('[data-active-challenge-countdown][data-deadline]');
         const zeroText = '0d 00h 00m 00s';
+        const countdownPendingTitle = <?= json_encode(t('team.active_challenge_starts_in')) ?>;
+        const countdownActiveTitle = <?= json_encode(t('team.active_challenge_time_left')) ?>;
         const pad2 = (value) => String(Math.max(0, value)).padStart(2, '0');
         const formatCountdown = (secondsLeft) => {
             if (!Number.isFinite(secondsLeft) || secondsLeft <= 0) {
@@ -976,51 +1032,84 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             const seconds = total % 60;
             return `${days}d ${pad2(hours)}h ${pad2(minutes)}m ${pad2(seconds)}s`;
         };
-        const setExpiredState = (expired, label) => {
+        const toDeadlineMs = (value) => {
+            const ms = Date.parse(String(value || '').trim());
+            return Number.isFinite(ms) ? ms : null;
+        };
+        const promoteCountdownNodeIfNeeded = (node) => {
+            if (!(node instanceof HTMLElement)) {
+                return;
+            }
+            const mode = String(node.dataset.countdownMode || '').trim();
+            if (mode !== 'start') {
+                return;
+            }
+            const deadlineMs = toDeadlineMs(node.dataset.deadline || '');
+            if (deadlineMs === null || deadlineMs > Date.now()) {
+                return;
+            }
+            const nextDeadline = String(node.dataset.countdownNextDeadline || '').trim();
+            if (nextDeadline !== '') {
+                node.dataset.deadline = nextDeadline;
+                node.dataset.countdownMode = 'end';
+            }
+        };
+        const applyPanelState = (state, label) => {
+            const isExpired = state === 'expired';
+            const isPending = state === 'pending';
             if (panelNode instanceof HTMLElement) {
-                panelNode.classList.toggle('is-expired', expired);
+                panelNode.classList.toggle('is-expired', isExpired);
+                panelNode.classList.toggle('is-pending', isPending);
             }
             if (statusNode instanceof HTMLElement) {
-                statusNode.classList.toggle('status-expired', expired);
-                statusNode.classList.toggle('status-active', !expired);
-                if (expired && label) {
+                statusNode.classList.toggle('status-expired', isExpired);
+                statusNode.classList.toggle('status-pending', isPending);
+                statusNode.classList.toggle('status-active', !isExpired && !isPending);
+                if (label) {
                     statusNode.textContent = label;
                 }
             }
-            if (statusTextNode instanceof HTMLElement && expired && label) {
+            if (statusTextNode instanceof HTMLElement && label) {
                 statusTextNode.textContent = label;
+            }
+            if (countdownLabelNode instanceof HTMLElement && activeCountdownNode instanceof HTMLElement) {
+                countdownLabelNode.textContent = isPending ? countdownPendingTitle : countdownActiveTitle;
             }
         };
         const tickCountdown = () => {
-            let hasRemaining = false;
-            let anyExpired = false;
-            let expiredLabel = '';
             countdownNodes.forEach((node) => {
                 if (!(node instanceof HTMLElement)) {
                     return;
                 }
-                const rawDeadline = String(node.dataset.deadline || '').trim();
-                if (rawDeadline === '') {
-                    node.textContent = zeroText;
-                    return;
-                }
-                const deadlineMs = Date.parse(rawDeadline);
-                if (!Number.isFinite(deadlineMs)) {
+                promoteCountdownNodeIfNeeded(node);
+                const deadlineMs = toDeadlineMs(node.dataset.deadline || '');
+                if (deadlineMs === null) {
                     node.textContent = zeroText;
                     return;
                 }
                 const remainingSeconds = (deadlineMs - Date.now()) / 1000;
                 if (remainingSeconds > 0) {
-                    hasRemaining = true;
                     node.textContent = formatCountdown(remainingSeconds);
                     return;
                 }
                 node.textContent = zeroText;
-                anyExpired = true;
-                expiredLabel = String(node.dataset.countdownExpiredLabel || '').trim();
             });
-            if (anyExpired || !hasRemaining) {
-                setExpiredState(true, expiredLabel);
+
+            if (activeCountdownNode instanceof HTMLElement) {
+                promoteCountdownNodeIfNeeded(activeCountdownNode);
+                const mode = String(activeCountdownNode.dataset.countdownMode || '').trim();
+                const deadlineMs = toDeadlineMs(activeCountdownNode.dataset.deadline || '');
+                const pendingLabel = String(activeCountdownNode.dataset.countdownPendingLabel || '').trim();
+                const activeLabel = String(activeCountdownNode.dataset.countdownActiveLabel || '').trim();
+                const expiredLabel = String(activeCountdownNode.dataset.countdownExpiredLabel || '').trim();
+                const remainingSeconds = deadlineMs === null ? 0 : (deadlineMs - Date.now()) / 1000;
+                if (mode === 'start' && remainingSeconds > 0) {
+                    applyPanelState('pending', pendingLabel !== '' ? pendingLabel : activeLabel);
+                } else if (mode === 'end' && remainingSeconds <= 0) {
+                    applyPanelState('expired', expiredLabel !== '' ? expiredLabel : activeLabel);
+                } else {
+                    applyPanelState('active', activeLabel !== '' ? activeLabel : pendingLabel);
+                }
             }
         };
         tickCountdown();
@@ -1038,6 +1127,8 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         const goalIdInput = goalModal.querySelector('[data-team-goal-id]');
         const goalTypeSelect = goalModal.querySelector('[data-goal-type-select]');
         const targetInput = goalModal.querySelector('[data-goal-target-input]');
+        const startDateInput = goalModal.querySelector('[data-goal-start-date-input]');
+        const startTimeInput = goalModal.querySelector('[data-goal-start-time-input]');
         const dueDateInput = goalModal.querySelector('[data-goal-due-date-input]');
         const dueTimeInput = goalModal.querySelector('[data-goal-due-time-input]');
         const directionLabel = goalModal.querySelector('[data-goal-direction-label]');
@@ -1170,6 +1261,12 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             }
             if (customUnitInput instanceof HTMLInputElement) {
                 customUnitInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalCustomUnit || '').trim() : '';
+            }
+            if (startDateInput instanceof HTMLInputElement) {
+                startDateInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalStartDate || '').trim() : '';
+            }
+            if (startTimeInput instanceof HTMLInputElement) {
+                startTimeInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalStartTime || '').trim() : '';
             }
             if (dueDateInput instanceof HTMLInputElement) {
                 dueDateInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalDueDate || '').trim() : '';

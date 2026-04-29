@@ -2594,6 +2594,55 @@ function normalize_goal_due_time(?string $dueDate, mixed $dueTimeRaw): ?string
     return '23:59';
 }
 
+function normalize_goal_start_time(mixed $startTimeRaw, string $fallback = '00:00'): string
+{
+    return normalize_log_time($startTimeRaw, $fallback);
+}
+
+function resolve_goal_start_datetime(mixed $startDateRaw, mixed $startTimeRaw, ?DateTimeImmutable $now = null): array
+{
+    $nowDateTime = $now ?? new DateTimeImmutable('now');
+    $startDateInput = trim((string) $startDateRaw);
+    $startTimeInput = trim((string) $startTimeRaw);
+
+    if ($startDateInput === '' && $startTimeInput === '') {
+        $startDate = $nowDateTime->format('Y-m-d');
+        $startTime = $nowDateTime->format('H:i');
+    } else {
+        $startDate = $startDateInput !== '' ? to_date($startDateInput) : $nowDateTime->format('Y-m-d');
+        $startTime = $startTimeInput !== '' ? normalize_goal_start_time($startTimeInput, '00:00') : '00:00';
+    }
+
+    return [
+        'start_date' => $startDate,
+        'start_time' => $startTime,
+        'start_at' => log_datetime_from_values($startDate, $startTime, '00:00'),
+    ];
+}
+
+function goal_start_datetime(array $goal): ?DateTimeImmutable
+{
+    $startDate = trim((string) ($goal['start_date'] ?? ''));
+    if ($startDate === '') {
+        return null;
+    }
+
+    $startTime = normalize_goal_start_time((string) ($goal['start_time'] ?? ''), '00:00');
+
+    return log_datetime_from_values($startDate, $startTime, '00:00');
+}
+
+function goal_has_started(array $goal, ?DateTimeImmutable $now = null): bool
+{
+    $startAt = goal_start_datetime($goal);
+    if (!($startAt instanceof DateTimeImmutable)) {
+        return true;
+    }
+
+    $nowDateTime = $now ?? new DateTimeImmutable('now');
+    return $nowDateTime >= $startAt;
+}
+
 function list_goals(PDO $pdo, string $scope, ?int $userId = null, ?int $teamId = null, bool $includeArchived = false): array
 {
     $conditions = ['scope = :scope'];
@@ -2625,12 +2674,12 @@ function create_goal(PDO $pdo, array $payload, int $actorUserId): void
         $pdo,
         'INSERT INTO goals (
             scope, team_id, user_id, title, target_type, target_value,
-            baseline_value, current_value, unit_label, reward_text, due_date, due_time,
+            baseline_value, current_value, unit_label, reward_text, start_date, start_time, due_date, due_time,
             status, completed_at, created_by, created_at, updated_at
         )
          VALUES (
             :scope, :team_id, :user_id, :title, :target_type, :target_value,
-            :baseline_value, :current_value, :unit_label, :reward_text, :due_date, :due_time,
+            :baseline_value, :current_value, :unit_label, :reward_text, :start_date, :start_time, :due_date, :due_time,
             "active", NULL, :created_by, :created_at, :updated_at
         )',
         [
@@ -2644,6 +2693,8 @@ function create_goal(PDO $pdo, array $payload, int $actorUserId): void
             ':current_value' => $payload['current_value'] ?? 0,
             ':unit_label' => $payload['unit_label'] ?? null,
             ':reward_text' => $payload['reward_text'] ?? null,
+            ':start_date' => $payload['start_date'] ?? null,
+            ':start_time' => $payload['start_time'] ?? null,
             ':due_date' => $payload['due_date'],
             ':due_time' => $payload['due_time'] ?? null,
             ':created_by' => $actorUserId,
@@ -2691,16 +2742,21 @@ function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): v
         return;
     }
 
+    $setBaselineValue = array_key_exists('baseline_value', $payload);
+    $setCurrentValue = array_key_exists('current_value', $payload);
+
     db_execute(
         $pdo,
         'UPDATE goals
          SET title = :title,
              target_type = :target_type,
              target_value = :target_value,
-             baseline_value = COALESCE(:baseline_value, baseline_value),
-             current_value = COALESCE(:current_value, current_value),
+             baseline_value = CASE WHEN :set_baseline_value = 1 THEN :baseline_value ELSE baseline_value END,
+             current_value = CASE WHEN :set_current_value = 1 THEN :current_value ELSE current_value END,
              unit_label = :unit_label,
              reward_text = :reward_text,
+             start_date = :start_date,
+             start_time = :start_time,
              due_date = :due_date,
              due_time = :due_time,
              updated_at = :updated_at
@@ -2709,10 +2765,14 @@ function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): v
             ':title' => trim((string) $payload['title']),
             ':target_type' => trim((string) $payload['target_type']),
             ':target_value' => $payload['target_value'],
-            ':baseline_value' => $payload['baseline_value'] ?? null,
-            ':current_value' => $payload['current_value'] ?? null,
+            ':set_baseline_value' => $setBaselineValue ? 1 : 0,
+            ':baseline_value' => $setBaselineValue ? $payload['baseline_value'] : null,
+            ':set_current_value' => $setCurrentValue ? 1 : 0,
+            ':current_value' => $setCurrentValue ? $payload['current_value'] : null,
             ':unit_label' => $payload['unit_label'] ?? null,
             ':reward_text' => $payload['reward_text'] ?? null,
+            ':start_date' => $payload['start_date'] ?? null,
+            ':start_time' => $payload['start_time'] ?? null,
             ':due_date' => $payload['due_date'],
             ':due_time' => $payload['due_time'] ?? null,
             ':updated_at' => now_iso(),
@@ -2939,6 +2999,10 @@ function goal_team_progress_value(PDO $pdo, array $goal, array $teamSummary, arr
 {
     unset($pdo, $teamUsers);
     $currentMetricValue = goal_team_metric_value($goal, $teamSummary);
+    if (!goal_has_started($goal)) {
+        return 0.0;
+    }
+
     return goal_progress_from_baseline($goal, $currentMetricValue);
 }
 
@@ -2970,6 +3034,52 @@ function goal_progress_from_baseline(array $goal, float $currentMetricValue): fl
     }
 
     return max(0.0, $currentMetricValue - $baseline);
+}
+
+function goal_team_progress_state(PDO $pdo, array $goal, array $teamSummary, ?DateTimeImmutable $now = null): array
+{
+    $nowDateTime = $now ?? new DateTimeImmutable('now');
+    $startAt = goal_start_datetime($goal);
+    $hasStarted = !($startAt instanceof DateTimeImmutable) || $nowDateTime >= $startAt;
+    $currentMetricValue = goal_team_metric_value($goal, $teamSummary);
+
+    if (!$hasStarted) {
+        return [
+            'goal' => $goal,
+            'has_started' => false,
+            'start_at' => $startAt,
+            'current_metric_value' => $currentMetricValue,
+            'progress_value' => 0.0,
+        ];
+    }
+
+    if (!is_numeric($goal['baseline_value'] ?? null)) {
+        $goalId = (int) ($goal['id'] ?? 0);
+        if ($goalId > 0) {
+            db_execute(
+                $pdo,
+                'UPDATE goals
+                 SET baseline_value = :baseline_value,
+                     current_value = 0,
+                     updated_at = :updated_at
+                 WHERE id = :id AND baseline_value IS NULL',
+                [
+                    ':baseline_value' => round($currentMetricValue, 2),
+                    ':updated_at' => now_iso(),
+                    ':id' => $goalId,
+                ]
+            );
+        }
+        $goal['baseline_value'] = $currentMetricValue;
+    }
+
+    return [
+        'goal' => $goal,
+        'has_started' => true,
+        'start_at' => $startAt,
+        'current_metric_value' => $currentMetricValue,
+        'progress_value' => goal_progress_from_baseline($goal, $currentMetricValue),
+    ];
 }
 
 function goal_target_reached_from_progress(array $goal, float $progressValue): bool
@@ -5793,12 +5903,28 @@ function auto_complete_team_goals(PDO $pdo, int $teamId, array $teamSummary, ?in
         return 0;
     }
 
-    $teamUsers = list_active_team_users($pdo, $teamId);
     $completedCount = 0;
     foreach ($activeGoals as $goal) {
-        $progressValue = goal_team_progress_value($pdo, $goal, $teamSummary, $teamUsers);
+        $progressState = goal_team_progress_state($pdo, $goal, $teamSummary);
+        $goal = is_array($progressState['goal'] ?? null) ? (array) $progressState['goal'] : $goal;
+        $progressValue = (float) ($progressState['progress_value'] ?? 0.0);
+        $hasStarted = !empty($progressState['has_started']);
         $goalId = (int) ($goal['id'] ?? 0);
         if ($goalId <= 0) {
+            continue;
+        }
+
+        if (!$hasStarted) {
+            if (abs((float) ($goal['current_value'] ?? 0)) > 0.00001) {
+                db_execute(
+                    $pdo,
+                    'UPDATE goals SET current_value = 0, updated_at = :updated_at WHERE id = :id AND status = "active"',
+                    [
+                        ':updated_at' => now_iso(),
+                        ':id' => $goalId,
+                    ]
+                );
+            }
             continue;
         }
 

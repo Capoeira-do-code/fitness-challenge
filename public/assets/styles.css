@@ -1944,6 +1944,12 @@ textarea {
         #fff;
 }
 
+.team-active-challenge-panel.is-pending {
+    background:
+        linear-gradient(120deg, rgba(245, 158, 11, 0.16), rgba(251, 191, 36, 0.07)),
+        #fff;
+}
+
 .team-active-challenge-head {
     align-items: center;
 }
@@ -1967,6 +1973,11 @@ textarea {
 .team-active-challenge-status.status-expired {
     color: #475569;
     background: rgba(148, 163, 184, 0.26);
+}
+
+.team-active-challenge-status.status-pending {
+    color: #92400e;
+    background: rgba(251, 191, 36, 0.24);
 }
 
 .team-active-challenge-grid {
@@ -2212,6 +2223,16 @@ textarea {
 
 .team-goal-status.status-archived {
     color: #4b5563;
+    background: rgba(148, 163, 184, 0.24);
+}
+
+.team-goal-status.status-pending {
+    color: #92400e;
+    background: rgba(251, 191, 36, 0.24);
+}
+
+.team-goal-status.status-expired {
+    color: #475569;
     background: rgba(148, 163, 184, 0.24);
 }
 
