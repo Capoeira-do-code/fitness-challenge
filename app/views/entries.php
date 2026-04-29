@@ -23,6 +23,7 @@ foreach ((array) ($workoutTypes ?? []) as $type) {
     $workoutTypeById[(int) ($type['id'] ?? 0)] = (string) ($type['name'] ?? '');
 }
 $entryWorkouts = is_array($log['workouts'] ?? null) ? array_values((array) $log['workouts']) : [];
+$logTimeValue = normalize_log_time($log['log_time'] ?? '', '00:00');
 if ($entryWorkouts === [] && !empty($log)) {
     $legacyWorkoutDone = (int) ($log['workout_done'] ?? 0) === 1;
     $legacyWorkoutTypeId = !empty($log['workout_type_id']) ? (int) $log['workout_type_id'] : null;
@@ -107,6 +108,10 @@ $nutritionSummary = static function (array $photo): string {
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="save_log">
                 <input type="hidden" name="log_date" value="<?= e($selectedDate) ?>">
+                <label>
+                    <?= e(t('entries.log_time')) ?>
+                    <input type="time" name="log_time" value="<?= e($logTimeValue) ?>">
+                </label>
 
                 <div class="grid-inline entries-two-col">
                     <label>

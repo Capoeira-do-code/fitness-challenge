@@ -100,6 +100,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
 
                 $stepsRaw = isset($log['steps']) ? (string) $log['steps'] : '';
                 $stepValue = $stepsRaw === '' ? null : (int) $stepsRaw;
+                $logTimeValue = normalize_log_time($log['log_time'] ?? '', '00:00');
                 $showStepExcuse = $userStepGoal > 0 && ($stepValue === null || $stepValue < $userStepGoal);
                 $distanceRaw = isset($log['distance_km']) ? (string) $log['distance_km'] : '';
                 $distanceValue = $distanceRaw === '' ? null : (float) $distanceRaw;
@@ -168,6 +169,10 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                             <label class="week-field">
                                 <span><?= e(t('metric.distance_km')) ?></span>
                                 <input type="number" min="0" step="0.01" name="distance_km" value="<?= e((string) ($log['distance_km'] ?? '')) ?>">
+                            </label>
+                            <label class="week-field">
+                                <span><?= e(t('entries.log_time')) ?></span>
+                                <input type="time" name="log_time" value="<?= e($logTimeValue) ?>">
                             </label>
                             <div class="week-help-wrap" data-help="<?= e(t('table.week_help_training_calories')) ?>">
                                 <label class="week-field">
@@ -960,6 +965,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
             csrf_token: csrf,
             user_id: userId,
             log_date: row.dataset.date,
+            log_time: row.querySelector('[name="log_time"]').value,
             steps: row.querySelector('[name="steps"]').value,
             distance_km: row.querySelector('[name="distance_km"]').value,
             training_calories_burned: row.querySelector('[name="training_calories_burned"]').value,

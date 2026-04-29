@@ -65,6 +65,7 @@ function initialize_database(PDO $pdo, array $config): void
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             log_date TEXT NOT NULL,
+            log_time TEXT,
             steps INTEGER NOT NULL DEFAULT 0,
             workout_done INTEGER NOT NULL DEFAULT 0,
             workout_type_id INTEGER,
@@ -554,6 +555,7 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'daily_logs', 'workout_type_id', 'INTEGER');
     ensure_column($pdo, 'daily_logs', 'training_calories_burned', 'REAL');
     ensure_column($pdo, 'daily_logs', 'distance_exception_reason', 'TEXT');
+    ensure_column($pdo, 'daily_logs', 'log_time', 'TEXT');
 
     ensure_column($pdo, 'approval_requests', 'request_state', 'TEXT NOT NULL DEFAULT "sent"');
     ensure_column($pdo, 'approval_requests', 'resent_count', 'INTEGER NOT NULL DEFAULT 0');

@@ -376,6 +376,7 @@ img.settings-avatar-preview {
 .user-menu-trigger {
     display: inline-grid;
     place-items: center;
+    position: relative;
     width: 40px;
     height: 40px;
     border-radius: 50%;
@@ -385,6 +386,17 @@ img.settings-avatar-preview {
     font-weight: 800;
     cursor: pointer;
     overflow: hidden;
+}
+
+.user-menu-unread-dot {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #ef4444;
+    border: 2px solid #fff;
 }
 
 .user-menu-trigger img {
@@ -1899,6 +1911,35 @@ textarea {
     gap: 0.8rem;
 }
 
+.notifications-list {
+    gap: 0.65rem;
+}
+
+.notification-card {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.notification-card.is-read {
+    opacity: 0.78;
+    background: #f7fbf9;
+}
+
+.notification-main {
+    display: grid;
+    gap: 0.2rem;
+}
+
+.notification-main p {
+    margin: 0;
+}
+
+.notification-actions {
+    flex: 0 0 auto;
+}
+
 .team-notifications-panel .card-list {
     gap: 0.6rem;
 }
@@ -1969,12 +2010,29 @@ textarea {
 }
 
 .team-goal-actions {
-    display: grid;
-    gap: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
 }
 
 .team-goal-actions .inline-actions-mini {
     justify-content: flex-start;
+    gap: 0.4rem;
+}
+
+.team-goal-action-btn {
+    width: 2rem;
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+    font-weight: 800;
+    line-height: 1;
 }
 
 .team-goal-reward {

@@ -6,7 +6,6 @@ $summary = $teamSummary ?? [];
 $teamView = (string) ($teamView ?? 'current_week');
 $teamWeekOptions = (array) ($teamWeekOptions ?? []);
 $goals = (array) ($teamGoals ?? []);
-$teamNotifications = (array) ($teamNotifications ?? []);
 $teamSection = (string) ($teamSection ?? '');
 $teamMemberDetail = is_array($teamMemberDetail ?? null) ? (array) $teamMemberDetail : null;
 $nowDateTime = new DateTimeImmutable('now');
@@ -112,46 +111,15 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         </form>
     </article>
 
-    <?php if ($teamNotifications !== []): ?>
-        <article class="panel team-notifications-panel">
-            <div class="panel-head">
-                <div>
-                    <p class="eyebrow"><?= e(t('team.notifications')) ?></p>
-                    <h2><?= e(t('team.notifications_title')) ?></h2>
-                </div>
-                <span class="badge"><?= count($teamNotifications) ?></span>
-            </div>
-            <div class="card-list">
-                <?php foreach ($teamNotifications as $notification): ?>
-                    <article class="mini-card team-notification-card">
-                        <div class="team-notification-main">
-                            <strong><?= e((string) ($notification['title'] ?? '')) ?></strong>
-                            <p><?= e((string) ($notification['message'] ?? '')) ?></p>
-                            <small class="muted"><?= e(format_date_eu((string) ($notification['created_at'] ?? ''))) ?></small>
-                        </div>
-                        <form method="post" action="/?page=team" class="team-notification-action">
-                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                            <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
-                            <input type="hidden" name="action" value="mark_notification_read">
-                            <input type="hidden" name="notification_id" value="<?= (int) ($notification['id'] ?? 0) ?>">
-                            <input type="hidden" name="redirect_view" value="<?= e($teamView) ?>">
-                            <button class="btn btn-ghost small" type="submit"><?= e(t('common.close_action')) ?></button>
-                        </form>
-                    </article>
-                <?php endforeach; ?>
-            </div>
-        </article>
-    <?php endif; ?>
-
     <?php if ($teamSection === 'member' && $teamMemberDetail !== null && $memberUser !== [] && $memberMetric !== []): ?>
         <article class="panel">
             <div class="panel-head">
                 <div>
-                    <p class="eyebrow">Member detail</p>
+                    <p class="eyebrow"><?= e(t('team.member_detail')) ?></p>
                     <h2><?= e((string) ($memberUser['display_name'] ?? '')) ?></h2>
                     <p class="muted">@<?= e((string) ($memberUser['username'] ?? '')) ?> · <?= e(t('team.members')) ?></p>
                 </div>
-                <a class="btn btn-ghost" href="<?= e($teamBaseUrl) ?>">← Volver</a>
+                <a class="btn btn-ghost" href="<?= e($teamBaseUrl) ?>">← <?= e(t('common.back')) ?></a>
             </div>
 
             <div class="team-member-summary">
@@ -172,29 +140,29 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     <article class="mini-card"><div><strong><?= e(t('metric.distance_km')) ?></strong><span><?= e((string) ($memberMetric['total_km'] ?? 0)) ?> km</span></div></article>
                     <article class="mini-card"><div><strong><?= e(t('metric.workouts')) ?></strong><span><?= e((string) ($memberMetric['workout_count'] ?? $memberMetric['workout_success'] ?? 0)) ?></span></div></article>
                     <article class="mini-card"><div><strong><?= e(t('metric.strikes')) ?></strong><span><?= e((string) ($memberMetric['current_strikes'] ?? 0)) ?></span></div></article>
-                    <article class="mini-card"><div><strong><?= e(t('metric.penalty')) ?></strong><span class="penalty-chip penalty-chip-<?= (int) ($memberMetric['total_penalty'] ?? 0) <= 0 ? 'good' : ((int) ($memberMetric['total_penalty'] ?? 0) <= 50 ? 'warn' : 'bad') ?>">€<?= e((string) ($memberMetric['total_penalty'] ?? 0)) ?></span><small class="muted">Menor es mejor</small></div></article>
+                    <article class="mini-card"><div><strong><?= e(t('metric.penalty')) ?></strong><span class="penalty-chip penalty-chip-<?= (int) ($memberMetric['total_penalty'] ?? 0) <= 0 ? 'good' : ((int) ($memberMetric['total_penalty'] ?? 0) <= 50 ? 'warn' : 'bad') ?>">€<?= e((string) ($memberMetric['total_penalty'] ?? 0)) ?></span><small class="muted"><?= e(t('team.lower_is_better')) ?></small></div></article>
                 </div>
             </div>
         </article>
 
         <div class="grid-two">
             <article class="panel chart-card">
-                <h2>Steps</h2>
+                <h2><?= e(t('metric.steps')) ?></h2>
                 <canvas id="memberStepsChart" height="170"></canvas>
             </article>
             <article class="panel chart-card">
-                <h2>Distance</h2>
+                <h2><?= e(t('metric.distance_km')) ?></h2>
                 <canvas id="memberDistanceChart" height="170"></canvas>
             </article>
         </div>
 
         <div class="grid-two">
             <article class="panel chart-card">
-                <h2>Workouts by week</h2>
+                <h2><?= e(t('team.workouts_by_week')) ?></h2>
                 <canvas id="memberWorkoutChart" height="170"></canvas>
             </article>
             <article class="panel chart-card">
-                <h2>Score / Penalty by week</h2>
+                <h2><?= e(t('team.score_penalty_by_week')) ?></h2>
                 <canvas id="memberScorePenaltyChart" height="170"></canvas>
             </article>
         </div>
@@ -250,13 +218,13 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         <article class="panel">
             <div class="panel-head">
                 <div>
-                    <p class="eyebrow">Detalle de métrica</p>
+                    <p class="eyebrow"><?= e(t('team.metric_detail')) ?></p>
                     <h2><?= e($teamMetricTitle) ?></h2>
                     <?php if ((string) ($teamMetricDetail['key'] ?? '') === 'penalty'): ?>
-                        <p class="muted">Menor penalización = mejor posición.</p>
+                        <p class="muted"><?= e(t('team.penalty_rank_hint')) ?></p>
                     <?php endif; ?>
                 </div>
-                <a class="btn btn-ghost" href="<?= e($teamBaseUrl) ?>" data-history-back>← Volver</a>
+                <a class="btn btn-ghost" href="<?= e($teamBaseUrl) ?>" data-history-back>← <?= e(t('common.back')) ?></a>
             </div>
 
             <div class="team-metric-detail-grid">
@@ -348,29 +316,29 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 <div>
                     <span><?= e(t('metric.penalty')) ?></span>
                     <strong>€<?= e($formatMoney($summaryPenalty)) ?></strong>
-                    <p><?= e(t('team.all_members')) ?> · menor es mejor</p>
+                    <p><?= e(t('team.all_members')) ?> · <?= e(t('team.lower_is_better')) ?></p>
                 </div>
             </a>
         </div>
 
         <div class="grid-two">
             <article class="panel chart-card">
-                <h2>Steps over time</h2>
+                <h2><?= e(t('team.steps_over_time')) ?></h2>
                 <canvas id="teamStepsChart" height="170"></canvas>
             </article>
             <article class="panel chart-card">
-                <h2>Distance over time</h2>
+                <h2><?= e(t('team.distance_over_time')) ?></h2>
                 <canvas id="teamDistanceChart" height="170"></canvas>
             </article>
         </div>
 
         <div class="grid-two">
             <article class="panel chart-card">
-                <h2>Workouts over time</h2>
+                <h2><?= e(t('team.workouts_over_time')) ?></h2>
                 <canvas id="teamWorkoutsChart" height="170"></canvas>
             </article>
             <article class="panel chart-card">
-                <h2>Score / Strikes / Penalties</h2>
+                <h2><?= e(t('team.score_strikes_penalties')) ?></h2>
                 <canvas id="teamWeeklyChart" height="170"></canvas>
             </article>
         </div>
@@ -380,8 +348,11 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 <div>
                     <p class="eyebrow"><?= e(t('dashboard.ranking')) ?></p>
                     <h2><?= e(t('team.members')) ?></h2>
-                    <p class="muted">Desempate: misma puntuación -> menor penalización gana.</p>
                 </div>
+                <details class="metric-help-popover">
+                    <summary aria-label="<?= e(t('team.leaderboard_help_label')) ?>" title="<?= e(t('team.leaderboard_help_label')) ?>">?</summary>
+                    <div class="metric-help-popover-content"><?= e(t('team.leaderboard_help_text')) ?></div>
+                </details>
             </div>
             <div class="team-leaderboard-cards">
                 <?php foreach ($leaderboardRows as $idx => $row): ?>
@@ -389,7 +360,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     $penaltyValue = (float) ($row['penalties'] ?? 0);
                     $penaltyClass = $penaltyValue <= 0 ? 'good' : ($penaltyValue <= 50 ? 'warn' : 'bad');
                     ?>
-                    <a class="team-leaderboard-card<?= $idx === 0 ? ' is-top' : '' ?>" href="<?= e($teamMemberUrl((int) ($row['user_id'] ?? 0))) ?>" aria-label="Ver detalle de <?= e((string) ($row['display_name'] ?? '')) ?>">
+                    <a class="team-leaderboard-card<?= $idx === 0 ? ' is-top' : '' ?>" href="<?= e($teamMemberUrl((int) ($row['user_id'] ?? 0))) ?>" aria-label="<?= e(t('team.view_member_detail', ['name' => (string) ($row['display_name'] ?? '')])) ?>">
                         <div class="team-leaderboard-card-head">
                             <span class="team-rank">#<?= $idx + 1 ?></span>
                             <span class="team-leaderboard-user">
@@ -411,7 +382,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                             <span><strong><?= e($formatKm((float) ($row['distance'] ?? 0))) ?> km</strong><small><?= e(t('metric.distance_km')) ?></small></span>
                             <span><strong><?= e($formatInt((float) ($row['workouts'] ?? 0))) ?></strong><small><?= e(t('metric.workouts')) ?></small></span>
                             <span><strong><?= e($formatInt((float) ($row['strikes'] ?? 0))) ?></strong><small><?= e(t('metric.strikes')) ?></small></span>
-                            <span><strong class="penalty-chip penalty-chip-<?= e($penaltyClass) ?>">€<?= e($formatMoney((float) $penaltyValue)) ?></strong><small><?= e(t('metric.penalty')) ?> · menor es mejor</small></span>
+                            <span><strong class="penalty-chip penalty-chip-<?= e($penaltyClass) ?>">€<?= e($formatMoney((float) $penaltyValue)) ?></strong><small><?= e(t('metric.penalty')) ?></small></span>
                         </div>
                     </a>
                 <?php endforeach; ?>
@@ -445,7 +416,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                 <strong><?= e((string) $member['display_name']) ?></strong>
                                 <span><?= e((string) $member['username']) ?> · <?= e((string) $member['role']) ?></span>
                             </div>
-                            <a class="btn small btn-ghost" href="/?page=profile&user_id=<?= (int) $member['user_id'] ?>" aria-label="Ver perfil de <?= e((string) $member['username']) ?>">Ver perfil</a>
+                            <a class="btn small btn-ghost" href="/?page=profile&user_id=<?= (int) $member['user_id'] ?>" aria-label="<?= e(t('team.view_profile_of', ['name' => (string) $member['username']])) ?>"><?= e(t('team.view_profile')) ?></a>
                         </article>
                     <?php endforeach; ?>
                 </div>
@@ -529,9 +500,9 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                             <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
                                             <input type="hidden" name="redirect_view" value="<?= e($teamView) ?>">
                                             <input type="hidden" name="status" value="active">
-                                            <button class="btn small btn-ghost" name="action" value="goal_status" type="submit" onclick="this.form.status.value='complete'"><?= e(t('common.complete')) ?></button>
-                                            <button class="btn small btn-ghost" name="action" value="goal_status" type="submit" onclick="this.form.status.value='archived'"><?= e(t('goals.archive')) ?></button>
-                                            <button class="btn small btn-ghost" name="action" value="delete_goal" type="submit" onclick="return window.confirm('¿Eliminar objetivo?');"><?= e(t('common.delete')) ?></button>
+                                            <button class="btn small btn-ghost team-goal-action-btn" name="action" value="goal_status" type="submit" onclick="this.form.status.value='complete'" aria-label="<?= e(t('common.complete')) ?>" title="<?= e(t('common.complete')) ?>">✓</button>
+                                            <button class="btn small btn-ghost team-goal-action-btn" name="action" value="goal_status" type="submit" onclick="this.form.status.value='archived'" aria-label="<?= e(t('goals.archive')) ?>" title="<?= e(t('goals.archive')) ?>">↧</button>
+                                            <button class="btn small btn-ghost team-goal-action-btn" name="action" value="delete_goal" type="submit" onclick="return window.confirm('<?= e(t('goals.delete_confirm')) ?>');" aria-label="<?= e(t('common.delete')) ?>" title="<?= e(t('common.delete')) ?>">×</button>
                                         </form>
                                     </div>
                                 <?php endif; ?>
@@ -577,7 +548,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                     <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
                                     <input type="hidden" name="action" value="delete_achievement_award">
                                     <input type="hidden" name="award_id" value="<?= (int) $achievement['id'] ?>">
-                                    <button class="achievement-delete-btn" type="button" aria-label="Eliminar logro" data-achievement-delete-trigger data-form-id="<?= e($deleteFormId) ?>">×</button>
+                                    <button class="achievement-delete-btn" type="button" aria-label="<?= e(t('achievements.delete_award')) ?>" data-achievement-delete-trigger data-form-id="<?= e($deleteFormId) ?>">×</button>
                                 </form>
                             <?php endif; ?>
                         </article>
@@ -778,7 +749,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             data: {
                 labels: <?= json_encode((array) ($teamMetricDetail['chart_labels'] ?? [])) ?>,
                 datasets: [{
-                    label: <?= json_encode((string) ($teamMetricDetail['title'] ?? 'Metric')) ?>,
+                    label: <?= json_encode((string) ($teamMetricDetail['title'] ?? t('common.metric'))) ?>,
                     data: <?= json_encode((array) ($teamMetricDetail['chart_values'] ?? [])) ?>,
                     borderColor: <?= json_encode((string) ($teamMetricDetail['chart_color'] ?? '#14a38b')) ?>,
                     backgroundColor: <?= json_encode((string) ($teamMetricDetail['chart_fill'] ?? 'rgba(20, 163, 139, 0.16)')) ?>,

@@ -7,7 +7,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 $page = $_GET['page'] ?? null;
 if ($page === null) {
     $pathPage = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/');
-    if (in_array($pathPage, ['dashboard', 'entries', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'login'], true)) {
+    if (in_array($pathPage, ['dashboard', 'entries', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'login'], true)) {
         $page = $pathPage;
     }
 }
@@ -149,6 +149,7 @@ if ($page === 'api_save_row') {
     $payload = [
         'user_id' => $userId,
         'log_date' => to_date((string) ($json['log_date'] ?? null)),
+        'log_time' => normalize_log_time($json['log_time'] ?? '', '00:00'),
         'steps' => max(0, (int) ($json['steps'] ?? 0)),
         'workout_done' => $hasWorkoutsPayload ? $derivedWorkoutDone : ((int) ($json['workout_done'] ?? 0) === 1 ? 1 : 0),
         'workout_type_id' => !empty($json['workout_type_id']) ? (int) $json['workout_type_id'] : null,
@@ -426,6 +427,7 @@ if ($page === 'entries') {
                 $payload = [
                     'user_id' => $userId,
                     'log_date' => $date,
+                    'log_time' => normalize_log_time($_POST['log_time'] ?? '', '00:00'),
                     'steps' => max(0, (int) ($_POST['steps'] ?? 0)),
                     'workout_done' => 0,
                     'workout_type_id' => null,
@@ -821,6 +823,32 @@ if ($page === 'table' || $page === 'week_editor') {
         'selectedMetric' => array_values($metrics)[0] ?? null,
         'workoutTypes' => list_workout_types($pdo, true),
         'habits' => list_habit_definitions($pdo, true),
+        'config' => $config,
+    ]);
+}
+
+if ($page === 'notifications') {
+    if (is_post()) {
+        if (!csrf_verify()) {
+            flash_set('error', t('flash.csrf'));
+            redirect('/?page=notifications');
+        }
+
+        $action = (string) ($_POST['action'] ?? '');
+        if ($action === 'mark_notification_read') {
+            $notificationId = (int) ($_POST['notification_id'] ?? 0);
+            mark_user_notification_read($pdo, $notificationId, (int) $currentUser['id']);
+            redirect('/?page=notifications');
+        }
+    }
+
+    $notifications = user_notifications($pdo, (int) $currentUser['id'], 200, true);
+
+    render_view('notifications', [
+        'title' => t('notifications.title'),
+        'currentPage' => 'notifications',
+        'currentUser' => $currentUser,
+        'notifications' => $notifications,
         'config' => $config,
     ]);
 }
@@ -2186,18 +2214,6 @@ if ($page === 'team') {
             redirect('/?page=team');
         }
 
-        if ($action === 'mark_notification_read') {
-            $notificationId = (int) ($_POST['notification_id'] ?? 0);
-            mark_user_notification_read($pdo, $notificationId, (int) $currentUser['id']);
-            $redirectParams = [
-                'page' => 'team',
-                'team_id' => (int) $team['id'],
-            ];
-            if (!empty($_POST['redirect_view'])) {
-                $redirectParams['view'] = (string) $_POST['redirect_view'];
-            }
-            redirect('/?' . http_build_query($redirectParams));
-        }
     }
 
     $userTeams = list_user_teams($pdo, (int) $currentUser['id']);
@@ -2249,7 +2265,6 @@ if ($page === 'team') {
     $teamSummaryTotal['calories_burned'] = (float) ($teamCaloriesTotal['burned'] ?? 0);
     $teamSummaryTotal['calories_consumed'] = (float) ($teamCaloriesTotal['consumed'] ?? 0);
     auto_complete_team_goals($pdo, (int) $team['id'], $teamSummaryTotal, (int) $currentUser['id']);
-    $teamNotifications = user_notifications($pdo, (int) $currentUser['id'], 20, false);
     $teamSummary = $teamSummaryTotal;
 
     $weekOptionsMap = [];
@@ -2653,15 +2668,20 @@ if ($page === 'team') {
         if ($unitLabel === '') {
             $unitLabel = goal_target_default_unit($type);
         }
-        $currentMetricValue = goal_team_metric_value($goal, $teamSummaryTotal);
-        $progressValue = goal_progress_from_baseline($goal, $currentMetricValue);
+        $usesTimeWindow = goal_target_type_uses_time_window($type);
+        $currentMetricValue = $usesTimeWindow
+            ? goal_window_metric_value_for_team($pdo, $goal, $teamUsers)
+            : goal_team_metric_value($goal, $teamSummaryTotal);
+        $progressValue = $usesTimeWindow
+            ? $currentMetricValue
+            : goal_progress_from_baseline($goal, $currentMetricValue);
         $targetValue = max(0.0, (float) ($goal['target_value'] ?? 0));
         if ((string) ($goal['status'] ?? '') === 'complete' && $targetValue > 0 && $progressValue < $targetValue) {
             $progressValue = $targetValue;
         }
-        $baselineValue = is_numeric($goal['baseline_value'] ?? null)
-            ? (float) $goal['baseline_value']
-            : $currentMetricValue;
+        $baselineValue = $usesTimeWindow
+            ? 0.0
+            : (is_numeric($goal['baseline_value'] ?? null) ? (float) $goal['baseline_value'] : $currentMetricValue);
         $teamGoals[] = array_merge($goal, [
             'target_type_normalized' => $type,
             'target_type_label' => $goalTypeLabel($type),
@@ -2703,7 +2723,6 @@ if ($page === 'team') {
         'teamSection' => $teamSection,
         'teamMemberDetail' => $teamMemberDetail,
         'teamGoals' => $teamGoals,
-        'teamNotifications' => $teamNotifications,
         'teamAchievements' => list_awarded_achievements($pdo, null, (int) $team['id']),
         'canDeleteAchievements' => can_manage_team($pdo, $currentUser, (int) $team['id']),
         'canManageTeam' => can_manage_team($pdo, $currentUser, (int) $team['id']),

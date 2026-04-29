@@ -11,6 +11,35 @@ const APPROVAL_STATUS_PENDING = 'pending';
 const APPROVAL_STATUS_APPROVED = 'approved';
 const APPROVAL_STATUS_REJECTED = 'rejected';
 
+function normalize_log_time(mixed $logTimeRaw, string $fallback = '00:00'): string
+{
+    $time = trim((string) $logTimeRaw);
+    if (preg_match('/^([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/', $time, $matches) === 1) {
+        return sprintf('%02d:%02d', (int) $matches[1], (int) $matches[2]);
+    }
+
+    if (preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/', $fallback, $matches) === 1) {
+        return sprintf('%02d:%02d', (int) $matches[1], (int) $matches[2]);
+    }
+
+    return '00:00';
+}
+
+function log_datetime_from_values(?string $logDate, mixed $logTimeRaw, string $fallbackTime = '00:00'): ?DateTimeImmutable
+{
+    $date = trim((string) $logDate);
+    if ($date === '') {
+        return null;
+    }
+
+    $time = normalize_log_time($logTimeRaw, $fallbackTime);
+    try {
+        return new DateTimeImmutable($date . ' ' . $time . ':00');
+    } catch (Throwable) {
+        return null;
+    }
+}
+
 function normalize_mask(mixed $selectedDays): string
 {
     if (!is_array($selectedDays)) {
@@ -262,12 +291,12 @@ function upsert_daily_log(PDO $pdo, array $payload): void
         db_execute(
             $pdo,
             'INSERT INTO daily_logs (
-                user_id, log_date, steps, workout_done, workout_type_id, workout_type,
+                user_id, log_date, log_time, steps, workout_done, workout_type_id, workout_type,
                 junk_food, extra_workout, distance_km, training_calories_burned, weight, notes, step_exception_reason,
                 distance_exception_reason, workout_exception_reason, morning_walk, journaling,
                 evening_chores, reading, created_at, updated_at
             ) VALUES (
-                :user_id, :log_date, :steps, :workout_done, :workout_type_id, :workout_type,
+                :user_id, :log_date, :log_time, :steps, :workout_done, :workout_type_id, :workout_type,
                 :junk_food, :extra_workout, :distance_km, :training_calories_burned, :weight, :notes, :step_exception_reason,
                 :distance_exception_reason, :workout_exception_reason, :morning_walk, :journaling,
                 :evening_chores, :reading, :created_at, :updated_at
@@ -275,6 +304,7 @@ function upsert_daily_log(PDO $pdo, array $payload): void
             [
                 ':user_id' => $payload['user_id'],
                 ':log_date' => $payload['log_date'],
+                ':log_time' => normalize_log_time($payload['log_time'] ?? '', '00:00'),
                 ':steps' => $payload['steps'],
                 ':workout_done' => $payload['workout_done'],
                 ':workout_type_id' => $workoutTypeId,
@@ -304,6 +334,7 @@ function upsert_daily_log(PDO $pdo, array $payload): void
         $pdo,
         'UPDATE daily_logs
          SET steps = :steps,
+             log_time = :log_time,
              workout_done = :workout_done,
              workout_type_id = :workout_type_id,
              workout_type = :workout_type,
@@ -324,6 +355,7 @@ function upsert_daily_log(PDO $pdo, array $payload): void
          WHERE id = :id',
         [
             ':steps' => $payload['steps'],
+            ':log_time' => normalize_log_time($payload['log_time'] ?? '', '00:00'),
             ':workout_done' => $payload['workout_done'],
             ':workout_type_id' => $workoutTypeId,
             ':workout_type' => $workoutTypeName,
@@ -2668,6 +2700,153 @@ function goal_target_default_unit(string $targetType): string
         'weight' => '%',
         default => '',
     };
+}
+
+function goal_target_type_uses_time_window(string $targetType): bool
+{
+    $type = normalize_goal_target_type($targetType);
+    return in_array($type, ['steps', 'km', 'workouts', 'calories_burned', 'calories_consumed'], true);
+}
+
+function goal_time_window_bounds(array $goal, ?DateTimeImmutable $now = null): array
+{
+    $nowDateTime = $now ?? new DateTimeImmutable('now');
+    $startAt = $nowDateTime;
+    $createdAtRaw = trim((string) ($goal['created_at'] ?? ''));
+    if ($createdAtRaw !== '') {
+        try {
+            $startAt = new DateTimeImmutable($createdAtRaw);
+        } catch (Throwable) {
+            $startAt = $nowDateTime;
+        }
+    }
+
+    $endAt = $nowDateTime;
+    $dueDate = trim((string) ($goal['due_date'] ?? ''));
+    $dueTime = normalize_goal_due_time($dueDate !== '' ? $dueDate : null, (string) ($goal['due_time'] ?? ''));
+    if ($dueDate !== '' && $dueTime !== null) {
+        try {
+            $endAt = new DateTimeImmutable($dueDate . ' ' . $dueTime . ':00');
+        } catch (Throwable) {
+            $endAt = $nowDateTime;
+        }
+    }
+
+    if ($endAt < $startAt) {
+        $endAt = $startAt;
+    }
+
+    return ['start' => $startAt, 'end' => $endAt];
+}
+
+function goal_window_metric_value_for_team(PDO $pdo, array $goal, array $teamUsers): float
+{
+    $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
+    if (!goal_target_type_uses_time_window($type)) {
+        return 0.0;
+    }
+
+    $userIds = [];
+    foreach ($teamUsers as $user) {
+        $userId = (int) ($user['id'] ?? 0);
+        if ($userId > 0) {
+            $userIds[$userId] = true;
+        }
+    }
+    if ($userIds === []) {
+        return 0.0;
+    }
+
+    $bounds = goal_time_window_bounds($goal);
+    /** @var DateTimeImmutable $startAt */
+    $startAt = $bounds['start'];
+    /** @var DateTimeImmutable $endAt */
+    $endAt = $bounds['end'];
+    $startDate = $startAt->format('Y-m-d');
+    $endDate = $endAt->format('Y-m-d');
+
+    $params = [
+        ':start_date' => $startDate,
+        ':end_date' => $endDate,
+    ];
+    $placeholders = [];
+    foreach (array_keys($userIds) as $index => $userId) {
+        $key = ':goal_uid_' . $index;
+        $placeholders[] = $key;
+        $params[$key] = $userId;
+    }
+
+    $logRows = db_fetch_all(
+        $pdo,
+        'SELECT user_id, log_date, log_time, steps, distance_km, workout_done, junk_food, extra_workout, training_calories_burned
+         FROM daily_logs
+         WHERE log_date BETWEEN :start_date AND :end_date
+           AND user_id IN (' . implode(',', $placeholders) . ')
+         ORDER BY user_id ASC, log_date ASC',
+        $params
+    );
+
+    $approvalsByUserDate = load_approval_status_by_user_date($pdo, $startDate, $endDate);
+    $sumSteps = 0.0;
+    $sumKm = 0.0;
+    $sumWorkouts = 0.0;
+    $sumCaloriesBurned = 0.0;
+    foreach ($logRows as $logRow) {
+        $logAt = log_datetime_from_values((string) ($logRow['log_date'] ?? ''), $logRow['log_time'] ?? '', '00:00');
+        if ($logAt === null || $logAt < $startAt || $logAt > $endAt) {
+            continue;
+        }
+
+        $sumSteps += max(0, (int) ($logRow['steps'] ?? 0));
+        $sumKm += max(0.0, (float) ($logRow['distance_km'] ?? 0));
+        $sumCaloriesBurned += max(0.0, (float) ($logRow['training_calories_burned'] ?? 0));
+
+        $userId = (int) ($logRow['user_id'] ?? 0);
+        $logDate = (string) ($logRow['log_date'] ?? '');
+        $approvalsByDate = is_array($approvalsByUserDate[$userId] ?? null) ? (array) $approvalsByUserDate[$userId] : [];
+        if (is_counted_workout($logRow, $approvalsByDate, $logDate)) {
+            $sumWorkouts += 1;
+        }
+    }
+
+    if ($type === 'calories_consumed') {
+        $photoRows = db_fetch_all(
+            $pdo,
+            'SELECT log_date, calories
+             FROM photo_entries
+             WHERE log_date BETWEEN :start_date AND :end_date
+               AND user_id IN (' . implode(',', $placeholders) . ')',
+            $params
+        );
+        $sumCaloriesConsumed = 0.0;
+        foreach ($photoRows as $photoRow) {
+            $photoAt = log_datetime_from_values((string) ($photoRow['log_date'] ?? ''), '00:00', '00:00');
+            if ($photoAt === null || $photoAt < $startAt || $photoAt > $endAt) {
+                continue;
+            }
+            $sumCaloriesConsumed += max(0.0, (float) ($photoRow['calories'] ?? 0));
+        }
+        return round($sumCaloriesConsumed, 2);
+    }
+
+    return match ($type) {
+        'steps' => (float) ((int) round($sumSteps)),
+        'km' => round($sumKm, 2),
+        'workouts' => (float) ((int) round($sumWorkouts)),
+        'calories_burned' => round($sumCaloriesBurned, 2),
+        default => 0.0,
+    };
+}
+
+function goal_team_progress_value(PDO $pdo, array $goal, array $teamSummary, array $teamUsers): float
+{
+    $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
+    if (goal_target_type_uses_time_window($type)) {
+        return goal_window_metric_value_for_team($pdo, $goal, $teamUsers);
+    }
+
+    $currentMetricValue = goal_team_metric_value($goal, $teamSummary);
+    return goal_progress_from_baseline($goal, $currentMetricValue);
 }
 
 function goal_team_metric_value(array $goal, array $teamSummary): float
@@ -5049,6 +5228,23 @@ function user_notifications(PDO $pdo, int $userId, int $limit = 20, bool $includ
     );
 }
 
+function user_unread_notifications_count(PDO $pdo, int $userId): int
+{
+    if ($userId <= 0) {
+        return 0;
+    }
+
+    $row = db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS total
+         FROM user_notifications
+         WHERE user_id = :user_id AND is_read = 0',
+        [':user_id' => $userId]
+    );
+
+    return max(0, (int) ($row['total'] ?? 0));
+}
+
 function create_user_notification(
     PDO $pdo,
     int $userId,
@@ -5223,10 +5419,10 @@ function auto_complete_team_goals(PDO $pdo, int $teamId, array $teamSummary, ?in
         return 0;
     }
 
+    $teamUsers = list_active_team_users($pdo, $teamId);
     $completedCount = 0;
     foreach ($activeGoals as $goal) {
-        $currentMetricValue = goal_team_metric_value($goal, $teamSummary);
-        $progressValue = goal_progress_from_baseline($goal, $currentMetricValue);
+        $progressValue = goal_team_progress_value($pdo, $goal, $teamSummary, $teamUsers);
         $goalId = (int) ($goal['id'] ?? 0);
         if ($goalId <= 0) {
             continue;

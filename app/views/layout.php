@@ -29,6 +29,7 @@ $desktopNavItems = [
 ];
 $mobileNavItems = array_intersect_key($desktopNavItems, array_flip(['dashboard', 'team', 'profile']));
 $topbarControls = $topbarControls ?? '';
+$unreadNotificationsCount = $loggedIn ? user_unread_notifications_count($GLOBALS['pdo'], (int) ($currentUser['id'] ?? 0)) : 0;
 
 $renderMobileIcon = static function (string $icon): string {
     return match ($icon) {
@@ -96,9 +97,13 @@ $renderMobileIcon = static function (string $icon): string {
                     <?php else: ?>
                         <span><?= e(initials_for((string) $currentUser['display_name'])) ?></span>
                     <?php endif; ?>
+                    <?php if ($unreadNotificationsCount > 0): ?>
+                        <span class="user-menu-unread-dot" aria-hidden="true"></span>
+                    <?php endif; ?>
                 </summary>
                 <div class="user-menu-panel">
                     <a href="/?page=profile"><?= e(t('nav.profile')) ?></a>
+                    <a href="/?page=notifications"><?= e(t('nav.notifications')) ?><?php if ($unreadNotificationsCount > 0): ?> (<?= (int) $unreadNotificationsCount ?>)<?php endif; ?></a>
                     <a href="/?page=settings"><?= e(t('nav.settings')) ?></a>
                     <?php if (is_admin($currentUser)): ?>
                         <a href="/?page=admin"><?= e(t('nav.admin')) ?></a>
