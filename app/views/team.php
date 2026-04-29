@@ -584,8 +584,6 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                         </small>
                                     <?php endif; ?>
                                     <span><?= e((string) ($goal['progress_display'] ?? '0')) ?> / <?= e((string) ($goal['target_display'] ?? '-')) ?></span>
-                                    <small class="muted"><?= e(t('goals.started_from')) ?>: <?= e((string) ($goal['baseline_display'] ?? '0')) ?></small>
-                                    <small class="muted"><?= e((string) ($goal['direction_label'] ?? '')) ?></small>
                                     <?php if ($rewardText !== ''): ?>
                                         <small class="team-goal-reward"><?= e(t('achievements.reward')) ?>: <?= e($rewardText) ?></small>
                                     <?php endif; ?>
@@ -732,7 +730,6 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                         <input type="number" step="0.1" name="target_value" value="" required data-goal-target-input>
                     </label>
                     <p class="muted small team-goal-form-helper"><?= e(t('goals.progress_starts_zero')) ?></p>
-                    <p class="muted small team-goal-form-helper" data-goal-direction-label><?= e(t('goals.higher_better')) ?></p>
                     <label data-goal-custom-unit-wrap hidden>
                         <?= e(t('goals.custom_unit')) ?>
                         <input type="text" name="custom_unit" maxlength="24" placeholder="<?= e(t('goals.custom_unit_placeholder')) ?>">
@@ -1131,7 +1128,6 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         const startTimeInput = goalModal.querySelector('[data-goal-start-time-input]');
         const dueDateInput = goalModal.querySelector('[data-goal-due-date-input]');
         const dueTimeInput = goalModal.querySelector('[data-goal-due-time-input]');
-        const directionLabel = goalModal.querySelector('[data-goal-direction-label]');
         const customUnitWrap = goalModal.querySelector('[data-goal-custom-unit-wrap]');
         const customUnitInput = goalModal.querySelector('input[name="custom_unit"]');
         const rewardToggle = goalModal.querySelector('[data-goal-reward-toggle]');
@@ -1139,8 +1135,6 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         const rewardInput = goalModal.querySelector('input[name="reward_text"]');
         const submitButton = goalModal.querySelector('[data-team-goal-submit]');
         const modalCard = goalModal.querySelector('.confirm-modal-card');
-        const directionLowerText = <?= json_encode(t('goals.lower_better')) ?>;
-        const directionHigherText = <?= json_encode(t('goals.higher_better')) ?>;
         const defaultPlaceholder = '100';
         let opener = null;
 
@@ -1162,13 +1156,6 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     ? String(selected.dataset.goalPlaceholder || '').trim()
                     : '';
                 targetInput.placeholder = placeholder !== '' ? placeholder : defaultPlaceholder;
-            }
-
-            if (directionLabel instanceof HTMLElement) {
-                const lowerBetter = selected instanceof HTMLOptionElement
-                    ? String(selected.dataset.goalLowerBetter || '0') === '1'
-                    : false;
-                directionLabel.textContent = lowerBetter ? directionLowerText : directionHigherText;
             }
         };
 
