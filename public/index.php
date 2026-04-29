@@ -7,7 +7,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 $page = $_GET['page'] ?? null;
 if ($page === null) {
     $pathPage = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/');
-    if (in_array($pathPage, ['dashboard', 'entries', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'login'], true)) {
+    if (in_array($pathPage, ['dashboard', 'entries', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'login'], true)) {
         $page = $pathPage;
     }
 }
@@ -646,6 +646,7 @@ if ($page === 'photo') {
 
     $photoOwnerId = (int) ($photo['user_id'] ?? 0);
     $canDeletePhoto = is_admin($currentUser) || $photoOwnerId === (int) $currentUser['id'];
+    $canEditPhoto = is_admin($currentUser) || $photoOwnerId === (int) $currentUser['id'];
 
     if (is_post()) {
         if (!csrf_verify()) {
@@ -654,6 +655,58 @@ if ($page === 'photo') {
         }
 
         $action = (string) ($_POST['action'] ?? '');
+
+        if ($action === 'update_photo') {
+            try {
+                if (!$canEditPhoto) {
+                    throw new RuntimeException(t('flash.no_permission'));
+                }
+
+                $date = to_date((string) ($_POST['log_date'] ?? ($photo['log_date'] ?? null)));
+                $category = (string) ($_POST['category'] ?? ($photo['category'] ?? 'other'));
+                $caption = trim((string) ($_POST['caption'] ?? ''));
+                $nutrition = [
+                    'calories' => $_POST['photo_calories'] ?? null,
+                    'protein_g' => $_POST['photo_protein_g'] ?? null,
+                    'carbs_g' => $_POST['photo_carbs_g'] ?? null,
+                    'fat_g' => $_POST['photo_fat_g'] ?? null,
+                    'fiber_g' => $_POST['photo_fiber_g'] ?? null,
+                    'sugar_g' => $_POST['photo_sugar_g'] ?? null,
+                    'sodium_mg' => $_POST['photo_sodium_mg'] ?? null,
+                ];
+
+                $beforePhoto = db_fetch_one($pdo, 'SELECT * FROM photo_entries WHERE id = :id', [':id' => $photoId]);
+                $updatedPhoto = update_photo_entry(
+                    $pdo,
+                    $config,
+                    $photoId,
+                    $date,
+                    $category,
+                    $caption,
+                    $nutrition,
+                    is_array($_FILES['photo'] ?? null) ? (array) $_FILES['photo'] : null
+                );
+                if ($updatedPhoto === null) {
+                    throw new RuntimeException(t('flash.not_found'));
+                }
+                $afterPhoto = db_fetch_one($pdo, 'SELECT * FROM photo_entries WHERE id = :id', [':id' => $photoId]);
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'photo_updated',
+                    'photo_entry',
+                    (string) $photoId,
+                    'Photo post updated.',
+                    audit_snapshot($beforePhoto),
+                    audit_snapshot($afterPhoto)
+                );
+                flash_set('success', t('photo.updated'));
+            } catch (Throwable $e) {
+                flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : t('flash.save_failed'));
+            }
+
+            redirect('/?page=photo&photo_id=' . (int) $photoId);
+        }
 
         if ($action === 'add_photo_comment') {
             $commentBody = (string) ($_POST['comment'] ?? '');
@@ -762,6 +815,7 @@ if ($page === 'photo') {
         'photo' => $photo,
         'comments' => fetch_photo_comments($pdo, $photoId, 250),
         'canDeletePhoto' => $canDeletePhoto,
+        'canEditPhoto' => $canEditPhoto,
         'config' => $config,
     ]);
 }
@@ -849,6 +903,17 @@ if ($page === 'notifications') {
         'currentPage' => 'notifications',
         'currentUser' => $currentUser,
         'notifications' => $notifications,
+        'config' => $config,
+    ]);
+}
+
+if ($page === 'challenges') {
+    $archives = list_challenge_archives($pdo);
+    render_view('challenges', [
+        'title' => t('challenges.title'),
+        'currentPage' => 'team',
+        'currentUser' => $currentUser,
+        'archives' => $archives,
         'config' => $config,
     ]);
 }
@@ -2241,8 +2306,15 @@ if ($page === 'team') {
 
     $settings = challenge_settings($pdo, $config);
     if (!challenge_is_active($settings)) {
-        flash_set('error', t('flash.challenge_inactive'));
-        redirect('/?page=admin');
+        render_view('team_inactive', [
+            'title' => t('team.no_active_challenge_title'),
+            'currentPage' => 'team',
+            'currentUser' => $currentUser,
+            'team' => $team,
+            'challengeSettings' => $settings,
+            'hasArchives' => list_challenge_archives($pdo) !== [],
+            'config' => $config,
+        ]);
     }
     $teamUsers = list_active_team_users($pdo, (int) $team['id']);
     $metricsByUser = compute_challenge_metrics(

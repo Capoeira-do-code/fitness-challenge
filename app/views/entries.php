@@ -232,89 +232,91 @@ $nutritionSummary = static function (array $photo): string {
     <?php endif; ?>
 
     <?php if ($entryMode === 'meal'): ?>
-    <div class="grid-two">
-        <article class="panel">
-            <div class="panel-head">
-                <div>
-                    <p class="eyebrow"><?= e(t('common.photo')) ?></p>
-                    <h2><?= e(t('entries.upload_photo')) ?></h2>
-                </div>
+    <article class="panel proof-photo-panel">
+        <div class="panel-head">
+            <div>
+                <p class="eyebrow"><?= e(t('common.photo')) ?></p>
+                <h2><?= e(t('entries.upload_photo')) ?></h2>
             </div>
+        </div>
 
-            <form method="post" action="/?page=entries" enctype="multipart/form-data" class="stack proof-photo-form" data-proof-photo-form>
-                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="upload_photo">
+        <form method="post" action="/?page=entries" enctype="multipart/form-data" class="stack proof-photo-form" data-proof-photo-form>
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="upload_photo">
 
-                <div class="proof-photo-grid">
-                    <div class="stack proof-photo-fields">
-                        <div class="grid-inline entries-two-col proof-photo-meta">
-                            <label>
-                                <?= e(t('common.date')) ?>
-                                <input type="date" name="log_date" value="<?= e($selectedDate) ?>">
-                            </label>
-
-                            <label>
-                                <?= e(t('common.category')) ?>
-                                <select name="category">
-                                    <option value="breakfast"><?= e(t('entries.breakfast')) ?></option>
-                                    <option value="lunch"><?= e(t('entries.lunch')) ?></option>
-                                    <option value="dinner"><?= e(t('entries.dinner')) ?></option>
-                                    <option value="other"><?= e(t('common.other')) ?></option>
-                                </select>
-                            </label>
-                        </div>
-
+            <div class="proof-photo-grid">
+                <div class="stack proof-photo-main-card">
+                    <div class="grid-inline entries-two-col proof-photo-meta">
                         <label>
-                            <?= e(t('common.caption')) ?>
-                            <input type="text" name="caption" placeholder="<?= e(t('entries.caption_placeholder')) ?>">
+                            <?= e(t('common.date')) ?>
+                            <input type="date" name="log_date" value="<?= e($selectedDate) ?>">
                         </label>
 
-                        <div class="proof-photo-upload-block">
-                            <label class="proof-photo-upload-label">
-                                <span><?= e(t('entries.camera_hint')) ?></span>
-                                <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif" capture="environment" required data-proof-photo-input>
-                            </label>
-                            <p class="proof-photo-upload-state muted small" data-proof-photo-state><?= e(t('entries.photo_upload_idle')) ?></p>
-                            <p class="muted small"><?= e(t('entries.photo_upload_help')) ?></p>
-                        </div>
+                        <label>
+                            <?= e(t('common.category')) ?>
+                            <select name="category">
+                                <option value="breakfast"><?= e(t('entries.breakfast')) ?></option>
+                                <option value="lunch"><?= e(t('entries.lunch')) ?></option>
+                                <option value="dinner"><?= e(t('entries.dinner')) ?></option>
+                                <option value="other"><?= e(t('common.other')) ?></option>
+                            </select>
+                        </label>
+                    </div>
 
+                    <label>
+                        <?= e(t('common.caption')) ?>
+                        <input type="text" name="caption" placeholder="<?= e(t('entries.caption_placeholder')) ?>">
+                    </label>
+
+                    <div class="proof-photo-upload-block">
+                        <label class="proof-photo-upload-label">
+                            <span><?= e(t('entries.camera_hint')) ?></span>
+                            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif" capture="environment" required data-proof-photo-input>
+                        </label>
+                        <p class="proof-photo-upload-state muted small" data-proof-photo-state><?= e(t('entries.photo_upload_idle')) ?></p>
+                        <p class="muted small"><?= e(t('entries.photo_upload_help')) ?></p>
+                    </div>
+
+                    <button type="submit" class="btn btn-secondary btn-block proof-photo-submit"><?= e(t('entries.upload')) ?></button>
+                </div>
+
+                <div class="stack proof-photo-side-card">
+                    <div class="photo-nutrition-tools">
+                        <button type="button" class="btn btn-ghost small" data-photo-nutrition-toggle><?= e(t('entries.add_calorie_info')) ?></button>
+                    </div>
+                    <div class="photo-nutrition-panel" data-photo-nutrition-panel hidden>
+                        <label>
+                            <?= e(t('entries.photo_calories')) ?>
+                            <input type="number" min="0" step="1" name="photo_calories" placeholder="650">
+                        </label>
                         <div class="photo-nutrition-tools">
-                            <button type="button" class="btn btn-ghost small" data-photo-nutrition-toggle><?= e(t('entries.add_calorie_info')) ?></button>
+                            <button type="button" class="btn btn-ghost small" data-photo-nutrition-advanced-toggle><?= e(t('entries.nutrition_advanced')) ?></button>
                         </div>
-                        <div class="photo-nutrition-panel" data-photo-nutrition-panel hidden>
+                        <div class="grid-inline entries-two-col photo-nutrition-advanced" data-photo-nutrition-advanced hidden>
                             <label>
-                                <?= e(t('entries.photo_calories')) ?>
-                                <input type="number" min="0" step="1" name="photo_calories" placeholder="650">
+                                <?= e(t('entries.photo_protein')) ?>
+                                <input type="number" min="0" step="0.1" name="photo_protein_g" placeholder="35">
                             </label>
-                            <div class="photo-nutrition-tools">
-                                <button type="button" class="btn btn-ghost small" data-photo-nutrition-advanced-toggle><?= e(t('entries.nutrition_advanced')) ?></button>
-                            </div>
-                            <div class="grid-inline entries-two-col photo-nutrition-advanced" data-photo-nutrition-advanced hidden>
-                                <label>
-                                    <?= e(t('entries.photo_protein')) ?>
-                                    <input type="number" min="0" step="0.1" name="photo_protein_g" placeholder="35">
-                                </label>
-                                <label>
-                                    <?= e(t('entries.photo_carbs')) ?>
-                                    <input type="number" min="0" step="0.1" name="photo_carbs_g" placeholder="60">
-                                </label>
-                                <label>
-                                    <?= e(t('entries.photo_fat')) ?>
-                                    <input type="number" min="0" step="0.1" name="photo_fat_g" placeholder="22">
-                                </label>
-                                <label>
-                                    <?= e(t('entries.photo_fiber')) ?>
-                                    <input type="number" min="0" step="0.1" name="photo_fiber_g" placeholder="8">
-                                </label>
-                                <label>
-                                    <?= e(t('entries.photo_sugar')) ?>
-                                    <input type="number" min="0" step="0.1" name="photo_sugar_g" placeholder="12">
-                                </label>
-                                <label>
-                                    <?= e(t('entries.photo_sodium')) ?>
-                                    <input type="number" min="0" step="1" name="photo_sodium_mg" placeholder="700">
-                                </label>
-                            </div>
+                            <label>
+                                <?= e(t('entries.photo_carbs')) ?>
+                                <input type="number" min="0" step="0.1" name="photo_carbs_g" placeholder="60">
+                            </label>
+                            <label>
+                                <?= e(t('entries.photo_fat')) ?>
+                                <input type="number" min="0" step="0.1" name="photo_fat_g" placeholder="22">
+                            </label>
+                            <label>
+                                <?= e(t('entries.photo_fiber')) ?>
+                                <input type="number" min="0" step="0.1" name="photo_fiber_g" placeholder="8">
+                            </label>
+                            <label>
+                                <?= e(t('entries.photo_sugar')) ?>
+                                <input type="number" min="0" step="0.1" name="photo_sugar_g" placeholder="12">
+                            </label>
+                            <label>
+                                <?= e(t('entries.photo_sodium')) ?>
+                                <input type="number" min="0" step="1" name="photo_sodium_mg" placeholder="700">
+                            </label>
                         </div>
                     </div>
 
@@ -340,13 +342,11 @@ $nutritionSummary = static function (array $photo): string {
                         </div>
                     </div>
                 </div>
+            </div>
+        </form>
 
-                <button type="submit" class="btn btn-secondary btn-block"><?= e(t('entries.upload')) ?></button>
-            </form>
-
-            <p class="muted small"><?= e(t('entries.server_hint')) ?></p>
-        </article>
-    </div>
+        <p class="muted small proof-photo-server-hint"><?= e(t('entries.server_hint')) ?></p>
+    </article>
 
     <article class="panel">
         <div class="panel-head">

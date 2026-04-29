@@ -1167,6 +1167,62 @@ function normalize_nullable_float_input(mixed $value, ?float $min = null): ?floa
     return $normalized;
 }
 
+function normalize_photo_entry_category(string $category): string
+{
+    $normalizedCategory = strtolower(trim($category));
+    if ($normalizedCategory === 'meal') {
+        $normalizedCategory = 'lunch';
+    }
+    if ($normalizedCategory === 'workout') {
+        $normalizedCategory = 'other';
+    }
+    $validCategories = ['breakfast', 'lunch', 'dinner', 'other'];
+    if (!in_array($normalizedCategory, $validCategories, true)) {
+        return 'other';
+    }
+
+    return $normalizedCategory;
+}
+
+function remove_media_file_if_unreferenced(PDO $pdo, array $config, string $filePath, string $context): void
+{
+    $path = trim($filePath);
+    if ($path === '') {
+        return;
+    }
+
+    $remaining = db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS total FROM photo_entries WHERE file_path = :file_path',
+        [':file_path' => $path]
+    );
+    $remainingCount = (int) ($remaining['total'] ?? 0);
+    if ($remainingCount > 0) {
+        return;
+    }
+
+    $resolvedPath = resolve_media_storage_path($config, $path);
+    if ($resolvedPath !== null && is_file($resolvedPath)) {
+        $deleted = @unlink($resolvedPath);
+        media_debug_log($context, [
+            'stored_value' => $path,
+            'helper_input' => $path,
+            'normalized_value' => (string) (normalize_media_reference($path)['normalized'] ?? ''),
+            'final_url' => $resolvedPath,
+            'reason' => $deleted ? 'file_deleted' : 'unlink_failed',
+        ]);
+        return;
+    }
+
+    media_debug_log($context, [
+        'stored_value' => $path,
+        'helper_input' => $path,
+        'normalized_value' => (string) (normalize_media_reference($path)['normalized'] ?? ''),
+        'final_url' => '',
+        'reason' => 'resolved_path_missing',
+    ]);
+}
+
 function save_photo_entry(
     PDO $pdo,
     array $config,
@@ -1178,17 +1234,7 @@ function save_photo_entry(
     array $nutrition = []
 ): array
 {
-    $normalizedCategory = strtolower(trim($category));
-    if ($normalizedCategory === 'meal') {
-        $normalizedCategory = 'lunch';
-    }
-    if ($normalizedCategory === 'workout') {
-        $normalizedCategory = 'other';
-    }
-    $validCategories = ['breakfast', 'lunch', 'dinner', 'other'];
-    if (!in_array($normalizedCategory, $validCategories, true)) {
-        $normalizedCategory = 'other';
-    }
+    $normalizedCategory = normalize_photo_entry_category($category);
 
     $storedPath = save_uploaded_image(
         $config,
@@ -1197,15 +1243,16 @@ function save_photo_entry(
         (string) $userId,
         image_upload_policy($config, 'photo_entry')
     );
+    $now = now_iso();
 
     db_execute(
         $pdo,
         'INSERT INTO photo_entries (
             user_id, log_date, category, caption, file_path,
-            calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, created_at
+            calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, created_at, updated_at
         ) VALUES (
             :user_id, :log_date, :category, :caption, :file_path,
-            :calories, :protein_g, :carbs_g, :fat_g, :fiber_g, :sugar_g, :sodium_mg, :created_at
+            :calories, :protein_g, :carbs_g, :fat_g, :fiber_g, :sugar_g, :sodium_mg, :created_at, :updated_at
         )',
         [
             ':user_id' => $userId,
@@ -1220,7 +1267,8 @@ function save_photo_entry(
             ':fiber_g' => normalize_nullable_float_input($nutrition['fiber_g'] ?? null, 0),
             ':sugar_g' => normalize_nullable_float_input($nutrition['sugar_g'] ?? null, 0),
             ':sodium_mg' => normalize_nullable_float_input($nutrition['sodium_mg'] ?? null, 0),
-            ':created_at' => now_iso(),
+            ':created_at' => $now,
+            ':updated_at' => $now,
         ]
     );
 
@@ -1230,6 +1278,79 @@ function save_photo_entry(
     }
 
     return $created;
+}
+
+function update_photo_entry(
+    PDO $pdo,
+    array $config,
+    int $photoId,
+    string $date,
+    string $category,
+    string $caption,
+    array $nutrition = [],
+    ?array $file = null
+): ?array {
+    if ($photoId <= 0) {
+        return null;
+    }
+
+    $existing = db_fetch_one($pdo, 'SELECT * FROM photo_entries WHERE id = :id', [':id' => $photoId]);
+    if ($existing === null) {
+        return null;
+    }
+
+    $normalizedCategory = normalize_photo_entry_category($category);
+    $newFilePath = (string) ($existing['file_path'] ?? '');
+    $oldFilePath = trim((string) ($existing['file_path'] ?? ''));
+    $hasNewUpload = is_array($file) && isset($file['error']) && (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+    if ($hasNewUpload) {
+        $newFilePath = save_uploaded_image(
+            $config,
+            $file,
+            (new DateTimeImmutable($date))->format('Y/m'),
+            (string) ((int) ($existing['user_id'] ?? 0)),
+            image_upload_policy($config, 'photo_entry')
+        );
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE photo_entries
+         SET log_date = :log_date,
+             category = :category,
+             caption = :caption,
+             file_path = :file_path,
+             calories = :calories,
+             protein_g = :protein_g,
+             carbs_g = :carbs_g,
+             fat_g = :fat_g,
+             fiber_g = :fiber_g,
+             sugar_g = :sugar_g,
+             sodium_mg = :sodium_mg,
+             updated_at = :updated_at
+         WHERE id = :id',
+        [
+            ':log_date' => $date,
+            ':category' => $normalizedCategory,
+            ':caption' => $caption,
+            ':file_path' => $newFilePath,
+            ':calories' => normalize_nullable_float_input($nutrition['calories'] ?? null, 0),
+            ':protein_g' => normalize_nullable_float_input($nutrition['protein_g'] ?? null, 0),
+            ':carbs_g' => normalize_nullable_float_input($nutrition['carbs_g'] ?? null, 0),
+            ':fat_g' => normalize_nullable_float_input($nutrition['fat_g'] ?? null, 0),
+            ':fiber_g' => normalize_nullable_float_input($nutrition['fiber_g'] ?? null, 0),
+            ':sugar_g' => normalize_nullable_float_input($nutrition['sugar_g'] ?? null, 0),
+            ':sodium_mg' => normalize_nullable_float_input($nutrition['sodium_mg'] ?? null, 0),
+            ':updated_at' => now_iso(),
+            ':id' => $photoId,
+        ]
+    );
+
+    if ($hasNewUpload && $oldFilePath !== '' && $oldFilePath !== $newFilePath) {
+        remove_media_file_if_unreferenced($pdo, $config, $oldFilePath, 'update_photo_entry');
+    }
+
+    return db_fetch_one($pdo, 'SELECT * FROM photo_entries WHERE id = :id', [':id' => $photoId]);
 }
 
 function delete_photo_entry(PDO $pdo, array $config, int $photoId): ?array
@@ -1246,35 +1367,7 @@ function delete_photo_entry(PDO $pdo, array $config, int $photoId): ?array
     $filePath = trim((string) ($photo['file_path'] ?? ''));
     db_execute($pdo, 'DELETE FROM photo_entries WHERE id = :id', [':id' => $photoId]);
 
-    if ($filePath !== '') {
-        $remaining = db_fetch_one(
-            $pdo,
-            'SELECT COUNT(*) AS total FROM photo_entries WHERE file_path = :file_path',
-            [':file_path' => $filePath]
-        );
-        $remainingCount = (int) ($remaining['total'] ?? 0);
-        if ($remainingCount === 0) {
-            $resolvedPath = resolve_media_storage_path($config, $filePath);
-            if ($resolvedPath !== null && is_file($resolvedPath)) {
-                $deleted = @unlink($resolvedPath);
-                media_debug_log('delete_photo_entry', [
-                    'stored_value' => $filePath,
-                    'helper_input' => $filePath,
-                    'normalized_value' => (string) (normalize_media_reference($filePath)['normalized'] ?? ''),
-                    'final_url' => $resolvedPath,
-                    'reason' => $deleted ? 'file_deleted' : 'unlink_failed',
-                ]);
-            } else {
-                media_debug_log('delete_photo_entry', [
-                    'stored_value' => $filePath,
-                    'helper_input' => $filePath,
-                    'normalized_value' => (string) (normalize_media_reference($filePath)['normalized'] ?? ''),
-                    'final_url' => '',
-                    'reason' => 'resolved_path_missing',
-                ]);
-            }
-        }
-    }
+    remove_media_file_if_unreferenced($pdo, $config, $filePath, 'delete_photo_entry');
 
     return $photo;
 }
@@ -3129,11 +3222,99 @@ function update_challenge_settings(PDO $pdo, string $name, string $start, string
     audit_log($pdo, $actorUserId, 'challenge_settings_updated', 'challenge_settings', '1', 'Challenge settings updated.', audit_snapshot($before), audit_snapshot($after));
 }
 
+function backfill_challenge_archives_from_audit(PDO $pdo): void
+{
+    $existingCount = (int) ((db_fetch_one($pdo, 'SELECT COUNT(*) AS total FROM challenge_archives')['total'] ?? 0));
+    if ($existingCount > 0) {
+        return;
+    }
+
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT * FROM audit_logs
+         WHERE action = "challenge_archived"
+         ORDER BY created_at ASC'
+    );
+    if ($rows === []) {
+        return;
+    }
+
+    foreach ($rows as $row) {
+        $before = json_decode((string) ($row['before_json'] ?? ''), true);
+        $after = json_decode((string) ($row['after_json'] ?? ''), true);
+        $snapshot = is_array($before) && $before !== [] ? $before : (is_array($after) ? $after : []);
+        $name = trim((string) ($snapshot['challenge_name'] ?? ''));
+        $start = trim((string) ($snapshot['challenge_start'] ?? ''));
+        $end = trim((string) ($snapshot['challenge_end'] ?? ''));
+        if ($name === '' || $start === '' || $end === '') {
+            continue;
+        }
+
+        $archivedAt = trim((string) ($row['created_at'] ?? ''));
+        if ($archivedAt === '') {
+            $archivedAt = now_iso();
+        }
+
+        db_execute(
+            $pdo,
+            'INSERT INTO challenge_archives (
+                challenge_name, challenge_start, challenge_end, archived_at, archived_by, source_settings_json, created_at
+            ) VALUES (
+                :challenge_name, :challenge_start, :challenge_end, :archived_at, :archived_by, :source_settings_json, :created_at
+            )',
+            [
+                ':challenge_name' => $name,
+                ':challenge_start' => $start,
+                ':challenge_end' => $end,
+                ':archived_at' => $archivedAt,
+                ':archived_by' => isset($row['actor_user_id']) ? (int) $row['actor_user_id'] : null,
+                ':source_settings_json' => json_encode($snapshot, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                ':created_at' => $archivedAt,
+            ]
+        );
+    }
+}
+
+function list_challenge_archives(PDO $pdo): array
+{
+    backfill_challenge_archives_from_audit($pdo);
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT ca.*, u.display_name AS archived_by_name
+         FROM challenge_archives ca
+         LEFT JOIN users u ON u.id = ca.archived_by
+         ORDER BY ca.archived_at DESC, ca.id DESC'
+    );
+}
+
 function archive_challenge(PDO $pdo, int $actorUserId): void
 {
     $before = db_fetch_one($pdo, 'SELECT * FROM challenge_settings WHERE id = 1');
     if ($before === null) {
         return;
+    }
+
+    $wasActive = (int) ($before['active'] ?? 1) === 1 && empty($before['deleted_at']);
+    if ($wasActive) {
+        $archivedAt = now_iso();
+        db_execute(
+            $pdo,
+            'INSERT INTO challenge_archives (
+                challenge_name, challenge_start, challenge_end, archived_at, archived_by, source_settings_json, created_at
+            ) VALUES (
+                :challenge_name, :challenge_start, :challenge_end, :archived_at, :archived_by, :source_settings_json, :created_at
+            )',
+            [
+                ':challenge_name' => (string) ($before['challenge_name'] ?? 'Fitness Challenge'),
+                ':challenge_start' => (string) ($before['challenge_start'] ?? to_date(null)),
+                ':challenge_end' => (string) ($before['challenge_end'] ?? to_date(null)),
+                ':archived_at' => $archivedAt,
+                ':archived_by' => $actorUserId,
+                ':source_settings_json' => json_encode($before, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                ':created_at' => $archivedAt,
+            ]
+        );
     }
 
     db_execute(

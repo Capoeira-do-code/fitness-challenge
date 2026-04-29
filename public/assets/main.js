@@ -537,6 +537,57 @@
         });
     };
 
+    const initPhotoEditModal = () => {
+        const modal = document.querySelector('[data-photo-edit-modal]');
+        const triggers = document.querySelectorAll('[data-photo-edit-open]');
+        if (!(modal instanceof HTMLElement) || triggers.length === 0) {
+            return;
+        }
+
+        const closeButtons = modal.querySelectorAll('[data-photo-edit-close]');
+        const focusTarget = modal.querySelector('input[name="log_date"]');
+        let opener = null;
+
+        const closeModal = () => {
+            modal.hidden = true;
+            modal.setAttribute('aria-hidden', 'true');
+            modal.classList.remove('is-open');
+            if (opener instanceof HTMLElement) {
+                opener.focus();
+            }
+            opener = null;
+        };
+
+        const openModal = (trigger) => {
+            opener = trigger;
+            modal.hidden = false;
+            modal.setAttribute('aria-hidden', 'false');
+            modal.classList.add('is-open');
+            if (focusTarget instanceof HTMLElement) {
+                window.setTimeout(() => focusTarget.focus(), 0);
+            }
+        };
+
+        triggers.forEach((trigger) => {
+            if (!(trigger instanceof HTMLButtonElement)) {
+                return;
+            }
+            trigger.addEventListener('click', () => {
+                openModal(trigger);
+            });
+        });
+
+        closeButtons.forEach((button) => {
+            button.addEventListener('click', closeModal);
+        });
+
+        window.addEventListener('keydown', (event) => {
+            if (!modal.hidden && event.key === 'Escape') {
+                closeModal();
+            }
+        });
+    };
+
     const initStrikeReviewModal = () => {
         const modal = document.querySelector('[data-strike-review-modal]');
         const triggers = document.querySelectorAll('[data-strike-review-open]');
@@ -1705,6 +1756,7 @@
         safeInit(initAdminAchievementFields);
         safeInit(initAchievementDeleteModal);
         safeInit(initPhotoDeleteModal);
+        safeInit(initPhotoEditModal);
         safeInit(initStrikeReviewModal);
         safeInit(initProfileGoalsSection);
         safeInit(initProfileConfigEditor);

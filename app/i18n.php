@@ -1725,6 +1725,54 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
     ],
 ]);
 
+$TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
+    'en' => [
+        'photo.edit_post' => 'Edit post',
+        'photo.replace_photo' => 'Replace photo',
+        'photo.replace_photo_hint' => 'Optional. Leave empty to keep the current photo.',
+        'photo.updated' => 'Post updated.',
+        'team.no_active_challenge_title' => 'No active challenge right now',
+        'team.no_active_challenge_subtitle' => 'This team is waiting for the next active challenge. You can review archived challenges.',
+        'team.previous_challenges' => 'Previous challenges',
+        'challenges.title' => 'Previous challenges',
+        'challenges.subtitle' => 'Browse archived challenges from your team.',
+        'challenges.empty' => 'No archived challenges yet.',
+        'challenges.unnamed' => 'Unnamed challenge',
+        'challenges.archived_at' => 'Archived on',
+        'challenges.archived_by' => 'Archived by {name}',
+    ],
+    'es' => [
+        'photo.edit_post' => 'Editar publicación',
+        'photo.replace_photo' => 'Reemplazar foto',
+        'photo.replace_photo_hint' => 'Opcional. Déjalo vacío para mantener la foto actual.',
+        'photo.updated' => 'Publicación actualizada.',
+        'team.no_active_challenge_title' => 'No hay challenge activo ahora',
+        'team.no_active_challenge_subtitle' => 'Este equipo está esperando el próximo challenge activo. Puedes revisar challenges anteriores.',
+        'team.previous_challenges' => 'Challenges anteriores',
+        'challenges.title' => 'Challenges anteriores',
+        'challenges.subtitle' => 'Revisa los challenges archivados de tu equipo.',
+        'challenges.empty' => 'Aún no hay challenges archivados.',
+        'challenges.unnamed' => 'Challenge sin nombre',
+        'challenges.archived_at' => 'Archivado el',
+        'challenges.archived_by' => 'Archivado por {name}',
+    ],
+    'it' => [
+        'photo.edit_post' => 'Modifica post',
+        'photo.replace_photo' => 'Sostituisci foto',
+        'photo.replace_photo_hint' => 'Opzionale. Lascia vuoto per mantenere la foto attuale.',
+        'photo.updated' => 'Post aggiornato.',
+        'team.no_active_challenge_title' => 'Nessuna challenge attiva al momento',
+        'team.no_active_challenge_subtitle' => 'Questo team è in attesa della prossima challenge attiva. Puoi rivedere le challenge archiviate.',
+        'team.previous_challenges' => 'Challenge precedenti',
+        'challenges.title' => 'Challenge precedenti',
+        'challenges.subtitle' => 'Consulta le challenge archiviate del team.',
+        'challenges.empty' => 'Nessuna challenge archiviata al momento.',
+        'challenges.unnamed' => 'Challenge senza nome',
+        'challenges.archived_at' => 'Archiviata il',
+        'challenges.archived_by' => 'Archiviata da {name}',
+    ],
+]);
+
 function locale_options(): array
 {
     return [

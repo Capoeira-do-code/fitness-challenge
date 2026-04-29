@@ -11,6 +11,7 @@ $photoOwnerId = (int) ($photo['user_id'] ?? 0);
 $ownerName = (string) ($photo['display_name'] ?? t('common.user'));
 $photoCategory = (string) ($photo['category'] ?? 'other');
 $photoCanDelete = (bool) ($canDeletePhoto ?? false);
+$photoCanEdit = (bool) ($canEditPhoto ?? false);
 $backUrl = '/?page=entries&mode=meal&date=' . rawurlencode($photoLogDate);
 $categoryLabels = [
     'breakfast' => t('entries.breakfast'),
@@ -71,11 +72,19 @@ foreach ($nutritionFields as $field => $meta) {
             </div>
             <div class="photo-post-head-actions">
                 <a class="btn btn-ghost small photo-back-btn" href="<?= e($backUrl) ?>">← <?= e(t('photo.back_to_entries')) ?></a>
-                <?php if ($photoCanDelete): ?>
+                <?php if ($photoCanDelete || $photoCanEdit): ?>
                     <?php $photoDeleteFormId = 'photo-delete-form-page-' . $photoId; ?>
                     <details class="photo-post-menu photo-post-head-menu">
                         <summary class="btn btn-ghost small" aria-label="<?= e(t('photo.actions')) ?>">•••</summary>
                         <div class="photo-post-menu-panel">
+                            <?php if ($photoCanEdit): ?>
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost"
+                                    data-photo-edit-open
+                                ><?= e(t('photo.edit_post')) ?></button>
+                            <?php endif; ?>
+                            <?php if ($photoCanDelete): ?>
                             <button
                                 type="button"
                                 class="btn btn-ghost photo-delete-text-btn"
@@ -83,8 +92,11 @@ foreach ($nutritionFields as $field => $meta) {
                                 data-photo-delete-form="<?= e($photoDeleteFormId) ?>"
                                 data-photo-delete-message="<?= e(t('entries.delete_photo_confirm')) ?>"
                             ><?= e(t('photo.delete_photo')) ?></button>
+                            <?php endif; ?>
                         </div>
                     </details>
+                <?php endif; ?>
+                <?php if ($photoCanDelete): ?>
                     <form id="<?= e($photoDeleteFormId) ?>" method="post" action="/?page=photo&photo_id=<?= $photoId ?>" hidden>
                         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                         <input type="hidden" name="action" value="delete_photo">
@@ -237,3 +249,80 @@ foreach ($nutritionFields as $field => $meta) {
         </div>
     </div>
 </div>
+
+<?php if ($photoCanEdit): ?>
+<div class="confirm-modal" hidden aria-hidden="true" data-photo-edit-modal>
+    <div class="confirm-modal-backdrop" data-photo-edit-close></div>
+    <div class="confirm-modal-card photo-edit-modal-card" role="dialog" aria-modal="true" aria-labelledby="photo-edit-title">
+        <h3 id="photo-edit-title"><?= e(t('photo.edit_post')) ?></h3>
+        <form method="post" action="/?page=photo&photo_id=<?= $photoId ?>" enctype="multipart/form-data" class="stack compact-form">
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="update_photo">
+            <input type="hidden" name="photo_id" value="<?= $photoId ?>">
+
+            <div class="grid-inline entries-two-col">
+                <label>
+                    <?= e(t('common.date')) ?>
+                    <input type="date" name="log_date" value="<?= e($photoLogDate) ?>" required>
+                </label>
+                <label>
+                    <?= e(t('common.category')) ?>
+                    <select name="category">
+                        <option value="breakfast" <?= $photoCategory === 'breakfast' ? 'selected' : '' ?>><?= e(t('entries.breakfast')) ?></option>
+                        <option value="lunch" <?= $photoCategory === 'lunch' ? 'selected' : '' ?>><?= e(t('entries.lunch')) ?></option>
+                        <option value="dinner" <?= $photoCategory === 'dinner' ? 'selected' : '' ?>><?= e(t('entries.dinner')) ?></option>
+                        <option value="other" <?= $photoCategory === 'other' ? 'selected' : '' ?>><?= e(t('common.other')) ?></option>
+                    </select>
+                </label>
+            </div>
+
+            <label>
+                <?= e(t('common.caption')) ?>
+                <input type="text" name="caption" value="<?= e((string) ($photo['caption'] ?? '')) ?>" placeholder="<?= e(t('entries.caption_placeholder')) ?>">
+            </label>
+
+            <label>
+                <?= e(t('photo.replace_photo')) ?>
+                <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif">
+                <small class="muted"><?= e(t('photo.replace_photo_hint')) ?></small>
+            </label>
+
+            <div class="grid-inline entries-two-col">
+                <label>
+                    <?= e(t('entries.photo_calories')) ?>
+                    <input type="number" min="0" step="1" name="photo_calories" value="<?= e((string) ($photo['calories'] ?? '')) ?>" placeholder="650">
+                </label>
+                <label>
+                    <?= e(t('entries.photo_protein')) ?>
+                    <input type="number" min="0" step="0.1" name="photo_protein_g" value="<?= e((string) ($photo['protein_g'] ?? '')) ?>" placeholder="35">
+                </label>
+                <label>
+                    <?= e(t('entries.photo_carbs')) ?>
+                    <input type="number" min="0" step="0.1" name="photo_carbs_g" value="<?= e((string) ($photo['carbs_g'] ?? '')) ?>" placeholder="60">
+                </label>
+                <label>
+                    <?= e(t('entries.photo_fat')) ?>
+                    <input type="number" min="0" step="0.1" name="photo_fat_g" value="<?= e((string) ($photo['fat_g'] ?? '')) ?>" placeholder="22">
+                </label>
+                <label>
+                    <?= e(t('entries.photo_fiber')) ?>
+                    <input type="number" min="0" step="0.1" name="photo_fiber_g" value="<?= e((string) ($photo['fiber_g'] ?? '')) ?>" placeholder="8">
+                </label>
+                <label>
+                    <?= e(t('entries.photo_sugar')) ?>
+                    <input type="number" min="0" step="0.1" name="photo_sugar_g" value="<?= e((string) ($photo['sugar_g'] ?? '')) ?>" placeholder="12">
+                </label>
+                <label>
+                    <?= e(t('entries.photo_sodium')) ?>
+                    <input type="number" min="0" step="1" name="photo_sodium_mg" value="<?= e((string) ($photo['sodium_mg'] ?? '')) ?>" placeholder="700">
+                </label>
+            </div>
+
+            <div class="confirm-modal-actions">
+                <button class="btn btn-ghost" type="button" data-photo-edit-close><?= e(t('common.cancel')) ?></button>
+                <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>

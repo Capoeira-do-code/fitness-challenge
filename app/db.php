@@ -194,6 +194,20 @@ function initialize_database(PDO $pdo, array $config): void
     );
 
     $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS challenge_archives (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            challenge_name TEXT NOT NULL,
+            challenge_start TEXT NOT NULL,
+            challenge_end TEXT NOT NULL,
+            archived_at TEXT NOT NULL,
+            archived_by INTEGER,
+            source_settings_json TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (archived_by) REFERENCES users(id) ON DELETE SET NULL
+        )'
+    );
+
+    $pdo->exec(
         'CREATE TABLE IF NOT EXISTS teams (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -573,6 +587,7 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'photo_entries', 'fiber_g', 'REAL');
     ensure_column($pdo, 'photo_entries', 'sugar_g', 'REAL');
     ensure_column($pdo, 'photo_entries', 'sodium_mg', 'REAL');
+    ensure_column($pdo, 'photo_entries', 'updated_at', 'TEXT');
 
     ensure_column($pdo, 'teams', 'join_mode', 'TEXT NOT NULL DEFAULT "closed"');
     ensure_column($pdo, 'teams', 'visibility', 'TEXT NOT NULL DEFAULT "visible"');
@@ -646,6 +661,7 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON user_notifications(user_id, created_at)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON user_notifications(user_id, is_read)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_user_unique_key ON user_notifications(user_id, unique_key) WHERE unique_key IS NOT NULL');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_challenge_archives_archived_at ON challenge_archives(archived_at DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_requests_target ON strike_review_requests(target_user_id, week_start, event_date)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_requests_status ON strike_review_requests(status)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_strike_review_requests_event_unique ON strike_review_requests(target_user_id, week_start, event_date, reason)');
