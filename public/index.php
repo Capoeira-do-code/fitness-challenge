@@ -2223,6 +2223,7 @@ if ($page === 'team') {
                 redirect($teamRedirectUrl);
             }
             $goalType = normalize_goal_target_type((string) ($_POST['target_type'] ?? 'custom'));
+            $goalTypeBefore = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
             $rewardEnabled = bool_from_form('reward_enabled');
             $rewardTextRaw = trim((string) ($_POST['reward_text'] ?? ''));
             $rewardText = $rewardEnabled && $rewardTextRaw !== '' ? substr($rewardTextRaw, 0, 120) : null;
@@ -2232,7 +2233,7 @@ if ($page === 'team') {
                 : goal_target_default_unit($goalType);
             $dueDate = ($_POST['due_date'] ?? '') !== '' ? to_date((string) $_POST['due_date']) : null;
             $dueTime = normalize_goal_due_time($dueDate, (string) ($_POST['due_time'] ?? ''));
-            update_goal($pdo, $goalId, [
+            $updatePayload = [
                 'title' => trim((string) ($_POST['title'] ?? '')),
                 'target_type' => $goalType,
                 'target_value' => ($_POST['target_value'] ?? '') !== '' ? (float) $_POST['target_value'] : null,
@@ -2240,7 +2241,33 @@ if ($page === 'team') {
                 'reward_text' => $rewardText,
                 'due_date' => $dueDate,
                 'due_time' => $dueTime,
-            ], (int) $currentUser['id']);
+            ];
+
+            if ($goalType !== $goalTypeBefore) {
+                $settingsForGoal = challenge_settings($pdo, $config);
+                $teamUsersForGoal = list_active_team_users($pdo, (int) $team['id']);
+                $metricsForGoal = compute_challenge_metrics(
+                    $pdo,
+                    $teamUsersForGoal,
+                    (string) $settingsForGoal['challenge_start'],
+                    (string) $settingsForGoal['challenge_end']
+                );
+                $metricsForGoal = apply_strike_review_overrides_to_metrics($pdo, $metricsForGoal);
+                $teamRowsForGoal = team_rows_for_view(array_values($metricsForGoal), 'total');
+                $teamSummaryForGoal = team_summary_from_rows($teamRowsForGoal);
+                $teamCaloriesForGoal = resolve_team_calories_summary(
+                    $pdo,
+                    (int) $team['id'],
+                    (string) $settingsForGoal['challenge_start'],
+                    (string) $settingsForGoal['challenge_end']
+                );
+                $teamSummaryForGoal['calories_burned'] = (float) ($teamCaloriesForGoal['burned'] ?? 0);
+                $teamSummaryForGoal['calories_consumed'] = (float) ($teamCaloriesForGoal['consumed'] ?? 0);
+                $updatePayload['baseline_value'] = goal_team_metric_value(['target_type' => $goalType], $teamSummaryForGoal);
+                $updatePayload['current_value'] = 0;
+            }
+
+            update_goal($pdo, $goalId, $updatePayload, (int) $currentUser['id']);
             flash_set('success', t('flash.goal_updated'));
             redirect($teamRedirectUrl);
         }
@@ -2763,22 +2790,15 @@ if ($page === 'team') {
         if ($unitLabel === '') {
             $unitLabel = goal_target_default_unit($type);
         }
-        $usesTimeWindow = goal_target_type_uses_time_window($type);
-        $currentMetricValue = $usesTimeWindow
-            ? goal_window_metric_value_for_team($pdo, $goal, $teamUsers)
-            : goal_team_metric_value($goal, $teamSummaryTotal);
-        $progressValue = $usesTimeWindow
-            ? $currentMetricValue
-            : goal_progress_from_baseline($goal, $currentMetricValue);
+        $currentMetricValue = goal_team_metric_value($goal, $teamSummaryTotal);
+        $progressValue = goal_progress_from_baseline($goal, $currentMetricValue);
         $targetValue = max(0.0, (float) ($goal['target_value'] ?? 0));
         if ((string) ($goal['status'] ?? '') === 'complete' && $targetValue > 0 && $progressValue < $targetValue) {
             $progressValue = $targetValue;
         }
         $progressPctRaw = $targetValue > 0 ? round(($progressValue / $targetValue) * 100, 1) : 0.0;
         $progressPctVisual = max(0.0, min(100.0, $progressPctRaw));
-        $baselineValue = $usesTimeWindow
-            ? 0.0
-            : (is_numeric($goal['baseline_value'] ?? null) ? (float) $goal['baseline_value'] : $currentMetricValue);
+        $baselineValue = is_numeric($goal['baseline_value'] ?? null) ? (float) $goal['baseline_value'] : $currentMetricValue;
         $teamGoals[] = array_merge($goal, [
             'target_type_normalized' => $type,
             'target_type_label' => $goalTypeLabel($type),
@@ -2795,6 +2815,69 @@ if ($page === 'team') {
             'due_time_resolved' => $goalDueTime,
             'due_at' => $goalDueDate !== '' && $goalDueTime !== null ? ($goalDueDate . ' ' . $goalDueTime) : null,
         ]);
+    }
+
+    $teamActiveChallenge = null;
+    $activeGoals = array_values(array_filter(
+        $teamGoals,
+        static fn(array $goal): bool => (string) ($goal['status'] ?? '') === 'active'
+    ));
+    if ($activeGoals !== []) {
+        usort(
+            $activeGoals,
+            static function (array $left, array $right): int {
+                $leftDueRaw = trim((string) ($left['due_at'] ?? ''));
+                $rightDueRaw = trim((string) ($right['due_at'] ?? ''));
+                $leftHasDue = $leftDueRaw !== '';
+                $rightHasDue = $rightDueRaw !== '';
+
+                if ($leftHasDue && !$rightHasDue) {
+                    return -1;
+                }
+                if (!$leftHasDue && $rightHasDue) {
+                    return 1;
+                }
+                if ($leftHasDue && $rightHasDue) {
+                    if ($leftDueRaw !== $rightDueRaw) {
+                        return strcmp($leftDueRaw, $rightDueRaw);
+                    }
+                }
+
+                return strcmp((string) ($left['created_at'] ?? ''), (string) ($right['created_at'] ?? ''));
+            }
+        );
+
+        $teamActiveChallenge = $activeGoals[0];
+        $deadline = null;
+        $dueAtRaw = trim((string) ($teamActiveChallenge['due_at'] ?? ''));
+        if ($dueAtRaw !== '') {
+            try {
+                $deadline = new DateTimeImmutable($dueAtRaw);
+            } catch (Throwable) {
+                $deadline = null;
+            }
+        }
+
+        if (!$deadline instanceof DateTimeImmutable) {
+            $challengeEndDate = to_date((string) ($settings['challenge_end'] ?? ''), '');
+            if ($challengeEndDate !== '') {
+                try {
+                    $deadline = new DateTimeImmutable($challengeEndDate . ' 23:59:59');
+                } catch (Throwable) {
+                    $deadline = null;
+                }
+            }
+        }
+
+        if ($deadline instanceof DateTimeImmutable) {
+            $teamActiveChallenge['countdown_deadline_iso'] = $deadline->format(DateTimeInterface::ATOM);
+            $teamActiveChallenge['countdown_deadline_ts'] = $deadline->getTimestamp();
+            $teamActiveChallenge['is_expired'] = (new DateTimeImmutable('now')) >= $deadline;
+        } else {
+            $teamActiveChallenge['countdown_deadline_iso'] = null;
+            $teamActiveChallenge['countdown_deadline_ts'] = null;
+            $teamActiveChallenge['is_expired'] = false;
+        }
     }
 
     render_view('team', [
@@ -2822,6 +2905,8 @@ if ($page === 'team') {
         'teamSection' => $teamSection,
         'teamMemberDetail' => $teamMemberDetail,
         'teamGoals' => $teamGoals,
+        'teamActiveChallenge' => $teamActiveChallenge,
+        'challengeSettings' => $settings,
         'teamAchievements' => list_awarded_achievements($pdo, null, (int) $team['id']),
         'canDeleteAchievements' => can_manage_team($pdo, $currentUser, (int) $team['id']),
         'canManageTeam' => can_manage_team($pdo, $currentUser, (int) $team['id']),

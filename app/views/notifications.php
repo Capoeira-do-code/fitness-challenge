@@ -58,12 +58,12 @@ $readCount = max(0, $totalCount - $unreadCount);
                     $createdDate = $createdAt !== '' ? format_date_eu(substr($createdAt, 0, 10)) : '';
                     $createdTime = strlen($createdAt) >= 16 ? substr($createdAt, 11, 5) : '';
                     ?>
-                    <article class="mini-card notification-card<?= $isRead ? ' is-read' : '' ?>">
+                    <article class="notification-card<?= $isRead ? ' is-read' : ' is-unread' ?>">
                         <a class="notification-main" href="/?page=notifications&amp;open_notification_id=<?= (int) ($notification['id'] ?? 0) ?>">
                             <strong><?= e((string) ($notification['title'] ?? '')) ?></strong>
                             <p><?= e((string) ($notification['message'] ?? '')) ?></p>
                             <?php if ($createdDate !== ''): ?>
-                                <small class="muted"><?= e(trim($createdDate . ' ' . $createdTime)) ?></small>
+                                <small class="notification-time muted"><?= e(trim($createdDate . ' ' . $createdTime)) ?></small>
                             <?php endif; ?>
                         </a>
                         <div class="notification-actions">
@@ -72,14 +72,14 @@ $readCount = max(0, $totalCount - $unreadCount);
                                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                                     <input type="hidden" name="action" value="mark_notification_read">
                                     <input type="hidden" name="notification_id" value="<?= (int) ($notification['id'] ?? 0) ?>">
-                                    <button class="btn btn-ghost small" type="submit"><?= e(t('notifications.mark_read')) ?></button>
+                                    <button class="notification-action-btn notification-action-read" type="submit" aria-label="<?= e(t('notifications.mark_read')) ?>" title="<?= e(t('notifications.mark_read')) ?>">✓</button>
                                 </form>
                             <?php endif; ?>
                             <form method="post" action="/?page=notifications">
                                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                                 <input type="hidden" name="action" value="delete_notification">
                                 <input type="hidden" name="notification_id" value="<?= (int) ($notification['id'] ?? 0) ?>">
-                                <button class="btn btn-ghost small" type="submit"><?= e(t('common.delete')) ?></button>
+                                <button class="notification-action-btn notification-action-delete" type="submit" aria-label="<?= e(t('common.delete')) ?>" title="<?= e(t('common.delete')) ?>">🗑</button>
                             </form>
                         </div>
                     </article>

@@ -271,7 +271,7 @@ $nutritionSummary = static function (array $photo): string {
                     <div class="proof-photo-upload-block">
                         <label class="proof-photo-upload-label">
                             <span><?= e(t('entries.camera_hint')) ?></span>
-                            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif" capture="environment" required data-proof-photo-input>
+                            <input type="file" name="photo" accept="image/*" required data-proof-photo-input>
                         </label>
                         <p class="proof-photo-upload-state muted small" data-proof-photo-state><?= e(t('entries.photo_upload_idle')) ?></p>
                         <p class="muted small"><?= e(t('entries.photo_upload_help')) ?></p>

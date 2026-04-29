@@ -6,6 +6,7 @@ $summary = $teamSummary ?? [];
 $teamView = (string) ($teamView ?? 'current_week');
 $teamWeekOptions = (array) ($teamWeekOptions ?? []);
 $goals = (array) ($teamGoals ?? []);
+$activeChallenge = is_array($teamActiveChallenge ?? null) ? (array) $teamActiveChallenge : null;
 $teamSection = (string) ($teamSection ?? '');
 $teamMemberDetail = is_array($teamMemberDetail ?? null) ? (array) $teamMemberDetail : null;
 $nowDateTime = new DateTimeImmutable('now');
@@ -28,6 +29,18 @@ $goalStatusLabel = static function (string $status): string {
         'archived' => t('goals.archive'),
         default => t('common.in_progress'),
     };
+};
+$formatCountdownFromNow = static function (?DateTimeImmutable $deadline, DateTimeImmutable $now): string {
+    if (!$deadline instanceof DateTimeImmutable || $deadline <= $now) {
+        return '0d 00h 00m 00s';
+    }
+    $seconds = $deadline->getTimestamp() - $now->getTimestamp();
+    $days = intdiv($seconds, 86400);
+    $hours = intdiv($seconds % 86400, 3600);
+    $minutes = intdiv($seconds % 3600, 60);
+    $secs = $seconds % 60;
+
+    return sprintf('%dd %02dh %02dm %02ds', $days, $hours, $minutes, $secs);
 };
 
 $teamBaseParams = [
@@ -94,6 +107,55 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             <a class="btn btn-secondary icon-btn team-settings-top" href="/?page=team_settings&team_id=<?= (int) $team['id'] ?>" aria-label="<?= e(t('team.settings')) ?>"><?= e(t('team.settings_short')) ?></a>
         <?php endif; ?>
     </div>
+
+    <?php if ($activeChallenge !== null): ?>
+        <?php
+        $activeRewardText = trim((string) ($activeChallenge['reward_text'] ?? ''));
+        $activeProgressRaw = (float) ($activeChallenge['progress_pct_raw'] ?? 0);
+        $activeProgressVisual = (float) ($activeChallenge['progress_pct_visual'] ?? max(0, min(100, $activeProgressRaw)));
+        $activeStatus = (string) ($activeChallenge['status'] ?? 'active');
+        $activeIsExpired = (bool) ($activeChallenge['is_expired'] ?? false);
+        $activeStatusText = $activeIsExpired ? t('goals.expired') : $goalStatusLabel($activeStatus);
+        $countdownDeadlineIso = trim((string) ($activeChallenge['countdown_deadline_iso'] ?? ''));
+        $countdownDeadline = null;
+        if ($countdownDeadlineIso !== '') {
+            try {
+                $countdownDeadline = new DateTimeImmutable($countdownDeadlineIso);
+            } catch (Throwable) {
+                $countdownDeadline = null;
+            }
+        }
+        $countdownText = $formatCountdownFromNow($countdownDeadline, $nowDateTime);
+        ?>
+        <article class="panel team-active-challenge-panel<?= $activeIsExpired ? ' is-expired' : '' ?>" data-active-challenge-panel>
+            <div class="panel-head team-active-challenge-head">
+                <div>
+                    <p class="eyebrow"><?= e(t('team.active_challenge_title')) ?></p>
+                    <h2><?= e((string) ($activeChallenge['title'] ?? t('team.challenges'))) ?></h2>
+                </div>
+                <span class="team-active-challenge-status<?= $activeIsExpired ? ' status-expired' : ' status-active' ?>" data-active-challenge-status><?= e((string) $activeStatusText) ?></span>
+            </div>
+            <div class="team-active-challenge-grid">
+                <div class="team-active-challenge-main">
+                    <div class="team-active-challenge-values">
+                        <span><?= e((string) ($activeChallenge['progress_display'] ?? '0')) ?></span>
+                        <small><?= e(t('team.active_challenge_progress')) ?></small>
+                    </div>
+                    <div class="goal-progress-wrap team-active-challenge-progress">
+                        <div class="goal-progress"><span style="width: <?= e((string) $activeProgressVisual) ?>%"></span></div>
+                        <small><?= e($formatPercent($activeProgressRaw)) ?>%</small>
+                    </div>
+                </div>
+                <div class="team-active-challenge-meta">
+                    <span><strong><?= e(t('team.active_challenge_metric')) ?></strong><small><?= e((string) ($activeChallenge['target_type_label'] ?? t('common.other'))) ?></small></span>
+                    <span><strong><?= e(t('team.active_challenge_target')) ?></strong><small><?= e((string) ($activeChallenge['target_display'] ?? '-')) ?></small></span>
+                    <span><strong><?= e(t('team.active_challenge_reward')) ?></strong><small><?= e($activeRewardText !== '' ? $activeRewardText : t('team.active_challenge_reward_none')) ?></small></span>
+                    <span><strong><?= e(t('team.active_challenge_status')) ?></strong><small data-active-challenge-status-text><?= e((string) $activeStatusText) ?></small></span>
+                    <span><strong><?= e(t('team.active_challenge_time_left')) ?></strong><small data-challenge-countdown data-countdown-expired-label="<?= e(t('goals.expired')) ?>"<?= $countdownDeadlineIso !== '' ? ' data-deadline="' . e($countdownDeadlineIso) . '"' : '' ?>><?= e($countdownText) ?></small></span>
+                </div>
+            </div>
+        </article>
+    <?php endif; ?>
 
     <article class="panel">
         <form method="get" class="control-strip wrap">
@@ -894,6 +956,75 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 }
             }
         });
+    }
+
+    const countdownNodes = document.querySelectorAll('[data-challenge-countdown][data-deadline]');
+    if (countdownNodes.length > 0) {
+        const panelNode = document.querySelector('[data-active-challenge-panel]');
+        const statusNode = document.querySelector('[data-active-challenge-status]');
+        const statusTextNode = document.querySelector('[data-active-challenge-status-text]');
+        const zeroText = '0d 00h 00m 00s';
+        const pad2 = (value) => String(Math.max(0, value)).padStart(2, '0');
+        const formatCountdown = (secondsLeft) => {
+            if (!Number.isFinite(secondsLeft) || secondsLeft <= 0) {
+                return zeroText;
+            }
+            const total = Math.floor(secondsLeft);
+            const days = Math.floor(total / 86400);
+            const hours = Math.floor((total % 86400) / 3600);
+            const minutes = Math.floor((total % 3600) / 60);
+            const seconds = total % 60;
+            return `${days}d ${pad2(hours)}h ${pad2(minutes)}m ${pad2(seconds)}s`;
+        };
+        const setExpiredState = (expired, label) => {
+            if (panelNode instanceof HTMLElement) {
+                panelNode.classList.toggle('is-expired', expired);
+            }
+            if (statusNode instanceof HTMLElement) {
+                statusNode.classList.toggle('status-expired', expired);
+                statusNode.classList.toggle('status-active', !expired);
+                if (expired && label) {
+                    statusNode.textContent = label;
+                }
+            }
+            if (statusTextNode instanceof HTMLElement && expired && label) {
+                statusTextNode.textContent = label;
+            }
+        };
+        const tickCountdown = () => {
+            let hasRemaining = false;
+            let anyExpired = false;
+            let expiredLabel = '';
+            countdownNodes.forEach((node) => {
+                if (!(node instanceof HTMLElement)) {
+                    return;
+                }
+                const rawDeadline = String(node.dataset.deadline || '').trim();
+                if (rawDeadline === '') {
+                    node.textContent = zeroText;
+                    return;
+                }
+                const deadlineMs = Date.parse(rawDeadline);
+                if (!Number.isFinite(deadlineMs)) {
+                    node.textContent = zeroText;
+                    return;
+                }
+                const remainingSeconds = (deadlineMs - Date.now()) / 1000;
+                if (remainingSeconds > 0) {
+                    hasRemaining = true;
+                    node.textContent = formatCountdown(remainingSeconds);
+                    return;
+                }
+                node.textContent = zeroText;
+                anyExpired = true;
+                expiredLabel = String(node.dataset.countdownExpiredLabel || '').trim();
+            });
+            if (anyExpired || !hasRemaining) {
+                setExpiredState(true, expiredLabel);
+            }
+        };
+        tickCountdown();
+        window.setInterval(tickCountdown, 1000);
     }
 
     const goalModal = document.querySelector('[data-team-goal-modal]');

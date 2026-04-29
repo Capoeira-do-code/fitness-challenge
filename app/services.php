@@ -2697,6 +2697,8 @@ function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): v
          SET title = :title,
              target_type = :target_type,
              target_value = :target_value,
+             baseline_value = COALESCE(:baseline_value, baseline_value),
+             current_value = COALESCE(:current_value, current_value),
              unit_label = :unit_label,
              reward_text = :reward_text,
              due_date = :due_date,
@@ -2707,6 +2709,8 @@ function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): v
             ':title' => trim((string) $payload['title']),
             ':target_type' => trim((string) $payload['target_type']),
             ':target_value' => $payload['target_value'],
+            ':baseline_value' => $payload['baseline_value'] ?? null,
+            ':current_value' => $payload['current_value'] ?? null,
             ':unit_label' => $payload['unit_label'] ?? null,
             ':reward_text' => $payload['reward_text'] ?? null,
             ':due_date' => $payload['due_date'],
@@ -2933,11 +2937,7 @@ function goal_window_metric_value_for_team(PDO $pdo, array $goal, array $teamUse
 
 function goal_team_progress_value(PDO $pdo, array $goal, array $teamSummary, array $teamUsers): float
 {
-    $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
-    if (goal_target_type_uses_time_window($type)) {
-        return goal_window_metric_value_for_team($pdo, $goal, $teamUsers);
-    }
-
+    unset($pdo, $teamUsers);
     $currentMetricValue = goal_team_metric_value($goal, $teamSummary);
     return goal_progress_from_baseline($goal, $currentMetricValue);
 }
