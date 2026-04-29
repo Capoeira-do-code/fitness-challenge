@@ -1773,6 +1773,39 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
     ],
 ]);
 
+$TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
+    'en' => [
+        'team.challenges' => 'Challenges',
+        'team.challenge_actions' => 'Challenge actions',
+        'goals.create_team_challenge' => 'Create challenge',
+        'goals.edit_team_challenge' => 'Edit challenge',
+        'notifications.mark_all_read' => 'Mark all as read',
+        'notifications.delete_read' => 'Delete read',
+        'notifications.delete_all' => 'Delete all',
+        'notifications.delete_all_confirm' => 'Delete all notifications?',
+    ],
+    'es' => [
+        'team.challenges' => 'Challenges',
+        'team.challenge_actions' => 'Acciones del challenge',
+        'goals.create_team_challenge' => 'Crear challenge',
+        'goals.edit_team_challenge' => 'Editar challenge',
+        'notifications.mark_all_read' => 'Marcar todas como leídas',
+        'notifications.delete_read' => 'Eliminar leídas',
+        'notifications.delete_all' => 'Eliminar todas',
+        'notifications.delete_all_confirm' => '¿Eliminar todas las notificaciones?',
+    ],
+    'it' => [
+        'team.challenges' => 'Challenge',
+        'team.challenge_actions' => 'Azioni challenge',
+        'goals.create_team_challenge' => 'Crea challenge',
+        'goals.edit_team_challenge' => 'Modifica challenge',
+        'notifications.mark_all_read' => 'Segna tutte come lette',
+        'notifications.delete_read' => 'Elimina lette',
+        'notifications.delete_all' => 'Elimina tutte',
+        'notifications.delete_all_confirm' => 'Eliminare tutte le notifiche?',
+    ],
+]);
+
 function locale_options(): array
 {
     return [

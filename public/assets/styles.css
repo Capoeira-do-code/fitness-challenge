@@ -1936,6 +1936,13 @@ textarea {
     gap: 0.8rem;
 }
 
+.notifications-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin: 0 0 0.85rem;
+}
+
 .notifications-list {
     gap: 0.65rem;
 }
@@ -1953,8 +1960,18 @@ textarea {
 }
 
 .notification-main {
+    min-width: 0;
+    flex: 1 1 auto;
     display: grid;
     gap: 0.2rem;
+    text-decoration: none;
+    color: inherit;
+}
+
+.notification-main strong {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
 }
 
 .notification-main p {
@@ -1963,6 +1980,16 @@ textarea {
 
 .notification-actions {
     flex: 0 0 auto;
+    display: grid;
+    gap: 0.35rem;
+}
+
+.notification-actions form {
+    margin: 0;
+}
+
+.notification-delete-all-btn {
+    color: #b91c1c;
 }
 
 .team-notifications-panel .card-list {
@@ -1994,6 +2021,7 @@ textarea {
     gap: 0.75rem;
     border: 1px solid var(--line);
     background: #fbfdfc;
+    align-items: start;
 }
 
 .team-goal-main {
@@ -2032,6 +2060,24 @@ textarea {
 .team-goal-status.status-archived {
     color: #4b5563;
     background: rgba(148, 163, 184, 0.24);
+}
+
+.team-goal-progress-wrap {
+    gap: 0.36rem;
+}
+
+.team-goal-progress-wrap small {
+    font-weight: 700;
+}
+
+.team-goal-actions-menu {
+    justify-self: end;
+    align-self: start;
+}
+
+.team-goal-actions-menu > summary {
+    min-width: 36px;
+    padding-inline: 0.42rem;
 }
 
 .team-goal-actions {
@@ -2528,18 +2574,21 @@ textarea {
 
 .goal-progress {
     width: 100%;
-    height: 8px;
+    height: 10px;
     border-radius: 999px;
-    background: #e6efec;
+    background: linear-gradient(180deg, #ecf5f1 0%, #e0ede8 100%);
     margin-top: 0.35rem;
     overflow: hidden;
+    border: 1px solid rgba(20, 43, 36, 0.08);
 }
 
 .goal-progress > span {
     display: block;
     height: 100%;
     border-radius: inherit;
-    background: linear-gradient(90deg, #14a38b, #0f766e);
+    background: linear-gradient(90deg, #10b981, #14a38b 55%, #0f766e);
+    box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.1), 0 3px 10px rgba(20, 163, 139, 0.34);
+    transition: width 0.2s ease;
 }
 
 .panel-inline-empty {
@@ -2742,6 +2791,10 @@ textarea {
 .photo-post-menu-panel .btn {
     justify-content: flex-start;
     width: 100%;
+}
+
+.photo-post-menu-panel form {
+    margin: 0;
 }
 
 .photo-post-head-menu > summary {

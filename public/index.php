@@ -882,6 +882,12 @@ if ($page === 'table' || $page === 'week_editor') {
 }
 
 if ($page === 'notifications') {
+    $openNotificationId = isset($_GET['open_notification_id']) ? (int) $_GET['open_notification_id'] : 0;
+    if ($openNotificationId > 0) {
+        $destination = open_user_notification($pdo, $openNotificationId, (int) $currentUser['id']);
+        redirect($destination);
+    }
+
     if (is_post()) {
         if (!csrf_verify()) {
             flash_set('error', t('flash.csrf'));
@@ -892,6 +898,23 @@ if ($page === 'notifications') {
         if ($action === 'mark_notification_read') {
             $notificationId = (int) ($_POST['notification_id'] ?? 0);
             mark_user_notification_read($pdo, $notificationId, (int) $currentUser['id']);
+            redirect('/?page=notifications');
+        }
+        if ($action === 'mark_all_notifications_read') {
+            mark_all_user_notifications_read($pdo, (int) $currentUser['id']);
+            redirect('/?page=notifications');
+        }
+        if ($action === 'delete_notification') {
+            $notificationId = (int) ($_POST['notification_id'] ?? 0);
+            delete_user_notification($pdo, $notificationId, (int) $currentUser['id']);
+            redirect('/?page=notifications');
+        }
+        if ($action === 'delete_read_notifications') {
+            delete_user_read_notifications($pdo, (int) $currentUser['id']);
+            redirect('/?page=notifications');
+        }
+        if ($action === 'delete_all_notifications') {
+            delete_all_user_notifications($pdo, (int) $currentUser['id']);
             redirect('/?page=notifications');
         }
     }
@@ -2751,6 +2774,8 @@ if ($page === 'team') {
         if ((string) ($goal['status'] ?? '') === 'complete' && $targetValue > 0 && $progressValue < $targetValue) {
             $progressValue = $targetValue;
         }
+        $progressPctRaw = $targetValue > 0 ? round(($progressValue / $targetValue) * 100, 1) : 0.0;
+        $progressPctVisual = max(0.0, min(100.0, $progressPctRaw));
         $baselineValue = $usesTimeWindow
             ? 0.0
             : (is_numeric($goal['baseline_value'] ?? null) ? (float) $goal['baseline_value'] : $currentMetricValue);
@@ -2761,7 +2786,9 @@ if ($page === 'team') {
             'is_lower_better' => goal_target_type_is_lower_better($type),
             'direction_label' => goal_target_type_is_lower_better($type) ? t('goals.lower_better') : t('goals.higher_better'),
             'progress_value' => $progressValue,
-            'progress_pct' => $targetValue > 0 ? min(100.0, round(($progressValue / $targetValue) * 100, 1)) : 0.0,
+            'progress_pct' => $progressPctRaw,
+            'progress_pct_raw' => $progressPctRaw,
+            'progress_pct_visual' => $progressPctVisual,
             'progress_display' => $formatGoalValue($progressValue, $type, $unitLabel),
             'target_display' => $formatGoalValue($targetValue, $type, $unitLabel),
             'baseline_display' => $formatGoalValue($baselineValue, $type, $unitLabel),

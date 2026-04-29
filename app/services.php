@@ -4710,6 +4710,8 @@ function create_strike_review_request(
                 [
                     'request_id' => (int) $created['id'],
                     'target_user_id' => $targetUserId,
+                    'week_start' => $normalizedWeekStart,
+                    'view' => $normalizedWeekStart,
                     'event_date' => $normalizedEventDate,
                     'reason' => $normalizedReason,
                 ]
@@ -4788,6 +4790,8 @@ function resend_strike_review_request(PDO $pdo, int $requestId, string $comment,
                 [
                     'request_id' => $requestId,
                     'target_user_id' => (int) ($updated['target_user_id'] ?? 0),
+                    'week_start' => (string) ($updated['week_start'] ?? ''),
+                    'view' => (string) ($updated['week_start'] ?? ''),
                     'event_date' => (string) ($updated['event_date'] ?? ''),
                     'reason' => (string) ($updated['reason'] ?? ''),
                 ]
@@ -4901,6 +4905,10 @@ function vote_strike_review_request(PDO $pdo, int $requestId, int $voterUserId, 
                 [
                     'request_id' => $requestId,
                     'status' => (string) ($resolved['status'] ?? 'rejected'),
+                    'target_user_id' => (int) ($resolved['target_user_id'] ?? 0),
+                    'week_start' => (string) ($resolved['week_start'] ?? ''),
+                    'view' => (string) ($resolved['week_start'] ?? ''),
+                    'event_date' => (string) ($resolved['event_date'] ?? ''),
                 ]
             );
         }
@@ -5535,6 +5543,191 @@ function mark_user_notification_read(PDO $pdo, int $notificationId, int $userId)
             ':user_id' => $userId,
         ]
     );
+}
+
+function fetch_user_notification(PDO $pdo, int $notificationId, int $userId): ?array
+{
+    if ($notificationId <= 0 || $userId <= 0) {
+        return null;
+    }
+
+    $notification = db_fetch_one(
+        $pdo,
+        'SELECT *
+         FROM user_notifications
+         WHERE id = :id AND user_id = :user_id',
+        [
+            ':id' => $notificationId,
+            ':user_id' => $userId,
+        ]
+    );
+
+    return is_array($notification) ? $notification : null;
+}
+
+function mark_all_user_notifications_read(PDO $pdo, int $userId): int
+{
+    if ($userId <= 0) {
+        return 0;
+    }
+
+    $statement = $pdo->prepare(
+        'UPDATE user_notifications
+         SET is_read = 1, read_at = :read_at
+         WHERE user_id = :user_id AND is_read = 0'
+    );
+    $statement->execute([
+        ':read_at' => now_iso(),
+        ':user_id' => $userId,
+    ]);
+
+    return max(0, (int) $statement->rowCount());
+}
+
+function delete_user_notification(PDO $pdo, int $notificationId, int $userId): int
+{
+    if ($notificationId <= 0 || $userId <= 0) {
+        return 0;
+    }
+
+    $statement = $pdo->prepare(
+        'DELETE FROM user_notifications
+         WHERE id = :id AND user_id = :user_id'
+    );
+    $statement->execute([
+        ':id' => $notificationId,
+        ':user_id' => $userId,
+    ]);
+
+    return max(0, (int) $statement->rowCount());
+}
+
+function delete_user_read_notifications(PDO $pdo, int $userId): int
+{
+    if ($userId <= 0) {
+        return 0;
+    }
+
+    $statement = $pdo->prepare(
+        'DELETE FROM user_notifications
+         WHERE user_id = :user_id AND is_read = 1'
+    );
+    $statement->execute([':user_id' => $userId]);
+
+    return max(0, (int) $statement->rowCount());
+}
+
+function delete_all_user_notifications(PDO $pdo, int $userId): int
+{
+    if ($userId <= 0) {
+        return 0;
+    }
+
+    $statement = $pdo->prepare(
+        'DELETE FROM user_notifications
+         WHERE user_id = :user_id'
+    );
+    $statement->execute([':user_id' => $userId]);
+
+    return max(0, (int) $statement->rowCount());
+}
+
+function resolve_notification_destination(PDO $pdo, array $notification): string
+{
+    $kind = strtolower(trim((string) ($notification['kind'] ?? '')));
+    $payloadRaw = (string) ($notification['payload_json'] ?? '');
+    $payload = [];
+    if ($payloadRaw !== '') {
+        $decoded = json_decode($payloadRaw, true);
+        if (is_array($decoded)) {
+            $payload = $decoded;
+        }
+    }
+
+    if (in_array($kind, ['strike_review_request', 'strike_review_resolved'], true)) {
+        $targetUserId = (int) ($payload['target_user_id'] ?? 0);
+        $view = trim((string) ($payload['view'] ?? ''));
+        $weekStart = to_date((string) ($payload['week_start'] ?? ''), '');
+        $requestId = (int) ($payload['request_id'] ?? 0);
+        $eventDate = to_date((string) ($payload['event_date'] ?? ''), '');
+
+        if ($weekStart === '' && $eventDate !== '') {
+            try {
+                $weekStart = week_start_for(new DateTimeImmutable($eventDate))->format('Y-m-d');
+            } catch (Throwable) {
+                $weekStart = '';
+            }
+        }
+
+        if (($targetUserId <= 0 || $weekStart === '') && $requestId > 0) {
+            $request = db_fetch_one(
+                $pdo,
+                'SELECT target_user_id, week_start, event_date
+                 FROM strike_review_requests
+                 WHERE id = :id',
+                [':id' => $requestId]
+            );
+            if (is_array($request)) {
+                if ($targetUserId <= 0) {
+                    $targetUserId = (int) ($request['target_user_id'] ?? 0);
+                }
+                if ($weekStart === '') {
+                    $weekStart = to_date((string) ($request['week_start'] ?? ''), '');
+                    if ($weekStart === '') {
+                        $requestEventDate = to_date((string) ($request['event_date'] ?? ''), '');
+                        if ($requestEventDate !== '') {
+                            try {
+                                $weekStart = week_start_for(new DateTimeImmutable($requestEventDate))->format('Y-m-d');
+                            } catch (Throwable) {
+                                $weekStart = '';
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if ($targetUserId > 0) {
+            $query = [
+                'page' => 'strikes_detail',
+                'user_id' => $targetUserId,
+            ];
+            if ($view === 'current_week' || $view === 'total') {
+                $query['view'] = $view;
+            } elseif ($weekStart !== '') {
+                $query['view'] = $weekStart;
+            }
+
+            return '/?' . http_build_query($query);
+        }
+    }
+
+    if ($kind === 'team_goal_completed') {
+        $teamId = (int) ($payload['team_id'] ?? 0);
+        if ($teamId > 0) {
+            return '/?' . http_build_query([
+                'page' => 'team',
+                'team_id' => $teamId,
+            ]);
+        }
+
+        return '/?page=team';
+    }
+
+    return '/?page=notifications';
+}
+
+function open_user_notification(PDO $pdo, int $notificationId, int $userId): string
+{
+    $notification = fetch_user_notification($pdo, $notificationId, $userId);
+    if (!is_array($notification)) {
+        return '/?page=notifications';
+    }
+
+    mark_user_notification_read($pdo, $notificationId, $userId);
+    $destination = resolve_notification_destination($pdo, $notification);
+
+    return safe_redirect_target($destination);
 }
 
 function resolve_team_calories_summary(PDO $pdo, int $teamId, string $startDate, string $endDate): array

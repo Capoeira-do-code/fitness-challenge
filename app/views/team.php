@@ -14,6 +14,14 @@ $formatInt = static fn(float|int $value): string => number_format((int) round((f
 $formatKm = static fn(float|int $value): string => number_format((float) $value, 2, '.', '');
 $formatScore = static fn(float|int $value): string => number_format((float) $value, 1, '.', '');
 $formatMoney = static fn(float|int $value): string => number_format((float) $value, 2, '.', '');
+$formatPercent = static function (float|int $value): string {
+    $rounded = round((float) $value, 1);
+    if (abs($rounded - round($rounded)) < 0.00001) {
+        return (string) (int) round($rounded);
+    }
+
+    return number_format($rounded, 1, '.', '');
+};
 $goalStatusLabel = static function (string $status): string {
     return match ($status) {
         'complete' => t('common.complete'),
@@ -425,8 +433,8 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             <article class="panel">
                 <div class="panel-head">
                     <div>
-                        <p class="eyebrow"><?= e(t('goals.team')) ?></p>
-                        <h2><?= e(t('goals.team')) ?></h2>
+                        <p class="eyebrow"><?= e(t('team.challenges')) ?></p>
+                        <h2><?= e(t('team.challenges')) ?></h2>
                     </div>
                     <?php if (!empty($canManageTeam)): ?>
                         <button class="btn btn-primary" type="button" data-team-goal-open data-goal-mode="create"><?= e(t('common.create')) ?></button>
@@ -440,7 +448,8 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                         <?php foreach ($goals as $goal): ?>
                             <?php
                             $status = (string) ($goal['status'] ?? 'active');
-                            $progress = (float) ($goal['progress_pct'] ?? 0);
+                            $progressRaw = (float) ($goal['progress_pct_raw'] ?? $goal['progress_pct'] ?? 0);
+                            $progressVisual = (float) ($goal['progress_pct_visual'] ?? max(0, min(100, $progressRaw)));
                             $rewardText = trim((string) ($goal['reward_text'] ?? ''));
                             $dueDate = trim((string) ($goal['due_date'] ?? ''));
                             $dueTime = trim((string) ($goal['due_time_resolved'] ?? $goal['due_time'] ?? ''));
@@ -476,35 +485,58 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                     <?php if ($rewardText !== ''): ?>
                                         <small class="team-goal-reward"><?= e(t('achievements.reward')) ?>: <?= e($rewardText) ?></small>
                                     <?php endif; ?>
-                                    <div class="goal-progress"><span style="width: <?= e((string) $progress) ?>%"></span></div>
+                                    <div class="goal-progress-wrap team-goal-progress-wrap">
+                                        <div class="goal-progress"><span style="width: <?= e((string) $progressVisual) ?>%"></span></div>
+                                        <small><?= e($formatPercent($progressRaw)) ?>%</small>
+                                    </div>
                                 </div>
                                 <?php if (!empty($canManageTeam)): ?>
-                                    <div class="team-goal-actions">
-                                        <button
-                                            class="btn small btn-ghost"
-                                            type="button"
-                                            data-team-goal-open
-                                            data-goal-mode="edit"
-                                            data-goal-id="<?= (int) $goal['id'] ?>"
-                                            data-goal-title="<?= e((string) ($goal['title'] ?? '')) ?>"
-                                            data-goal-target-type="<?= e($goalTargetType) ?>"
-                                            data-goal-target-value="<?= e((string) ($goal['target_value'] ?? '')) ?>"
-                                            data-goal-custom-unit="<?= e($goalCustomUnit) ?>"
-                                            data-goal-reward-text="<?= e($rewardText) ?>"
-                                            data-goal-due-date="<?= e($dueDate) ?>"
-                                            data-goal-due-time="<?= e($dueTime) ?>"
-                                        ><?= e(t('common.edit')) ?></button>
-                                        <form method="post" action="/?page=team" class="inline-actions-mini">
-                                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                            <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
-                                            <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
-                                            <input type="hidden" name="redirect_view" value="<?= e($teamView) ?>">
-                                            <input type="hidden" name="status" value="active">
-                                            <button class="btn small btn-ghost team-goal-action-btn" name="action" value="goal_status" type="submit" onclick="this.form.status.value='complete'" aria-label="<?= e(t('common.complete')) ?>" title="<?= e(t('common.complete')) ?>">✓</button>
-                                            <button class="btn small btn-ghost team-goal-action-btn" name="action" value="goal_status" type="submit" onclick="this.form.status.value='archived'" aria-label="<?= e(t('goals.archive')) ?>" title="<?= e(t('goals.archive')) ?>">↧</button>
-                                            <button class="btn small btn-ghost team-goal-action-btn" name="action" value="delete_goal" type="submit" onclick="return window.confirm('<?= e(t('goals.delete_confirm')) ?>');" aria-label="<?= e(t('common.delete')) ?>" title="<?= e(t('common.delete')) ?>">×</button>
-                                        </form>
-                                    </div>
+                                    <details class="photo-post-menu team-goal-actions-menu">
+                                        <summary class="btn btn-ghost small" aria-label="<?= e(t('team.challenge_actions')) ?>" title="<?= e(t('team.challenge_actions')) ?>">•••</summary>
+                                        <div class="photo-post-menu-panel">
+                                            <button
+                                                class="btn btn-ghost small"
+                                                type="button"
+                                                data-team-goal-open
+                                                data-goal-mode="edit"
+                                                data-goal-id="<?= (int) $goal['id'] ?>"
+                                                data-goal-title="<?= e((string) ($goal['title'] ?? '')) ?>"
+                                                data-goal-target-type="<?= e($goalTargetType) ?>"
+                                                data-goal-target-value="<?= e((string) ($goal['target_value'] ?? '')) ?>"
+                                                data-goal-custom-unit="<?= e($goalCustomUnit) ?>"
+                                                data-goal-reward-text="<?= e($rewardText) ?>"
+                                                data-goal-due-date="<?= e($dueDate) ?>"
+                                                data-goal-due-time="<?= e($dueTime) ?>"
+                                            ><?= e(t('common.edit')) ?></button>
+                                            <?php if ($status !== 'complete'): ?>
+                                                <form method="post" action="/?page=team">
+                                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                                    <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
+                                                    <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
+                                                    <input type="hidden" name="redirect_view" value="<?= e($teamView) ?>">
+                                                    <input type="hidden" name="status" value="complete">
+                                                    <button class="btn btn-ghost small" name="action" value="goal_status" type="submit"><?= e(t('common.complete')) ?></button>
+                                                </form>
+                                            <?php endif; ?>
+                                            <?php if ($status !== 'archived'): ?>
+                                                <form method="post" action="/?page=team">
+                                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                                    <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
+                                                    <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
+                                                    <input type="hidden" name="redirect_view" value="<?= e($teamView) ?>">
+                                                    <input type="hidden" name="status" value="archived">
+                                                    <button class="btn btn-ghost small" name="action" value="goal_status" type="submit"><?= e(t('goals.archive')) ?></button>
+                                                </form>
+                                            <?php endif; ?>
+                                            <form method="post" action="/?page=team">
+                                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                                <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
+                                                <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
+                                                <input type="hidden" name="redirect_view" value="<?= e($teamView) ?>">
+                                                <button class="btn btn-ghost small photo-delete-text-btn" name="action" value="delete_goal" type="submit" onclick="return window.confirm('<?= e(t('goals.delete_confirm')) ?>');"><?= e(t('common.delete')) ?></button>
+                                            </form>
+                                        </div>
+                                    </details>
                                 <?php endif; ?>
                             </article>
                         <?php endforeach; ?>
@@ -563,7 +595,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         <div class="confirm-modal" hidden aria-hidden="true" data-team-goal-modal>
             <div class="confirm-modal-backdrop" data-team-goal-close></div>
             <div class="confirm-modal-card team-goal-modal-card" role="dialog" aria-modal="true" aria-labelledby="team-goal-title">
-                <h3 id="team-goal-title" data-team-goal-modal-title data-title-create="<?= e(t('goals.create_team_goal')) ?>" data-title-edit="<?= e(t('goals.edit_team_goal')) ?>"><?= e(t('goals.create_team_goal')) ?></h3>
+                <h3 id="team-goal-title" data-team-goal-modal-title data-title-create="<?= e(t('goals.create_team_challenge')) ?>" data-title-edit="<?= e(t('goals.edit_team_challenge')) ?>"><?= e(t('goals.create_team_challenge')) ?></h3>
                 <form method="post" action="/?page=team" class="stack compact-form" data-team-goal-form>
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
@@ -976,6 +1008,12 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 ? String(trigger.dataset.goalMode || 'create').trim().toLowerCase()
                 : 'create';
             const isEdit = mode === 'edit';
+            if (trigger instanceof HTMLElement) {
+                const parentMenu = trigger.closest('details');
+                if (parentMenu instanceof HTMLDetailsElement) {
+                    parentMenu.open = false;
+                }
+            }
             opener = trigger instanceof HTMLElement ? trigger : null;
             if (goalForm instanceof HTMLFormElement) {
                 goalForm.reset();
@@ -1021,8 +1059,8 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             }
             if (modalTitle instanceof HTMLElement) {
                 modalTitle.textContent = isEdit
-                    ? String(modalTitle.dataset.titleEdit || 'Edit team goal')
-                    : String(modalTitle.dataset.titleCreate || 'Create team goal');
+                    ? String(modalTitle.dataset.titleEdit || 'Edit challenge')
+                    : String(modalTitle.dataset.titleCreate || 'Create challenge');
             }
             goalModal.hidden = false;
             goalModal.setAttribute('aria-hidden', 'false');
