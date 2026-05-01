@@ -68,6 +68,8 @@
         const workoutRows = entryForm.querySelector('[data-workout-rows]');
         const workoutTemplate = entryForm.querySelector('template[data-workout-template]');
         const workoutAddButton = entryForm.querySelector('[data-workout-add]');
+        const workoutEnabled = entryForm.querySelector('[data-workout-enabled]');
+        const workoutPanel = entryForm.querySelector('[data-workout-panel]');
         const labels = {
             steps: String(entryForm.dataset.labelSteps || 'Steps'),
             km: String(entryForm.dataset.labelKm || 'Distance'),
@@ -84,6 +86,24 @@
         } catch {
             primaryGoals = [];
         }
+        let workoutFieldsByType = {};
+        try {
+            const parsedFields = JSON.parse(entryForm.dataset.workoutFields || '{}');
+            if (parsedFields && typeof parsedFields === 'object') {
+                workoutFieldsByType = parsedFields;
+            }
+        } catch {
+            workoutFieldsByType = {};
+        }
+
+        const isWorkoutEnabled = () => !(workoutEnabled instanceof HTMLInputElement) || workoutEnabled.checked;
+
+        const escapeHtml = (value) => String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
 
         const getWorkoutRows = () => {
             if (!(workoutRows instanceof HTMLElement)) {
@@ -92,7 +112,98 @@
             return [...workoutRows.querySelectorAll('[data-workout-row]')];
         };
 
+        const updateWorkoutIndexes = () => {
+            getWorkoutRows().forEach((row, index) => {
+                row.querySelectorAll('[data-name-template]').forEach((input) => {
+                    if (!(input instanceof HTMLInputElement || input instanceof HTMLSelectElement || input instanceof HTMLTextAreaElement)) {
+                        return;
+                    }
+                    input.name = String(input.dataset.nameTemplate || '').replaceAll('__INDEX__', String(index));
+                });
+            });
+        };
+
+        const buildWorkoutSubfields = (row, force = false) => {
+            if (!(row instanceof HTMLElement)) {
+                return;
+            }
+            const select = row.querySelector('[data-workout-select]');
+            const container = row.querySelector('[data-workout-subfields]');
+            if (!(select instanceof HTMLSelectElement) || !(container instanceof HTMLElement)) {
+                return;
+            }
+            if (!force && container.children.length > 0) {
+                return;
+            }
+            const typeId = String(select.value || '').trim();
+            const fields = Array.isArray(workoutFieldsByType[typeId]) ? workoutFieldsByType[typeId] : [];
+            container.innerHTML = fields.map((field) => {
+                const fieldId = Number(field.id || 0);
+                if (!(fieldId > 0)) {
+                    return '';
+                }
+                const inputKind = String(field.input_kind || 'number') === 'text' ? 'text' : 'number';
+                const required = field.required ? ' required' : '';
+                const numericAttrs = inputKind === 'number' ? ' step="0.01" min="0"' : '';
+                const dataKey = escapeHtml(field.data_key || '');
+                return `
+                    <label>
+                        ${escapeHtml(field.label || '')}
+                        <input type="${inputKind}"${numericAttrs}${required} data-name-template="workouts[__INDEX__][fields][${fieldId}]" data-workout-field-data-key="${dataKey}">
+                    </label>
+                `;
+            }).join('');
+        };
+
+        const sumWorkoutFieldValues = (dataKey) => {
+            if (!isWorkoutEnabled()) {
+                return 0;
+            }
+            return getWorkoutRows().reduce((total, row) => {
+                if (!(row instanceof HTMLElement)) {
+                    return total;
+                }
+                row.querySelectorAll(`[data-workout-field-data-key="${dataKey}"]`).forEach((input) => {
+                    if (input instanceof HTMLInputElement) {
+                        const value = Number(input.value || 0);
+                        if (Number.isFinite(value) && value > 0) {
+                            total += value;
+                        }
+                    }
+                });
+                return total;
+            }, 0);
+        };
+
+        const updateWorkoutPanelState = () => {
+            const enabled = isWorkoutEnabled();
+            if (workoutPanel instanceof HTMLElement) {
+                workoutPanel.hidden = !enabled;
+                workoutPanel.querySelectorAll('input, select, textarea, button').forEach((control) => {
+                    if (control === workoutAddButton) {
+                        return;
+                    }
+                    if (control instanceof HTMLButtonElement) {
+                        if (!enabled) {
+                            control.disabled = true;
+                        }
+                        return;
+                    }
+                    if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement) {
+                        control.disabled = !enabled;
+                    }
+                });
+            }
+            if (workoutAddButton instanceof HTMLButtonElement) {
+                workoutAddButton.hidden = !enabled;
+                workoutAddButton.disabled = !enabled;
+            }
+        };
+
         const getWorkoutValueFromRow = (row) => {
+            if (!isWorkoutEnabled()) {
+                return 0;
+            }
             if (!(row instanceof HTMLElement)) {
                 return 0;
             }
@@ -121,6 +232,8 @@
             if (!isCustom && customInput instanceof HTMLInputElement) {
                 customInput.value = '';
             }
+            buildWorkoutSubfields(row);
+            updateWorkoutIndexes();
         };
 
         const ensureOneWorkoutRow = () => {
@@ -141,7 +254,7 @@
                 if (!(removeButton instanceof HTMLButtonElement)) {
                     return;
                 }
-                const disable = rows.length <= 1;
+                const disable = rows.length <= 1 || !isWorkoutEnabled();
                 removeButton.disabled = disable;
                 removeButton.setAttribute('aria-disabled', disable ? 'true' : 'false');
             });
@@ -151,8 +264,8 @@
             const goalType = entryForm.dataset.primaryGoalType || 'steps';
             const stepGoal = Number(entryForm.dataset.stepGoal || 0);
             const kmGoal = Number(entryForm.dataset.kmGoal || 0);
-            const stepsValue = Number(stepsInput?.value || 0);
-            const kmValue = Number(kmInput?.value || 0);
+            const stepsValue = Number(stepsInput?.value || 0) + sumWorkoutFieldValues('steps');
+            const kmValue = Number(kmInput?.value || 0) + sumWorkoutFieldValues('distance_km');
             const workoutValue = getWorkoutRows().some((row) => getWorkoutValueFromRow(row) === 1) ? 1 : 0;
             let missingSteps = goalType === 'km' && kmGoal > 0 ? kmValue < kmGoal : stepsValue < stepGoal;
             let missingWorkout = goalType === 'workouts' ? workoutValue < Math.max(1, Number(entryForm.dataset.primaryGoalValue || 1)) : false;
@@ -223,8 +336,12 @@
                 const row = target.closest('[data-workout-row]');
                 if (row instanceof HTMLElement) {
                     updateWorkoutRowVisibility(row);
+                    if (target.matches('[data-workout-select]')) {
+                        buildWorkoutSubfields(row, true);
+                    }
                 }
                 updateWorkoutRemoveButtons();
+                updateWorkoutIndexes();
                 updateReasons();
             });
             workoutRows.addEventListener('input', () => {
@@ -251,11 +368,16 @@
                 ensureOneWorkoutRow();
                 getWorkoutRows().forEach((workoutRow) => updateWorkoutRowVisibility(workoutRow));
                 updateWorkoutRemoveButtons();
+                updateWorkoutIndexes();
                 updateReasons();
             });
         }
 
         workoutAddButton?.addEventListener('click', () => {
+            if (workoutEnabled instanceof HTMLInputElement && !workoutEnabled.checked) {
+                workoutEnabled.checked = true;
+                updateWorkoutPanelState();
+            }
             if (!(workoutRows instanceof HTMLElement) || !(workoutTemplate instanceof HTMLTemplateElement)) {
                 return;
             }
@@ -271,6 +393,16 @@
                 }
             }
             updateWorkoutRemoveButtons();
+            updateWorkoutIndexes();
+            updateReasons();
+        });
+
+        workoutEnabled?.addEventListener('change', () => {
+            ensureOneWorkoutRow();
+            getWorkoutRows().forEach((row) => updateWorkoutRowVisibility(row));
+            updateWorkoutIndexes();
+            updateWorkoutPanelState();
+            updateWorkoutRemoveButtons();
             updateReasons();
         });
 
@@ -281,6 +413,8 @@
         ensureOneWorkoutRow();
         getWorkoutRows().forEach((row) => updateWorkoutRowVisibility(row));
         updateWorkoutRemoveButtons();
+        updateWorkoutIndexes();
+        updateWorkoutPanelState();
         updateReasons();
     }
 

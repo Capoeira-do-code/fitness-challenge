@@ -173,10 +173,15 @@ a {
 }
 
 .brand-avatar {
-    width: 38px;
-    height: 38px;
-    flex: 0 0 38px;
-    border: 2px solid rgba(20, 163, 139, 0.22);
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    border: 1px solid rgba(20, 163, 139, 0.28);
+    border-radius: 12px;
+    background:
+        linear-gradient(135deg, rgba(20, 163, 139, 0.18), rgba(59, 130, 246, 0.12)),
+        #fff;
+    box-shadow: 0 8px 20px rgba(22, 35, 43, 0.12);
 }
 
 .brand-avatar img,
@@ -331,7 +336,11 @@ img.settings-avatar-preview {
 
 .btn-topbar {
     min-height: 40px;
-    padding: 0.55rem 0.75rem;
+    padding: 0.5rem 0.78rem;
+    border-radius: 999px;
+    background: #fff;
+    border-color: rgba(20, 163, 139, 0.22);
+    box-shadow: 0 8px 18px rgba(22, 35, 43, 0.08);
 }
 
 .add-menu,
@@ -592,6 +601,52 @@ img.settings-avatar-preview {
     background: #fbfdfc;
 }
 
+.entry-data-panel {
+    overflow: visible;
+}
+
+.entry-data-head {
+    align-items: start;
+    gap: 0.8rem;
+}
+
+.entry-data-form {
+    gap: 0.85rem;
+}
+
+.entry-form-section {
+    padding: 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fbfdfc;
+}
+
+.workout-toggle-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.entry-workout-toggle {
+    min-height: 42px;
+    margin: 0;
+    padding: 0.58rem 0.72rem;
+    border: 1px solid rgba(20, 163, 139, 0.24);
+    border-radius: 999px;
+    background: #fff;
+    font-weight: 850;
+}
+
+.workout-panel {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.workout-panel > p {
+    margin: 0;
+}
+
 .workout-head {
     align-items: center;
     margin: 0;
@@ -628,6 +683,28 @@ img.settings-avatar-preview {
 
 .workout-custom-field {
     min-width: 0;
+}
+
+.workout-subfields {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0.55rem;
+}
+
+.workout-remove-btn {
+    justify-self: end;
+}
+
+.admin-workout-fields {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.workout-field-card {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    align-items: end;
 }
 
 .bottom-nav {
@@ -4196,6 +4273,22 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 
     .admin-backup-restore-form input {
         max-width: none;
+    }
+
+    .entry-data-head {
+        gap: 0.65rem;
+    }
+
+    .entry-datetime-inline {
+        width: 100%;
+    }
+
+    .workout-toggle-row {
+        grid-template-columns: 1fr auto;
+    }
+
+    .entry-workout-toggle {
+        width: 100%;
     }
 
     .goal-editor-grid,

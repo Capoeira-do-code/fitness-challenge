@@ -73,6 +73,9 @@ function initialize_database(PDO $pdo, array $config): void
             workout_type TEXT,
             junk_food INTEGER NOT NULL DEFAULT 0,
             extra_workout INTEGER NOT NULL DEFAULT 0,
+            base_steps INTEGER,
+            base_distance_km REAL,
+            base_training_calories_burned REAL,
             distance_km REAL,
             training_calories_burned REAL,
             weight REAL,
@@ -361,6 +364,40 @@ function initialize_database(PDO $pdo, array $config): void
     );
 
     $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS workout_type_fields (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workout_type_id INTEGER NOT NULL,
+            label TEXT NOT NULL,
+            input_kind TEXT NOT NULL DEFAULT "number",
+            data_key TEXT,
+            required INTEGER NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 1,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (workout_type_id) REFERENCES workout_types(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS daily_log_workout_field_values (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workout_id INTEGER NOT NULL,
+            field_id INTEGER,
+            field_label TEXT NOT NULL,
+            data_key TEXT,
+            value_text TEXT,
+            value_number REAL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (workout_id) REFERENCES daily_log_workouts(id) ON DELETE CASCADE,
+            FOREIGN KEY (field_id) REFERENCES workout_type_fields(id) ON DELETE SET NULL
+        )'
+    );
+
+    $pdo->exec(
         'CREATE TABLE IF NOT EXISTS audit_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             actor_user_id INTEGER,
@@ -579,6 +616,7 @@ function initialize_database(PDO $pdo, array $config): void
     seed_default_achievements($pdo);
     seed_default_motivational_quotes($pdo);
     seed_workout_types_from_logs($pdo);
+    backfill_daily_log_base_metrics($pdo);
     backfill_workout_type_ids($pdo);
     backfill_daily_log_workouts($pdo);
     backfill_daily_log_habits($pdo);
@@ -601,6 +639,9 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'calorie_consumed_max', 'REAL');
 
     ensure_column($pdo, 'daily_logs', 'extra_workout', 'INTEGER NOT NULL DEFAULT 0');
+    ensure_column($pdo, 'daily_logs', 'base_steps', 'INTEGER');
+    ensure_column($pdo, 'daily_logs', 'base_distance_km', 'REAL');
+    ensure_column($pdo, 'daily_logs', 'base_training_calories_burned', 'REAL');
     ensure_column($pdo, 'daily_logs', 'distance_km', 'REAL');
     ensure_column($pdo, 'daily_logs', 'workout_type_id', 'INTEGER');
     ensure_column($pdo, 'daily_logs', 'training_calories_burned', 'REAL');
@@ -656,6 +697,17 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'system_backups', 'restored_by', 'INTEGER');
     ensure_column($pdo, 'system_backups', 'restored_at', 'TEXT');
     ensure_column($pdo, 'system_backups', 'error_message', 'TEXT');
+
+    ensure_column($pdo, 'workout_type_fields', 'input_kind', 'TEXT NOT NULL DEFAULT "number"');
+    ensure_column($pdo, 'workout_type_fields', 'data_key', 'TEXT');
+    ensure_column($pdo, 'workout_type_fields', 'required', 'INTEGER NOT NULL DEFAULT 0');
+    ensure_column($pdo, 'workout_type_fields', 'active', 'INTEGER NOT NULL DEFAULT 1');
+    ensure_column($pdo, 'workout_type_fields', 'sort_order', 'INTEGER NOT NULL DEFAULT 0');
+
+    ensure_column($pdo, 'daily_log_workout_field_values', 'field_label', 'TEXT NOT NULL DEFAULT ""');
+    ensure_column($pdo, 'daily_log_workout_field_values', 'data_key', 'TEXT');
+    ensure_column($pdo, 'daily_log_workout_field_values', 'value_text', 'TEXT');
+    ensure_column($pdo, 'daily_log_workout_field_values', 'value_number', 'REAL');
 }
 
 function ensure_column(PDO $pdo, string $table, string $column, string $definition): void
@@ -701,6 +753,8 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_join_requests_team ON team_join_requests(team_id, status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_log_habits_log ON daily_log_habits(log_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_log_workouts_log ON daily_log_workouts(log_id, sort_order)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_workout_type_fields_type ON workout_type_fields(workout_type_id, active, sort_order)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_workout_field_values_workout ON daily_log_workout_field_values(workout_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_rules_achievement ON achievement_rules(achievement_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_login_attempts_user_ip ON login_attempts(username, ip_address, attempted_at)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_motivational_quotes_active ON motivational_quotes(active, created_at DESC)');
@@ -962,6 +1016,20 @@ function backfill_workout_type_ids(PDO $pdo): void
 
         db_execute($pdo, 'UPDATE daily_logs SET workout_type_id = :type_id WHERE id = :id', [':type_id' => (int) $type['id'], ':id' => (int) $log['id']]);
     }
+}
+
+function backfill_daily_log_base_metrics(PDO $pdo): void
+{
+    db_execute(
+        $pdo,
+        'UPDATE daily_logs
+         SET base_steps = COALESCE(base_steps, steps),
+             base_distance_km = CASE WHEN base_distance_km IS NULL THEN distance_km ELSE base_distance_km END,
+             base_training_calories_burned = CASE WHEN base_training_calories_burned IS NULL THEN training_calories_burned ELSE base_training_calories_burned END
+         WHERE base_steps IS NULL
+            OR (base_distance_km IS NULL AND distance_km IS NOT NULL)
+            OR (base_training_calories_burned IS NULL AND training_calories_burned IS NOT NULL)'
+    );
 }
 
 function backfill_daily_log_workouts(PDO $pdo): void

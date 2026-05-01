@@ -472,21 +472,38 @@ if ($page === 'entries') {
                     $habitValues[$code] = isset($_POST['habit'][$code]) && $_POST['habit'][$code] === '1' ? 1 : 0;
                 }
 
-                $workoutTypeIds = is_array($_POST['workout_type_id'] ?? null) ? array_values((array) $_POST['workout_type_id']) : [];
-                $workoutTypes = is_array($_POST['workout_type'] ?? null) ? array_values((array) $_POST['workout_type']) : [];
-                if ($workoutTypeIds === [] && isset($_POST['workout_type_id']) && !is_array($_POST['workout_type_id'])) {
-                    $workoutTypeIds[] = (string) $_POST['workout_type_id'];
-                }
-                if ($workoutTypes === [] && isset($_POST['workout_type']) && !is_array($_POST['workout_type'])) {
-                    $workoutTypes[] = (string) $_POST['workout_type'];
-                }
-                $workoutRowCount = max(count($workoutTypeIds), count($workoutTypes));
                 $rawWorkouts = [];
-                for ($i = 0; $i < $workoutRowCount; $i++) {
-                    $rawWorkouts[] = [
-                        'workout_type_id' => $workoutTypeIds[$i] ?? null,
-                        'workout_type' => $workoutTypes[$i] ?? '',
-                    ];
+                $hasWorkoutPayload = isset($_POST['workouts']) || isset($_POST['workout_type_id']) || isset($_POST['workout_type']);
+                $isNewWorkoutForm = (string) ($_POST['workout_form_mode'] ?? '') === '1';
+                if (bool_from_form('workout_enabled') === 1 || (!$isNewWorkoutForm && $hasWorkoutPayload)) {
+                    if (isset($_POST['workouts']) && is_array($_POST['workouts'])) {
+                        foreach (array_values((array) $_POST['workouts']) as $workoutRow) {
+                            if (!is_array($workoutRow)) {
+                                continue;
+                            }
+                            $rawWorkouts[] = [
+                                'workout_type_id' => $workoutRow['workout_type_id'] ?? null,
+                                'workout_type' => $workoutRow['workout_type'] ?? '',
+                                'fields' => is_array($workoutRow['fields'] ?? null) ? (array) $workoutRow['fields'] : [],
+                            ];
+                        }
+                    } else {
+                        $workoutTypeIds = is_array($_POST['workout_type_id'] ?? null) ? array_values((array) $_POST['workout_type_id']) : [];
+                        $workoutTypes = is_array($_POST['workout_type'] ?? null) ? array_values((array) $_POST['workout_type']) : [];
+                        if ($workoutTypeIds === [] && isset($_POST['workout_type_id']) && !is_array($_POST['workout_type_id'])) {
+                            $workoutTypeIds[] = (string) $_POST['workout_type_id'];
+                        }
+                        if ($workoutTypes === [] && isset($_POST['workout_type']) && !is_array($_POST['workout_type'])) {
+                            $workoutTypes[] = (string) $_POST['workout_type'];
+                        }
+                        $workoutRowCount = max(count($workoutTypeIds), count($workoutTypes));
+                        for ($i = 0; $i < $workoutRowCount; $i++) {
+                            $rawWorkouts[] = [
+                                'workout_type_id' => $workoutTypeIds[$i] ?? null,
+                                'workout_type' => $workoutTypes[$i] ?? '',
+                            ];
+                        }
+                    }
                 }
 
                 $payload = [
@@ -500,6 +517,9 @@ if ($page === 'entries') {
                     'workouts' => $rawWorkouts,
                     'junk_food' => bool_from_form('junk_food'),
                     'extra_workout' => 0,
+                    'base_steps' => max(0, (int) ($_POST['steps'] ?? 0)),
+                    'base_distance_km' => ($_POST['distance_km'] ?? '') !== '' ? (float) $_POST['distance_km'] : null,
+                    'base_training_calories_burned' => ($_POST['training_calories_burned'] ?? '') !== '' ? (float) $_POST['training_calories_burned'] : null,
                     'distance_km' => ($_POST['distance_km'] ?? '') !== '' ? (float) $_POST['distance_km'] : null,
                     'training_calories_burned' => ($_POST['training_calories_burned'] ?? '') !== '' ? (float) $_POST['training_calories_burned'] : null,
                     'weight' => ($_POST['weight'] ?? '') !== '' ? (float) $_POST['weight'] : null,
@@ -695,6 +715,7 @@ if ($page === 'entries') {
         'mealCalendar' => $mealCalendar,
         'calendarView' => $calendarView,
         'workoutTypes' => $workoutTypes,
+        'workoutTypeFields' => list_workout_type_fields_grouped($pdo, true),
         'habits' => list_habit_definitions($pdo, true),
         'entryPrimaryGoals' => user_primary_goals($currentUser),
         'config' => $config,
@@ -1813,19 +1834,48 @@ if ($page === 'admin') {
         if ($action === 'update_workout_type') {
             rename_workout_type($pdo, (int) ($_POST['type_id'] ?? 0), (string) ($_POST['name'] ?? ''), bool_from_form('active') === 1, (int) $currentUser['id']);
             flash_set('success', t('flash.workout_type_updated'));
-            redirect('/?page=admin');
+            redirect('/?page=admin&section=workout_types&type_id=' . (int) ($_POST['type_id'] ?? 0));
         }
 
         if ($action === 'create_workout_type') {
-            save_workout_type_if_needed($pdo, (string) ($_POST['name'] ?? ''), (int) $currentUser['id']);
+            $createdTypeId = save_workout_type_if_needed($pdo, (string) ($_POST['name'] ?? ''), (int) $currentUser['id']);
             flash_set('success', t('flash.workout_type_updated'));
-            redirect('/?page=admin&section=workout_types');
+            redirect('/?page=admin&section=workout_types' . ($createdTypeId !== null ? '&type_id=' . (int) $createdTypeId : ''));
         }
 
         if ($action === 'delete_workout_type') {
             delete_workout_type($pdo, (int) ($_POST['type_id'] ?? 0), (int) $currentUser['id']);
             flash_set('success', t('flash.workout_type_removed'));
             redirect('/?page=admin&section=workout_types');
+        }
+
+        if ($action === 'save_workout_type_field') {
+            $typeId = (int) ($_POST['type_id'] ?? 0);
+            try {
+                save_workout_type_field(
+                    $pdo,
+                    $typeId,
+                    !empty($_POST['field_id']) ? (int) $_POST['field_id'] : null,
+                    (string) ($_POST['label'] ?? ''),
+                    (string) ($_POST['input_kind'] ?? 'number'),
+                    (string) ($_POST['data_key'] ?? ''),
+                    bool_from_form('required') === 1,
+                    bool_from_form('active') === 1,
+                    (int) ($_POST['sort_order'] ?? 0),
+                    (int) $currentUser['id']
+                );
+                flash_set('success', t('flash.workout_type_updated'));
+            } catch (Throwable $e) {
+                flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : t('flash.save_failed'));
+            }
+            redirect('/?page=admin&section=workout_types&type_id=' . $typeId);
+        }
+
+        if ($action === 'delete_workout_type_field') {
+            $typeId = (int) ($_POST['type_id'] ?? 0);
+            delete_workout_type_field($pdo, (int) ($_POST['field_id'] ?? 0), (int) $currentUser['id']);
+            flash_set('success', t('flash.workout_type_updated'));
+            redirect('/?page=admin&section=workout_types&type_id=' . $typeId);
         }
 
         if ($action === 'save_habit') {
@@ -2024,9 +2074,11 @@ if ($page === 'admin') {
         if ($action === 'update_backup_settings') {
             $enabled = bool_from_form('backup_auto_enabled') === 1;
             $frequency = normalize_backup_frequency((string) ($_POST['backup_frequency'] ?? 'daily'));
+            $runTime = normalize_backup_run_time((string) ($_POST['backup_run_time'] ?? '00:00'));
             $retention = max(1, min(200, (int) ($_POST['backup_retention_count'] ?? 20)));
             set_app_setting($pdo, 'backup_auto_enabled', $enabled ? '1' : '0', (int) $currentUser['id']);
             set_app_setting($pdo, 'backup_frequency', $frequency, (int) $currentUser['id']);
+            set_app_setting($pdo, 'backup_run_time', $runTime, (int) $currentUser['id']);
             set_app_setting($pdo, 'backup_retention_count', (string) $retention, (int) $currentUser['id']);
             flash_set('success', t('flash.backup_settings_saved'));
             redirect('/?page=admin&section=backups');
@@ -2065,6 +2117,24 @@ if ($page === 'admin') {
                 );
                 flash_set('error', t('flash.backup_failed', ['error' => $e->getMessage()]));
             }
+            redirect('/?page=admin&section=backups');
+        }
+
+        if ($action === 'delete_backup') {
+            $backupId = (int) ($_POST['backup_id'] ?? 0);
+            $backup = fetch_system_backup($pdo, $backupId);
+            delete_system_backup($pdo, $config, $backupId);
+            audit_log(
+                $pdo,
+                (int) $currentUser['id'],
+                'backup_deleted',
+                'system_backup',
+                (string) $backupId,
+                'Backup deleted.',
+                audit_snapshot($backup),
+                null
+            );
+            flash_set('success', t('flash.backup_deleted'));
             redirect('/?page=admin&section=backups');
         }
 
@@ -2128,13 +2198,16 @@ if ($page === 'admin') {
                 restore_system_backup_archive($config, $absolutePath);
                 $pdo = db_connect($config);
                 $GLOBALS['pdo'] = $pdo;
-                mark_system_backup_restore_result($pdo, $backupId, 'restored', (int) $currentUser['id']);
+                reconcile_system_backups($pdo, $config);
+                $restoredBackupMeta = db_fetch_one($pdo, 'SELECT id FROM system_backups WHERE file_path = :file_path', [':file_path' => (string) ($backup['file_path'] ?? '')]);
+                $restoredBackupId = (int) ($restoredBackupMeta['id'] ?? $backupId);
+                mark_system_backup_restore_result($pdo, $restoredBackupId, 'restored', (int) $currentUser['id']);
                 audit_log(
                     $pdo,
                     (int) $currentUser['id'],
                     'backup_restored',
                     'system_backup',
-                    (string) $backupId,
+                    (string) $restoredBackupId,
                     'Backup restored.',
                     null,
                     [
@@ -2228,7 +2301,9 @@ if ($page === 'admin') {
     }
     $loginBackgroundPath = trim((string) (app_setting($pdo, 'login_background_path', '') ?? ''));
     $backupSettings = system_backup_settings($pdo);
+    reconcile_system_backups($pdo, $config);
     $systemBackups = list_system_backups($pdo, $config, 200);
+    $workoutTypeFields = list_workout_type_fields_grouped($pdo, false);
     $loginBackgroundLibrary = list_login_background_library($config);
     $auditFilters = [
         'actor_user_id' => isset($_GET['actor_user_id']) && $_GET['actor_user_id'] !== '' ? (int) $_GET['actor_user_id'] : null,
@@ -2247,6 +2322,7 @@ if ($page === 'admin') {
         'joinRequests' => pending_team_join_requests($pdo, (int) $team['id']),
         'availableUsers' => list_users_not_in_active_team($pdo, (int) $team['id']),
         'workoutTypes' => list_workout_types($pdo, false),
+        'workoutTypeFields' => $workoutTypeFields,
         'habits' => list_habit_definitions($pdo, false),
         'achievements' => list_achievements($pdo, true),
         'adminAchievements' => list_achievements_for_admin($pdo),

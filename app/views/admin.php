@@ -33,6 +33,7 @@ $activeLoginBackgroundUrl = $activeLoginBackgroundPath !== '' ? media_url($activ
 $backupSettings = is_array($backupSettings ?? null) ? (array) $backupSettings : [];
 $backupAutoEnabled = !empty($backupSettings['enabled']);
 $backupFrequency = normalize_backup_frequency((string) ($backupSettings['frequency'] ?? 'daily'));
+$backupRunTime = normalize_backup_run_time((string) ($backupSettings['run_time'] ?? '00:00'));
 $backupRetentionCount = max(1, (int) ($backupSettings['retention_count'] ?? 20));
 $backupLastAutoAt = trim((string) ($backupSettings['last_auto_at'] ?? ''));
 $backupLastAutoLabel = t('admin.backup_last_auto_never');
@@ -57,6 +58,13 @@ $backupStatusLabel = static function (string $status): string {
         default => t('common.saved'),
     };
 };
+$workoutTypeFieldsByType = is_array($workoutTypeFields ?? null) ? (array) $workoutTypeFields : [];
+$workoutFieldDataKeyLabels = [
+    '' => t('workout_fields.data_informational'),
+    'distance_km' => t('metric.distance_km'),
+    'training_calories_burned' => t('entries.training_calories_burned'),
+    'steps' => t('metric.steps'),
+];
 ?>
 <section class="screen stack-lg spa-shell" data-spa-page="admin">
     <div class="hero-panel">
@@ -326,7 +334,7 @@ $backupStatusLabel = static function (string $status): string {
                 <input type="checkbox" name="backup_auto_enabled" value="1" <?= $backupAutoEnabled ? 'checked' : '' ?>>
                 <?= e(t('admin.backup_auto_enabled')) ?>
             </label>
-            <div class="grid-inline two">
+            <div class="grid-inline three backup-settings-grid">
                 <label>
                     <?= e(t('admin.backup_frequency')) ?>
                     <select name="backup_frequency">
@@ -338,6 +346,10 @@ $backupStatusLabel = static function (string $status): string {
                 <label>
                     <?= e(t('admin.backup_retention_count')) ?>
                     <input type="number" name="backup_retention_count" min="1" max="200" value="<?= (int) $backupRetentionCount ?>" required>
+                </label>
+                <label>
+                    <?= e(t('admin.backup_run_time')) ?>
+                    <input type="time" name="backup_run_time" value="<?= e($backupRunTime) ?>" required>
                 </label>
             </div>
             <p class="muted small"><?= e(t('admin.backup_last_auto', ['value' => $backupLastAutoLabel])) ?></p>
@@ -395,6 +407,12 @@ $backupStatusLabel = static function (string $status): string {
                                 <input type="hidden" name="action" value="download_backup">
                                 <input type="hidden" name="backup_id" value="<?= $backupId ?>">
                                 <button class="btn btn-ghost small" type="submit"<?= $backupExists ? '' : ' disabled' ?>><?= e(t('admin.backup_download')) ?></button>
+                            </form>
+                            <form method="post" action="/?page=admin" onsubmit="return window.confirm('<?= e(t('admin.backup_delete_confirm')) ?>');">
+                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="delete_backup">
+                                <input type="hidden" name="backup_id" value="<?= $backupId ?>">
+                                <button class="btn btn-ghost small photo-delete-text-btn" type="submit"><?= e(t('common.delete')) ?></button>
                             </form>
                             <form method="post" action="/?page=admin" class="admin-backup-restore-form">
                                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -524,6 +542,88 @@ $backupStatusLabel = static function (string $status): string {
                     <label class="check"><input type="checkbox" name="active" value="1" <?= (int) $type['active'] === 1 ? 'checked' : '' ?>><?= e(t('common.active')) ?></label>
                     <button class="btn small btn-primary" type="submit"><?= e(t('common.save')) ?></button>
                 </form>
+                <section class="admin-workout-fields">
+                    <div class="panel-head compact-head">
+                        <div>
+                            <h4><?= e(t('workout_fields.title')) ?></h4>
+                            <p class="muted small"><?= e(t('workout_fields.help')) ?></p>
+                        </div>
+                    </div>
+                    <div class="card-list compact-list">
+                        <?php foreach ((array) ($workoutTypeFieldsByType[(int) $type['id']] ?? []) as $field): ?>
+                            <form method="post" action="/?page=admin" class="mini-card editable-card workout-field-card">
+                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="save_workout_type_field">
+                                <input type="hidden" name="type_id" value="<?= (int) $type['id'] ?>">
+                                <input type="hidden" name="field_id" value="<?= (int) $field['id'] ?>">
+                                <label>
+                                    <?= e(t('workout_fields.label')) ?>
+                                    <input type="text" name="label" value="<?= e((string) $field['label']) ?>" required>
+                                </label>
+                                <label>
+                                    <?= e(t('workout_fields.input_kind')) ?>
+                                    <select name="input_kind">
+                                        <option value="number" <?= (string) ($field['input_kind'] ?? 'number') === 'number' ? 'selected' : '' ?>><?= e(t('workout_fields.kind_number')) ?></option>
+                                        <option value="text" <?= (string) ($field['input_kind'] ?? 'number') === 'text' ? 'selected' : '' ?>><?= e(t('workout_fields.kind_text')) ?></option>
+                                    </select>
+                                </label>
+                                <label>
+                                    <?= e(t('workout_fields.data_key')) ?>
+                                    <select name="data_key">
+                                        <?php foreach ($workoutFieldDataKeyLabels as $fieldKey => $fieldLabel): ?>
+                                            <option value="<?= e((string) $fieldKey) ?>" <?= normalize_workout_field_data_key($field['data_key'] ?? '') === (string) $fieldKey ? 'selected' : '' ?>><?= e((string) $fieldLabel) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </label>
+                                <label>
+                                    <?= e(t('common.order')) ?>
+                                    <input type="number" name="sort_order" value="<?= (int) ($field['sort_order'] ?? 0) ?>" min="0">
+                                </label>
+                                <label class="check"><input type="checkbox" name="required" value="1" <?= (int) ($field['required'] ?? 0) === 1 ? 'checked' : '' ?>><?= e(t('workout_fields.required')) ?></label>
+                                <label class="check"><input type="checkbox" name="active" value="1" <?= (int) ($field['active'] ?? 1) === 1 ? 'checked' : '' ?>><?= e(t('common.active')) ?></label>
+                                <button class="btn small btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+                            </form>
+                            <form method="post" action="/?page=admin" onsubmit="return confirm('<?= e(t('workout_fields.delete_confirm')) ?>');">
+                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="delete_workout_type_field">
+                                <input type="hidden" name="type_id" value="<?= (int) $type['id'] ?>">
+                                <input type="hidden" name="field_id" value="<?= (int) $field['id'] ?>">
+                                <button class="btn small btn-ghost" type="submit"><?= e(t('common.delete')) ?></button>
+                            </form>
+                        <?php endforeach; ?>
+                    </div>
+                    <form method="post" action="/?page=admin" class="mini-card editable-card workout-field-card">
+                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                        <input type="hidden" name="action" value="save_workout_type_field">
+                        <input type="hidden" name="type_id" value="<?= (int) $type['id'] ?>">
+                        <label>
+                            <?= e(t('workout_fields.label')) ?>
+                            <input type="text" name="label" placeholder="<?= e(t('workout_fields.label_placeholder')) ?>" required>
+                        </label>
+                        <label>
+                            <?= e(t('workout_fields.input_kind')) ?>
+                            <select name="input_kind">
+                                <option value="number"><?= e(t('workout_fields.kind_number')) ?></option>
+                                <option value="text"><?= e(t('workout_fields.kind_text')) ?></option>
+                            </select>
+                        </label>
+                        <label>
+                            <?= e(t('workout_fields.data_key')) ?>
+                            <select name="data_key">
+                                <?php foreach ($workoutFieldDataKeyLabels as $fieldKey => $fieldLabel): ?>
+                                    <option value="<?= e((string) $fieldKey) ?>"><?= e((string) $fieldLabel) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                        <label>
+                            <?= e(t('common.order')) ?>
+                            <input type="number" name="sort_order" value="<?= count((array) ($workoutTypeFieldsByType[(int) $type['id']] ?? [])) + 1 ?>" min="0">
+                        </label>
+                        <label class="check"><input type="checkbox" name="required" value="1"><?= e(t('workout_fields.required')) ?></label>
+                        <input type="hidden" name="active" value="1">
+                        <button class="btn small btn-secondary" type="submit"><?= e(t('workout_fields.add')) ?></button>
+                    </form>
+                </section>
                 <form method="post" action="/?page=admin" onsubmit="return confirm('<?= e(t('admin.delete_workout_type_confirm')) ?>');">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="delete_workout_type">

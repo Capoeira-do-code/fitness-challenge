@@ -54,6 +54,147 @@ function normalize_mask(mixed $selectedDays): string
     return $mask;
 }
 
+function workout_field_data_key_options(): array
+{
+    return ['', 'distance_km', 'training_calories_burned', 'steps'];
+}
+
+function normalize_workout_field_data_key(mixed $dataKey): string
+{
+    $key = strtolower(trim((string) $dataKey));
+    if ($key === 'distance' || $key === 'km') {
+        $key = 'distance_km';
+    }
+    if ($key === 'calories' || $key === 'calories_burned') {
+        $key = 'training_calories_burned';
+    }
+
+    return in_array($key, workout_field_data_key_options(), true) ? $key : '';
+}
+
+function normalize_workout_field_input_kind(mixed $inputKind): string
+{
+    return strtolower(trim((string) $inputKind)) === 'text' ? 'text' : 'number';
+}
+
+function normalize_optional_float(mixed $value): ?float
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+    $normalized = str_replace(',', '.', trim((string) $value));
+    if ($normalized === '' || !is_numeric($normalized)) {
+        return null;
+    }
+
+    return (float) $normalized;
+}
+
+function normalize_workout_field_values(PDO $pdo, ?int $workoutTypeId, mixed $rawFields): array
+{
+    if ($workoutTypeId === null || $workoutTypeId <= 0 || !is_array($rawFields)) {
+        return [];
+    }
+
+    $incoming = [];
+    foreach ($rawFields as $key => $rawValue) {
+        if (is_array($rawValue) && isset($rawValue['field_id'])) {
+            $incoming[(int) $rawValue['field_id']] = $rawValue['value_text'] ?? $rawValue['value_number'] ?? $rawValue['value'] ?? '';
+            continue;
+        }
+        $incoming[(int) $key] = $rawValue;
+    }
+
+    $fields = list_workout_type_fields($pdo, $workoutTypeId, true);
+    $normalized = [];
+    foreach ($fields as $field) {
+        $fieldId = (int) ($field['id'] ?? 0);
+        if ($fieldId <= 0 || !array_key_exists($fieldId, $incoming)) {
+            if (!empty($field['required'])) {
+                throw new InvalidArgumentException('Workout field is required.');
+            }
+            continue;
+        }
+
+        $rawValue = $incoming[$fieldId];
+        if (is_array($rawValue)) {
+            continue;
+        }
+        $valueText = trim((string) $rawValue);
+        if ($valueText === '') {
+            if (!empty($field['required'])) {
+                throw new InvalidArgumentException('Workout field is required.');
+            }
+            continue;
+        }
+
+        $inputKind = normalize_workout_field_input_kind($field['input_kind'] ?? 'number');
+        $valueNumber = null;
+        if ($inputKind === 'number') {
+            $valueNumber = normalize_optional_float($valueText);
+            if ($valueNumber === null) {
+                throw new InvalidArgumentException('Workout field value must be numeric.');
+            }
+            if (in_array((string) ($field['data_key'] ?? ''), ['distance_km', 'training_calories_burned', 'steps'], true)) {
+                $valueNumber = max(0.0, $valueNumber);
+            }
+        }
+
+        $normalized[] = [
+            'field_id' => $fieldId,
+            'field_label' => (string) ($field['label'] ?? ''),
+            'input_kind' => $inputKind,
+            'data_key' => normalize_workout_field_data_key($field['data_key'] ?? ''),
+            'value_text' => $valueText,
+            'value_number' => $valueNumber,
+        ];
+    }
+
+    return $normalized;
+}
+
+function apply_workout_metric_totals(array $payload): array
+{
+    $baseSteps = max(0, (int) ($payload['base_steps'] ?? $payload['steps'] ?? 0));
+    $baseDistance = normalize_optional_float($payload['base_distance_km'] ?? $payload['distance_km'] ?? null);
+    $baseCalories = normalize_optional_float($payload['base_training_calories_burned'] ?? $payload['training_calories_burned'] ?? null);
+
+    $extraSteps = 0.0;
+    $extraDistance = 0.0;
+    $extraCalories = 0.0;
+    foreach ((array) ($payload['workouts'] ?? []) as $workout) {
+        if (!is_array($workout)) {
+            continue;
+        }
+        foreach ((array) ($workout['fields'] ?? []) as $fieldValue) {
+            if (!is_array($fieldValue)) {
+                continue;
+            }
+            $dataKey = normalize_workout_field_data_key($fieldValue['data_key'] ?? '');
+            $number = normalize_optional_float($fieldValue['value_number'] ?? $fieldValue['value_text'] ?? null);
+            if ($number === null) {
+                continue;
+            }
+            if ($dataKey === 'steps') {
+                $extraSteps += max(0.0, $number);
+            } elseif ($dataKey === 'distance_km') {
+                $extraDistance += max(0.0, $number);
+            } elseif ($dataKey === 'training_calories_burned') {
+                $extraCalories += max(0.0, $number);
+            }
+        }
+    }
+
+    $payload['base_steps'] = $baseSteps;
+    $payload['base_distance_km'] = $baseDistance;
+    $payload['base_training_calories_burned'] = $baseCalories;
+    $payload['steps'] = $baseSteps + (int) round($extraSteps);
+    $payload['distance_km'] = $baseDistance !== null || $extraDistance > 0 ? round((float) ($baseDistance ?? 0) + $extraDistance, 2) : null;
+    $payload['training_calories_burned'] = $baseCalories !== null || $extraCalories > 0 ? round((float) ($baseCalories ?? 0) + $extraCalories, 2) : null;
+
+    return $payload;
+}
+
 function normalize_log_workouts_payload(PDO $pdo, array $payload, ?int $actorUserId = null): array
 {
     $hasWorkouts = isset($payload['workouts']) && is_array($payload['workouts']);
@@ -112,7 +253,7 @@ function normalize_log_workouts_payload(PDO $pdo, array $payload, ?int $actorUse
     $payload['workout_type'] = $normalized !== [] ? (string) ($normalized[0]['workout_type'] ?? '') : '';
     $payload['extra_workout'] = count($normalized) > 1 ? 1 : 0;
 
-    return $payload;
+    return apply_workout_metric_totals($payload);
 }
 
 function normalize_workout_row(PDO $pdo, array $row, ?int $actorUserId = null): ?array
@@ -159,10 +300,12 @@ function normalize_workout_row(PDO $pdo, array $row, ?int $actorUserId = null): 
     if ($workoutTypeId === null && $rawType === '') {
         return null;
     }
+    $fieldValues = normalize_workout_field_values($pdo, $workoutTypeId, $row['fields'] ?? []);
 
     return [
         'workout_type_id' => $workoutTypeId,
         'workout_type' => $rawType !== '' ? $rawType : 'Workout',
+        'fields' => $fieldValues,
     ];
 }
 
@@ -216,6 +359,38 @@ function sync_log_workouts(PDO $pdo, int $logId, array $workouts): void
                 ':updated_at' => $now,
             ]
         );
+        $insertedWorkout = db_fetch_one($pdo, 'SELECT id FROM daily_log_workouts WHERE id = last_insert_rowid()');
+        $workoutId = (int) ($insertedWorkout['id'] ?? 0);
+        if ($workoutId <= 0) {
+            continue;
+        }
+        foreach ((array) ($workout['fields'] ?? []) as $fieldValue) {
+            if (!is_array($fieldValue)) {
+                continue;
+            }
+            $fieldLabel = trim((string) ($fieldValue['field_label'] ?? ''));
+            if ($fieldLabel === '') {
+                continue;
+            }
+            db_execute(
+                $pdo,
+                'INSERT INTO daily_log_workout_field_values (
+                    workout_id, field_id, field_label, data_key, value_text, value_number, created_at, updated_at
+                ) VALUES (
+                    :workout_id, :field_id, :field_label, :data_key, :value_text, :value_number, :created_at, :updated_at
+                )',
+                [
+                    ':workout_id' => $workoutId,
+                    ':field_id' => !empty($fieldValue['field_id']) ? (int) $fieldValue['field_id'] : null,
+                    ':field_label' => $fieldLabel,
+                    ':data_key' => normalize_workout_field_data_key($fieldValue['data_key'] ?? ''),
+                    ':value_text' => trim((string) ($fieldValue['value_text'] ?? '')),
+                    ':value_number' => normalize_optional_float($fieldValue['value_number'] ?? null),
+                    ':created_at' => $now,
+                    ':updated_at' => $now,
+                ]
+            );
+        }
     }
 }
 
@@ -292,12 +467,14 @@ function upsert_daily_log(PDO $pdo, array $payload): void
             $pdo,
             'INSERT INTO daily_logs (
                 user_id, log_date, log_time, steps, workout_done, workout_type_id, workout_type,
-                junk_food, extra_workout, distance_km, training_calories_burned, weight, notes, step_exception_reason,
+                junk_food, extra_workout, base_steps, base_distance_km, base_training_calories_burned,
+                distance_km, training_calories_burned, weight, notes, step_exception_reason,
                 distance_exception_reason, workout_exception_reason, morning_walk, journaling,
                 evening_chores, reading, created_at, updated_at
             ) VALUES (
                 :user_id, :log_date, :log_time, :steps, :workout_done, :workout_type_id, :workout_type,
-                :junk_food, :extra_workout, :distance_km, :training_calories_burned, :weight, :notes, :step_exception_reason,
+                :junk_food, :extra_workout, :base_steps, :base_distance_km, :base_training_calories_burned,
+                :distance_km, :training_calories_burned, :weight, :notes, :step_exception_reason,
                 :distance_exception_reason, :workout_exception_reason, :morning_walk, :journaling,
                 :evening_chores, :reading, :created_at, :updated_at
             )',
@@ -311,6 +488,9 @@ function upsert_daily_log(PDO $pdo, array $payload): void
                 ':workout_type' => $workoutTypeName,
                 ':junk_food' => $payload['junk_food'],
                 ':extra_workout' => $payload['extra_workout'],
+                ':base_steps' => $payload['base_steps'] ?? $payload['steps'],
+                ':base_distance_km' => $payload['base_distance_km'] ?? null,
+                ':base_training_calories_burned' => $payload['base_training_calories_burned'] ?? null,
                 ':distance_km' => $payload['distance_km'] ?? null,
                 ':training_calories_burned' => $payload['training_calories_burned'] ?? null,
                 ':weight' => $payload['weight'],
@@ -340,6 +520,9 @@ function upsert_daily_log(PDO $pdo, array $payload): void
              workout_type = :workout_type,
              junk_food = :junk_food,
              extra_workout = :extra_workout,
+             base_steps = :base_steps,
+             base_distance_km = :base_distance_km,
+             base_training_calories_burned = :base_training_calories_burned,
              distance_km = :distance_km,
              training_calories_burned = :training_calories_burned,
              weight = :weight,
@@ -361,6 +544,9 @@ function upsert_daily_log(PDO $pdo, array $payload): void
             ':workout_type' => $workoutTypeName,
             ':junk_food' => $payload['junk_food'],
             ':extra_workout' => $payload['extra_workout'],
+            ':base_steps' => $payload['base_steps'] ?? $payload['steps'],
+            ':base_distance_km' => $payload['base_distance_km'] ?? null,
+            ':base_training_calories_burned' => $payload['base_training_calories_burned'] ?? null,
             ':distance_km' => $payload['distance_km'] ?? null,
             ':training_calories_burned' => $payload['training_calories_burned'] ?? null,
             ':weight' => $payload['weight'],
@@ -788,7 +974,8 @@ function fetch_log_workouts_for_logs(PDO $pdo, array $logs): array
 
     $rows = db_fetch_all(
         $pdo,
-        'SELECT dlw.log_id,
+        'SELECT dlw.id,
+                dlw.log_id,
                 dlw.workout_type_id,
                 dlw.workout_type,
                 dlw.sort_order,
@@ -799,6 +986,48 @@ function fetch_log_workouts_for_logs(PDO $pdo, array $logs): array
          ORDER BY dlw.log_id ASC, dlw.sort_order ASC, dlw.id ASC',
         $params
     );
+
+    $workoutIds = [];
+    foreach ($rows as $row) {
+        $workoutId = (int) ($row['id'] ?? 0);
+        if ($workoutId > 0) {
+            $workoutIds[$workoutId] = true;
+        }
+    }
+    $fieldValuesByWorkout = [];
+    if ($workoutIds !== []) {
+        $fieldParams = [];
+        $fieldPlaceholders = [];
+        foreach (array_keys($workoutIds) as $index => $workoutId) {
+            $key = ':workout_id_' . $index;
+            $fieldPlaceholders[] = $key;
+            $fieldParams[$key] = $workoutId;
+        }
+        $fieldRows = db_fetch_all(
+            $pdo,
+            'SELECT workout_id, field_id, field_label, data_key, value_text, value_number
+             FROM daily_log_workout_field_values
+             WHERE workout_id IN (' . implode(',', $fieldPlaceholders) . ')
+             ORDER BY id ASC',
+            $fieldParams
+        );
+        foreach ($fieldRows as $fieldRow) {
+            $workoutId = (int) ($fieldRow['workout_id'] ?? 0);
+            if ($workoutId <= 0) {
+                continue;
+            }
+            if (!isset($fieldValuesByWorkout[$workoutId])) {
+                $fieldValuesByWorkout[$workoutId] = [];
+            }
+            $fieldValuesByWorkout[$workoutId][] = [
+                'field_id' => !empty($fieldRow['field_id']) ? (int) $fieldRow['field_id'] : null,
+                'field_label' => (string) ($fieldRow['field_label'] ?? ''),
+                'data_key' => normalize_workout_field_data_key($fieldRow['data_key'] ?? ''),
+                'value_text' => (string) ($fieldRow['value_text'] ?? ''),
+                'value_number' => $fieldRow['value_number'] !== null ? (float) $fieldRow['value_number'] : null,
+            ];
+        }
+    }
 
     $legacyTypeNames = [];
     if ($legacyTypeIds !== []) {
@@ -836,9 +1065,12 @@ function fetch_log_workouts_for_logs(PDO $pdo, array $logs): array
         if (!isset($workoutsByLogId[$logId])) {
             $workoutsByLogId[$logId] = [];
         }
+        $workoutId = (int) ($row['id'] ?? 0);
         $workoutsByLogId[$logId][] = [
+            'id' => $workoutId,
             'workout_type_id' => $workoutTypeId,
             'workout_type' => $workoutType,
+            'fields' => array_values((array) ($fieldValuesByWorkout[$workoutId] ?? [])),
         ];
     }
 
@@ -862,6 +1094,7 @@ function fetch_log_workouts_for_logs(PDO $pdo, array $logs): array
         $workoutsByLogId[$logId] = [[
             'workout_type_id' => $legacyTypeId,
             'workout_type' => $legacyType,
+            'fields' => [],
         ]];
     }
 
@@ -3389,6 +3622,138 @@ function list_workout_types(PDO $pdo, bool $activeOnly = true): array
     $where = $activeOnly ? 'WHERE active = 1' : '';
 
     return db_fetch_all($pdo, 'SELECT * FROM workout_types ' . $where . ' ORDER BY active DESC, LOWER(name) ASC');
+}
+
+function list_workout_type_fields(PDO $pdo, ?int $workoutTypeId = null, bool $activeOnly = true): array
+{
+    $conditions = [];
+    $params = [];
+    if ($workoutTypeId !== null && $workoutTypeId > 0) {
+        $conditions[] = 'workout_type_id = :workout_type_id';
+        $params[':workout_type_id'] = $workoutTypeId;
+    }
+    if ($activeOnly) {
+        $conditions[] = 'active = 1';
+    }
+    $where = $conditions !== [] ? 'WHERE ' . implode(' AND ', $conditions) : '';
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT * FROM workout_type_fields ' . $where . ' ORDER BY workout_type_id ASC, active DESC, sort_order ASC, id ASC',
+        $params
+    );
+}
+
+function list_workout_type_fields_grouped(PDO $pdo, bool $activeOnly = true): array
+{
+    $grouped = [];
+    foreach (list_workout_type_fields($pdo, null, $activeOnly) as $field) {
+        $typeId = (int) ($field['workout_type_id'] ?? 0);
+        if ($typeId <= 0) {
+            continue;
+        }
+        if (!isset($grouped[$typeId])) {
+            $grouped[$typeId] = [];
+        }
+        $grouped[$typeId][] = $field;
+    }
+
+    return $grouped;
+}
+
+function save_workout_type_field(
+    PDO $pdo,
+    int $workoutTypeId,
+    ?int $fieldId,
+    string $label,
+    string $inputKind,
+    string $dataKey,
+    bool $required,
+    bool $active,
+    int $sortOrder,
+    int $actorUserId
+): void {
+    $workoutType = db_fetch_one($pdo, 'SELECT * FROM workout_types WHERE id = :id', [':id' => $workoutTypeId]);
+    if ($workoutType === null) {
+        throw new InvalidArgumentException('Workout type not found.');
+    }
+    $label = trim($label);
+    if ($label === '') {
+        throw new InvalidArgumentException('Field label is required.');
+    }
+    $inputKind = normalize_workout_field_input_kind($inputKind);
+    $dataKey = normalize_workout_field_data_key($dataKey);
+    if ($dataKey !== '') {
+        $inputKind = 'number';
+    }
+    $sortOrder = max(0, $sortOrder);
+    $now = now_iso();
+
+    if ($fieldId !== null && $fieldId > 0) {
+        $before = db_fetch_one($pdo, 'SELECT * FROM workout_type_fields WHERE id = :id AND workout_type_id = :workout_type_id', [':id' => $fieldId, ':workout_type_id' => $workoutTypeId]);
+        if ($before === null) {
+            throw new InvalidArgumentException('Workout field not found.');
+        }
+        db_execute(
+            $pdo,
+            'UPDATE workout_type_fields
+             SET label = :label,
+                 input_kind = :input_kind,
+                 data_key = :data_key,
+                 required = :required,
+                 active = :active,
+                 sort_order = :sort_order,
+                 updated_at = :updated_at
+             WHERE id = :id',
+            [
+                ':label' => $label,
+                ':input_kind' => $inputKind,
+                ':data_key' => $dataKey !== '' ? $dataKey : null,
+                ':required' => $required ? 1 : 0,
+                ':active' => $active ? 1 : 0,
+                ':sort_order' => $sortOrder,
+                ':updated_at' => $now,
+                ':id' => $fieldId,
+            ]
+        );
+        $after = db_fetch_one($pdo, 'SELECT * FROM workout_type_fields WHERE id = :id', [':id' => $fieldId]);
+        audit_log($pdo, $actorUserId, 'workout_type_field_updated', 'workout_type_field', (string) $fieldId, 'Workout type field updated.', audit_snapshot($before), audit_snapshot($after));
+        return;
+    }
+
+    db_execute(
+        $pdo,
+        'INSERT INTO workout_type_fields (
+            workout_type_id, label, input_kind, data_key, required, active, sort_order, created_by, created_at, updated_at
+        ) VALUES (
+            :workout_type_id, :label, :input_kind, :data_key, :required, :active, :sort_order, :created_by, :created_at, :updated_at
+        )',
+        [
+            ':workout_type_id' => $workoutTypeId,
+            ':label' => $label,
+            ':input_kind' => $inputKind,
+            ':data_key' => $dataKey !== '' ? $dataKey : null,
+            ':required' => $required ? 1 : 0,
+            ':active' => $active ? 1 : 0,
+            ':sort_order' => $sortOrder,
+            ':created_by' => $actorUserId,
+            ':created_at' => $now,
+            ':updated_at' => $now,
+        ]
+    );
+    $created = db_fetch_one($pdo, 'SELECT * FROM workout_type_fields WHERE id = last_insert_rowid()');
+    audit_log($pdo, $actorUserId, 'workout_type_field_created', 'workout_type_field', (string) ($created['id'] ?? ''), 'Workout type field created.', null, audit_snapshot($created));
+}
+
+function delete_workout_type_field(PDO $pdo, int $fieldId, int $actorUserId): void
+{
+    $before = db_fetch_one($pdo, 'SELECT * FROM workout_type_fields WHERE id = :id', [':id' => $fieldId]);
+    if ($before === null) {
+        return;
+    }
+    db_execute($pdo, 'UPDATE workout_type_fields SET active = 0, updated_at = :updated_at WHERE id = :id', [':updated_at' => now_iso(), ':id' => $fieldId]);
+    $after = db_fetch_one($pdo, 'SELECT * FROM workout_type_fields WHERE id = :id', [':id' => $fieldId]);
+    audit_log($pdo, $actorUserId, 'workout_type_field_deactivated', 'workout_type_field', (string) $fieldId, 'Workout type field deactivated.', audit_snapshot($before), audit_snapshot($after));
 }
 
 function save_workout_type_if_needed(PDO $pdo, string $name, ?int $actorUserId = null): ?int
@@ -6248,29 +6613,32 @@ function normalize_backup_frequency(string $frequency): string
     return 'daily';
 }
 
-function system_backup_frequency_seconds(string $frequency): int
-{
-    return match (normalize_backup_frequency($frequency)) {
-        'weekly' => 7 * 86400,
-        'monthly' => 30 * 86400,
-        default => 86400,
-    };
-}
-
 function system_backup_settings(PDO $pdo): array
 {
     $enabledRaw = strtolower(trim((string) (app_setting($pdo, 'backup_auto_enabled', '0') ?? '0')));
     $enabled = in_array($enabledRaw, ['1', 'true', 'yes', 'on'], true);
     $frequency = normalize_backup_frequency((string) (app_setting($pdo, 'backup_frequency', 'daily') ?? 'daily'));
+    $runTime = normalize_backup_run_time((string) (app_setting($pdo, 'backup_run_time', '00:00') ?? '00:00'));
     $retention = max(1, min(200, (int) (app_setting($pdo, 'backup_retention_count', '20') ?? '20')));
     $lastAutoAt = trim((string) (app_setting($pdo, 'backup_last_auto_at', '') ?? ''));
 
     return [
         'enabled' => $enabled,
         'frequency' => $frequency,
+        'run_time' => $runTime,
         'retention_count' => $retention,
         'last_auto_at' => $lastAutoAt,
     ];
+}
+
+function normalize_backup_run_time(string $time): string
+{
+    $time = trim($time);
+    if (preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/', $time, $matches) === 1) {
+        return sprintf('%02d:%02d', (int) $matches[1], (int) $matches[2]);
+    }
+
+    return '00:00';
 }
 
 function set_app_setting_silent(PDO $pdo, string $key, ?string $value, ?int $updatedBy = null): void
@@ -6482,6 +6850,80 @@ function prune_system_backups(PDO $pdo, array $config, int $keepCount): int
     }
 
     return $deleted;
+}
+
+function delete_system_backup(PDO $pdo, array $config, int $backupId): void
+{
+    if ($backupId <= 0) {
+        return;
+    }
+    $backup = fetch_system_backup($pdo, $backupId);
+    if ($backup === null) {
+        return;
+    }
+    $absolutePath = system_backup_absolute_path($config, (string) ($backup['file_path'] ?? ''));
+    if (is_string($absolutePath) && $absolutePath !== '' && is_file($absolutePath)) {
+        @unlink($absolutePath);
+    }
+    db_execute($pdo, 'DELETE FROM system_backups WHERE id = :id', [':id' => $backupId]);
+}
+
+function reconcile_system_backups(PDO $pdo, array $config): int
+{
+    $backupDir = ensure_system_backup_storage_dir($config);
+    if (!is_dir($backupDir)) {
+        return 0;
+    }
+
+    $created = 0;
+    $iterator = new DirectoryIterator($backupDir);
+    foreach ($iterator as $fileInfo) {
+        if (!$fileInfo->isFile()) {
+            continue;
+        }
+        $fileName = $fileInfo->getFilename();
+        $lower = strtolower($fileName);
+        if (!str_ends_with($lower, '.zip') && !str_ends_with($lower, '.tar.gz')) {
+            continue;
+        }
+        $relativePath = system_backup_relative_path_from_name($fileName);
+        $existing = db_fetch_one($pdo, 'SELECT id FROM system_backups WHERE file_path = :file_path', [':file_path' => $relativePath]);
+        if ($existing !== null) {
+            continue;
+        }
+
+        $trigger = str_contains($lower, '_auto_') ? 'auto' : 'manual';
+        $createdAt = date('Y-m-d H:i:s', max(0, $fileInfo->getMTime()));
+        if (preg_match('/backup_(\d{8})_(\d{6})_(manual|auto)_/i', $fileName, $matches) === 1) {
+            $parsed = DateTimeImmutable::createFromFormat('Ymd His', $matches[1] . ' ' . $matches[2]);
+            if ($parsed instanceof DateTimeImmutable) {
+                $createdAt = $parsed->format('Y-m-d H:i:s');
+            }
+            $trigger = strtolower((string) $matches[3]);
+        }
+
+        $absolutePath = $fileInfo->getPathname();
+        db_execute(
+            $pdo,
+            'INSERT INTO system_backups (
+                file_path, trigger_type, scope, size_bytes, checksum_sha256, status, created_by, created_at, restored_by, restored_at, error_message
+            ) VALUES (
+                :file_path, :trigger_type, :scope, :size_bytes, :checksum_sha256, :status, NULL, :created_at, NULL, NULL, NULL
+            )',
+            [
+                ':file_path' => $relativePath,
+                ':trigger_type' => in_array($trigger, ['manual', 'auto'], true) ? $trigger : 'manual',
+                ':scope' => 'db_uploads',
+                ':size_bytes' => (int) (@filesize($absolutePath) ?: 0),
+                ':checksum_sha256' => hash_file('sha256', $absolutePath) ?: null,
+                ':status' => 'created',
+                ':created_at' => $createdAt,
+            ]
+        );
+        $created++;
+    }
+
+    return $created;
 }
 
 function system_backup_zip_available(): bool
@@ -6949,8 +7391,16 @@ function restore_system_backup_archive(array $config, string $archivePath): void
     }
 }
 
-function should_run_scheduled_backup(string $frequency, string $lastAutoAt): bool
+function should_run_scheduled_backup(string $frequency, string $lastAutoAt, string $runTime = '00:00'): bool
 {
+    $runTime = normalize_backup_run_time($runTime);
+    [$hour, $minute] = array_map('intval', explode(':', $runTime));
+    $now = new DateTimeImmutable('now');
+    $todayRunAt = $now->setTime($hour, $minute);
+    if ($now < $todayRunAt) {
+        return false;
+    }
+
     $last = trim($lastAutoAt);
     if ($last === '') {
         return true;
@@ -6961,10 +7411,18 @@ function should_run_scheduled_backup(string $frequency, string $lastAutoAt): boo
         return true;
     }
 
-    $intervalSeconds = system_backup_frequency_seconds($frequency);
-    $nextAt = $lastAt->getTimestamp() + $intervalSeconds;
+    $interval = new DateInterval(match (normalize_backup_frequency($frequency)) {
+        'weekly' => 'P7D',
+        'monthly' => 'P1M',
+        default => 'P1D',
+    });
+    $lastScheduledSlot = $lastAt->setTime($hour, $minute);
+    if ($lastAt < $lastScheduledSlot) {
+        $lastScheduledSlot = $lastScheduledSlot->sub($interval);
+    }
+    $nextAt = $lastScheduledSlot->add($interval);
 
-    return time() >= $nextAt;
+    return $now >= $nextAt;
 }
 
 function run_system_backup_scheduler(PDO $pdo, array $config, ?int $actorUserId = null): void
@@ -6975,7 +7433,8 @@ function run_system_backup_scheduler(PDO $pdo, array $config, ?int $actorUserId 
     }
     $frequency = (string) ($settings['frequency'] ?? 'daily');
     $lastAutoAt = (string) ($settings['last_auto_at'] ?? '');
-    if (!should_run_scheduled_backup($frequency, $lastAutoAt)) {
+    $runTime = (string) ($settings['run_time'] ?? '00:00');
+    if (!should_run_scheduled_backup($frequency, $lastAutoAt, $runTime)) {
         return;
     }
 

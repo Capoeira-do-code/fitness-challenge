@@ -2156,6 +2156,63 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
     ],
 ]);
 
+$TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
+    'en' => [
+        'common.order' => 'Order',
+        'admin.backup_run_time' => 'Backup time',
+        'admin.backup_delete_confirm' => 'Delete this backup?',
+        'flash.backup_deleted' => 'Backup deleted.',
+        'workout_fields.title' => 'Subdata',
+        'workout_fields.help' => 'Add fields that appear when this workout type is selected.',
+        'workout_fields.label' => 'Field name',
+        'workout_fields.label_placeholder' => 'Distance, pace, notes...',
+        'workout_fields.input_kind' => 'Input type',
+        'workout_fields.kind_number' => 'Number',
+        'workout_fields.kind_text' => 'Text',
+        'workout_fields.data_key' => 'Counts as',
+        'workout_fields.data_informational' => 'Informational only',
+        'workout_fields.required' => 'Required',
+        'workout_fields.add' => 'Add subdata',
+        'workout_fields.delete_confirm' => 'Deactivate this subdata field?',
+    ],
+    'es' => [
+        'common.order' => 'Orden',
+        'admin.backup_run_time' => 'Hora del backup',
+        'admin.backup_delete_confirm' => '¿Eliminar este backup?',
+        'flash.backup_deleted' => 'Backup eliminado.',
+        'workout_fields.title' => 'Subdatos',
+        'workout_fields.help' => 'Añade campos que aparecen al elegir este tipo de entreno.',
+        'workout_fields.label' => 'Nombre del campo',
+        'workout_fields.label_placeholder' => 'Distancia, ritmo, notas...',
+        'workout_fields.input_kind' => 'Tipo de campo',
+        'workout_fields.kind_number' => 'Número',
+        'workout_fields.kind_text' => 'Texto',
+        'workout_fields.data_key' => 'Cuenta como',
+        'workout_fields.data_informational' => 'Solo informativo',
+        'workout_fields.required' => 'Obligatorio',
+        'workout_fields.add' => 'Añadir subdato',
+        'workout_fields.delete_confirm' => '¿Desactivar este subdato?',
+    ],
+    'it' => [
+        'common.order' => 'Ordine',
+        'admin.backup_run_time' => 'Ora backup',
+        'admin.backup_delete_confirm' => 'Eliminare questo backup?',
+        'flash.backup_deleted' => 'Backup eliminato.',
+        'workout_fields.title' => 'Sottodati',
+        'workout_fields.help' => 'Aggiungi campi mostrati quando selezioni questo tipo workout.',
+        'workout_fields.label' => 'Nome campo',
+        'workout_fields.label_placeholder' => 'Distanza, ritmo, note...',
+        'workout_fields.input_kind' => 'Tipo input',
+        'workout_fields.kind_number' => 'Numero',
+        'workout_fields.kind_text' => 'Testo',
+        'workout_fields.data_key' => 'Conta come',
+        'workout_fields.data_informational' => 'Solo informativo',
+        'workout_fields.required' => 'Obbligatorio',
+        'workout_fields.add' => 'Aggiungi sottodato',
+        'workout_fields.delete_confirm' => 'Disattivare questo sottodato?',
+    ],
+]);
+
 function locale_options(): array
 {
     return [
