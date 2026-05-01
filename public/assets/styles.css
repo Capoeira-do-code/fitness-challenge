@@ -822,6 +822,24 @@ img.settings-avatar-preview {
     grid-column: 1 / -1;
 }
 
+.dashboard-quick-actions-grid {
+    display: grid;
+    gap: 0.6rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard-quick-action {
+    min-height: 48px;
+    text-align: center;
+}
+
+.dashboard-week-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
 .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -3327,19 +3345,24 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 .week-editor-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.9rem;
-    margin-top: 0.75rem;
+    gap: 1.05rem;
+    margin-top: 0.9rem;
     align-items: start;
 }
 
 .week-day-card {
-    border: 1px solid var(--line);
+    border: 1px solid rgba(20, 43, 36, 0.18);
     border-radius: var(--radius);
-    background: #fbfdfc;
-    padding: 0.82rem;
+    background: linear-gradient(180deg, #f6fbf9 0%, #fbfdfc 100%);
+    box-shadow: 0 12px 24px rgba(18, 37, 32, 0.06);
+    padding: 0.92rem;
     display: grid;
-    gap: 0.78rem;
+    gap: 0.82rem;
     align-content: start;
+}
+
+.week-day-card:nth-child(even) {
+    background: linear-gradient(180deg, #f4f9fb 0%, #fbfdfd 100%);
 }
 
 .week-day-head {
@@ -3353,11 +3376,12 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 
 .week-section {
     display: grid;
-    gap: 0.55rem;
-    border: 1px solid rgba(20, 43, 36, 0.12);
+    gap: 0.62rem;
+    border: 1px solid rgba(20, 43, 36, 0.18);
     border-radius: calc(var(--radius) - 2px);
     background: #fff;
-    padding: 0.62rem;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    padding: 0.72rem;
 }
 
 .week-section-head {
@@ -3794,6 +3818,19 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 
     .metric-card {
         min-height: 102px;
+    }
+
+    .dashboard-quick-actions-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-week-actions {
+        display: grid;
+        width: 100%;
+    }
+
+    .dashboard-week-actions .btn {
+        width: 100%;
     }
 
     .facts li {

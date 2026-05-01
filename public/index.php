@@ -2050,7 +2050,7 @@ if ($page === 'admin') {
                     (int) $currentUser['id'],
                     'backup_error',
                     'system_backup',
-                    null,
+                    'manual_backup_error',
                     'Manual backup failed.',
                     null,
                     ['error' => $e->getMessage()]

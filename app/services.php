@@ -6782,7 +6782,7 @@ function run_system_backup_scheduler(PDO $pdo, array $config, ?int $actorUserId 
             $actorUserId,
             'backup_error',
             'system_backup',
-            null,
+            'auto_backup_error',
             'Automatic backup failed.',
             null,
             ['error' => $e->getMessage()]

@@ -251,14 +251,14 @@ $profileExportPayload = [
         <a class="settings-row" href="<?= e($profileUrl('goals')) ?>" data-spa-link>
             <span>
                 <strong><?= e(t('goals.personal')) ?></strong>
-                <small class="muted"><?= count($activeGoals) ?> activos · <?= e($goalPreview !== [] ? implode(' · ', $goalPreview) : t('goals.empty')) ?></small>
+                <small class="muted"><?= count($activeGoals) ?> <?= e(t('profile.active_goals_suffix')) ?> · <?= e($goalPreview !== [] ? implode(' · ', $goalPreview) : t('goals.empty')) ?></small>
             </span>
             <span class="settings-chevron" aria-hidden="true">›</span>
         </a>
         <a class="settings-row" href="<?= e($profileUrl('achievements')) ?>" data-spa-link>
             <span>
                 <strong><?= e(t('profile.achievements')) ?></strong>
-                <small class="muted"><?= $achievementCount ?> desbloqueados · <?= e($achievementPreview !== [] ? implode(' · ', $achievementPreview) : t('achievements.empty')) ?></small>
+                <small class="muted"><?= $achievementCount ?> <?= e(t('profile.unlocked_suffix')) ?> · <?= e($achievementPreview !== [] ? implode(' · ', $achievementPreview) : t('achievements.empty')) ?></small>
             </span>
             <span class="settings-chevron" aria-hidden="true">›</span>
         </a>
@@ -272,7 +272,7 @@ $profileExportPayload = [
         <a class="settings-row" href="<?= e($profileUrl('activity')) ?>" data-spa-link>
             <span>
                 <strong><?= e(t('profile.recent_activity')) ?></strong>
-                <small class="muted"><?= $activityCount ?> eventos · <?= e($activityPreview !== [] ? implode(' · ', $activityPreview) : t('audit.empty')) ?></small>
+                <small class="muted"><?= $activityCount ?> events · <?= e($activityPreview !== [] ? implode(' · ', $activityPreview) : t('audit.empty')) ?></small>
             </span>
             <span class="settings-chevron" aria-hidden="true">›</span>
         </a>
@@ -284,9 +284,9 @@ $profileExportPayload = [
                 <h2><?= e(t('goals.personal')) ?></h2>
                 <div class="inline-actions-mini">
                     <?php if ($canEditProfile): ?>
-                        <a class="btn btn-primary" href="<?= e($profileUrl('goals', ['goal_new' => 1])) ?>" data-spa-link>Nuevo objetivo</a>
+                        <a class="btn btn-primary" href="<?= e($profileUrl('goals', ['goal_new' => 1])) ?>" data-spa-link><?= e(t('profile.new_goal')) ?></a>
                     <?php endif; ?>
-                    <a class="btn btn-ghost" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="Volver">← Volver</a>
+                    <a class="btn btn-ghost" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
                 </div>
             </div>
 
@@ -317,8 +317,8 @@ $profileExportPayload = [
         <?php if ($canEditProfile): ?>
             <div class="stack goal-subview profile-create-view" data-spa-param-show="goal_new" data-spa-value="1" <?= $goalCreateMode ? '' : 'hidden' ?>>
                 <div class="panel-head compact-head">
-                    <h3>Nuevo objetivo</h3>
-                    <a class="btn btn-ghost" href="<?= e($profileUrl('goals')) ?>" data-spa-back aria-label="Volver">← Volver</a>
+                    <h3><?= e(t('profile.new_goal')) ?></h3>
+                    <a class="btn btn-ghost" href="<?= e($profileUrl('goals')) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
                 </div>
                 <form method="post" action="<?= e($profileUrl('goals')) ?>" class="stack compact-form">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -354,7 +354,7 @@ $profileExportPayload = [
             <div class="stack goal-subview profile-detail-view" data-spa-param-show="goal_id" data-spa-value="<?= (int) $goal['id'] ?>" <?= $isActiveGoalDetail ? '' : 'hidden' ?>>
                 <div class="panel-head compact-head">
                     <h3><?= e((string) $goal['title']) ?></h3>
-                    <a class="btn btn-ghost" href="<?= e($profileUrl('goals')) ?>" data-spa-back aria-label="Volver">← Volver</a>
+                    <a class="btn btn-ghost" href="<?= e($profileUrl('goals')) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
                 </div>
 
                 <article class="mini-card goal-detail-card goal-detail-summary">
@@ -372,7 +372,7 @@ $profileExportPayload = [
                             <span><?= e($formatGoalValue($goalTarget, $goalType)) ?></span>
                         </div>
                         <div class="goal-summary-item">
-                            <strong>Progreso actual</strong>
+                            <strong><?= e(t('profile.current_progress')) ?></strong>
                             <span><?= e($formatGoalValue($goalCurrent, $goalType)) ?></span>
                         </div>
                         <div class="goal-summary-item">
@@ -456,7 +456,7 @@ $profileExportPayload = [
     <article class="panel settings-panel<?= $activeSection === 'achievements' ? ' active' : '' ?>" data-spa-section="achievements" <?= $activeSection === 'achievements' ? '' : 'hidden' ?>>
         <div class="panel-head">
             <h2><?= e(t('profile.achievements')) ?></h2>
-            <a class="btn btn-ghost" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="Volver">← Volver</a>
+            <a class="btn btn-ghost" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
         </div>
         <div class="achievement-grid achievement-grid-collapsible" data-achievement-grid>
             <?php if (($userAchievements ?? []) === []): ?>
@@ -485,7 +485,7 @@ $profileExportPayload = [
                                 <small><?= e(t('achievements.reward')) ?>: <?= e((string) $achievement['reward_text']) ?></small>
                             <?php endif; ?>
                             <?php if (!empty($achievement['awarded_at'])): ?>
-                                <small class="achievement-unlocked-date">Desbloqueado: <?= e(format_date_eu((string) $achievement['awarded_at'])) ?></small>
+                                <small class="achievement-unlocked-date"><?= e(t('profile.unlocked_on')) ?> <?= e(format_date_eu((string) $achievement['awarded_at'])) ?></small>
                             <?php endif; ?>
                         </div>
                         <?php if (!empty($canDeleteAchievements)): ?>
@@ -493,7 +493,7 @@ $profileExportPayload = [
                                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                                 <input type="hidden" name="action" value="delete_achievement_award">
                                 <input type="hidden" name="award_id" value="<?= $awardId ?>">
-                                <button class="achievement-delete-btn" type="button" aria-label="Eliminar logro" data-achievement-delete-trigger data-form-id="<?= e($deleteFormId) ?>">×</button>
+                                <button class="achievement-delete-btn" type="button" aria-label="<?= e(t('achievements.delete_award')) ?>" data-achievement-delete-trigger data-form-id="<?= e($deleteFormId) ?>">×</button>
                             </form>
                         <?php endif; ?>
                     </article>
@@ -512,7 +512,7 @@ $profileExportPayload = [
                 <?php if ($canEditProfile): ?>
                     <a class="btn btn-ghost" href="<?= e($profileUrl('config', ['edit' => 1])) ?>" data-config-edit-link><?= e(t('common.edit')) ?></a>
                 <?php endif; ?>
-                <a class="btn btn-ghost" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="Volver">← Volver</a>
+                <a class="btn btn-ghost" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
             </div>
         </div>
 
@@ -556,8 +556,8 @@ $profileExportPayload = [
                         <label><?= e(t('metric.ideal_weight')) ?><input type="number" step="0.1" name="ideal_weight" value="<?= e((string) ($profileUser['ideal_weight'] ?? '')) ?>"></label>
                     </div>
                     <div class="goal-editor-actions">
-                        <button class="btn btn-primary" type="submit">Guardar</button>
-                        <a class="btn btn-ghost" href="<?= e($profileUrl('config')) ?>" data-config-cancel-link>Cancelar</a>
+                        <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+                        <a class="btn btn-ghost" href="<?= e($profileUrl('config')) ?>" data-config-cancel-link><?= e(t('common.cancel')) ?></a>
                     </div>
                 </form>
             <?php endif; ?>
@@ -569,9 +569,9 @@ $profileExportPayload = [
             <h2><?= e(t('profile.recent_activity')) ?></h2>
             <div class="inline-actions-mini">
                 <?php if (!empty($canExportProfilePdf)): ?>
-                    <button class="btn btn-primary" type="button" data-profile-pdf-export>Exportar datos de usuario en PDF</button>
+                    <button class="btn btn-primary" type="button" data-profile-pdf-export><?= e(t('profile.export_pdf')) ?></button>
                 <?php endif; ?>
-                <a class="btn btn-ghost" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="Volver">← Volver</a>
+                <a class="btn btn-ghost" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
             </div>
         </div>
         <div class="audit-list">

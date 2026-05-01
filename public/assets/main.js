@@ -1010,7 +1010,7 @@
 
             const deleteButton = target.closest('[data-goal-delete-confirm]');
             if (deleteButton instanceof HTMLButtonElement) {
-                const confirmed = window.confirm('¿Eliminar este objetivo?');
+                const confirmed = window.confirm('Delete this goal?');
                 if (!confirmed) {
                     event.preventDefault();
                 }
@@ -1038,10 +1038,10 @@
             modal.innerHTML = `
                 <div class=\"confirm-modal-backdrop\" data-achievement-delete-cancel></div>
                 <div class=\"confirm-modal-card\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"confirm-title\">
-                    <h3 id=\"confirm-title\">¿Eliminar este logro?</h3>
+                    <h3 id=\"confirm-title\">Delete this achievement?</h3>
                     <div class=\"confirm-modal-actions\">
-                        <button type=\"button\" class=\"btn btn-ghost\" data-achievement-delete-cancel>Cancelar</button>
-                        <button type=\"button\" class=\"btn btn-primary\" data-achievement-delete-confirm>Eliminar</button>
+                        <button type=\"button\" class=\"btn btn-ghost\" data-achievement-delete-cancel>Cancel</button>
+                        <button type=\"button\" class=\"btn btn-primary\" data-achievement-delete-confirm>Delete</button>
                     </div>
                 </div>
             `;
@@ -1096,7 +1096,7 @@
                     console.warn('Achievement award_id is empty for form:', formId);
                     const error = document.createElement('p');
                     error.className = 'achievement-delete-error';
-                    error.textContent = 'No se puede eliminar: award_id inválido.';
+                    error.textContent = 'Cannot delete: invalid award_id.';
                     card?.appendChild(error);
                     return;
                 }
@@ -1580,11 +1580,11 @@
                 const config = payload.config || {};
                 const totals = payload.totals || {};
                 const pdfTitle = String(i18n.pdf_title || 'Challenge report');
-                const sectionOverview = String(i18n.pdf_section_overview || 'Configuracion y totales');
-                const sectionCharts = String(i18n.pdf_section_charts || 'Graficos semanales');
-                const sectionDaily = String(i18n.pdf_section_daily || 'Detalle diario');
-                const sectionNutrition = String(i18n.pdf_section_nutrition || 'Nutricion y fotos');
-                const sectionActivity = String(i18n.pdf_section_activity || 'Goals, logros y actividad');
+                const sectionOverview = String(i18n.pdf_section_overview || 'Configuration and totals');
+                const sectionCharts = String(i18n.pdf_section_charts || 'Weekly charts');
+                const sectionDaily = String(i18n.pdf_section_daily || 'Daily details');
+                const sectionNutrition = String(i18n.pdf_section_nutrition || 'Nutrition and photos');
+                const sectionActivity = String(i18n.pdf_section_activity || 'Goals, achievements and activity');
 
                 pdf.setFillColor(20, 163, 139);
                 pdf.rect(0, 0, width, 104, 'F');
@@ -1595,30 +1595,30 @@
                 pdf.setFont('helvetica', 'normal');
                 pdf.setFontSize(12);
                 pdf.text(`${displayName} (@${username})`, margin, 66);
-                pdf.text(`Generado: ${generatedAt}`, margin, 84);
-                pdf.text(`Rango challenge: ${challengeRangeLabel}`, margin + 240, 84);
+                pdf.text(`Generated: ${generatedAt}`, margin, 84);
+                pdf.text(`Challenge range: ${challengeRangeLabel}`, margin + 240, 84);
                 pdf.setTextColor(25, 35, 45);
                 y = 128;
 
                 addSectionTitle(`1) ${sectionOverview}`);
                 addLines([
-                    `Objetivo principal: ${config.primary_goal_type || '-'}`,
-                    `Valor objetivo: ${config.primary_goal_value ?? '-'}`,
+                    `Primary goal: ${config.primary_goal_type || '-'}`,
+                    `Target value: ${config.primary_goal_value ?? '-'}`,
                     `Primary goals spec: ${config.primary_goals_spec || '-'}`,
-                    `Workout target/semana: ${config.workout_target ?? '-'}`,
-                    `Mantenimiento: ${config.maintenance_calories ?? '-'} kcal`,
-                    `Goal quemar: ${config.calorie_burn_goal ?? '-'} kcal`,
-                    `Maximo consumir: ${config.calorie_consumed_max ?? '-'} kcal`,
-                    `Peso ideal: ${config.ideal_weight ?? '-'} kg`,
+                    `Workout target/week: ${config.workout_target ?? '-'}`,
+                    `Maintenance: ${config.maintenance_calories ?? '-'} kcal`,
+                    `Burn goal: ${config.calorie_burn_goal ?? '-'} kcal`,
+                    `Max consumed: ${config.calorie_consumed_max ?? '-'} kcal`,
+                    `Ideal weight: ${config.ideal_weight ?? '-'} kg`,
                 ], { size: 10, lineHeight: 12 });
                 y += 6;
                 addLines([
-                    `Pasos totales: ${formatNumber(totals.steps, 0)}`,
-                    `Distancia total: ${formatNumber(totals.distance_km, 2)} km`,
-                    `Workouts contados: ${formatNumber(totals.workouts, 0)}`,
+                    `Total steps: ${formatNumber(totals.steps, 0)}`,
+                    `Total distance: ${formatNumber(totals.distance_km, 2)} km`,
+                    `Counted workouts: ${formatNumber(totals.workouts, 0)}`,
                     `Score: ${formatNumber(totals.score, 1)}`,
                     `Strikes: ${formatNumber(totals.strikes, 0)}`,
-                    `Penalizacion: €${formatNumber(totals.penalty, 2)}`,
+                    `Penalty: €${formatNumber(totals.penalty, 2)}`,
                 ], { size: 10, lineHeight: 12 });
 
                 addSectionTitle(`2) ${sectionCharts}`);
@@ -1653,7 +1653,7 @@
                 const dailyDetails = Array.isArray(payload.daily_details) ? payload.daily_details : [];
                 addSectionTitle(`3) ${sectionDaily}`);
                 if (dailyDetails.length === 0) {
-                    addLines(['Sin detalle diario disponible.'], { size: 10, lineHeight: 12 });
+                    addLines(['No daily details available.'], { size: 10, lineHeight: 12 });
                 } else {
                     dailyDetails.forEach((day) => {
                         const date = formatDate(day.date);
@@ -1666,8 +1666,8 @@
                             day.approval_extra_status ? `extra:${day.approval_extra_status}` : '',
                         ].filter(Boolean).join(' | ') || '-';
                         const detailLines = [
-                            `${date} | pasos ${formatNumber(day.steps, 0)} | km ${formatNumber(day.distance_km, 2)} | workouts ${formatNumber(day.workout_count, 0)} (contado ${formatNumber(day.workout_counted, 0)})`,
-                            `burned ${day.training_calories_burned == null ? '-' : `${formatNumber(day.training_calories_burned, 0)} kcal`} | peso ${day.weight == null ? '-' : `${formatNumber(day.weight, 1)} kg`} | junk ${day.junk_food ? 'si' : 'no'} | extra ${day.extra_workout ? 'si' : 'no'}`,
+                            `${date} | steps ${formatNumber(day.steps, 0)} | km ${formatNumber(day.distance_km, 2)} | workouts ${formatNumber(day.workout_count, 0)} (counted ${formatNumber(day.workout_counted, 0)})`,
+                            `burned ${day.training_calories_burned == null ? '-' : `${formatNumber(day.training_calories_burned, 0)} kcal`} | weight ${day.weight == null ? '-' : `${formatNumber(day.weight, 1)} kg`} | junk ${day.junk_food ? 'yes' : 'no'} | extra ${day.extra_workout ? 'yes' : 'no'}`,
                             `tipos: ${workouts}`,
                             `missing reason: ${day.missing_reason || '-'}`,
                             `approvals: ${approvals}`,
@@ -1688,7 +1688,7 @@
                 const dailyNutrition = Array.isArray(payload.daily_photo_nutrition) ? payload.daily_photo_nutrition : [];
                 addSectionTitle(`4) ${sectionNutrition}`);
                 if (dailyNutrition.length === 0) {
-                    addLines(['Sin datos de nutricion/fotos.'], { size: 10, lineHeight: 12 });
+                    addLines(['No nutrition/photo data.'], { size: 10, lineHeight: 12 });
                 } else {
                     dailyNutrition.forEach((day) => {
                         const totalsByDay = day.totals || {};
@@ -1697,7 +1697,7 @@
                         addLines([header], { font: 'bold', size: 9, lineHeight: 11 });
                         const items = Array.isArray(day.items) ? day.items : [];
                         if (items.length === 0) {
-                            addLines(['  - Sin fotos o entradas.'], { size: 9, lineHeight: 11 });
+                            addLines(['  - No photos or entries.'], { size: 9, lineHeight: 11 });
                         } else {
                             items.forEach((item) => {
                                 addLines([
@@ -1721,23 +1721,23 @@
                     : [];
 
                 addLines(['Goals:'], { font: 'bold', size: 10, lineHeight: 12 });
-                addLines(goalLines.length > 0 ? goalLines : ['- Sin goals.'], { size: 9, lineHeight: 11 });
+                addLines(goalLines.length > 0 ? goalLines : ['- No goals.'], { size: 9, lineHeight: 11 });
                 y += 4;
                 addLines(['Achievements:'], { font: 'bold', size: 10, lineHeight: 12 });
-                addLines(achievementLines.length > 0 ? achievementLines : ['- Sin logros.'], { size: 9, lineHeight: 11 });
+                addLines(achievementLines.length > 0 ? achievementLines : ['- No achievements.'], { size: 9, lineHeight: 11 });
                 y += 4;
-                addLines(['Actividad reciente:'], { font: 'bold', size: 10, lineHeight: 12 });
-                addLines(activityLines.length > 0 ? activityLines : ['- Sin actividad reciente.'], { size: 9, lineHeight: 11 });
+                addLines(['Recent activity:'], { font: 'bold', size: 10, lineHeight: 12 });
+                addLines(activityLines.length > 0 ? activityLines : ['- No recent activity.'], { size: 9, lineHeight: 11 });
 
                 const safeUsername = username.replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
                 const today = new Date().toISOString().slice(0, 10);
                 pdf.save(`challenge-report-${safeUsername}-${today}.pdf`);
             } catch (error) {
                 console.error('PDF export failed', error);
-                window.alert('No se pudo generar el PDF en este momento.');
+                window.alert('Could not generate the PDF right now.');
             } finally {
                 button.disabled = false;
-                button.textContent = previousLabel || 'Exportar datos de usuario en PDF';
+                button.textContent = previousLabel || 'Export user data to PDF';
             }
         });
     };

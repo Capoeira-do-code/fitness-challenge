@@ -75,6 +75,7 @@ $widgetOrder = static function (string ...$widgets) use ($visibleWidgets): int {
 
     return $orders === [] ? 99 : min($orders);
 };
+$contentWidgetOrder = static fn(string ...$widgets): int => 100 + $widgetOrder(...$widgets);
 $isTotalMoneyView = ($dashboardView ?? '') === 'total';
 $penaltySeverityClass = static function (int|float $penalty): string {
     $value = (float) $penalty;
@@ -327,7 +328,7 @@ $topbarControls = ob_get_clean();
 
     <div class="dashboard-layout">
         <?php if ($showWidget('kpis')): ?>
-        <div class="metric-grid dashboard-span-full dashboard-kpis" style="order: <?= $widgetOrder('kpis') ?>">
+        <div class="metric-grid dashboard-span-full dashboard-kpis" style="order: -30">
             <?php foreach ($kpis as $kpi): ?>
                 <?php
                 $metricHref = '/?' . http_build_query($metricQueryBase + ['metric' => (string) $kpi['key']]);
@@ -369,8 +370,81 @@ $topbarControls = ob_get_clean();
         </div>
         <?php endif; ?>
 
+        <article class="panel dashboard-panel dashboard-span-full dashboard-quick-actions" style="order: -20">
+            <div class="panel-head">
+                <h2><?= e(t('dashboard.quick_actions')) ?></h2>
+            </div>
+            <div class="dashboard-quick-actions-grid">
+                <a class="btn btn-primary dashboard-quick-action" href="/?page=entries&mode=data">
+                    <?= e(t('dashboard.quick_action_training')) ?>
+                </a>
+                <a class="btn btn-secondary dashboard-quick-action" href="/?page=entries&mode=meal">
+                    <?= e(t('dashboard.quick_action_meal')) ?>
+                </a>
+            </div>
+        </article>
+
+        <?php if ($showWidget('weekly')): ?>
+        <article class="panel dashboard-panel dashboard-span-full dashboard-weekly-history" style="order: -10">
+            <div class="panel-head">
+                <h2><?= e(t('dashboard.weekly_history')) ?></h2>
+                <a class="btn btn-ghost" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week=<?= e(date_to_iso_week((string) $selectedWeekStart)) ?>"><?= e(t('table.open_editor')) ?></a>
+            </div>
+            <div class="table-wrap">
+                <table class="table compact">
+                    <thead>
+                    <tr>
+                        <th><?= e(t('common.week')) ?></th>
+                        <th><?= e(t('common.status')) ?></th>
+                        <th><?= e(t('metric.step_failures')) ?></th>
+                        <th><?= e(t('metric.workout_failures')) ?></th>
+                        <th><?= e(t('metric.warnings')) ?></th>
+                        <th><?= e(t('strikes.economic_impact')) ?></th>
+                        <th><?= e(t('dashboard.strike_reduction')) ?></th>
+                        <th><?= e(t('dashboard.strikes_after_week')) ?></th>
+                        <th><?= e(t('common.actions')) ?></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($selectedMetric['weekly'] as $week): ?>
+                        <?php
+                        $weekStartDate = (string) ($week['week_start'] ?? $selectedWeekStart ?? '');
+                        $weekStrikesHref = '/?' . http_build_query([
+                            'page' => 'strikes_detail',
+                            'user_id' => (int) ($selectedUser['id'] ?? 0),
+                            'view' => $weekStartDate,
+                        ]);
+                        $weekEditorHref = '/?' . http_build_query([
+                            'page' => 'week_editor',
+                            'user_id' => (int) ($selectedUser['id'] ?? 0),
+                            'week' => date_to_iso_week($weekStartDate !== '' ? $weekStartDate : (string) $selectedWeekStart),
+                        ]);
+                        ?>
+                        <tr>
+                            <td><?= e(format_date_eu((string) $week['week_start'])) ?> -> <?= e(format_date_eu((string) $week['week_end'])) ?></td>
+                            <td><?= e(label_for_status((string) $week['status'])) ?></td>
+                            <td><?= e((string) $week['step_failures']) ?></td>
+                            <td><?= e((string) $week['workout_failures']) ?></td>
+                            <td><?= e((string) ($week['skip_warnings'] ?? 0)) ?></td>
+                            <td><span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) ($week['penalty'] ?? 0))) ?>">€<?= e(number_format((float) ($week['penalty'] ?? 0), 2, '.', '')) ?></span></td>
+                            <td><?= (int) $week['strike_reduction'] > 0 ? '-1' : '-' ?></td>
+                            <td><?= e((string) $week['strikes_after_week']) ?></td>
+                            <td>
+                                <div class="dashboard-week-actions">
+                                    <a class="btn btn-ghost small" href="<?= e($weekEditorHref) ?>"><?= e(t('dashboard.edit_week')) ?></a>
+                                    <a class="btn btn-ghost small" href="<?= e($weekStrikesHref) ?>"><?= e(t('dashboard.penalty_history')) ?></a>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </article>
+        <?php endif; ?>
+
         <?php if ($showWidget('distance_walked')): ?>
-        <article class="panel chart-card dashboard-panel" style="order: <?= $widgetOrder('distance_walked') ?>">
+        <article class="panel chart-card dashboard-panel" style="order: <?= $contentWidgetOrder('distance_walked') ?>">
             <h2>Distance walked</h2>
             <canvas id="distanceWalkedChart" height="150"></canvas>
             <p class="muted small"><?= e(t('metric.distance_km')) ?> · <?= e((string) $distanceRangeTotal) ?> km</p>
@@ -378,7 +452,7 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <?php if ($showWidget('calories')): ?>
-        <article class="panel chart-card dashboard-panel dashboard-calories" style="order: <?= $widgetOrder('calories') ?>">
+        <article class="panel chart-card dashboard-panel dashboard-calories" style="order: <?= $contentWidgetOrder('calories') ?>">
             <div class="panel-head">
                 <div>
                     <h2><?= e(t('dashboard.calories_title')) ?></h2>
@@ -412,7 +486,7 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <?php if ($showWidget('approvals')): ?>
-        <article class="panel dashboard-panel dashboard-approvals" data-testid="pending-approvals" style="order: <?= $widgetOrder('approvals') ?>">
+        <article class="panel dashboard-panel dashboard-approvals" data-testid="pending-approvals" style="order: <?= $contentWidgetOrder('approvals') ?>">
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('common.pending')) ?></p>
@@ -456,14 +530,14 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <?php if ($showWidget('steps')): ?>
-        <article class="panel chart-card dashboard-panel" style="order: <?= $widgetOrder('steps') ?>">
+        <article class="panel chart-card dashboard-panel" style="order: <?= $contentWidgetOrder('steps') ?>">
             <h2><?= e(t('dashboard.steps_chart')) ?></h2>
             <canvas id="stepsChart" height="150"></canvas>
         </article>
         <?php endif; ?>
 
         <?php if ($showWidget('steps_cumulative')): ?>
-        <article class="panel chart-card dashboard-panel" style="order: <?= $widgetOrder('steps_cumulative') ?>">
+        <article class="panel chart-card dashboard-panel" style="order: <?= $contentWidgetOrder('steps_cumulative') ?>">
             <h2><?= e(t('dashboard.steps_cumulative_chart')) ?></h2>
             <?php if ($stepsCumulativeValues === []): ?>
                 <p class="muted"><?= e(t('common.none')) ?></p>
@@ -475,7 +549,7 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <?php if ($showWidget('distance_cumulative')): ?>
-        <article class="panel chart-card dashboard-panel" style="order: <?= $widgetOrder('distance_cumulative') ?>">
+        <article class="panel chart-card dashboard-panel" style="order: <?= $contentWidgetOrder('distance_cumulative') ?>">
             <h2><?= e(t('dashboard.distance_cumulative_chart')) ?></h2>
             <?php if ($distanceCumulativeValues === []): ?>
                 <p class="muted"><?= e(t('common.none')) ?></p>
@@ -487,7 +561,7 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <?php if ($showWidget('weight')): ?>
-        <article class="panel chart-card dashboard-panel" style="order: <?= $widgetOrder('weight') ?>">
+        <article class="panel chart-card dashboard-panel" style="order: <?= $contentWidgetOrder('weight') ?>">
             <h2><?= e(t('dashboard.weight_chart')) ?></h2>
             <?php if ($weightValues === []): ?>
                 <p class="muted"><?= e(t('dashboard.no_weight')) ?></p>
@@ -504,7 +578,7 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <?php if ($showWidget('comparison')): ?>
-        <article class="panel chart-card dashboard-panel" style="order: <?= $widgetOrder('comparison') ?>">
+        <article class="panel chart-card dashboard-panel" style="order: <?= $contentWidgetOrder('comparison') ?>">
             <div class="panel-head panel-head-help">
                 <h2><?= e(trim($compareTitle)) ?></h2>
                 <details class="metric-help-popover">
@@ -523,7 +597,7 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <?php if ($showWidget('ranking')): ?>
-        <article class="panel dashboard-panel" style="order: <?= $widgetOrder('ranking') ?>">
+        <article class="panel dashboard-panel" style="order: <?= $contentWidgetOrder('ranking') ?>">
             <h2><?= e(t('dashboard.ranking')) ?></h2>
             <div class="leaderboard-list">
                 <?php foreach ($metricsOrdered as $metric): ?>
@@ -552,7 +626,7 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <?php if ($showWidget('meals')): ?>
-        <article class="panel dashboard-panel" style="order: <?= $widgetOrder('meals') ?>">
+        <article class="panel dashboard-panel" style="order: <?= $contentWidgetOrder('meals') ?>">
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('common.week')) ?></p>
@@ -602,52 +676,6 @@ $topbarControls = ob_get_clean();
                     <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=day&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>"><?= e(t('calendar.view_day')) ?></a>
                 </div>
             <?php endif; ?>
-        </article>
-        <?php endif; ?>
-
-        <?php if ($showWidget('weekly')): ?>
-        <article class="panel dashboard-panel dashboard-span-full dashboard-weekly-history" style="order: 999">
-            <div class="panel-head">
-                <h2><?= e(t('dashboard.weekly_history')) ?></h2>
-                <a class="btn btn-ghost" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week=<?= e(date_to_iso_week((string) $selectedWeekStart)) ?>"><?= e(t('table.open_editor')) ?></a>
-            </div>
-            <div class="table-wrap">
-                <table class="table compact">
-                    <thead>
-                    <tr>
-                        <th><?= e(t('common.week')) ?></th>
-                        <th><?= e(t('common.status')) ?></th>
-                        <th><?= e(t('metric.step_failures')) ?></th>
-                        <th><?= e(t('metric.workout_failures')) ?></th>
-                        <th><?= e(t('metric.warnings')) ?></th>
-                        <th><?= e(t('strikes.economic_impact')) ?></th>
-                        <th><?= e(t('dashboard.strike_reduction')) ?></th>
-                        <th><?= e(t('dashboard.strikes_after_week')) ?></th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($selectedMetric['weekly'] as $week): ?>
-                        <?php
-                        $weekStrikesHref = '/?' . http_build_query([
-                            'page' => 'strikes_detail',
-                            'user_id' => (int) ($selectedUser['id'] ?? 0),
-                            'view' => (string) ($week['week_start'] ?? ''),
-                        ]);
-                        ?>
-                        <tr onclick="window.location='<?= e($weekStrikesHref) ?>'" style="cursor:pointer;">
-                            <td><a href="<?= e($weekStrikesHref) ?>"><?= e(format_date_eu((string) $week['week_start'])) ?> -> <?= e(format_date_eu((string) $week['week_end'])) ?></a></td>
-                            <td><?= e(label_for_status((string) $week['status'])) ?></td>
-                            <td><?= e((string) $week['step_failures']) ?></td>
-                            <td><?= e((string) $week['workout_failures']) ?></td>
-                            <td><?= e((string) ($week['skip_warnings'] ?? 0)) ?></td>
-                            <td><a href="<?= e($weekStrikesHref) ?>" class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) ($week['penalty'] ?? 0))) ?>">€<?= e(number_format((float) ($week['penalty'] ?? 0), 2, '.', '')) ?></a></td>
-                            <td><?= (int) $week['strike_reduction'] > 0 ? '-1' : '-' ?></td>
-                            <td><?= e((string) $week['strikes_after_week']) ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
         </article>
         <?php endif; ?>
 

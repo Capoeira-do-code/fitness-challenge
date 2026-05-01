@@ -28,9 +28,9 @@ declare(strict_types=1);
                 <?php endif; ?>
                 <div class="image-cropper" data-image-cropper>
                     <canvas width="320" height="320" data-image-crop-canvas></canvas>
-                    <p class="muted small" data-image-crop-empty>Selecciona una imagen para recortarla en formato 1:1.</p>
+                    <p class="muted small" data-image-crop-empty><?= e(t('admin.image_crop_hint')) ?></p>
                     <label>
-                        Zoom
+                        <?= e(t('common.zoom')) ?>
                         <input type="range" min="1" max="3" step="0.01" value="1" data-image-crop-zoom>
                     </label>
                 </div>

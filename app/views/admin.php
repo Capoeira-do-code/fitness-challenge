@@ -81,7 +81,7 @@ $backupStatusLabel = static function (string $status): string {
             <h2>Users</h2>
             <div class="inline-actions-mini">
                 <a class="btn btn-primary small" href="/?page=admin&section=users&create_user=1" data-spa-link><?= e(t('common.create')) ?></a>
-                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
             </div>
         </div>
 
@@ -101,7 +101,7 @@ $backupStatusLabel = static function (string $status): string {
         <div class="stack admin-create-view" data-spa-param-show="create_user" data-spa-value="1" <?= $createUserMode ? '' : 'hidden' ?>>
             <div class="panel-head">
                 <h3><?= e(t('users.create')) ?></h3>
-                <a class="btn btn-ghost" href="/?page=admin&section=users" data-spa-back aria-label="Volver">← Volver</a>
+                <a class="btn btn-ghost" href="/?page=admin&section=users" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
             </div>
             <form method="post" action="/?page=admin" class="stack">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -142,7 +142,7 @@ $backupStatusLabel = static function (string $status): string {
             <div class="stack admin-detail-view" data-spa-param-show="user_id" data-spa-value="<?= (int) $user['id'] ?>" <?= $selectedUserId === (int) $user['id'] ? '' : 'hidden' ?>>
                 <div class="panel-head">
                     <h3><?= e((string) $user['display_name']) ?></h3>
-                    <a class="btn btn-ghost" href="/?page=admin&section=users" data-spa-back aria-label="Volver">← Volver</a>
+                    <a class="btn btn-ghost" href="/?page=admin&section=users" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
                 </div>
                 <form method="post" action="/?page=admin" class="stack">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -185,7 +185,7 @@ $backupStatusLabel = static function (string $status): string {
     <article class="panel settings-panel<?= $activeSection === 'challenge' ? ' active' : '' ?>" data-spa-section="challenge" <?= $activeSection === 'challenge' ? '' : 'hidden' ?>>
         <div class="panel-head">
             <h2>Challenge</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
         </div>
         <form method="post" action="/?page=admin" class="stack compact-form">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -222,7 +222,7 @@ $backupStatusLabel = static function (string $status): string {
     <article class="panel settings-panel<?= $activeSection === 'app' ? ' active' : '' ?>" data-spa-section="app" <?= $activeSection === 'app' ? '' : 'hidden' ?>>
         <div class="panel-head">
             <h2>App</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
         </div>
         <form method="post" action="/?page=admin" class="stack compact-form">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -238,9 +238,9 @@ $backupStatusLabel = static function (string $status): string {
             <?php if (!empty($appIconPath)): ?><img class="settings-avatar-preview" src="<?= e(with_cache_buster('/?page=app_icon', $appIconVersion ?? null)) ?>" alt="<?= e(t('admin.app_icon')) ?>"><?php endif; ?>
             <div class="image-cropper" data-image-cropper>
                 <canvas width="320" height="320" data-image-crop-canvas></canvas>
-                <p class="muted small" data-image-crop-empty>Selecciona una imagen para recortarla en formato 1:1.</p>
+                <p class="muted small" data-image-crop-empty><?= e(t('admin.image_crop_hint')) ?></p>
                 <label>
-                    Zoom
+                    <?= e(t('common.zoom')) ?>
                     <input type="range" min="1" max="3" step="0.01" value="1" data-image-crop-zoom>
                 </label>
             </div>
@@ -316,7 +316,7 @@ $backupStatusLabel = static function (string $status): string {
     <article class="panel settings-panel<?= $activeSection === 'backups' ? ' active' : '' ?>" data-spa-section="backups" <?= $activeSection === 'backups' ? '' : 'hidden' ?>>
         <div class="panel-head">
             <h2><?= e(t('admin.backups_title')) ?></h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
         </div>
         <p class="muted"><?= e(t('admin.backups_subtitle')) ?></p>
 
@@ -419,7 +419,7 @@ $backupStatusLabel = static function (string $status): string {
             <h2>Habits</h2>
             <div class="inline-actions-mini">
                 <a class="btn btn-primary small" href="/?page=admin&section=habits&habit_id=new" data-spa-link><?= e(t('common.create')) ?></a>
-                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
             </div>
         </div>
 
@@ -439,7 +439,7 @@ $backupStatusLabel = static function (string $status): string {
         <div class="stack admin-create-view" data-spa-param-show="habit_id" data-spa-value="new" <?= $selectedHabitId === 'new' ? '' : 'hidden' ?>>
             <div class="panel-head">
                 <h3><?= e(t('common.save')) ?> <?= e(t('admin.habits')) ?></h3>
-                <a class="btn btn-ghost" href="/?page=admin&section=habits" data-spa-back aria-label="Volver">← Volver</a>
+                <a class="btn btn-ghost" href="/?page=admin&section=habits" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
             </div>
             <form method="post" action="/?page=admin" class="mini-card editable-card compact-form">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -456,7 +456,7 @@ $backupStatusLabel = static function (string $status): string {
             <div class="stack admin-detail-view" data-spa-param-show="habit_id" data-spa-value="<?= (int) $habit['id'] ?>" <?= $selectedHabitId === (string) ((int) $habit['id']) ? '' : 'hidden' ?>>
                 <div class="panel-head">
                     <h3><?= e((string) $habit['label']) ?></h3>
-                    <a class="btn btn-ghost" href="/?page=admin&section=habits" data-spa-back aria-label="Volver">← Volver</a>
+                    <a class="btn btn-ghost" href="/?page=admin&section=habits" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
                 </div>
                 <form method="post" action="/?page=admin" class="mini-card editable-card">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -468,7 +468,7 @@ $backupStatusLabel = static function (string $status): string {
                     <label class="check"><input type="checkbox" name="active" value="1" <?= (int) $habit['active'] === 1 ? 'checked' : '' ?>><?= e(t('common.active')) ?></label>
                     <button class="btn small btn-primary" type="submit"><?= e(t('common.save')) ?></button>
                 </form>
-                <form method="post" action="/?page=admin" onsubmit="return confirm('¿Eliminar este hábito?');">
+                <form method="post" action="/?page=admin" onsubmit="return confirm('<?= e(t('admin.delete_habit_confirm')) ?>');">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="delete_habit">
                     <input type="hidden" name="habit_id" value="<?= (int) $habit['id'] ?>">
@@ -483,7 +483,7 @@ $backupStatusLabel = static function (string $status): string {
             <h2>Workout Types</h2>
             <div class="inline-actions-mini">
                 <a class="btn btn-primary small" href="/?page=admin&section=workout_types&type_id=new" data-spa-link><?= e(t('common.create')) ?></a>
-                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
             </div>
         </div>
 
@@ -503,7 +503,7 @@ $backupStatusLabel = static function (string $status): string {
         <div class="stack admin-create-view" data-spa-param-show="type_id" data-spa-value="new" <?= $selectedTypeId === 'new' ? '' : 'hidden' ?>>
             <div class="panel-head">
                 <h3><?= e(t('workout_types.title')) ?> +</h3>
-                <a class="btn btn-ghost" href="/?page=admin&section=workout_types" data-spa-back aria-label="Volver">← Volver</a>
+                <a class="btn btn-ghost" href="/?page=admin&section=workout_types" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
             </div>
             <form method="post" action="/?page=admin" class="mini-card editable-card">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -517,7 +517,7 @@ $backupStatusLabel = static function (string $status): string {
             <div class="stack admin-detail-view" data-spa-param-show="type_id" data-spa-value="<?= (int) $type['id'] ?>" <?= $selectedTypeId === (string) ((int) $type['id']) ? '' : 'hidden' ?>>
                 <div class="panel-head">
                     <h3><?= e((string) $type['name']) ?></h3>
-                    <a class="btn btn-ghost" href="/?page=admin&section=workout_types" data-spa-back aria-label="Volver">← Volver</a>
+                    <a class="btn btn-ghost" href="/?page=admin&section=workout_types" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
                 </div>
                 <form method="post" action="/?page=admin" class="mini-card editable-card">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -527,7 +527,7 @@ $backupStatusLabel = static function (string $status): string {
                     <label class="check"><input type="checkbox" name="active" value="1" <?= (int) $type['active'] === 1 ? 'checked' : '' ?>><?= e(t('common.active')) ?></label>
                     <button class="btn small btn-primary" type="submit"><?= e(t('common.save')) ?></button>
                 </form>
-                <form method="post" action="/?page=admin" onsubmit="return confirm('¿Eliminar este tipo de entreno?');">
+                <form method="post" action="/?page=admin" onsubmit="return confirm('<?= e(t('admin.delete_workout_type_confirm')) ?>');">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="delete_workout_type">
                     <input type="hidden" name="type_id" value="<?= (int) $type['id'] ?>">
@@ -542,12 +542,12 @@ $backupStatusLabel = static function (string $status): string {
             <h2>Achievements</h2>
             <div class="inline-actions-mini">
                 <a class="btn btn-primary small" href="/?page=admin&section=achievements#achievement-create" data-spa-link><?= e(t('common.create')) ?></a>
-                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
             </div>
         </div>
 
         <section id="achievement-create" class="stack compact-form admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
-            <h3>Crear achievement</h3>
+            <h3><?= e(t('achievements.create')) ?></h3>
             <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack" data-achievement-form>
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="create_achievement">
@@ -610,7 +610,7 @@ $backupStatusLabel = static function (string $status): string {
         </section>
 
         <section class="stack admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
-            <h3>Achievements creados</h3>
+            <h3><?= e(t('admin.achievements_created')) ?></h3>
             <div class="settings-list compact-list">
                 <?php foreach (($adminAchievements ?? []) as $achievement): ?>
                     <?php
@@ -626,7 +626,7 @@ $backupStatusLabel = static function (string $status): string {
                                 . ' · '
                                 . (string) ($achievement['trigger_window'] ?? 'total');
                         } else {
-                            $conditionSummary = $triggerKey . ' · pendiente';
+                            $conditionSummary = $triggerKey . ' · ' . t('admin.pending');
                         }
                     }
                     $status = (int) ($achievement['active'] ?? 1) === 1 ? 'active' : 'inactive';
@@ -664,7 +664,7 @@ $backupStatusLabel = static function (string $status): string {
             <div class="stack admin-detail-view" data-spa-param-show="achievement_id" data-spa-value="<?= (int) $achievement['id'] ?>" <?= $selectedAchievementId === (int) $achievement['id'] ? '' : 'hidden' ?>>
                 <div class="panel-head">
                     <h3><?= e((string) $achievement['name']) ?></h3>
-                    <a class="btn btn-ghost" href="/?page=admin&section=achievements" data-spa-back aria-label="Volver">← Volver</a>
+                    <a class="btn btn-ghost" href="/?page=admin&section=achievements" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
                 </div>
                 <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack compact-form" data-achievement-form>
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -687,7 +687,7 @@ $backupStatusLabel = static function (string $status): string {
                         <?php if ($achievementImageUrl !== ''): ?>
                             <img class="settings-avatar-preview" src="<?= e($achievementImageUrl) ?>" alt="<?= e((string) $achievement['name']) ?>">
                         <?php else: ?>
-                            <div class="entries-calendar-empty">Sin foto</div>
+                            <div class="entries-calendar-empty"><?= e(t('admin.no_photo')) ?></div>
                         <?php endif; ?>
                     <?php endif; ?>
                     <div class="grid-inline" data-achievement-conditional-fields <?= $achievementConditional ? '' : 'hidden' ?>>
@@ -718,7 +718,7 @@ $backupStatusLabel = static function (string $status): string {
                     </div>
                     <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
                 </form>
-                <form method="post" action="/?page=admin" onsubmit="return confirm('¿Desactivar este achievement?');">
+                <form method="post" action="/?page=admin" onsubmit="return confirm('<?= e(t('admin.deactivate_achievement_confirm')) ?>');">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="deactivate_achievement">
                     <input type="hidden" name="achievement_id" value="<?= (int) $achievement['id'] ?>">
@@ -728,7 +728,7 @@ $backupStatusLabel = static function (string $status): string {
         <?php endforeach; ?>
 
         <section class="stack compact-form admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
-            <h3>Achievements awards</h3>
+            <h3><?= e(t('admin.achievement_awards')) ?></h3>
             <div class="card-list">
                 <?php foreach (($achievementAwards ?? []) as $award): ?>
                     <form method="post" action="/?page=admin" class="mini-card">
@@ -752,7 +752,7 @@ $backupStatusLabel = static function (string $status): string {
     <article class="panel settings-panel<?= $activeSection === 'audit' ? ' active' : '' ?>" data-spa-section="audit" <?= $activeSection === 'audit' ? '' : 'hidden' ?>>
         <div class="panel-head">
             <h2>Audit Log</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
         </div>
 
         <form method="get" action="/" class="control-strip audit-filter">
