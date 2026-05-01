@@ -2845,6 +2845,10 @@ if ($page === 'team') {
     $teamGoalsRaw = list_goals($pdo, 'team', null, (int) $team['id']);
     $teamGoals = [];
     $nowDateTime = new DateTimeImmutable('now');
+    $formatDebugNumber = static function (float $value): string {
+        $normalized = rtrim(rtrim(number_format($value, 4, '.', ''), '0'), '.');
+        return $normalized !== '' ? $normalized : '0';
+    };
     $challengeEndDeadline = null;
     $challengeEndDate = to_date((string) ($settings['challenge_end'] ?? ''), '');
     if ($challengeEndDate !== '') {
@@ -2908,6 +2912,14 @@ if ($page === 'team') {
             'progress_display' => $formatGoalValue($progressValue, $type, $unitLabel),
             'target_display' => $formatGoalValue($targetValue, $type, $unitLabel),
             'baseline_display' => $baselineDisplay,
+            'current_metric_value' => $currentMetricValue,
+            'baseline_value_numeric' => is_numeric($goalForProgress['baseline_value'] ?? null) ? (float) $goalForProgress['baseline_value'] : null,
+            'progress_debug' => [
+                'current_metric' => $formatDebugNumber($currentMetricValue),
+                'baseline' => is_numeric($goalForProgress['baseline_value'] ?? null) ? $formatDebugNumber((float) $goalForProgress['baseline_value']) : 'null',
+                'progress' => $formatDebugNumber($progressValue),
+                'target' => $formatDebugNumber($targetValue),
+            ],
             'start_date_resolved' => $goalStartDate !== '' ? $goalStartDate : null,
             'start_time_resolved' => $goalStartDate !== '' ? $goalStartTime : null,
             'start_at' => $goalStartAt instanceof DateTimeImmutable ? $goalStartAt->format('Y-m-d H:i') : null,
@@ -2919,6 +2931,8 @@ if ($page === 'team') {
             'is_expired' => $isExpired,
         ]);
     }
+
+    $teamGoalDebugEnabled = isset($_GET['debug_goal']) && (string) $_GET['debug_goal'] === '1';
 
     $teamActiveChallenge = null;
     $activeGoals = array_values(array_filter(
@@ -2996,6 +3010,7 @@ if ($page === 'team') {
         'teamMemberDetail' => $teamMemberDetail,
         'teamGoals' => $teamGoals,
         'teamActiveChallenge' => $teamActiveChallenge,
+        'teamGoalDebugEnabled' => $teamGoalDebugEnabled,
         'challengeSettings' => $settings,
         'teamAchievements' => list_awarded_achievements($pdo, null, (int) $team['id']),
         'canDeleteAchievements' => can_manage_team($pdo, $currentUser, (int) $team['id']),

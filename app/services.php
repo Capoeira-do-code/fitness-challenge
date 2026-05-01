@@ -2865,16 +2865,25 @@ function goal_target_type_uses_time_window(string $targetType): bool
     return in_array($type, ['steps', 'km', 'workouts', 'calories_burned', 'calories_consumed'], true);
 }
 
+function goal_target_type_uses_dynamic_window_progress(string $targetType): bool
+{
+    $type = normalize_goal_target_type($targetType);
+    return in_array($type, ['steps', 'km', 'workouts', 'calories_burned'], true);
+}
+
 function goal_time_window_bounds(array $goal, ?DateTimeImmutable $now = null): array
 {
     $nowDateTime = $now ?? new DateTimeImmutable('now');
-    $startAt = $nowDateTime;
-    $createdAtRaw = trim((string) ($goal['created_at'] ?? ''));
-    if ($createdAtRaw !== '') {
-        try {
-            $startAt = new DateTimeImmutable($createdAtRaw);
-        } catch (Throwable) {
-            $startAt = $nowDateTime;
+    $startAt = goal_start_datetime($goal);
+    if (!($startAt instanceof DateTimeImmutable)) {
+        $startAt = $nowDateTime;
+        $createdAtRaw = trim((string) ($goal['created_at'] ?? ''));
+        if ($createdAtRaw !== '') {
+            try {
+                $startAt = new DateTimeImmutable($createdAtRaw);
+            } catch (Throwable) {
+                $startAt = $nowDateTime;
+            }
         }
     }
 
@@ -2887,6 +2896,9 @@ function goal_time_window_bounds(array $goal, ?DateTimeImmutable $now = null): a
         } catch (Throwable) {
             $endAt = $nowDateTime;
         }
+    }
+    if ($endAt > $nowDateTime) {
+        $endAt = $nowDateTime;
     }
 
     if ($endAt < $startAt) {
@@ -3077,7 +3089,18 @@ function goal_team_progress_state(PDO $pdo, array $goal, array $teamSummary, ?Da
     $nowDateTime = $now ?? new DateTimeImmutable('now');
     $startAt = goal_start_datetime($goal);
     $hasStarted = !($startAt instanceof DateTimeImmutable) || $nowDateTime >= $startAt;
-    $currentMetricValue = goal_team_metric_value($goal, $teamSummary);
+    $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
+    $useDynamicWindowProgress = goal_target_type_uses_dynamic_window_progress($type);
+    $teamUsers = [];
+    if ($useDynamicWindowProgress) {
+        $teamId = (int) ($goal['team_id'] ?? 0);
+        if ($teamId > 0) {
+            $teamUsers = list_active_team_users($pdo, $teamId);
+        }
+    }
+    $currentMetricValue = $useDynamicWindowProgress
+        ? goal_window_metric_value_for_team($pdo, $goal, $teamUsers)
+        : goal_team_metric_value($goal, $teamSummary);
 
     if (!$hasStarted) {
         return [
@@ -3089,36 +3112,36 @@ function goal_team_progress_state(PDO $pdo, array $goal, array $teamSummary, ?Da
         ];
     }
 
-    $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
-    $usesWindowBaseline = ($startAt instanceof DateTimeImmutable) && goal_target_type_uses_time_window($type);
-    if ($usesWindowBaseline) {
-        $teamId = (int) ($goal['team_id'] ?? 0);
-        $teamUsers = $teamId > 0 ? list_active_team_users($pdo, $teamId) : [];
-        $baselineValue = goal_team_baseline_from_start($pdo, $goal, $teamUsers, $currentMetricValue, $nowDateTime);
-        $storedBaseline = is_numeric($goal['baseline_value'] ?? null) ? (float) $goal['baseline_value'] : null;
-        $goalId = (int) ($goal['id'] ?? 0);
-        if ($goalId > 0 && ($storedBaseline === null || abs($storedBaseline - $baselineValue) > 0.00001)) {
-            db_execute(
-                $pdo,
-                'UPDATE goals
-                 SET baseline_value = :baseline_value,
-                     updated_at = :updated_at
-                 WHERE id = :id',
-                [
-                    ':baseline_value' => $baselineValue,
-                    ':updated_at' => now_iso(),
-                    ':id' => $goalId,
-                ]
-            );
+    if ($useDynamicWindowProgress) {
+        $baselineRaw = $goal['baseline_value'] ?? null;
+        if (!is_numeric($baselineRaw) || abs((float) $baselineRaw) > 0.00001) {
+            $goalId = (int) ($goal['id'] ?? 0);
+            if ($goalId > 0) {
+                db_execute(
+                    $pdo,
+                    'UPDATE goals
+                     SET baseline_value = 0,
+                         updated_at = :updated_at
+                     WHERE id = :id',
+                    [
+                        ':updated_at' => now_iso(),
+                        ':id' => $goalId,
+                    ]
+                );
+            }
         }
-        $goal['baseline_value'] = $baselineValue;
-    } elseif (!is_numeric($goal['baseline_value'] ?? null)) {
+        $goal['baseline_value'] = 0.0;
+    }
+
+    if (!is_numeric($goal['baseline_value'] ?? null)) {
         $goalId = (int) ($goal['id'] ?? 0);
         $baselineValue = $currentMetricValue;
-        $teamId = (int) ($goal['team_id'] ?? 0);
-        if ($teamId > 0) {
-            $teamUsers = list_active_team_users($pdo, $teamId);
-            $baselineValue = goal_team_baseline_from_start($pdo, $goal, $teamUsers, $currentMetricValue, $nowDateTime);
+        if (!$useDynamicWindowProgress) {
+            $teamId = (int) ($goal['team_id'] ?? 0);
+            if ($teamId > 0) {
+                $teamUsersForBaseline = list_active_team_users($pdo, $teamId);
+                $baselineValue = goal_team_baseline_from_start($pdo, $goal, $teamUsersForBaseline, $currentMetricValue, $nowDateTime);
+            }
         }
         if ($goalId > 0) {
             db_execute(

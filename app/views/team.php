@@ -7,6 +7,7 @@ $teamView = (string) ($teamView ?? 'current_week');
 $teamWeekOptions = (array) ($teamWeekOptions ?? []);
 $goals = (array) ($teamGoals ?? []);
 $activeChallenge = is_array($teamActiveChallenge ?? null) ? (array) $teamActiveChallenge : null;
+$teamGoalDebugEnabled = !empty($teamGoalDebugEnabled) && !empty($canManageTeam);
 $teamSection = (string) ($teamSection ?? '');
 $teamMemberDetail = is_array($teamMemberDetail ?? null) ? (array) $teamMemberDetail : null;
 $nowDateTime = new DateTimeImmutable('now');
@@ -47,6 +48,9 @@ $teamBaseParams = [
     'page' => 'team',
     'team_id' => (int) ($team['id'] ?? 0),
 ];
+if ($teamGoalDebugEnabled) {
+    $teamBaseParams['debug_goal'] = '1';
+}
 if ($teamView !== '') {
     $teamBaseParams['view'] = $teamView;
 }
@@ -136,6 +140,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             }
         }
         $countdownText = $formatCountdownFromNow($countdownDeadline, $nowDateTime);
+        $activeProgressDebug = is_array($activeChallenge['progress_debug'] ?? null) ? (array) $activeChallenge['progress_debug'] : [];
         ?>
         <article class="panel team-active-challenge-panel<?= $activeIsExpired ? ' is-expired' : '' ?><?= $activeIsPreStart ? ' is-pending' : '' ?>" data-active-challenge-panel>
             <div class="panel-head team-active-challenge-head">
@@ -155,6 +160,14 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                         <div class="goal-progress"><span style="width: <?= e((string) $activeProgressVisual) ?>%"></span></div>
                         <small><?= e($formatPercent($activeProgressRaw)) ?>%</small>
                     </div>
+                    <?php if ($teamGoalDebugEnabled): ?>
+                        <small class="team-goal-debug" data-goal-debug>
+                            cur <?= e((string) ($activeProgressDebug['current_metric'] ?? '-')) ?>
+                            · base <?= e((string) ($activeProgressDebug['baseline'] ?? '-')) ?>
+                            · prog <?= e((string) ($activeProgressDebug['progress'] ?? '-')) ?>
+                            · target <?= e((string) ($activeProgressDebug['target'] ?? '-')) ?>
+                        </small>
+                    <?php endif; ?>
                 </div>
                 <div class="team-active-challenge-meta">
                     <span><strong><?= e(t('team.active_challenge_metric')) ?></strong><small><?= e((string) ($activeChallenge['target_type_label'] ?? t('common.other'))) ?></small></span>
@@ -172,6 +185,9 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         <form method="get" class="control-strip wrap">
             <input type="hidden" name="page" value="team">
             <input type="hidden" name="team_id" value="<?= (int) $team['id'] ?>">
+            <?php if ($teamGoalDebugEnabled): ?>
+                <input type="hidden" name="debug_goal" value="1">
+            <?php endif; ?>
             <?php if ($teamSection === 'member' && !empty($memberUser['id'])): ?>
                 <input type="hidden" name="section" value="member">
                 <input type="hidden" name="user_id" value="<?= (int) $memberUser['id'] ?>">
@@ -552,6 +568,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                             }
                             $goalTargetType = (string) ($goal['target_type_normalized'] ?? normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom')));
                             $goalCustomUnit = $goalTargetType === 'custom' ? trim((string) ($goal['unit_label'] ?? '')) : '';
+                            $progressDebug = is_array($goal['progress_debug'] ?? null) ? (array) $goal['progress_debug'] : [];
                             ?>
                             <article class="mini-card team-goal-card">
                                 <div class="team-goal-main">
@@ -584,6 +601,14 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                         </small>
                                     <?php endif; ?>
                                     <span><?= e((string) ($goal['progress_display'] ?? '0')) ?> / <?= e((string) ($goal['target_display'] ?? '-')) ?></span>
+                                    <?php if ($teamGoalDebugEnabled): ?>
+                                        <small class="team-goal-debug" data-goal-debug>
+                                            cur <?= e((string) ($progressDebug['current_metric'] ?? '-')) ?>
+                                            · base <?= e((string) ($progressDebug['baseline'] ?? '-')) ?>
+                                            · prog <?= e((string) ($progressDebug['progress'] ?? '-')) ?>
+                                            · target <?= e((string) ($progressDebug['target'] ?? '-')) ?>
+                                        </small>
+                                    <?php endif; ?>
                                     <?php if ($rewardText !== ''): ?>
                                         <small class="team-goal-reward"><?= e(t('achievements.reward')) ?>: <?= e($rewardText) ?></small>
                                     <?php endif; ?>
