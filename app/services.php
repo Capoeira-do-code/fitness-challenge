@@ -2237,6 +2237,51 @@ function random_motivation_quote_from_db(PDO $pdo): string
     return $quote !== '' ? $quote : random_motivation_quote();
 }
 
+function team_layout_widgets_default(): array
+{
+    return [
+        'metrics',
+        'active_challenge',
+        'leaderboard',
+        'challenges',
+        'members',
+        'daily_charts',
+        'cumulative_steps',
+        'cumulative_distance',
+        'weekly_charts',
+        'achievements',
+    ];
+}
+
+function normalize_team_layout_widgets(mixed $rawLayout): array
+{
+    $allowed = team_layout_widgets_default();
+    $posted = [];
+
+    if (is_string($rawLayout)) {
+        $decoded = json_decode($rawLayout, true);
+        $posted = is_array($decoded) ? $decoded : [];
+    } elseif (is_array($rawLayout)) {
+        $posted = $rawLayout;
+    }
+
+    $normalized = [];
+    foreach ($posted as $widget) {
+        $widgetKey = trim((string) $widget);
+        if ($widgetKey !== '' && in_array($widgetKey, $allowed, true) && !in_array($widgetKey, $normalized, true)) {
+            $normalized[] = $widgetKey;
+        }
+    }
+
+    foreach ($allowed as $widget) {
+        if (!in_array($widget, $normalized, true)) {
+            $normalized[] = $widget;
+        }
+    }
+
+    return $normalized;
+}
+
 function change_password(PDO $pdo, int $userId, string $currentPassword, string $newPassword): bool
 {
     $user = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => $userId]);
@@ -6439,16 +6484,135 @@ function prune_system_backups(PDO $pdo, array $config, int $keepCount): int
     return $deleted;
 }
 
-function ensure_zip_archive_available(): void
+function system_backup_zip_available(): bool
 {
-    if (!class_exists('ZipArchive')) {
-        throw new RuntimeException('PHP zip extension is not installed. Rebuild the Docker image or install/enable the zip extension for this PHP runtime.');
+    return class_exists('ZipArchive');
+}
+
+function system_backup_tar_available(): bool
+{
+    return class_exists('PharData');
+}
+
+function ensure_system_backup_archive_available(): void
+{
+    if (!system_backup_zip_available() && !system_backup_tar_available()) {
+        throw new RuntimeException('No backup archive method is available. Enable PHP zip or phar support.');
+    }
+}
+
+function system_backup_is_zip(string $archivePath): bool
+{
+    return strtolower(pathinfo($archivePath, PATHINFO_EXTENSION)) === 'zip';
+}
+
+function system_backup_create_zip_archive(string $archivePath, string $dbPath, array $uploadFiles, array $manifest): void
+{
+    if (!system_backup_zip_available()) {
+        throw new RuntimeException('PHP zip extension is not available.');
+    }
+
+    $zip = new ZipArchive();
+    $openResult = $zip->open($archivePath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+    if ($openResult !== true) {
+        throw new RuntimeException('Could not create backup archive.');
+    }
+    if (!$zip->addFile($dbPath, 'fitness.sqlite')) {
+        $zip->close();
+        throw new RuntimeException('Could not add database file to archive.');
+    }
+
+    foreach ($uploadFiles as $file) {
+        $absolute = (string) ($file['absolute'] ?? '');
+        $relative = (string) ($file['relative'] ?? '');
+        if ($absolute === '' || $relative === '') {
+            continue;
+        }
+        $zipPath = 'uploads/' . ltrim(str_replace('\\', '/', $relative), '/');
+        if (!$zip->addFile($absolute, $zipPath)) {
+            $zip->close();
+            throw new RuntimeException('Could not add upload file to archive.');
+        }
+    }
+
+    $manifestJson = json_encode($manifest, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+    if (!is_string($manifestJson) || !$zip->addFromString('manifest.json', $manifestJson)) {
+        $zip->close();
+        throw new RuntimeException('Could not write backup manifest.');
+    }
+    $zip->close();
+}
+
+function system_backup_create_tar_gz_archive(string $archivePath, string $backupDir, string $dbPath, array $uploadFiles, array $manifest): void
+{
+    if (!system_backup_tar_available()) {
+        throw new RuntimeException('PHP phar support is not available.');
+    }
+
+    $stageDir = $backupDir . '/.backup_stage_' . date('YmdHis') . '_' . bin2hex(random_bytes(4));
+    $tarPath = preg_replace('/\.gz$/i', '', $archivePath) ?: ($archivePath . '.tar');
+    if (!str_ends_with(strtolower($tarPath), '.tar')) {
+        $tarPath .= '.tar';
+    }
+
+    try {
+        if (!mkdir($stageDir, 0775, true) && !is_dir($stageDir)) {
+            throw new RuntimeException('Could not prepare backup workspace.');
+        }
+        if (!copy($dbPath, $stageDir . '/fitness.sqlite')) {
+            throw new RuntimeException('Could not stage database file for backup.');
+        }
+        foreach ($uploadFiles as $file) {
+            $absolute = (string) ($file['absolute'] ?? '');
+            $relative = (string) ($file['relative'] ?? '');
+            if ($absolute === '' || $relative === '') {
+                continue;
+            }
+            $targetPath = $stageDir . '/uploads/' . ltrim(str_replace('\\', '/', $relative), '/');
+            $targetDir = dirname($targetPath);
+            if (!is_dir($targetDir) && !mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
+                throw new RuntimeException('Could not stage upload files for backup.');
+            }
+            if (!copy($absolute, $targetPath)) {
+                throw new RuntimeException('Could not stage upload file for backup.');
+            }
+        }
+
+        $manifestJson = json_encode($manifest, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+        if (!is_string($manifestJson) || file_put_contents($stageDir . '/manifest.json', $manifestJson) === false) {
+            throw new RuntimeException('Could not write backup manifest.');
+        }
+
+        if (is_file($tarPath)) {
+            @unlink($tarPath);
+        }
+        if (is_file($archivePath)) {
+            @unlink($archivePath);
+        }
+
+        $phar = new PharData($tarPath);
+        $phar->buildFromDirectory($stageDir);
+        $phar->compress(Phar::GZ);
+        unset($phar);
+        if (is_file($tarPath)) {
+            @unlink($tarPath);
+        }
+        if (!is_file($archivePath)) {
+            throw new RuntimeException('Could not create compressed backup archive.');
+        }
+    } finally {
+        if (is_dir($stageDir)) {
+            system_backup_recursive_delete($stageDir);
+        }
+        if (is_file($tarPath)) {
+            @unlink($tarPath);
+        }
     }
 }
 
 function create_system_backup(PDO $pdo, array $config, string $triggerType, ?int $actorUserId = null): array
 {
-    ensure_zip_archive_available();
+    ensure_system_backup_archive_available();
 
     $trigger = in_array($triggerType, ['manual', 'auto'], true) ? $triggerType : 'manual';
     $lockHandle = system_backup_acquire_lock($config);
@@ -6463,7 +6627,8 @@ function create_system_backup(PDO $pdo, array $config, string $triggerType, ?int
         }
 
         $backupDir = ensure_system_backup_storage_dir($config);
-        $fileName = sprintf('backup_%s_%s_%s.zip', date('Ymd_His'), $trigger, bin2hex(random_bytes(4)));
+        $archiveExtension = system_backup_zip_available() ? 'zip' : 'tar.gz';
+        $fileName = sprintf('backup_%s_%s_%s.%s', date('Ymd_His'), $trigger, bin2hex(random_bytes(4)), $archiveExtension);
         $relativePath = system_backup_relative_path_from_name($fileName);
         $archivePath = $backupDir . '/' . $fileName;
         $uploadDir = rtrim((string) ($config['upload_dir'] ?? ''), '/\\');
@@ -6481,16 +6646,6 @@ function create_system_backup(PDO $pdo, array $config, string $triggerType, ?int
             ],
             'uploads' => [],
         ];
-
-        $zip = new ZipArchive();
-        $openResult = $zip->open($archivePath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
-        if ($openResult !== true) {
-            throw new RuntimeException('Could not create backup archive.');
-        }
-        if (!$zip->addFile($dbPath, 'fitness.sqlite')) {
-            $zip->close();
-            throw new RuntimeException('Could not add database file to archive.');
-        }
 
         foreach ($uploadFiles as $file) {
             $absolute = (string) ($file['absolute'] ?? '');
@@ -6510,12 +6665,11 @@ function create_system_backup(PDO $pdo, array $config, string $triggerType, ?int
             ];
         }
 
-        $manifestJson = json_encode($manifest, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
-        if (!is_string($manifestJson) || !$zip->addFromString('manifest.json', $manifestJson)) {
-            $zip->close();
-            throw new RuntimeException('Could not write backup manifest.');
+        if (system_backup_zip_available()) {
+            system_backup_create_zip_archive($archivePath, $dbPath, $uploadFiles, $manifest);
+        } else {
+            system_backup_create_tar_gz_archive($archivePath, $backupDir, $dbPath, $uploadFiles, $manifest);
         }
-        $zip->close();
 
         $sizeBytes = (int) (@filesize($archivePath) ?: 0);
         $checksum = hash_file('sha256', $archivePath) ?: null;
@@ -6617,69 +6771,90 @@ function mark_system_backup_restore_result(PDO $pdo, int $backupId, string $stat
     );
 }
 
+function system_backup_extract_archive_to(string $archivePath, string $destination): void
+{
+    if (!is_file($archivePath)) {
+        throw new RuntimeException('Backup file not found.');
+    }
+    if (!is_dir($destination) && !mkdir($destination, 0775, true) && !is_dir($destination)) {
+        throw new RuntimeException('Could not prepare restore workspace.');
+    }
+
+    if (system_backup_is_zip($archivePath)) {
+        if (!system_backup_zip_available()) {
+            throw new RuntimeException('This backup is a ZIP archive, but PHP zip support is not available.');
+        }
+        $zip = new ZipArchive();
+        if ($zip->open($archivePath) !== true) {
+            throw new RuntimeException('Backup archive could not be opened.');
+        }
+        if (!$zip->extractTo($destination)) {
+            $zip->close();
+            throw new RuntimeException('Backup archive could not be extracted.');
+        }
+        $zip->close();
+        return;
+    }
+
+    if (!system_backup_tar_available()) {
+        throw new RuntimeException('This backup requires PHP phar support to read tar archives.');
+    }
+    try {
+        $phar = new PharData($archivePath);
+        $phar->extractTo($destination, null, true);
+    } catch (Throwable $e) {
+        throw new RuntimeException('Backup archive could not be extracted.');
+    }
+}
+
 function validate_system_backup_archive(string $archivePath): array
 {
-    ensure_zip_archive_available();
+    ensure_system_backup_archive_available();
 
     if (!is_file($archivePath)) {
         throw new RuntimeException('Backup file not found.');
     }
 
-    $zip = new ZipArchive();
-    if ($zip->open($archivePath) !== true) {
-        throw new RuntimeException('Backup archive could not be opened.');
-    }
+    $tmpDir = rtrim(sys_get_temp_dir(), '/\\') . '/fitness_backup_validate_' . date('YmdHis') . '_' . bin2hex(random_bytes(4));
+    try {
+        system_backup_extract_archive_to($archivePath, $tmpDir);
 
-    $manifestRaw = $zip->getFromName('manifest.json');
-    if (!is_string($manifestRaw) || trim($manifestRaw) === '') {
-        $zip->close();
-        throw new RuntimeException('Backup archive is missing a manifest.');
-    }
-    $manifest = json_decode($manifestRaw, true);
-    if (!is_array($manifest)) {
-        $zip->close();
-        throw new RuntimeException('Backup manifest is invalid.');
-    }
-    if ($zip->locateName('fitness.sqlite') === false) {
-        $zip->close();
-        throw new RuntimeException('Backup archive is missing database data.');
-    }
-
-    $dbHashExpected = trim((string) ($manifest['db']['sha256'] ?? ''));
-    if ($dbHashExpected !== '') {
-        $stream = $zip->getStream('fitness.sqlite');
-        if ($stream === false) {
-            $zip->close();
-            throw new RuntimeException('Backup database stream is invalid.');
+        $manifestPath = $tmpDir . '/manifest.json';
+        $dbPath = $tmpDir . '/fitness.sqlite';
+        if (!is_file($manifestPath)) {
+            throw new RuntimeException('Backup archive is missing a manifest.');
         }
-        $hashCtx = hash_init('sha256');
-        while (!feof($stream)) {
-            $chunk = fread($stream, 1024 * 1024);
-            if ($chunk === false) {
-                fclose($stream);
-                $zip->close();
-                throw new RuntimeException('Backup database stream could not be read.');
-            }
-            if ($chunk !== '') {
-                hash_update($hashCtx, $chunk);
+        $manifestRaw = file_get_contents($manifestPath);
+        if (!is_string($manifestRaw) || trim($manifestRaw) === '') {
+            throw new RuntimeException('Backup archive is missing a manifest.');
+        }
+        $manifest = json_decode($manifestRaw, true);
+        if (!is_array($manifest)) {
+            throw new RuntimeException('Backup manifest is invalid.');
+        }
+        if (!is_file($dbPath)) {
+            throw new RuntimeException('Backup archive is missing database data.');
+        }
+
+        $dbHashExpected = trim((string) ($manifest['db']['sha256'] ?? ''));
+        if ($dbHashExpected !== '') {
+            $dbHashActual = hash_file('sha256', $dbPath) ?: '';
+            if (!hash_equals($dbHashExpected, $dbHashActual)) {
+                throw new RuntimeException('Backup database checksum mismatch.');
             }
         }
-        fclose($stream);
-        $dbHashActual = hash_final($hashCtx);
-        if (!hash_equals($dbHashExpected, $dbHashActual)) {
-            $zip->close();
-            throw new RuntimeException('Backup database checksum mismatch.');
+
+        return $manifest;
+    } finally {
+        if (is_dir($tmpDir)) {
+            system_backup_recursive_delete($tmpDir);
         }
     }
-
-    $zip->close();
-
-    return $manifest;
 }
 
 function restore_system_backup_archive(array $config, string $archivePath): void
 {
-    ensure_zip_archive_available();
+    ensure_system_backup_archive_available();
     validate_system_backup_archive($archivePath);
 
     $backupDir = ensure_system_backup_storage_dir($config);
@@ -6694,20 +6869,7 @@ function restore_system_backup_archive(array $config, string $archivePath): void
         throw new RuntimeException('Upload directory is not configured.');
     }
 
-    $zip = new ZipArchive();
-    if ($zip->open($archivePath) !== true) {
-        throw new RuntimeException('Backup archive could not be opened.');
-    }
-    if (!mkdir($tmpDir, 0775, true) && !is_dir($tmpDir)) {
-        $zip->close();
-        throw new RuntimeException('Could not prepare restore workspace.');
-    }
-    if (!$zip->extractTo($tmpDir)) {
-        $zip->close();
-        system_backup_recursive_delete($tmpDir);
-        throw new RuntimeException('Backup archive could not be extracted.');
-    }
-    $zip->close();
+    system_backup_extract_archive_to($archivePath, $tmpDir);
 
     $extractedDb = $tmpDir . '/fitness.sqlite';
     $extractedUploads = $tmpDir . '/uploads';

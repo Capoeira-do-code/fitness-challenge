@@ -2105,6 +2105,57 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
     ],
 ]);
 
+$TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
+    'en' => [
+        'team.edit_layout' => 'Edit layout',
+        'team.reset_layout' => 'Reset layout',
+        'team.layout_saved' => 'Team layout saved.',
+        'team.layout_hint' => 'Drag blocks to reorder the desktop team view.',
+        'team.widget_metrics' => 'Metrics',
+        'team.widget_active_challenge' => 'Active challenge',
+        'team.widget_leaderboard' => 'Leaderboard',
+        'team.widget_challenges' => 'Challenges',
+        'team.widget_members' => 'Members',
+        'team.widget_daily_charts' => 'Daily charts',
+        'team.widget_cumulative_steps' => 'Cumulative steps',
+        'team.widget_cumulative_distance' => 'Cumulative distance',
+        'team.widget_weekly_charts' => 'Weekly charts',
+        'team.widget_achievements' => 'Achievements',
+    ],
+    'es' => [
+        'team.edit_layout' => 'Editar layout',
+        'team.reset_layout' => 'Restablecer layout',
+        'team.layout_saved' => 'Layout del equipo guardado.',
+        'team.layout_hint' => 'Arrastra bloques para reordenar la vista desktop del equipo.',
+        'team.widget_metrics' => 'Metricas',
+        'team.widget_active_challenge' => 'Challenge activo',
+        'team.widget_leaderboard' => 'Leaderboard',
+        'team.widget_challenges' => 'Challenges',
+        'team.widget_members' => 'Miembros',
+        'team.widget_daily_charts' => 'Graficas diarias',
+        'team.widget_cumulative_steps' => 'Pasos acumulados',
+        'team.widget_cumulative_distance' => 'Distancia acumulada',
+        'team.widget_weekly_charts' => 'Graficas semanales',
+        'team.widget_achievements' => 'Achievements',
+    ],
+    'it' => [
+        'team.edit_layout' => 'Modifica layout',
+        'team.reset_layout' => 'Ripristina layout',
+        'team.layout_saved' => 'Layout team salvato.',
+        'team.layout_hint' => 'Trascina i blocchi per riordinare la vista desktop del team.',
+        'team.widget_metrics' => 'Metriche',
+        'team.widget_active_challenge' => 'Challenge attiva',
+        'team.widget_leaderboard' => 'Leaderboard',
+        'team.widget_challenges' => 'Challenge',
+        'team.widget_members' => 'Membri',
+        'team.widget_daily_charts' => 'Grafici giornalieri',
+        'team.widget_cumulative_steps' => 'Passi cumulativi',
+        'team.widget_cumulative_distance' => 'Distanza cumulativa',
+        'team.widget_weekly_charts' => 'Grafici settimanali',
+        'team.widget_achievements' => 'Achievement',
+    ],
+]);
+
 function locale_options(): array
 {
     return [

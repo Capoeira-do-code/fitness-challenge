@@ -1733,6 +1733,59 @@
         });
     };
 
+    const initTeamLayoutEditor = () => {
+        document.querySelectorAll('[data-team-layout-list]').forEach((list) => {
+            if (!(list instanceof HTMLElement)) {
+                return;
+            }
+
+            let dragged = null;
+
+            const getAfterElement = (container, y) => {
+                const items = [...container.querySelectorAll('[data-team-layout-item]:not(.is-dragging)')];
+                return items.reduce((closest, child) => {
+                    const box = child.getBoundingClientRect();
+                    const offset = y - box.top - box.height / 2;
+                    if (offset < 0 && offset > closest.offset) {
+                        return { offset, element: child };
+                    }
+
+                    return closest;
+                }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+            };
+
+            list.querySelectorAll('[data-team-layout-item]').forEach((item) => {
+                if (!(item instanceof HTMLElement)) {
+                    return;
+                }
+
+                item.addEventListener('dragstart', () => {
+                    dragged = item;
+                    item.classList.add('is-dragging');
+                });
+
+                item.addEventListener('dragend', () => {
+                    item.classList.remove('is-dragging');
+                    dragged = null;
+                });
+            });
+
+            list.addEventListener('dragover', (event) => {
+                event.preventDefault();
+                if (!(dragged instanceof HTMLElement)) {
+                    return;
+                }
+
+                const afterElement = getAfterElement(list, event.clientY);
+                if (afterElement === null) {
+                    list.appendChild(dragged);
+                } else {
+                    list.insertBefore(dragged, afterElement);
+                }
+            });
+        });
+    };
+
     const initAll = () => {
         const safeInit = (initFn) => {
             try {
@@ -1753,6 +1806,7 @@
         safeInit(initProfileConfigEditor);
         safeInit(initImageCroppers);
         safeInit(initProfilePdfExport);
+        safeInit(initTeamLayoutEditor);
     };
 
     if (document.readyState === 'loading') {

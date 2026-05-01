@@ -96,6 +96,13 @@ foreach ($leaderboardRows as $idx => $row) {
 $teamMetricDetail = is_array($teamMetricDetail ?? null) ? $teamMetricDetail : null;
 $teamMetricTitle = is_array($teamMetricDetail) ? (string) ($teamMetricDetail['title'] ?? '') : '';
 $isTeamOverview = $teamSection === '' && $teamMetricDetail === null;
+$teamLayoutWidgets = normalize_team_layout_widgets((string) ($currentUser['team_layout_json'] ?? ''));
+$teamLayoutIndex = array_flip($teamLayoutWidgets);
+$teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($teamLayoutIndex): string {
+    $desktopOrder = (int) (($teamLayoutIndex[$widget] ?? 0) + 1) * 10;
+
+    return '--team-order:' . $desktopOrder . '; --team-mobile-order:' . $mobileOrder . ';';
+};
 
 $memberUser = is_array($teamMemberDetail['user'] ?? null) ? (array) $teamMemberDetail['user'] : [];
 $memberMetric = is_array($teamMemberDetail['metric'] ?? null) ? (array) $teamMemberDetail['metric'] : [];
@@ -147,7 +154,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         $activeProgressDebug = is_array($activeChallenge['progress_debug'] ?? null) ? (array) $activeChallenge['progress_debug'] : [];
         ob_start();
         ?>
-        <article class="panel team-active-challenge-panel<?= $activeIsExpired ? ' is-expired' : '' ?><?= $activeIsPreStart ? ' is-pending' : '' ?>" data-active-challenge-panel style="order: 30">
+        <article class="panel team-layout-item team-widget-active-challenge team-active-challenge-panel<?= $activeIsExpired ? ' is-expired' : '' ?><?= $activeIsPreStart ? ' is-pending' : '' ?>" data-active-challenge-panel style="<?= e($teamWidgetStyle('active_challenge', 20)) ?>">
             <div class="panel-head team-active-challenge-head">
                 <div>
                     <p class="eyebrow"><?= e(t('team.active_challenge_title')) ?></p>
@@ -364,7 +371,43 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             ? min(100, round(($summaryWorkouts / $summaryWorkoutTarget) * 100))
             : 0;
         ?>
-        <article class="panel team-leaderboard-panel" style="order: 10">
+        <div class="team-layout-grid">
+        <div class="metric-grid team-layout-item team-widget-metrics" style="<?= e($teamWidgetStyle('metrics', 10)) ?>">
+            <a class="metric-card metric-card-link" href="<?= e($teamMetricUrl('steps')) ?>">
+                <div class="progress-ring" style="--value: 100;"><span><?= e($formatInt($summarySteps)) ?></span></div>
+                <div><span><?= e(t('metric.total_steps')) ?></span><strong><?= e($formatInt($summarySteps)) ?></strong><p><?= e(t('team.all_members')) ?></p></div>
+            </a>
+            <a class="metric-card metric-card-link" href="<?= e($teamMetricUrl('distance')) ?>">
+                <div class="progress-ring" style="--value: <?= e((string) min(100, $summaryDistance)) ?>;"><span><?= e($formatKm($summaryDistance)) ?></span></div>
+                <div><span><?= e(t('metric.total_km')) ?></span><strong><?= e($formatKm($summaryDistance)) ?> km</strong><p><?= e(t('team.all_members')) ?></p></div>
+            </a>
+            <a class="metric-card metric-card-link" href="<?= e($teamMetricUrl('workouts')) ?>">
+                <div class="progress-ring" style="--value: <?= e((string) $workoutProgress) ?>;"><span><?= e($formatInt($summaryWorkouts)) ?></span></div>
+                <div>
+                    <span><?= e(t('metric.workouts')) ?></span>
+                    <strong><?= e($formatInt($summaryWorkouts)) ?><?php if ($summaryWorkoutTarget > 0): ?> / <?= e($formatInt($summaryWorkoutTarget)) ?><?php endif; ?></strong>
+                    <p><?= e(t('team.all_members')) ?></p>
+                </div>
+            </a>
+            <a class="metric-card metric-card-link" href="<?= e($teamMetricUrl('score')) ?>">
+                <div class="progress-ring" style="--value: <?= e((string) min(100, $summaryScore)) ?>;"><span><?= e($formatScore($summaryScore)) ?></span></div>
+                <div><span><?= e(t('metric.score')) ?></span><strong><?= e($formatScore($summaryScore)) ?></strong><p><?= e(t('team.avg_score')) ?></p></div>
+            </a>
+            <a class="metric-card metric-card-link" href="<?= e($teamMetricUrl('strikes')) ?>">
+                <div class="progress-ring" style="--value: <?= e((string) max(0, 100 - ((int) $summaryStrikes * 8))) ?>;"><span><?= e($formatInt($summaryStrikes)) ?></span></div>
+                <div>
+                    <span><?= e(t('metric.strikes')) ?></span>
+                    <strong><?= e($formatInt($summaryStrikes)) ?></strong>
+                    <p><?= e(t('metric.penalty')) ?>: €<?= e($formatMoney($summaryPenalty)) ?></p>
+                </div>
+            </a>
+        </div>
+
+        <?php if ($activeChallengeHero !== ''): ?>
+            <?= $activeChallengeHero ?>
+        <?php endif; ?>
+
+        <article class="panel team-layout-item team-widget-leaderboard team-leaderboard-panel" style="<?= e($teamWidgetStyle('leaderboard', 30)) ?>">
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('dashboard.ranking')) ?></p>
@@ -402,8 +445,10 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                             <span><strong><?= e($formatInt((float) ($row['steps'] ?? 0))) ?></strong><small><?= e(t('metric.steps')) ?></small></span>
                             <span><strong><?= e($formatKm((float) ($row['distance'] ?? 0))) ?> km</strong><small><?= e(t('metric.distance_km')) ?></small></span>
                             <span><strong><?= e($formatInt((float) ($row['workouts'] ?? 0))) ?></strong><small><?= e(t('metric.workouts')) ?></small></span>
-                            <span><strong><?= e($formatInt((float) ($row['strikes'] ?? 0))) ?></strong><small><?= e(t('metric.strikes')) ?></small></span>
-                            <span><strong class="penalty-chip penalty-chip-<?= e($penaltyClass) ?>">€<?= e($formatMoney((float) $penaltyValue)) ?></strong><small><?= e(t('metric.penalty')) ?></small></span>
+                            <span class="team-leaderboard-strikes">
+                                <strong><?= e($formatInt((float) ($row['strikes'] ?? 0))) ?></strong>
+                                <small><?= e(t('metric.strikes')) ?> · <span class="penalty-chip penalty-chip-<?= e($penaltyClass) ?>">€<?= e($formatMoney((float) $penaltyValue)) ?></span></small>
+                            </span>
                         </div>
                     </a>
                 <?php endforeach; ?>
@@ -413,15 +458,14 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             </div>
         </article>
 
-        <div class="grid-two" style="order: 20">
-            <article class="panel">
+            <article class="panel team-layout-item team-widget-challenges team-challenges-panel" style="<?= e($teamWidgetStyle('challenges', 40)) ?>">
                 <div class="panel-head">
                     <div>
                         <p class="eyebrow"><?= e(t('team.challenges')) ?></p>
                         <h2><?= e(t('team.challenges')) ?></h2>
                     </div>
                     <?php if (!empty($canManageTeam)): ?>
-                        <button class="btn btn-primary" type="button" data-team-goal-open data-goal-mode="create"><?= e(t('common.create')) ?></button>
+                        <button class="btn btn-primary small team-panel-create-btn" type="button" data-team-goal-open data-goal-mode="create"><?= e(t('common.create')) ?></button>
                     <?php endif; ?>
                 </div>
 
@@ -567,7 +611,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     </div>
                 <?php endif; ?>
             </article>
-            <article class="panel">
+            <article class="panel team-layout-item team-widget-members team-members-panel" style="<?= e($teamWidgetStyle('members', 50)) ?>">
                 <div class="panel-head">
                     <div>
                         <p class="eyebrow"><?= e(t('team.members')) ?></p>
@@ -595,48 +639,8 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     <?php endforeach; ?>
                 </div>
             </article>
-        </div>
 
-        <?php if ($activeChallengeHero !== ''): ?>
-            <?= $activeChallengeHero ?>
-        <?php endif; ?>
-
-        <div class="metric-grid" style="order: 40">
-            <a class="metric-card metric-card-link" href="<?= e($teamMetricUrl('steps')) ?>">
-                <div class="progress-ring" style="--value: 100;"><span><?= e($formatInt($summarySteps)) ?></span></div>
-                <div><span><?= e(t('metric.total_steps')) ?></span><strong><?= e($formatInt($summarySteps)) ?></strong><p><?= e(t('team.all_members')) ?></p></div>
-            </a>
-            <a class="metric-card metric-card-link" href="<?= e($teamMetricUrl('distance')) ?>">
-                <div class="progress-ring" style="--value: <?= e((string) min(100, $summaryDistance)) ?>;"><span><?= e($formatKm($summaryDistance)) ?></span></div>
-                <div><span><?= e(t('metric.total_km')) ?></span><strong><?= e($formatKm($summaryDistance)) ?> km</strong><p><?= e(t('team.all_members')) ?></p></div>
-            </a>
-            <a class="metric-card metric-card-link" href="<?= e($teamMetricUrl('workouts')) ?>">
-                <div class="progress-ring" style="--value: <?= e((string) $workoutProgress) ?>;"><span><?= e($formatInt($summaryWorkouts)) ?></span></div>
-                <div>
-                    <span><?= e(t('metric.workouts')) ?></span>
-                    <strong><?= e($formatInt($summaryWorkouts)) ?><?php if ($summaryWorkoutTarget > 0): ?> / <?= e($formatInt($summaryWorkoutTarget)) ?><?php endif; ?></strong>
-                    <p><?= e(t('team.all_members')) ?></p>
-                </div>
-            </a>
-            <a class="metric-card metric-card-link" href="<?= e($teamMetricUrl('score')) ?>">
-                <div class="progress-ring" style="--value: <?= e((string) min(100, $summaryScore)) ?>;"><span><?= e($formatScore($summaryScore)) ?></span></div>
-                <div><span><?= e(t('metric.score')) ?></span><strong><?= e($formatScore($summaryScore)) ?></strong><p><?= e(t('team.avg_score')) ?></p></div>
-            </a>
-            <a class="metric-card metric-card-link" href="<?= e($teamMetricUrl('strikes')) ?>">
-                <div class="progress-ring" style="--value: <?= e((string) max(0, 100 - ((int) $summaryStrikes * 8))) ?>;"><span><?= e($formatInt($summaryStrikes)) ?></span></div>
-                <div><span><?= e(t('metric.strikes')) ?></span><strong><?= e($formatInt($summaryStrikes)) ?></strong><p><?= e(t('team.all_members')) ?></p></div>
-            </a>
-            <a class="metric-card metric-card-link" href="<?= e($teamMetricUrl('penalty')) ?>">
-                <div class="progress-ring" style="--value: <?= e((string) max(0, 100 - min(100, $summaryPenalty / 5))) ?>;"><span>€<?= e($formatMoney($summaryPenalty)) ?></span></div>
-                <div>
-                    <span><?= e(t('metric.penalty')) ?></span>
-                    <strong>€<?= e($formatMoney($summaryPenalty)) ?></strong>
-                    <p><?= e(t('team.all_members')) ?> · <?= e(t('team.lower_is_better')) ?></p>
-                </div>
-            </a>
-        </div>
-
-        <div class="grid-two">
+        <div class="grid-two team-layout-item team-widget-daily-charts" style="<?= e($teamWidgetStyle('daily_charts', 60)) ?>">
             <article class="panel chart-card">
                 <h2><?= e(t('team.steps_over_time')) ?></h2>
                 <canvas id="teamStepsChart" height="170"></canvas>
@@ -647,23 +651,16 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             </article>
         </div>
 
-        <div class="section-heading team-cumulative-heading" style="order: 60">
-            <h2><?= e(t('team.cumulative_progress')) ?></h2>
-            <p class="muted"><?= e(t('team.cumulative_progress_hint')) ?></p>
-        </div>
+        <article class="panel chart-card team-layout-item team-widget-cumulative-steps team-cumulative-chart-card" style="<?= e($teamWidgetStyle('cumulative_steps', 70)) ?>">
+            <h2><?= e(t('team.cumulative_steps')) ?></h2>
+            <canvas id="teamCumulativeStepsChart" height="170"></canvas>
+        </article>
+        <article class="panel chart-card team-layout-item team-widget-cumulative-distance team-cumulative-chart-card" style="<?= e($teamWidgetStyle('cumulative_distance', 80)) ?>">
+            <h2><?= e(t('team.cumulative_distance')) ?></h2>
+            <canvas id="teamCumulativeDistanceChart" height="170"></canvas>
+        </article>
 
-        <div class="grid-two team-cumulative-grid" style="order: 61">
-            <article class="panel chart-card team-cumulative-chart-card">
-                <h3><?= e(t('team.cumulative_steps')) ?></h3>
-                <canvas id="teamCumulativeStepsChart" height="170"></canvas>
-            </article>
-            <article class="panel chart-card team-cumulative-chart-card">
-                <h3><?= e(t('team.cumulative_distance')) ?></h3>
-                <canvas id="teamCumulativeDistanceChart" height="170"></canvas>
-            </article>
-        </div>
-
-        <div class="grid-two" style="order: 70">
+        <div class="grid-two team-layout-item team-widget-weekly-charts" style="<?= e($teamWidgetStyle('weekly_charts', 90)) ?>">
             <article class="panel chart-card">
                 <h2><?= e(t('team.workouts_over_time')) ?></h2>
                 <canvas id="teamWorkoutsChart" height="170"></canvas>
@@ -674,7 +671,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             </article>
         </div>
 
-        <article class="panel" style="order: 90">
+        <article class="panel team-layout-item team-widget-achievements team-achievements-panel" style="<?= e($teamWidgetStyle('achievements', 100)) ?>">
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('achievements.title')) ?></p>
@@ -688,21 +685,25 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 <?php else: ?>
                     <?php foreach ($teamAchievements as $achievement): ?>
                         <?php $deleteFormId = 'delete-achievement-team-' . (int) $achievement['id']; ?>
-                        <article class="achievement-card">
-                            <?php if (!empty($achievement['image_path'])): ?>
-                                <?php $teamAwardImageUrl = media_url((string) ($achievement['image_path'] ?? '')); ?>
-                                <?php if ($teamAwardImageUrl !== ''): ?>
-                                    <img src="<?= e($teamAwardImageUrl) ?>" alt="<?= e((string) $achievement['name']) ?>">
+                        <article class="achievement-card team-achievement-card">
+                            <div class="team-achievement-media">
+                                <?php if (!empty($achievement['image_path'])): ?>
+                                    <?php $teamAwardImageUrl = media_url((string) ($achievement['image_path'] ?? '')); ?>
+                                    <?php if ($teamAwardImageUrl !== ''): ?>
+                                        <img src="<?= e($teamAwardImageUrl) ?>" alt="<?= e((string) $achievement['name']) ?>">
+                                    <?php else: ?>
+                                        <span>*</span>
+                                    <?php endif; ?>
                                 <?php else: ?>
                                     <span>*</span>
                                 <?php endif; ?>
-                            <?php else: ?>
-                                <span>*</span>
-                            <?php endif; ?>
-                            <strong><?= e((string) $achievement['name']) ?></strong>
-                            <p><?= e((string) $achievement['description']) ?></p>
-                            <?php if (!empty($achievement['reward_text'])): ?><small><?= e(t('achievements.reward')) ?>: <?= e((string) $achievement['reward_text']) ?></small><?php endif; ?>
-                            <small><?= e((string) $achievement['awarded_at']) ?></small>
+                            </div>
+                            <div class="team-achievement-body">
+                                <strong><?= e((string) $achievement['name']) ?></strong>
+                                <p><?= e((string) $achievement['description']) ?></p>
+                                <?php if (!empty($achievement['reward_text'])): ?><small><?= e(t('achievements.reward')) ?>: <?= e((string) $achievement['reward_text']) ?></small><?php endif; ?>
+                                <small class="team-achievement-date"><?= e(format_date_eu((string) $achievement['awarded_at'])) ?></small>
+                            </div>
                             <?php if (!empty($canDeleteAchievements)): ?>
                                 <form method="post" action="/?page=team" class="achievement-remove" id="<?= e($deleteFormId) ?>">
                                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -720,6 +721,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 <button class="btn btn-ghost btn-block js-toggle-achievements" type="button" data-expand-label="<?= e(t('common.view_all')) ?>" data-collapse-label="<?= e(t('common.view_less')) ?>"><?= e(t('common.view_all')) ?></button>
             <?php endif; ?>
         </article>
+        </div>
 
         <div class="confirm-modal" hidden aria-hidden="true" data-team-goal-modal>
             <div class="confirm-modal-backdrop" data-team-goal-close></div>

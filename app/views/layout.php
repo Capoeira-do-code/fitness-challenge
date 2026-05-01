@@ -34,9 +34,9 @@ $unreadNotificationsCount = $loggedIn ? user_unread_notifications_count($GLOBALS
 
 $renderMobileIcon = static function (string $icon): string {
     return match ($icon) {
-        'home' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5v10.5a1 1 0 0 1-1 1h-5.5v-6.5h-5V22H4a1 1 0 0 1-1-1z"/></svg>',
-        'users' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11a4 4 0 1 0-3.999-4A4 4 0 0 0 16 11Zm-8 0a3 3 0 1 0-2.999-3A3 3 0 0 0 8 11Zm0 2c-2.67 0-8 1.34-8 4v1h10v-1c0-1.16.62-2.16 1.67-2.94A11.2 11.2 0 0 0 8 13Zm8 0c-2.67 0-8 1.34-8 4v1h16v-1c0-2.66-5.33-4-8-4Z"/></svg>',
-        default => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Zm0 14c-4.42 0-8 2.01-8 4.5V22h16v-1.5c0-2.49-3.58-4.5-8-4.5Z"/></svg>',
+        'home' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h5v-5h4v5h5v-9.5"/></svg>',
+        'users' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+        default => '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>',
     };
 };
 ?>
@@ -56,7 +56,7 @@ $renderMobileIcon = static function (string $icon): string {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/styles.css?v=21">
+    <link rel="stylesheet" href="/assets/styles.css?v=22">
 </head>
 <?php
 $bodyClasses = [];
@@ -168,6 +168,6 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     </nav>
 <?php endif; ?>
 
-<script src="/assets/main.js?v=17"></script>
+<script src="/assets/main.js?v=18"></script>
 </body>
 </html>

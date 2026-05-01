@@ -264,6 +264,58 @@ img.settings-avatar-preview {
     box-shadow: var(--shadow);
 }
 
+.team-layout-editor {
+    display: grid;
+    gap: 0.55rem;
+    padding-top: 0.72rem;
+    border-top: 1px solid var(--line);
+}
+
+.team-layout-editor-head {
+    display: grid;
+    gap: 0.1rem;
+}
+
+.team-layout-editor-head small {
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
+.team-layout-editor-list {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.team-layout-editor-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.58rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fbfdfc;
+    cursor: grab;
+    font-size: 0.86rem;
+    font-weight: 750;
+}
+
+.team-layout-editor-item.is-dragging {
+    opacity: 0.52;
+}
+
+.team-layout-drag-handle {
+    color: var(--muted);
+    font-weight: 900;
+    letter-spacing: -0.08em;
+}
+
+.team-layout-editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.4rem;
+}
+
 .inline-context-sub {
     border-top: 1px solid var(--line);
     padding-top: 0.7rem;
@@ -580,19 +632,20 @@ img.settings-avatar-preview {
 
 .bottom-nav {
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    left: 0.55rem;
+    right: 0.55rem;
+    bottom: calc(0.45rem + env(safe-area-inset-bottom));
     z-index: 120;
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: 1fr;
-    gap: 0.35rem;
-    padding: 0.45rem 0.7rem calc(0.45rem + env(safe-area-inset-bottom));
-    background: rgba(255, 255, 255, 0.96);
-    border-top: 1px solid var(--line);
-    box-shadow: var(--shadow);
-    backdrop-filter: blur(16px);
+    gap: 0.28rem;
+    padding: 0.28rem;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(214, 226, 221, 0.92);
+    border-radius: 18px;
+    box-shadow: 0 16px 38px rgba(22, 35, 43, 0.16);
+    backdrop-filter: blur(18px);
     overflow-x: auto;
     transition: transform 0.22s ease, opacity 0.22s ease;
 }
@@ -616,39 +669,45 @@ img.settings-avatar-preview {
 .bottom-nav a {
     display: grid;
     place-items: center;
-    gap: 0.18rem;
-    min-width: 48px;
-    padding: 0.45rem 0.35rem;
+    gap: 0.12rem;
+    min-width: 56px;
+    min-height: 50px;
+    padding: 0.38rem 0.35rem;
     color: var(--muted);
-    border-radius: var(--radius);
+    border-radius: 14px;
     font-size: 0.68rem;
     font-weight: 800;
+    line-height: 1;
 }
 
 .bottom-nav a.active {
     color: var(--ink);
-    background: var(--surface-2);
+    background: rgba(20, 163, 139, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(20, 163, 139, 0.18);
 }
 
 .nav-icon {
     display: grid;
     place-items: center;
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
-    background: #e5eeeb;
+    width: 25px;
+    height: 25px;
+    border-radius: 999px;
+    color: currentColor;
 }
 
 .nav-icon svg {
-    width: 16px;
-    height: 16px;
-    fill: currentColor;
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
     display: block;
 }
 
 .bottom-nav a.active .nav-icon {
-    background: var(--primary);
-    color: #fff;
+    color: var(--primary);
 }
 
 .stack,
@@ -1946,10 +2005,31 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     box-shadow: 0 8px 24px rgba(22, 35, 43, 0.12);
 }
 
+.team-layout-grid {
+    display: grid;
+    gap: 0.9rem;
+}
+
+.team-layout-item {
+    order: var(--team-order, 50);
+    min-width: 0;
+}
+
+.team-panel-create-btn {
+    justify-self: end;
+    min-width: 0;
+    padding-inline: 0.78rem;
+}
+
 .team-leaderboard-user {
     display: flex;
     align-items: center;
     gap: 0.45rem;
+    min-width: 0;
+}
+
+.team-leaderboard-user > span:last-child {
+    min-width: 0;
 }
 
 .team-leaderboard-cards {
@@ -1959,7 +2039,8 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 
 .team-leaderboard-card {
     display: grid;
-    gap: 0.7rem;
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.45fr);
+    gap: 0.75rem;
     padding: 0.85rem;
     border: 1px solid var(--line);
     border-radius: var(--radius);
@@ -2000,8 +2081,8 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 
 .team-leaderboard-metrics {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.55rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.42rem;
 }
 
 .team-leaderboard-metrics > span {
@@ -2021,6 +2102,13 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 .team-leaderboard-metrics small {
     color: var(--muted);
     font-size: 0.72rem;
+}
+
+.team-leaderboard-strikes .penalty-chip {
+    display: inline-flex;
+    margin-left: 0.12rem;
+    padding: 0.05rem 0.32rem;
+    font-size: 0.68rem;
 }
 
 .team-leaderboard-top-row {
@@ -2302,6 +2390,7 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 
 .team-goal-card {
     display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.75rem;
     border: 1px solid var(--line);
     background: #fbfdfc;
@@ -2318,6 +2407,24 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     justify-content: space-between;
     gap: 0.6rem;
     align-items: center;
+}
+
+.team-challenges-panel .panel-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.team-members-panel .card-list {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.team-members-panel .member-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+}
+
+.team-members-panel .member-card .btn {
+    white-space: nowrap;
 }
 
 .team-goal-status {
@@ -3743,6 +3850,54 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     font-size: 0.86rem;
 }
 
+.team-achievements-panel .achievement-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.team-achievement-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.72rem;
+    min-height: 112px;
+}
+
+.team-achievement-media {
+    display: grid;
+    place-items: center;
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(20, 163, 139, 0.12);
+}
+
+.team-achievement-media > span {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: var(--primary);
+    color: #fff;
+    font-weight: 900;
+}
+
+.team-achievement-media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.team-achievement-body {
+    display: grid;
+    gap: 0.16rem;
+    min-width: 0;
+}
+
+.team-achievement-date {
+    font-weight: 750;
+}
+
 .team-add-form {
     align-items: end;
 }
@@ -3828,6 +3983,27 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     .dashboard-layout {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .team-layout-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: start;
+    }
+
+    .team-widget-metrics,
+    .team-widget-active-challenge,
+    .team-widget-leaderboard,
+    .team-widget-daily-charts,
+    .team-widget-weekly-charts,
+    .team-widget-achievements {
+        grid-column: 1 / -1;
+    }
+
+    .team-widget-challenges,
+    .team-widget-members,
+    .team-widget-cumulative-steps,
+    .team-widget-cumulative-distance {
+        grid-column: span 1;
+    }
 }
 
 @media (min-width: 900px) {
@@ -3857,6 +4033,12 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     }
 }
 
+@media (max-width: 899px) {
+    .team-layout-editor {
+        display: none;
+    }
+}
+
 @media (max-width: 520px) {
     .brand > span:last-child {
         max-width: 150px;
@@ -3872,6 +4054,21 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 
     .topbar-actions {
         margin-left: auto;
+    }
+
+    .topbar-context-panel {
+        position: fixed;
+        top: 4.25rem;
+        left: 0.5rem;
+        right: 0.5rem;
+        width: auto;
+        max-width: calc(100vw - 1rem);
+        max-height: calc(100vh - 5.2rem);
+        overflow-y: auto;
+    }
+
+    .team-layout-editor {
+        display: none;
     }
 
     .metric-grid {
@@ -4075,11 +4272,95 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 
     .team-settings-bottom {
         display: inline-flex;
+        order: 999;
+        margin-top: 0.4rem;
     }
 
     .team-goal-head {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .team-layout-item {
+        order: var(--team-mobile-order, var(--team-order, 50));
+    }
+
+    .team-leaderboard-card {
+        grid-template-columns: 1fr;
+        gap: 0.58rem;
+        padding: 0.68rem;
+    }
+
+    .team-leaderboard-card-head {
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 0.48rem;
+    }
+
+    .team-leaderboard-card-head .badge {
+        grid-column: 2;
+        justify-self: start;
+        width: fit-content;
+    }
+
+    .team-leaderboard-user strong,
+    .team-leaderboard-user small {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .team-rank {
+        min-width: 34px;
+        height: 30px;
+    }
+
+    .team-leaderboard-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.4rem;
+    }
+
+    .team-leaderboard-metrics > span {
+        padding: 0.42rem 0.48rem;
+    }
+
+    .team-goal-card {
+        grid-template-columns: minmax(0, 1fr) auto;
+        padding: 0.68rem;
+    }
+
+    .team-goal-actions-menu > summary {
+        width: 2rem;
+        height: 2rem;
+        min-width: 2rem;
+        padding: 0;
+    }
+
+    .team-members-panel .card-list {
+        grid-template-columns: 1fr;
+    }
+
+    .team-members-panel .member-card {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 0.55rem;
+        padding: 0.62rem;
+    }
+
+    .team-members-panel .member-card .btn {
+        width: auto;
+        padding-inline: 0.55rem;
+    }
+
+    .team-achievement-card {
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 0.58rem;
+        min-height: 0;
+        padding: 0.66rem;
+    }
+
+    .team-achievement-media {
+        width: 52px;
+        height: 52px;
+        border-radius: 12px;
     }
 
     .team-active-challenge-values span {

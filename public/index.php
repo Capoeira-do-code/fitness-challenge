@@ -2094,7 +2094,8 @@ if ($page === 'admin') {
                 ]
             );
 
-            header('Content-Type: application/zip');
+            $contentType = system_backup_is_zip($absolutePath) ? 'application/zip' : 'application/gzip';
+            header('Content-Type: ' . $contentType);
             header('Content-Length: ' . (string) filesize($absolutePath));
             header('Content-Disposition: attachment; filename="' . basename($absolutePath) . '"');
             header('Cache-Control: no-store');
@@ -2384,6 +2385,32 @@ if ($page === 'team') {
             $redirectTeamParams['view'] = $redirectTeamView;
         }
         $teamRedirectUrl = '/?' . http_build_query($redirectTeamParams);
+
+        if ($action === 'save_team_layout') {
+            $postedView = trim((string) ($_POST['team_view'] ?? ''));
+            if ($postedView !== '') {
+                $redirectTeamParams['view'] = $postedView;
+                $teamRedirectUrl = '/?' . http_build_query($redirectTeamParams);
+            }
+
+            $layoutJson = null;
+            if (empty($_POST['reset_team_layout'])) {
+                $layout = normalize_team_layout_widgets((array) ($_POST['team_widgets'] ?? []));
+                $layoutJson = json_encode($layout, JSON_UNESCAPED_SLASHES);
+            }
+
+            db_execute(
+                $pdo,
+                'UPDATE users SET team_layout_json = :team_layout_json, updated_at = :updated_at WHERE id = :id',
+                [
+                    ':team_layout_json' => $layoutJson,
+                    ':updated_at' => now_iso(),
+                    ':id' => (int) $currentUser['id'],
+                ]
+            );
+            flash_set('success', t('team.layout_saved'));
+            redirect($teamRedirectUrl);
+        }
 
         if ($action === 'team_membership') {
             require_admin($currentUser);
@@ -3292,6 +3319,20 @@ if ($page === 'team') {
         }
     }
 
+    $teamLayoutWidgets = normalize_team_layout_widgets((string) ($currentUser['team_layout_json'] ?? ''));
+    $teamLayoutLabels = [
+        'metrics' => t('team.widget_metrics'),
+        'active_challenge' => t('team.widget_active_challenge'),
+        'leaderboard' => t('team.widget_leaderboard'),
+        'challenges' => t('team.widget_challenges'),
+        'members' => t('team.widget_members'),
+        'daily_charts' => t('team.widget_daily_charts'),
+        'cumulative_steps' => t('team.widget_cumulative_steps'),
+        'cumulative_distance' => t('team.widget_cumulative_distance'),
+        'weekly_charts' => t('team.widget_weekly_charts'),
+        'achievements' => t('team.widget_achievements'),
+    ];
+
     ob_start();
     ?>
     <details class="topbar-context">
@@ -3321,6 +3362,31 @@ if ($page === 'team') {
                     </select>
                 </label>
             </form>
+            <?php if ($teamSection === '' && $teamMetricDetail === null): ?>
+                <form method="post" action="/?page=team" class="team-layout-editor" data-team-layout-editor>
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="save_team_layout">
+                    <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
+                    <input type="hidden" name="team_view" value="<?= e($teamView) ?>">
+                    <div class="team-layout-editor-head">
+                        <strong><?= e(t('team.edit_layout')) ?></strong>
+                        <small><?= e(t('team.layout_hint')) ?></small>
+                    </div>
+                    <div class="team-layout-editor-list" data-team-layout-list>
+                        <?php foreach ($teamLayoutWidgets as $widget): ?>
+                            <div class="team-layout-editor-item" draggable="true" data-team-layout-item>
+                                <span class="team-layout-drag-handle" aria-hidden="true">::</span>
+                                <input type="hidden" name="team_widgets[]" value="<?= e((string) $widget) ?>">
+                                <span><?= e((string) ($teamLayoutLabels[$widget] ?? $widget)) ?></span>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <div class="team-layout-editor-actions">
+                        <button class="btn btn-ghost small" type="submit" name="reset_team_layout" value="1"><?= e(t('team.reset_layout')) ?></button>
+                        <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
+                    </div>
+                </form>
+            <?php endif; ?>
         </div>
     </details>
     <?php
