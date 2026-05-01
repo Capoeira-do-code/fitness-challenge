@@ -23,7 +23,7 @@ foreach ((array) ($workoutTypes ?? []) as $type) {
     $workoutTypeById[(int) ($type['id'] ?? 0)] = (string) ($type['name'] ?? '');
 }
 $entryWorkouts = is_array($log['workouts'] ?? null) ? array_values((array) $log['workouts']) : [];
-$logTimeValue = normalize_log_time($log['log_time'] ?? '', '00:00');
+$logTimeValue = normalize_log_time($log['log_time'] ?? '', (new DateTimeImmutable('now'))->format('H:i'));
 if ($entryWorkouts === [] && !empty($log)) {
     $legacyWorkoutDone = (int) ($log['workout_done'] ?? 0) === 1;
     $legacyWorkoutTypeId = !empty($log['workout_type_id']) ? (int) $log['workout_type_id'] : null;
@@ -98,21 +98,22 @@ $nutritionSummary = static function (array $photo): string {
                     <p class="eyebrow"><?= e(t('entries.day_data')) ?></p>
                     <h2><?= e(t('entries.day_data')) ?></h2>
                 </div>
-                <label class="entry-date-inline">
-                    <?= e(t('common.date')) ?>
-                    <input id="entry-date" type="date" name="log_date" value="<?= e($selectedDate) ?>" onchange="window.location='/?page=entries&mode=data&date='+this.value;" data-testid="entry-date">
-                </label>
+                <div class="entry-datetime-inline">
+                    <label class="entry-date-inline">
+                        <?= e(t('common.date')) ?>
+                        <input id="entry-date" type="date" name="log_date" value="<?= e($selectedDate) ?>" onchange="window.location='/?page=entries&mode=data&date='+this.value;" data-testid="entry-date">
+                    </label>
+                    <label class="entry-time-inline">
+                        <?= e(t('entries.log_time')) ?>
+                        <input type="time" name="log_time" value="<?= e($logTimeValue) ?>" form="entry-data-form">
+                    </label>
+                </div>
             </div>
 
-            <form method="post" action="/?page=entries" class="stack" data-testid="entry-form" data-primary-goal-type="<?= e((string) ($currentUser['primary_goal_type'] ?? 'steps')) ?>" data-primary-goal-value="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>" data-step-goal="<?= e((string) ($currentUser['step_goal'] ?? 0)) ?>" data-km-goal="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>" data-primary-goals="<?= e($entryPrimaryGoalsJson) ?>" data-label-steps="<?= e(t('metric.steps')) ?>" data-label-km="<?= e(t('metric.distance_km')) ?>" data-label-workouts="<?= e(t('metric.workouts')) ?>" data-missing-label="<?= e(t('entries.missing_reason')) ?>" data-missing-prefix="<?= e(t('entries.missing_reason_for')) ?>">
+            <form id="entry-data-form" method="post" action="/?page=entries" class="stack" data-testid="entry-form" data-primary-goal-type="<?= e((string) ($currentUser['primary_goal_type'] ?? 'steps')) ?>" data-primary-goal-value="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>" data-step-goal="<?= e((string) ($currentUser['step_goal'] ?? 0)) ?>" data-km-goal="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>" data-primary-goals="<?= e($entryPrimaryGoalsJson) ?>" data-label-steps="<?= e(t('metric.steps')) ?>" data-label-km="<?= e(t('metric.distance_km')) ?>" data-label-workouts="<?= e(t('metric.workouts')) ?>" data-missing-label="<?= e(t('entries.missing_reason')) ?>" data-missing-prefix="<?= e(t('entries.missing_reason_for')) ?>">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="save_log">
                 <input type="hidden" name="log_date" value="<?= e($selectedDate) ?>">
-                <label>
-                    <?= e(t('entries.log_time')) ?>
-                    <input type="time" name="log_time" value="<?= e($logTimeValue) ?>">
-                </label>
-
                 <div class="grid-inline entries-two-col">
                     <label>
                         <?= e(t('metric.steps')) ?>

@@ -6137,3 +6137,710 @@ function auto_complete_team_goals_for_user(PDO $pdo, int $userId, string $startD
 
     return $completed;
 }
+
+function normalize_backup_frequency(string $frequency): string
+{
+    $normalized = strtolower(trim($frequency));
+    if (in_array($normalized, ['daily', 'weekly', 'monthly'], true)) {
+        return $normalized;
+    }
+
+    return 'daily';
+}
+
+function system_backup_frequency_seconds(string $frequency): int
+{
+    return match (normalize_backup_frequency($frequency)) {
+        'weekly' => 7 * 86400,
+        'monthly' => 30 * 86400,
+        default => 86400,
+    };
+}
+
+function system_backup_settings(PDO $pdo): array
+{
+    $enabledRaw = strtolower(trim((string) (app_setting($pdo, 'backup_auto_enabled', '0') ?? '0')));
+    $enabled = in_array($enabledRaw, ['1', 'true', 'yes', 'on'], true);
+    $frequency = normalize_backup_frequency((string) (app_setting($pdo, 'backup_frequency', 'daily') ?? 'daily'));
+    $retention = max(1, min(200, (int) (app_setting($pdo, 'backup_retention_count', '20') ?? '20')));
+    $lastAutoAt = trim((string) (app_setting($pdo, 'backup_last_auto_at', '') ?? ''));
+
+    return [
+        'enabled' => $enabled,
+        'frequency' => $frequency,
+        'retention_count' => $retention,
+        'last_auto_at' => $lastAutoAt,
+    ];
+}
+
+function set_app_setting_silent(PDO $pdo, string $key, ?string $value, ?int $updatedBy = null): void
+{
+    db_execute(
+        $pdo,
+        'INSERT INTO app_settings (setting_key, setting_value, updated_by, updated_at)
+         VALUES (:key, :value, :updated_by, :updated_at)
+         ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_by = excluded.updated_by, updated_at = excluded.updated_at',
+        [
+            ':key' => $key,
+            ':value' => $value,
+            ':updated_by' => $updatedBy,
+            ':updated_at' => now_iso(),
+        ]
+    );
+}
+
+function system_backup_storage_dir(array $config): string
+{
+    $storageRoot = dirname((string) ($config['db_path'] ?? (dirname(__DIR__) . '/storage/fitness.sqlite')));
+
+    return rtrim($storageRoot, '/\\') . '/backups';
+}
+
+function ensure_system_backup_storage_dir(array $config): string
+{
+    $backupDir = system_backup_storage_dir($config);
+    if (!is_dir($backupDir) && !mkdir($backupDir, 0775, true) && !is_dir($backupDir)) {
+        throw new RuntimeException('Could not create backup directory.');
+    }
+
+    return $backupDir;
+}
+
+function system_backup_acquire_lock(array $config)
+{
+    $backupDir = ensure_system_backup_storage_dir($config);
+    $lockPath = $backupDir . '/.backup.lock';
+    $handle = @fopen($lockPath, 'c+');
+    if ($handle === false) {
+        return false;
+    }
+    if (!flock($handle, LOCK_EX | LOCK_NB)) {
+        fclose($handle);
+        return false;
+    }
+
+    return $handle;
+}
+
+function system_backup_release_lock(mixed $lockHandle): void
+{
+    if (!is_resource($lockHandle)) {
+        return;
+    }
+    @flock($lockHandle, LOCK_UN);
+    @fclose($lockHandle);
+}
+
+function system_backup_relative_path_from_name(string $fileName): string
+{
+    return 'backups/' . ltrim($fileName, '/\\');
+}
+
+function system_backup_absolute_path(array $config, string $relativePath): ?string
+{
+    $candidate = str_replace('\\', '/', trim($relativePath));
+    if ($candidate === '' || str_contains($candidate, '..')) {
+        return null;
+    }
+    $storageRoot = dirname((string) ($config['db_path'] ?? (dirname(__DIR__) . '/storage/fitness.sqlite')));
+
+    return rtrim($storageRoot, '/\\') . '/' . ltrim($candidate, '/');
+}
+
+function system_backup_collect_upload_files(string $uploadDir): array
+{
+    $files = [];
+    if (!is_dir($uploadDir)) {
+        return $files;
+    }
+
+    $root = rtrim(str_replace('\\', '/', $uploadDir), '/');
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($uploadDir, FilesystemIterator::SKIP_DOTS)
+    );
+    foreach ($iterator as $fileInfo) {
+        if (!$fileInfo instanceof SplFileInfo || !$fileInfo->isFile()) {
+            continue;
+        }
+        $absolute = str_replace('\\', '/', $fileInfo->getPathname());
+        $relative = ltrim(substr($absolute, strlen($root)), '/');
+        if ($relative === '') {
+            continue;
+        }
+        $files[] = [
+            'absolute' => $absolute,
+            'relative' => $relative,
+        ];
+    }
+
+    usort(
+        $files,
+        static fn(array $left, array $right): int => strcmp((string) ($left['relative'] ?? ''), (string) ($right['relative'] ?? ''))
+    );
+
+    return $files;
+}
+
+function system_backup_recursive_delete(string $path): void
+{
+    if (!file_exists($path)) {
+        return;
+    }
+    if (is_file($path) || is_link($path)) {
+        @unlink($path);
+        return;
+    }
+
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST
+    );
+    foreach ($iterator as $item) {
+        if (!$item instanceof SplFileInfo) {
+            continue;
+        }
+        if ($item->isDir() && !$item->isLink()) {
+            @rmdir($item->getPathname());
+        } else {
+            @unlink($item->getPathname());
+        }
+    }
+    @rmdir($path);
+}
+
+function system_backup_recursive_copy(string $source, string $destination): void
+{
+    if (is_file($source)) {
+        $targetDir = dirname($destination);
+        if (!is_dir($targetDir) && !mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
+            throw new RuntimeException('Could not create backup destination directory.');
+        }
+        if (!copy($source, $destination)) {
+            throw new RuntimeException('Could not copy backup file.');
+        }
+        return;
+    }
+
+    if (!is_dir($source)) {
+        throw new RuntimeException('Source path does not exist.');
+    }
+    if (!is_dir($destination) && !mkdir($destination, 0775, true) && !is_dir($destination)) {
+        throw new RuntimeException('Could not create backup destination directory.');
+    }
+
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::SELF_FIRST
+    );
+    foreach ($iterator as $item) {
+        if (!$item instanceof SplFileInfo) {
+            continue;
+        }
+        $targetPath = $destination . DIRECTORY_SEPARATOR . $iterator->getSubPathName();
+        if ($item->isDir() && !$item->isLink()) {
+            if (!is_dir($targetPath) && !mkdir($targetPath, 0775, true) && !is_dir($targetPath)) {
+                throw new RuntimeException('Could not create backup destination directory.');
+            }
+            continue;
+        }
+        $targetDir = dirname($targetPath);
+        if (!is_dir($targetDir) && !mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
+            throw new RuntimeException('Could not create backup destination directory.');
+        }
+        if (!copy($item->getPathname(), $targetPath)) {
+            throw new RuntimeException('Could not copy backup file.');
+        }
+    }
+}
+
+function prune_system_backups(PDO $pdo, array $config, int $keepCount): int
+{
+    $keepCount = max(1, $keepCount);
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT id, file_path
+         FROM system_backups
+         ORDER BY created_at DESC, id DESC'
+    );
+    if (count($rows) <= $keepCount) {
+        return 0;
+    }
+
+    $deleted = 0;
+    $toDelete = array_slice($rows, $keepCount);
+    foreach ($toDelete as $row) {
+        $backupId = (int) ($row['id'] ?? 0);
+        if ($backupId <= 0) {
+            continue;
+        }
+        $absolutePath = system_backup_absolute_path($config, (string) ($row['file_path'] ?? ''));
+        if (is_string($absolutePath) && $absolutePath !== '' && is_file($absolutePath)) {
+            @unlink($absolutePath);
+        }
+        db_execute($pdo, 'DELETE FROM system_backups WHERE id = :id', [':id' => $backupId]);
+        $deleted++;
+    }
+
+    return $deleted;
+}
+
+function create_system_backup(PDO $pdo, array $config, string $triggerType, ?int $actorUserId = null): array
+{
+    $trigger = in_array($triggerType, ['manual', 'auto'], true) ? $triggerType : 'manual';
+    $lockHandle = system_backup_acquire_lock($config);
+    if ($lockHandle === false) {
+        throw new RuntimeException('A backup process is already running.');
+    }
+
+    try {
+        $dbPath = (string) ($config['db_path'] ?? '');
+        if ($dbPath === '' || !is_file($dbPath)) {
+            throw new RuntimeException('Database file not found.');
+        }
+
+        $backupDir = ensure_system_backup_storage_dir($config);
+        $fileName = sprintf('backup_%s_%s_%s.zip', date('Ymd_His'), $trigger, bin2hex(random_bytes(4)));
+        $relativePath = system_backup_relative_path_from_name($fileName);
+        $archivePath = $backupDir . '/' . $fileName;
+        $uploadDir = rtrim((string) ($config['upload_dir'] ?? ''), '/\\');
+        $uploadFiles = $uploadDir !== '' ? system_backup_collect_upload_files($uploadDir) : [];
+
+        $manifest = [
+            'version' => 1,
+            'created_at' => now_iso(),
+            'trigger' => $trigger,
+            'scope' => 'db_uploads',
+            'db' => [
+                'path' => 'fitness.sqlite',
+                'size_bytes' => (int) (@filesize($dbPath) ?: 0),
+                'sha256' => hash_file('sha256', $dbPath) ?: '',
+            ],
+            'uploads' => [],
+        ];
+
+        $zip = new ZipArchive();
+        $openResult = $zip->open($archivePath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        if ($openResult !== true) {
+            throw new RuntimeException('Could not create backup archive.');
+        }
+        if (!$zip->addFile($dbPath, 'fitness.sqlite')) {
+            $zip->close();
+            throw new RuntimeException('Could not add database file to archive.');
+        }
+
+        foreach ($uploadFiles as $file) {
+            $absolute = (string) ($file['absolute'] ?? '');
+            $relative = (string) ($file['relative'] ?? '');
+            if ($absolute === '' || $relative === '') {
+                continue;
+            }
+            $zipPath = 'uploads/' . ltrim(str_replace('\\', '/', $relative), '/');
+            if (!$zip->addFile($absolute, $zipPath)) {
+                $zip->close();
+                throw new RuntimeException('Could not add upload file to archive.');
+            }
+            $manifest['uploads'][] = [
+                'path' => $zipPath,
+                'size_bytes' => (int) (@filesize($absolute) ?: 0),
+                'sha256' => hash_file('sha256', $absolute) ?: '',
+            ];
+        }
+
+        $manifestJson = json_encode($manifest, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+        if (!is_string($manifestJson) || !$zip->addFromString('manifest.json', $manifestJson)) {
+            $zip->close();
+            throw new RuntimeException('Could not write backup manifest.');
+        }
+        $zip->close();
+
+        $sizeBytes = (int) (@filesize($archivePath) ?: 0);
+        $checksum = hash_file('sha256', $archivePath) ?: null;
+        db_execute(
+            $pdo,
+            'INSERT INTO system_backups (
+                file_path, trigger_type, scope, size_bytes, checksum_sha256, status, created_by, created_at, restored_by, restored_at, error_message
+            ) VALUES (
+                :file_path, :trigger_type, :scope, :size_bytes, :checksum_sha256, :status, :created_by, :created_at, NULL, NULL, NULL
+            )',
+            [
+                ':file_path' => $relativePath,
+                ':trigger_type' => $trigger,
+                ':scope' => 'db_uploads',
+                ':size_bytes' => $sizeBytes,
+                ':checksum_sha256' => $checksum,
+                ':status' => 'created',
+                ':created_by' => $actorUserId,
+                ':created_at' => now_iso(),
+            ]
+        );
+        $backup = db_fetch_one($pdo, 'SELECT * FROM system_backups WHERE id = last_insert_rowid()');
+        if (!is_array($backup)) {
+            throw new RuntimeException('Could not read backup metadata.');
+        }
+
+        return $backup;
+    } catch (Throwable $e) {
+        if (isset($archivePath) && is_string($archivePath) && $archivePath !== '' && is_file($archivePath)) {
+            @unlink($archivePath);
+        }
+        throw $e;
+    } finally {
+        system_backup_release_lock($lockHandle);
+    }
+}
+
+function fetch_system_backup(PDO $pdo, int $backupId): ?array
+{
+    if ($backupId <= 0) {
+        return null;
+    }
+
+    $row = db_fetch_one($pdo, 'SELECT * FROM system_backups WHERE id = :id', [':id' => $backupId]);
+
+    return is_array($row) ? $row : null;
+}
+
+function list_system_backups(PDO $pdo, array $config, int $limit = 120): array
+{
+    $limit = max(1, min(500, $limit));
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT *
+         FROM system_backups
+         ORDER BY created_at DESC, id DESC
+         LIMIT ' . $limit
+    );
+
+    $items = [];
+    foreach ($rows as $row) {
+        $relativePath = (string) ($row['file_path'] ?? '');
+        $absolutePath = system_backup_absolute_path($config, $relativePath);
+        $exists = is_string($absolutePath) && $absolutePath !== '' && is_file($absolutePath);
+        $sizeBytes = $exists ? (int) (@filesize($absolutePath) ?: 0) : (int) ($row['size_bytes'] ?? 0);
+
+        $row['file_exists'] = $exists ? 1 : 0;
+        $row['size_bytes'] = $sizeBytes;
+        $row['size_label'] = format_upload_size($sizeBytes);
+        $items[] = $row;
+    }
+
+    return $items;
+}
+
+function mark_system_backup_restore_result(PDO $pdo, int $backupId, string $status, ?int $actorUserId = null, ?string $errorMessage = null): void
+{
+    if ($backupId <= 0) {
+        return;
+    }
+    $normalizedStatus = in_array($status, ['created', 'restored', 'error'], true) ? $status : 'created';
+
+    db_execute(
+        $pdo,
+        'UPDATE system_backups
+         SET status = :status,
+             restored_by = CASE WHEN :set_restored = 1 THEN :restored_by ELSE restored_by END,
+             restored_at = CASE WHEN :set_restored = 1 THEN :restored_at ELSE restored_at END,
+             error_message = :error_message
+         WHERE id = :id',
+        [
+            ':status' => $normalizedStatus,
+            ':set_restored' => $normalizedStatus === 'restored' ? 1 : 0,
+            ':restored_by' => $normalizedStatus === 'restored' ? $actorUserId : null,
+            ':restored_at' => $normalizedStatus === 'restored' ? now_iso() : null,
+            ':error_message' => $errorMessage,
+            ':id' => $backupId,
+        ]
+    );
+}
+
+function validate_system_backup_archive(string $archivePath): array
+{
+    if (!is_file($archivePath)) {
+        throw new RuntimeException('Backup file not found.');
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($archivePath) !== true) {
+        throw new RuntimeException('Backup archive could not be opened.');
+    }
+
+    $manifestRaw = $zip->getFromName('manifest.json');
+    if (!is_string($manifestRaw) || trim($manifestRaw) === '') {
+        $zip->close();
+        throw new RuntimeException('Backup archive is missing a manifest.');
+    }
+    $manifest = json_decode($manifestRaw, true);
+    if (!is_array($manifest)) {
+        $zip->close();
+        throw new RuntimeException('Backup manifest is invalid.');
+    }
+    if ($zip->locateName('fitness.sqlite') === false) {
+        $zip->close();
+        throw new RuntimeException('Backup archive is missing database data.');
+    }
+
+    $dbHashExpected = trim((string) ($manifest['db']['sha256'] ?? ''));
+    if ($dbHashExpected !== '') {
+        $stream = $zip->getStream('fitness.sqlite');
+        if ($stream === false) {
+            $zip->close();
+            throw new RuntimeException('Backup database stream is invalid.');
+        }
+        $hashCtx = hash_init('sha256');
+        while (!feof($stream)) {
+            $chunk = fread($stream, 1024 * 1024);
+            if ($chunk === false) {
+                fclose($stream);
+                $zip->close();
+                throw new RuntimeException('Backup database stream could not be read.');
+            }
+            if ($chunk !== '') {
+                hash_update($hashCtx, $chunk);
+            }
+        }
+        fclose($stream);
+        $dbHashActual = hash_final($hashCtx);
+        if (!hash_equals($dbHashExpected, $dbHashActual)) {
+            $zip->close();
+            throw new RuntimeException('Backup database checksum mismatch.');
+        }
+    }
+
+    $zip->close();
+
+    return $manifest;
+}
+
+function restore_system_backup_archive(array $config, string $archivePath): void
+{
+    validate_system_backup_archive($archivePath);
+
+    $backupDir = ensure_system_backup_storage_dir($config);
+    $tmpDir = $backupDir . '/.restore_tmp_' . date('YmdHis') . '_' . bin2hex(random_bytes(4));
+    $stageDir = $backupDir . '/.restore_stage_' . date('YmdHis') . '_' . bin2hex(random_bytes(4));
+    $dbPath = (string) ($config['db_path'] ?? '');
+    $uploadDir = rtrim((string) ($config['upload_dir'] ?? ''), '/\\');
+    if ($dbPath === '') {
+        throw new RuntimeException('Database path is not configured.');
+    }
+    if ($uploadDir === '') {
+        throw new RuntimeException('Upload directory is not configured.');
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($archivePath) !== true) {
+        throw new RuntimeException('Backup archive could not be opened.');
+    }
+    if (!mkdir($tmpDir, 0775, true) && !is_dir($tmpDir)) {
+        $zip->close();
+        throw new RuntimeException('Could not prepare restore workspace.');
+    }
+    if (!$zip->extractTo($tmpDir)) {
+        $zip->close();
+        system_backup_recursive_delete($tmpDir);
+        throw new RuntimeException('Backup archive could not be extracted.');
+    }
+    $zip->close();
+
+    $extractedDb = $tmpDir . '/fitness.sqlite';
+    $extractedUploads = $tmpDir . '/uploads';
+    if (!is_file($extractedDb)) {
+        system_backup_recursive_delete($tmpDir);
+        throw new RuntimeException('Extracted backup is missing database data.');
+    }
+
+    $rollbackDbPath = $stageDir . '/fitness.sqlite';
+    $rollbackUploadsPath = $stageDir . '/uploads_before';
+    $movedUploadsToStage = false;
+
+    try {
+        if (!is_dir($stageDir) && !mkdir($stageDir, 0775, true) && !is_dir($stageDir)) {
+            throw new RuntimeException('Could not prepare restore staging area.');
+        }
+
+        if (is_file($dbPath)) {
+            if (!copy($dbPath, $rollbackDbPath)) {
+                throw new RuntimeException('Could not stage current database for rollback.');
+            }
+        }
+
+        if (is_dir($uploadDir)) {
+            if (!rename($uploadDir, $rollbackUploadsPath)) {
+                throw new RuntimeException('Could not stage current uploads for rollback.');
+            }
+            $movedUploadsToStage = true;
+        }
+
+        $dbRestoreTmp = $dbPath . '.restore_tmp';
+        if (file_exists($dbRestoreTmp)) {
+            @unlink($dbRestoreTmp);
+        }
+        if (!copy($extractedDb, $dbRestoreTmp)) {
+            throw new RuntimeException('Could not copy restored database.');
+        }
+        if (!@rename($dbRestoreTmp, $dbPath)) {
+            if (!@copy($dbRestoreTmp, $dbPath)) {
+                @unlink($dbRestoreTmp);
+                throw new RuntimeException('Could not replace database with restored backup.');
+            }
+            @unlink($dbRestoreTmp);
+        }
+
+        if (is_dir($uploadDir)) {
+            system_backup_recursive_delete($uploadDir);
+        }
+        if (is_dir($extractedUploads)) {
+            system_backup_recursive_copy($extractedUploads, $uploadDir);
+        } else {
+            if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true) && !is_dir($uploadDir)) {
+                throw new RuntimeException('Could not create uploads directory during restore.');
+            }
+        }
+
+        if ($movedUploadsToStage && is_dir($rollbackUploadsPath)) {
+            system_backup_recursive_delete($rollbackUploadsPath);
+        }
+        if (is_dir($stageDir)) {
+            system_backup_recursive_delete($stageDir);
+        }
+        system_backup_recursive_delete($tmpDir);
+    } catch (Throwable $e) {
+        if (is_file($rollbackDbPath)) {
+            @copy($rollbackDbPath, $dbPath);
+        }
+        if ($movedUploadsToStage && is_dir($rollbackUploadsPath)) {
+            if (is_dir($uploadDir)) {
+                system_backup_recursive_delete($uploadDir);
+            }
+            @rename($rollbackUploadsPath, $uploadDir);
+        }
+        if (is_dir($stageDir)) {
+            system_backup_recursive_delete($stageDir);
+        }
+        if (is_dir($tmpDir)) {
+            system_backup_recursive_delete($tmpDir);
+        }
+        throw $e;
+    }
+}
+
+function should_run_scheduled_backup(string $frequency, string $lastAutoAt): bool
+{
+    $last = trim($lastAutoAt);
+    if ($last === '') {
+        return true;
+    }
+    try {
+        $lastAt = new DateTimeImmutable($last);
+    } catch (Throwable) {
+        return true;
+    }
+
+    $intervalSeconds = system_backup_frequency_seconds($frequency);
+    $nextAt = $lastAt->getTimestamp() + $intervalSeconds;
+
+    return time() >= $nextAt;
+}
+
+function run_system_backup_scheduler(PDO $pdo, array $config, ?int $actorUserId = null): void
+{
+    $settings = system_backup_settings($pdo);
+    if (empty($settings['enabled'])) {
+        return;
+    }
+    $frequency = (string) ($settings['frequency'] ?? 'daily');
+    $lastAutoAt = (string) ($settings['last_auto_at'] ?? '');
+    if (!should_run_scheduled_backup($frequency, $lastAutoAt)) {
+        return;
+    }
+
+    try {
+        $backup = create_system_backup($pdo, $config, 'auto', $actorUserId);
+        set_app_setting_silent($pdo, 'backup_last_auto_at', now_iso(), $actorUserId);
+        $retention = max(1, (int) ($settings['retention_count'] ?? 20));
+        prune_system_backups($pdo, $config, $retention);
+
+        audit_log(
+            $pdo,
+            $actorUserId,
+            'backup_created',
+            'system_backup',
+            (string) ($backup['id'] ?? ''),
+            'Automatic backup created.',
+            null,
+            [
+                'trigger' => 'auto',
+                'file_path' => (string) ($backup['file_path'] ?? ''),
+            ]
+        );
+    } catch (Throwable $e) {
+        if (str_contains(strtolower($e->getMessage()), 'already running')) {
+            return;
+        }
+        audit_log(
+            $pdo,
+            $actorUserId,
+            'backup_error',
+            'system_backup',
+            null,
+            'Automatic backup failed.',
+            null,
+            ['error' => $e->getMessage()]
+        );
+    }
+}
+
+function list_login_background_library(array $config): array
+{
+    $directory = rtrim((string) ($config['upload_dir'] ?? ''), '/\\') . '/app/login_backgrounds';
+    if (!is_dir($directory)) {
+        return [];
+    }
+
+    $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'];
+    $items = [];
+    $entries = @scandir($directory);
+    if (!is_array($entries)) {
+        return [];
+    }
+
+    foreach ($entries as $entry) {
+        if ($entry === '.' || $entry === '..') {
+            continue;
+        }
+        $absolutePath = $directory . '/' . $entry;
+        if (!is_file($absolutePath)) {
+            continue;
+        }
+        $extension = strtolower(pathinfo($entry, PATHINFO_EXTENSION));
+        if (!in_array($extension, $allowedExtensions, true)) {
+            continue;
+        }
+        $items[] = [
+            'path' => 'app/login_backgrounds/' . $entry,
+            'name' => $entry,
+            'updated_at' => (int) (@filemtime($absolutePath) ?: 0),
+        ];
+    }
+
+    usort(
+        $items,
+        static fn(array $left, array $right): int => ((int) ($right['updated_at'] ?? 0)) <=> ((int) ($left['updated_at'] ?? 0))
+    );
+
+    return $items;
+}
+
+function is_valid_login_background_path(array $config, string $path): bool
+{
+    $normalized = trim(str_replace('\\', '/', $path), '/');
+    if ($normalized === '' || str_contains($normalized, '..')) {
+        return false;
+    }
+    if (!str_starts_with($normalized, 'app/login_backgrounds/')) {
+        return false;
+    }
+    $absolutePath = resolve_media_storage_path($config, $normalized);
+
+    return is_string($absolutePath) && $absolutePath !== '' && is_file($absolutePath);
+}

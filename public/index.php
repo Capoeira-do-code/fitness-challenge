@@ -7,7 +7,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 $page = $_GET['page'] ?? null;
 if ($page === null) {
     $pathPage = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/');
-    if (in_array($pathPage, ['dashboard', 'entries', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'login'], true)) {
+    if (in_array($pathPage, ['dashboard', 'entries', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'login', 'login_background'], true)) {
         $page = $pathPage;
     }
 }
@@ -20,6 +20,10 @@ if ($page === null || $page === '') {
 
 if ($page === 'users') {
     $page = 'admin';
+}
+
+if ($currentUser !== null && !in_array($page, ['app_icon', 'login_background', 'media'], true)) {
+    run_system_backup_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
 }
 
 if ($page === 'set_locale') {
@@ -96,6 +100,29 @@ if ($page === 'app_icon') {
     exit;
 }
 
+if ($page === 'login_background') {
+    $backgroundPath = trim((string) (app_setting($pdo, 'login_background_path', '') ?? ''));
+    if ($backgroundPath === '' || !is_valid_login_background_path($config, $backgroundPath)) {
+        http_response_code(404);
+        echo e(t('flash.not_found'));
+        exit;
+    }
+    $resolvedPath = resolve_media_storage_path($config, $backgroundPath);
+    if ($resolvedPath === null || !is_file($resolvedPath)) {
+        http_response_code(404);
+        echo e(t('flash.not_found'));
+        exit;
+    }
+
+    $mime = detect_media_mime_type($resolvedPath);
+    header('Content-Type: ' . $mime);
+    header('Content-Length: ' . (string) filesize($resolvedPath));
+    header('Cache-Control: public, max-age=3600');
+    header('X-Content-Type-Options: nosniff');
+    readfile($resolvedPath);
+    exit;
+}
+
 if ($page === 'api_save_row') {
     $currentUser = require_login($pdo);
 
@@ -149,7 +176,7 @@ if ($page === 'api_save_row') {
     $payload = [
         'user_id' => $userId,
         'log_date' => to_date((string) ($json['log_date'] ?? null)),
-        'log_time' => normalize_log_time($json['log_time'] ?? '', '00:00'),
+        'log_time' => normalize_log_time($json['log_time'] ?? '', (new DateTimeImmutable('now'))->format('H:i')),
         'steps' => max(0, (int) ($json['steps'] ?? 0)),
         'workout_done' => $hasWorkoutsPayload ? $derivedWorkoutDone : ((int) ($json['workout_done'] ?? 0) === 1 ? 1 : 0),
         'workout_type_id' => !empty($json['workout_type_id']) ? (int) $json['workout_type_id'] : null,
@@ -288,10 +315,48 @@ if ($page === 'login') {
         redirect('/?page=login');
     }
 
+    $appIconSetting = db_fetch_one(
+        $pdo,
+        'SELECT setting_value, updated_at FROM app_settings WHERE setting_key = :key',
+        [':key' => 'app_icon_path']
+    );
+    $appIconPath = $appIconSetting !== null ? trim((string) ($appIconSetting['setting_value'] ?? '')) : '';
+    $appIconVersion = null;
+    if ($appIconSetting !== null && !empty($appIconSetting['updated_at'])) {
+        $timestamp = strtotime((string) $appIconSetting['updated_at']);
+        if ($timestamp !== false) {
+            $appIconVersion = (string) $timestamp;
+        }
+    }
+    $loginAppIconUrl = '';
+    if ($appIconPath !== '' && resolve_media_storage_path($config, $appIconPath) !== null) {
+        $loginAppIconUrl = with_cache_buster('/?page=app_icon', $appIconVersion);
+    }
+
+    $backgroundSetting = db_fetch_one(
+        $pdo,
+        'SELECT setting_value, updated_at FROM app_settings WHERE setting_key = :key',
+        [':key' => 'login_background_path']
+    );
+    $loginBackgroundPath = $backgroundSetting !== null ? trim((string) ($backgroundSetting['setting_value'] ?? '')) : '';
+    $loginBackgroundVersion = null;
+    if ($backgroundSetting !== null && !empty($backgroundSetting['updated_at'])) {
+        $timestamp = strtotime((string) $backgroundSetting['updated_at']);
+        if ($timestamp !== false) {
+            $loginBackgroundVersion = (string) $timestamp;
+        }
+    }
+    $loginBackgroundUrl = '';
+    if ($loginBackgroundPath !== '' && is_valid_login_background_path($config, $loginBackgroundPath)) {
+        $loginBackgroundUrl = with_cache_buster('/?page=login_background', $loginBackgroundVersion);
+    }
+
     render_view('login', [
         'title' => t('login.submit'),
         'currentPage' => 'login',
         'currentUser' => null,
+        'loginAppIconUrl' => $loginAppIconUrl,
+        'loginBackgroundUrl' => $loginBackgroundUrl,
         'config' => $config,
     ]);
 }
@@ -427,7 +492,7 @@ if ($page === 'entries') {
                 $payload = [
                     'user_id' => $userId,
                     'log_date' => $date,
-                    'log_time' => normalize_log_time($_POST['log_time'] ?? '', '00:00'),
+                    'log_time' => normalize_log_time($_POST['log_time'] ?? '', (new DateTimeImmutable('now'))->format('H:i')),
                     'steps' => max(0, (int) ($_POST['steps'] ?? 0)),
                     'workout_done' => 0,
                     'workout_type_id' => null,
@@ -1948,6 +2013,178 @@ if ($page === 'admin') {
             redirect('/?page=admin');
         }
 
+        if ($action === 'update_backup_settings') {
+            $enabled = bool_from_form('backup_auto_enabled') === 1;
+            $frequency = normalize_backup_frequency((string) ($_POST['backup_frequency'] ?? 'daily'));
+            $retention = max(1, min(200, (int) ($_POST['backup_retention_count'] ?? 20)));
+            set_app_setting($pdo, 'backup_auto_enabled', $enabled ? '1' : '0', (int) $currentUser['id']);
+            set_app_setting($pdo, 'backup_frequency', $frequency, (int) $currentUser['id']);
+            set_app_setting($pdo, 'backup_retention_count', (string) $retention, (int) $currentUser['id']);
+            flash_set('success', t('flash.backup_settings_saved'));
+            redirect('/?page=admin&section=backups');
+        }
+
+        if ($action === 'create_backup_now') {
+            try {
+                $backup = create_system_backup($pdo, $config, 'manual', (int) $currentUser['id']);
+                $settings = system_backup_settings($pdo);
+                $retention = max(1, (int) ($settings['retention_count'] ?? 20));
+                prune_system_backups($pdo, $config, $retention);
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'backup_created',
+                    'system_backup',
+                    (string) ($backup['id'] ?? ''),
+                    'Manual backup created.',
+                    null,
+                    [
+                        'trigger' => 'manual',
+                        'file_path' => (string) ($backup['file_path'] ?? ''),
+                    ]
+                );
+                flash_set('success', t('flash.backup_created'));
+            } catch (Throwable $e) {
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'backup_error',
+                    'system_backup',
+                    null,
+                    'Manual backup failed.',
+                    null,
+                    ['error' => $e->getMessage()]
+                );
+                flash_set('error', t('flash.backup_failed', ['error' => $e->getMessage()]));
+            }
+            redirect('/?page=admin&section=backups');
+        }
+
+        if ($action === 'download_backup') {
+            $backupId = (int) ($_POST['backup_id'] ?? 0);
+            $backup = fetch_system_backup($pdo, $backupId);
+            if ($backup === null) {
+                flash_set('error', t('flash.not_found'));
+                redirect('/?page=admin&section=backups');
+            }
+            $absolutePath = system_backup_absolute_path($config, (string) ($backup['file_path'] ?? ''));
+            if ($absolutePath === null || !is_file($absolutePath)) {
+                flash_set('error', t('flash.not_found'));
+                redirect('/?page=admin&section=backups');
+            }
+
+            audit_log(
+                $pdo,
+                (int) $currentUser['id'],
+                'backup_downloaded',
+                'system_backup',
+                (string) $backupId,
+                'Backup downloaded.',
+                null,
+                [
+                    'file_path' => (string) ($backup['file_path'] ?? ''),
+                ]
+            );
+
+            header('Content-Type: application/zip');
+            header('Content-Length: ' . (string) filesize($absolutePath));
+            header('Content-Disposition: attachment; filename="' . basename($absolutePath) . '"');
+            header('Cache-Control: no-store');
+            readfile($absolutePath);
+            exit;
+        }
+
+        if ($action === 'restore_backup') {
+            $backupId = (int) ($_POST['backup_id'] ?? 0);
+            $confirm = strtoupper(trim((string) ($_POST['confirm_restore'] ?? '')));
+            if ($confirm !== 'RESTORE') {
+                flash_set('error', t('flash.restore_confirm_required'));
+                redirect('/?page=admin&section=backups');
+            }
+
+            $backup = fetch_system_backup($pdo, $backupId);
+            if ($backup === null) {
+                flash_set('error', t('flash.not_found'));
+                redirect('/?page=admin&section=backups');
+            }
+            $absolutePath = system_backup_absolute_path($config, (string) ($backup['file_path'] ?? ''));
+            if ($absolutePath === null || !is_file($absolutePath)) {
+                flash_set('error', t('flash.not_found'));
+                redirect('/?page=admin&section=backups');
+            }
+
+            try {
+                $pdo = null;
+                $GLOBALS['pdo'] = null;
+                restore_system_backup_archive($config, $absolutePath);
+                $pdo = db_connect($config);
+                $GLOBALS['pdo'] = $pdo;
+                mark_system_backup_restore_result($pdo, $backupId, 'restored', (int) $currentUser['id']);
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'backup_restored',
+                    'system_backup',
+                    (string) $backupId,
+                    'Backup restored.',
+                    null,
+                    [
+                        'file_path' => (string) ($backup['file_path'] ?? ''),
+                    ]
+                );
+                flash_set('success', t('flash.backup_restored'));
+            } catch (Throwable $e) {
+                if (!($pdo instanceof PDO)) {
+                    $pdo = db_connect($config);
+                    $GLOBALS['pdo'] = $pdo;
+                }
+                mark_system_backup_restore_result($pdo, $backupId, 'error', (int) $currentUser['id'], $e->getMessage());
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'backup_error',
+                    'system_backup',
+                    (string) $backupId,
+                    'Backup restore failed.',
+                    null,
+                    ['error' => $e->getMessage()]
+                );
+                flash_set('error', t('flash.backup_restore_failed', ['error' => $e->getMessage()]));
+            }
+            redirect('/?page=admin&section=backups');
+        }
+
+        if ($action === 'upload_login_background') {
+            try {
+                $path = save_uploaded_image($config, $_FILES['login_background'] ?? [], 'app/login_backgrounds', 'login_bg');
+                if (!is_valid_login_background_path($config, $path)) {
+                    throw new RuntimeException(t('upload.invalid_image'));
+                }
+                set_app_setting($pdo, 'login_background_path', $path, (int) $currentUser['id']);
+                flash_set('success', t('flash.login_background_updated'));
+            } catch (Throwable $e) {
+                flash_set('error', $e->getMessage());
+            }
+            redirect('/?page=admin&section=app');
+        }
+
+        if ($action === 'set_login_background') {
+            $selectedPath = trim((string) ($_POST['login_background_path'] ?? ''));
+            if ($selectedPath !== '' && !is_valid_login_background_path($config, $selectedPath)) {
+                flash_set('error', t('flash.not_found'));
+                redirect('/?page=admin&section=app');
+            }
+            set_app_setting($pdo, 'login_background_path', $selectedPath !== '' ? $selectedPath : null, (int) $currentUser['id']);
+            flash_set('success', t('flash.login_background_updated'));
+            redirect('/?page=admin&section=app');
+        }
+
+        if ($action === 'clear_login_background') {
+            set_app_setting($pdo, 'login_background_path', null, (int) $currentUser['id']);
+            flash_set('success', t('flash.login_background_cleared'));
+            redirect('/?page=admin&section=app');
+        }
+
         if ($action === 'upload_app_icon') {
             try {
                 $cropped = trim((string) ($_POST['app_icon_cropped'] ?? ''));
@@ -1980,6 +2217,10 @@ if ($page === 'admin') {
             $appIconVersion = (string) $timestamp;
         }
     }
+    $loginBackgroundPath = trim((string) (app_setting($pdo, 'login_background_path', '') ?? ''));
+    $backupSettings = system_backup_settings($pdo);
+    $systemBackups = list_system_backups($pdo, $config, 200);
+    $loginBackgroundLibrary = list_login_background_library($config);
     $auditFilters = [
         'actor_user_id' => isset($_GET['actor_user_id']) && $_GET['actor_user_id'] !== '' ? (int) $_GET['actor_user_id'] : null,
         'entity_type' => trim((string) ($_GET['entity_type'] ?? '')),
@@ -2004,6 +2245,10 @@ if ($page === 'admin') {
         'appIconPath' => $appIconPath,
         'appIconVersion' => $appIconVersion,
         'appNameSetting' => app_setting($pdo, 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge Tracker')),
+        'loginBackgroundPath' => $loginBackgroundPath,
+        'loginBackgroundLibrary' => $loginBackgroundLibrary,
+        'backupSettings' => $backupSettings,
+        'systemBackups' => $systemBackups,
         'challengeSettings' => challenge_settings($pdo, $config),
         'auditLogs' => fetch_audit_logs($pdo, $auditFilters, 100),
         'auditFilters' => $auditFilters,
@@ -2498,7 +2743,20 @@ if ($page === 'team') {
         $dailyTotals[$day->format('Y-m-d')] = ['steps' => 0, 'distance' => 0.0, 'workouts' => 0];
     }
 
+    $dailyByUser = [];
     foreach ($metricsOrdered as $metric) {
+        $userId = (int) ($metric['user']['id'] ?? 0);
+        if ($userId > 0) {
+            $dailyByUser[$userId] = [
+                'user_id' => $userId,
+                'display_name' => (string) ($metric['user']['display_name'] ?? ''),
+                'daily' => [],
+            ];
+            foreach ($dailyTotals as $date => $_) {
+                $dailyByUser[$userId]['daily'][$date] = ['steps' => 0, 'distance' => 0.0];
+            }
+        }
+
         $workoutsByDate = [];
         foreach ((array) ($metric['workout_series'] ?? []) as $workoutPoint) {
             $date = (string) ($workoutPoint['date'] ?? '');
@@ -2513,9 +2771,15 @@ if ($page === 'team') {
             if ($date === '' || !isset($dailyTotals[$date])) {
                 continue;
             }
-            $dailyTotals[$date]['steps'] += max(0, (int) ($seriesPoint['steps'] ?? 0));
-            $dailyTotals[$date]['distance'] += max(0.0, (float) ($seriesPoint['km'] ?? 0));
+            $steps = max(0, (int) ($seriesPoint['steps'] ?? 0));
+            $distance = max(0.0, (float) ($seriesPoint['km'] ?? 0));
+            $dailyTotals[$date]['steps'] += $steps;
+            $dailyTotals[$date]['distance'] += $distance;
             $dailyTotals[$date]['workouts'] += $workoutsByDate[$date] ?? 0;
+            if ($userId > 0 && isset($dailyByUser[$userId]['daily'][$date])) {
+                $dailyByUser[$userId]['daily'][$date]['steps'] += $steps;
+                $dailyByUser[$userId]['daily'][$date]['distance'] += $distance;
+            }
         }
     }
 
@@ -2540,6 +2804,41 @@ if ($page === 'team') {
         $teamDailySteps[] = (int) $row['steps'];
         $teamDailyDistance[] = round((float) $row['distance'], 2);
         $teamDailyWorkouts[] = (int) $row['workouts'];
+    }
+
+    $teamCumulativeLabels = $teamDailyLabels;
+    $teamCumulativeSteps = [];
+    $teamCumulativeDistance = [];
+    $runningSteps = 0;
+    $runningDistance = 0.0;
+    foreach ($filteredDaily as $row) {
+        $runningSteps += max(0, (int) ($row['steps'] ?? 0));
+        $runningDistance += max(0.0, (float) ($row['distance'] ?? 0));
+        $teamCumulativeSteps[] = $runningSteps;
+        $teamCumulativeDistance[] = round($runningDistance, 2);
+    }
+
+    $teamCumulativeByUser = [];
+    if (count($dailyByUser) > 1) {
+        foreach ($dailyByUser as $userId => $userDaily) {
+            $userRunningSteps = 0;
+            $userRunningDistance = 0.0;
+            $userStepSeries = [];
+            $userDistanceSeries = [];
+            foreach (array_keys($filteredDaily) as $date) {
+                $point = (array) (($userDaily['daily'][$date] ?? ['steps' => 0, 'distance' => 0.0]));
+                $userRunningSteps += max(0, (int) ($point['steps'] ?? 0));
+                $userRunningDistance += max(0.0, (float) ($point['distance'] ?? 0));
+                $userStepSeries[] = $userRunningSteps;
+                $userDistanceSeries[] = round($userRunningDistance, 2);
+            }
+            $teamCumulativeByUser[] = [
+                'user_id' => (int) $userId,
+                'display_name' => (string) ($userDaily['display_name'] ?? ''),
+                'steps' => $userStepSeries,
+                'distance' => $userDistanceSeries,
+            ];
+        }
     }
 
     $weeklyAgg = [];
@@ -2984,6 +3283,40 @@ if ($page === 'team') {
         }
     }
 
+    ob_start();
+    ?>
+    <details class="topbar-context">
+        <summary class="btn btn-ghost btn-topbar"><?= e(t('dashboard.view_mode')) ?></summary>
+        <div class="topbar-context-panel">
+            <form method="get" class="stack">
+                <input type="hidden" name="page" value="team">
+                <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
+                <?php if ($teamGoalDebugEnabled): ?>
+                    <input type="hidden" name="debug_goal" value="1">
+                <?php endif; ?>
+                <?php if ($teamSection === 'member' && $teamMemberDetail !== null): ?>
+                    <input type="hidden" name="section" value="member">
+                    <input type="hidden" name="user_id" value="<?= (int) ($teamMemberDetail['user']['id'] ?? 0) ?>">
+                <?php endif; ?>
+                <?php if ($teamMetricDetail !== null): ?>
+                    <input type="hidden" name="metric" value="<?= e((string) ($teamMetricDetail['key'] ?? '')) ?>">
+                <?php endif; ?>
+                <label>
+                    <?= e(t('dashboard.view_mode')) ?>
+                    <select name="view" onchange="this.form.submit()">
+                        <option value="current_week" <?= $teamView === 'current_week' ? 'selected' : '' ?>><?= e(t('dashboard.current_week')) ?></option>
+                        <option value="total" <?= $teamView === 'total' ? 'selected' : '' ?>><?= e(t('metric.total')) ?></option>
+                        <?php foreach ($weekOptions as $weekStart): ?>
+                            <option value="<?= e((string) $weekStart) ?>" <?= $teamView === (string) $weekStart ? 'selected' : '' ?>><?= e(format_date_eu((string) $weekStart)) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+            </form>
+        </div>
+    </details>
+    <?php
+    $teamTopbarControls = ob_get_clean();
+
     render_view('team', [
         'title' => t('team.title'),
         'currentPage' => 'team',
@@ -3000,6 +3333,10 @@ if ($page === 'team') {
         'teamDailySteps' => $teamDailySteps,
         'teamDailyDistance' => $teamDailyDistance,
         'teamDailyWorkouts' => $teamDailyWorkouts,
+        'teamCumulativeLabels' => $teamCumulativeLabels,
+        'teamCumulativeSteps' => $teamCumulativeSteps,
+        'teamCumulativeDistance' => $teamCumulativeDistance,
+        'teamCumulativeByUser' => $teamCumulativeByUser,
         'teamWeeklyLabels' => $teamWeeklyLabels,
         'teamWeeklyScore' => $teamWeeklyScore,
         'teamWeeklyStrikes' => $teamWeeklyStrikes,
@@ -3015,6 +3352,7 @@ if ($page === 'team') {
         'teamAchievements' => list_awarded_achievements($pdo, null, (int) $team['id']),
         'canDeleteAchievements' => can_manage_team($pdo, $currentUser, (int) $team['id']),
         'canManageTeam' => can_manage_team($pdo, $currentUser, (int) $team['id']),
+        'topbarControls' => $teamTopbarControls,
         'config' => $config,
     ]);
 }

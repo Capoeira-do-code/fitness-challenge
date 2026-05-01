@@ -6,9 +6,9 @@ $days = [];
 for ($i = 0; $i < 7; $i++) {
     $days[$i] = t('weekday.' . $i);
 }
-$entityTypes = ['daily_log', 'approval_request', 'user', 'team_membership', 'goal', 'achievement', 'workout_type', 'photo_entry'];
+$entityTypes = ['daily_log', 'approval_request', 'user', 'team_membership', 'goal', 'achievement', 'workout_type', 'photo_entry', 'app_setting', 'system_backup'];
 $activeSection = (string) ($_GET['section'] ?? '');
-$allowedSections = ['users', 'challenge', 'app', 'habits', 'workout_types', 'achievements', 'audit'];
+$allowedSections = ['users', 'challenge', 'app', 'backups', 'habits', 'workout_types', 'achievements', 'audit'];
 if (!in_array($activeSection, $allowedSections, true)) {
     $activeSection = '';
 }
@@ -21,11 +21,41 @@ $sectionRows = [
     'users' => 'Users',
     'challenge' => 'Challenge',
     'app' => 'App',
+    'backups' => 'Backups',
     'habits' => 'Habits',
     'workout_types' => 'Workout Types',
     'achievements' => 'Achievements',
     'audit' => 'Audit Log',
 ];
+$activeLoginBackgroundPath = trim((string) ($loginBackgroundPath ?? ''));
+$activeLoginBackgroundUrl = $activeLoginBackgroundPath !== '' ? media_url($activeLoginBackgroundPath) : '';
+$backupSettings = is_array($backupSettings ?? null) ? (array) $backupSettings : [];
+$backupAutoEnabled = !empty($backupSettings['enabled']);
+$backupFrequency = normalize_backup_frequency((string) ($backupSettings['frequency'] ?? 'daily'));
+$backupRetentionCount = max(1, (int) ($backupSettings['retention_count'] ?? 20));
+$backupLastAutoAt = trim((string) ($backupSettings['last_auto_at'] ?? ''));
+$backupLastAutoLabel = t('admin.backup_last_auto_never');
+if ($backupLastAutoAt !== '') {
+    try {
+        $backupLastAutoDate = new DateTimeImmutable($backupLastAutoAt);
+        $backupLastAutoLabel = format_date_eu($backupLastAutoDate->format('Y-m-d')) . ' ' . $backupLastAutoDate->format('H:i');
+    } catch (Throwable) {
+        $backupLastAutoLabel = $backupLastAutoAt;
+    }
+}
+$backupTriggerLabel = static function (string $trigger): string {
+    return match ($trigger) {
+        'auto' => t('admin.backup_trigger_auto'),
+        default => t('admin.backup_trigger_manual'),
+    };
+};
+$backupStatusLabel = static function (string $status): string {
+    return match ($status) {
+        'restored' => t('admin.backup_status_restored'),
+        'error' => t('common.error'),
+        default => t('common.saved'),
+    };
+};
 ?>
 <section class="screen stack-lg spa-shell" data-spa-page="admin">
     <div class="hero-panel">
@@ -217,6 +247,171 @@ $sectionRows = [
             <label><?= e(t('common.photo')) ?><input type="file" name="app_icon" accept="image/*" required data-image-crop-input></label>
             <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
         </form>
+
+        <section class="stack compact-form admin-login-background">
+            <div class="panel-head">
+                <div>
+                    <h3><?= e(t('admin.login_background_title')) ?></h3>
+                    <p class="muted"><?= e(t('admin.login_background_subtitle')) ?></p>
+                </div>
+            </div>
+
+            <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack compact-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="upload_login_background">
+                <label>
+                    <?= e(t('admin.login_background_upload')) ?>
+                    <input type="file" name="login_background" accept="image/*" required>
+                </label>
+                <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+            </form>
+
+            <?php if ($activeLoginBackgroundUrl !== ''): ?>
+                <figure class="admin-login-bg-active">
+                    <img src="<?= e($activeLoginBackgroundUrl) ?>" alt="<?= e(t('admin.login_background_active')) ?>">
+                    <figcaption><?= e(t('admin.login_background_active')) ?></figcaption>
+                </figure>
+            <?php else: ?>
+                <p class="muted"><?= e(t('admin.login_background_none')) ?></p>
+            <?php endif; ?>
+
+            <?php if (($loginBackgroundLibrary ?? []) === []): ?>
+                <p class="muted"><?= e(t('admin.login_background_empty')) ?></p>
+            <?php else: ?>
+                <div class="admin-login-bg-library">
+                    <?php foreach ((array) $loginBackgroundLibrary as $background): ?>
+                        <?php
+                        $backgroundPath = trim((string) ($background['path'] ?? ''));
+                        if ($backgroundPath === '') {
+                            continue;
+                        }
+                        $backgroundUrl = media_url($backgroundPath);
+                        if ($backgroundUrl === '') {
+                            continue;
+                        }
+                        $isActiveBackground = $activeLoginBackgroundPath !== '' && $activeLoginBackgroundPath === $backgroundPath;
+                        ?>
+                        <form method="post" action="/?page=admin" class="admin-login-bg-item<?= $isActiveBackground ? ' is-active' : '' ?>">
+                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                            <input type="hidden" name="action" value="set_login_background">
+                            <input type="hidden" name="login_background_path" value="<?= e($backgroundPath) ?>">
+                            <img src="<?= e($backgroundUrl) ?>" alt="<?= e((string) ($background['name'] ?? '')) ?>">
+                            <div class="admin-login-bg-item-meta">
+                                <strong><?= e((string) ($background['name'] ?? '')) ?></strong>
+                                <button class="btn btn-ghost small" type="submit"><?= e($isActiveBackground ? t('common.active') : t('admin.login_background_select')) ?></button>
+                            </div>
+                        </form>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+
+            <form method="post" action="/?page=admin">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="clear_login_background">
+                <button class="btn btn-ghost small" type="submit"><?= e(t('admin.login_background_clear')) ?></button>
+            </form>
+        </section>
+    </article>
+
+    <article class="panel settings-panel<?= $activeSection === 'backups' ? ' active' : '' ?>" data-spa-section="backups" <?= $activeSection === 'backups' ? '' : 'hidden' ?>>
+        <div class="panel-head">
+            <h2><?= e(t('admin.backups_title')) ?></h2>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="Volver">← Volver</a>
+        </div>
+        <p class="muted"><?= e(t('admin.backups_subtitle')) ?></p>
+
+        <form method="post" action="/?page=admin" class="stack compact-form">
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="update_backup_settings">
+            <label class="check standalone-check">
+                <input type="checkbox" name="backup_auto_enabled" value="1" <?= $backupAutoEnabled ? 'checked' : '' ?>>
+                <?= e(t('admin.backup_auto_enabled')) ?>
+            </label>
+            <div class="grid-inline two">
+                <label>
+                    <?= e(t('admin.backup_frequency')) ?>
+                    <select name="backup_frequency">
+                        <option value="daily" <?= $backupFrequency === 'daily' ? 'selected' : '' ?>><?= e(t('admin.backup_frequency_daily')) ?></option>
+                        <option value="weekly" <?= $backupFrequency === 'weekly' ? 'selected' : '' ?>><?= e(t('admin.backup_frequency_weekly')) ?></option>
+                        <option value="monthly" <?= $backupFrequency === 'monthly' ? 'selected' : '' ?>><?= e(t('admin.backup_frequency_monthly')) ?></option>
+                    </select>
+                </label>
+                <label>
+                    <?= e(t('admin.backup_retention_count')) ?>
+                    <input type="number" name="backup_retention_count" min="1" max="200" value="<?= (int) $backupRetentionCount ?>" required>
+                </label>
+            </div>
+            <p class="muted small"><?= e(t('admin.backup_last_auto', ['value' => $backupLastAutoLabel])) ?></p>
+            <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+        </form>
+
+        <form method="post" action="/?page=admin">
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="create_backup_now">
+            <button class="btn btn-secondary" type="submit"><?= e(t('admin.backup_create_now')) ?></button>
+        </form>
+
+        <?php if (($systemBackups ?? []) === []): ?>
+            <p class="muted"><?= e(t('admin.backup_empty')) ?></p>
+        <?php else: ?>
+            <div class="card-list admin-backup-list">
+                <?php foreach ((array) $systemBackups as $backup): ?>
+                    <?php
+                    $backupId = (int) ($backup['id'] ?? 0);
+                    if ($backupId <= 0) {
+                        continue;
+                    }
+                    $backupFilePath = trim((string) ($backup['file_path'] ?? ''));
+                    $backupFileName = $backupFilePath !== '' ? basename($backupFilePath) : ('backup_' . $backupId . '.zip');
+                    $backupCreatedAtRaw = trim((string) ($backup['created_at'] ?? ''));
+                    $backupCreatedAtLabel = $backupCreatedAtRaw;
+                    if ($backupCreatedAtRaw !== '') {
+                        try {
+                            $backupDate = new DateTimeImmutable($backupCreatedAtRaw);
+                            $backupCreatedAtLabel = format_date_eu($backupDate->format('Y-m-d')) . ' ' . $backupDate->format('H:i');
+                        } catch (Throwable) {
+                            $backupCreatedAtLabel = $backupCreatedAtRaw;
+                        }
+                    }
+                    $backupTrigger = trim((string) ($backup['trigger_type'] ?? 'manual'));
+                    $backupStatus = trim((string) ($backup['status'] ?? 'created'));
+                    $backupSizeLabel = trim((string) ($backup['size_label'] ?? ''));
+                    $backupExists = (int) ($backup['file_exists'] ?? 0) === 1;
+                    $restorePlaceholder = 'RESTORE';
+                    ?>
+                    <article class="mini-card admin-backup-item<?= $backupExists ? '' : ' is-missing' ?>">
+                        <div class="admin-backup-meta">
+                            <strong><?= e($backupFileName) ?></strong>
+                            <span><?= e(t('admin.backup_created_at')) ?>: <?= e($backupCreatedAtLabel) ?></span>
+                            <span><?= e(t('admin.backup_trigger')) ?>: <?= e($backupTriggerLabel($backupTrigger)) ?></span>
+                            <span><?= e(t('admin.backup_size')) ?>: <?= e($backupSizeLabel !== '' ? $backupSizeLabel : '0 B') ?></span>
+                            <span><?= e(t('admin.backup_status')) ?>: <?= e($backupStatusLabel($backupStatus)) ?></span>
+                            <?php if (!$backupExists): ?>
+                                <small class="muted"><?= e(t('admin.backup_missing_file')) ?></small>
+                            <?php endif; ?>
+                        </div>
+                        <div class="admin-backup-actions">
+                            <form method="post" action="/?page=admin">
+                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="download_backup">
+                                <input type="hidden" name="backup_id" value="<?= $backupId ?>">
+                                <button class="btn btn-ghost small" type="submit"<?= $backupExists ? '' : ' disabled' ?>><?= e(t('admin.backup_download')) ?></button>
+                            </form>
+                            <form method="post" action="/?page=admin" class="admin-backup-restore-form">
+                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="restore_backup">
+                                <input type="hidden" name="backup_id" value="<?= $backupId ?>">
+                                <label>
+                                    <?= e(t('admin.backup_restore_confirm_label')) ?>
+                                    <input type="text" name="confirm_restore" placeholder="<?= e($restorePlaceholder) ?>" autocomplete="off" required>
+                                </label>
+                                <button class="btn btn-ghost small" type="submit" onclick="return window.confirm('<?= e(t('admin.backup_restore_confirm_dialog')) ?>');"<?= $backupExists ? '' : ' disabled' ?>><?= e(t('admin.backup_restore')) ?></button>
+                            </form>
+                        </div>
+                    </article>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
     </article>
 
     <article class="panel settings-panel<?= $activeSection === 'habits' ? ' active' : '' ?>" data-spa-section="habits" <?= $activeSection === 'habits' ? '' : 'hidden' ?>>

@@ -271,7 +271,7 @@ $strikesHref = '/?' . http_build_query($strikesQueryBase);
 ob_start();
 ?>
 <details class="topbar-context">
-    <summary class="btn btn-ghost btn-topbar">Vista</summary>
+    <summary class="btn btn-ghost btn-topbar"><?= e(t('dashboard.view_mode')) ?></summary>
     <div class="topbar-context-panel">
         <form method="get" class="stack">
         <input type="hidden" name="page" value="dashboard">

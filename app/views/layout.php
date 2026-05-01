@@ -9,6 +9,7 @@ $pageTitle = isset($title) ? $title . ' · ' . $appName : $appName;
 $currentPage = $currentPage ?? '';
 $activeLocale = current_locale();
 $redirectTo = safe_redirect_target($_SERVER['REQUEST_URI'] ?? '/');
+$loginBackgroundUrl = (string) ($loginBackgroundUrl ?? '');
 $appIconSetting = db_fetch_one($GLOBALS['pdo'], 'SELECT setting_value, updated_at FROM app_settings WHERE setting_key = :key', [':key' => 'app_icon_path']);
 $appIconPath = $appIconSetting !== null ? trim((string) ($appIconSetting['setting_value'] ?? '')) : '';
 $appIconVersion = null;
@@ -55,9 +56,22 @@ $renderMobileIcon = static function (string $icon): string {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/styles.css?v=20">
+    <link rel="stylesheet" href="/assets/styles.css?v=21">
 </head>
-<body data-page="<?= e((string) $currentPage) ?>">
+<?php
+$bodyClasses = [];
+if (!$loggedIn && $currentPage === 'login') {
+    $bodyClasses[] = 'login-body';
+}
+if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
+    $bodyClasses[] = 'login-body-has-bg';
+}
+$bodyStyle = '';
+if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
+    $bodyStyle = "--login-bg-image:url('" . e($loginBackgroundUrl) . "');";
+}
+?>
+<body data-page="<?= e((string) $currentPage) ?>"<?= $bodyClasses !== [] ? ' class="' . e(implode(' ', $bodyClasses)) . '"' : '' ?><?= $bodyStyle !== '' ? ' style="' . $bodyStyle . '"' : '' ?>>
 <?php if ($loggedIn): ?>
     <header class="topbar">
         <a class="brand" href="/?page=dashboard">
@@ -117,7 +131,7 @@ $renderMobileIcon = static function (string $icon): string {
 <?php endif; ?>
 
 <main class="container <?= $loggedIn ? 'container-with-nav' : '' ?>">
-    <?php if (!$loggedIn): ?>
+    <?php if (!$loggedIn && $currentPage !== 'login'): ?>
         <?php
         $localeScope = 'login';
         $localeFormClass = 'locale-form auth-locale';

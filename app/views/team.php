@@ -95,6 +95,7 @@ foreach ($leaderboardRows as $idx => $row) {
 
 $teamMetricDetail = is_array($teamMetricDetail ?? null) ? $teamMetricDetail : null;
 $teamMetricTitle = is_array($teamMetricDetail) ? (string) ($teamMetricDetail['title'] ?? '') : '';
+$isTeamOverview = $teamSection === '' && $teamMetricDetail === null;
 
 $memberUser = is_array($teamMemberDetail['user'] ?? null) ? (array) $teamMemberDetail['user'] : [];
 $memberMetric = is_array($teamMemberDetail['metric'] ?? null) ? (array) $teamMemberDetail['metric'] : [];
@@ -112,7 +113,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         <?php endif; ?>
     </div>
 
-    <?php if ($activeChallenge !== null): ?>
+    <?php if ($activeChallenge !== null && $isTeamOverview): ?>
         <?php
         $activeRewardText = trim((string) ($activeChallenge['reward_text'] ?? ''));
         $activeProgressRaw = (float) ($activeChallenge['progress_pct_raw'] ?? 0);
@@ -180,33 +181,6 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             </div>
         </article>
     <?php endif; ?>
-
-    <article class="panel">
-        <form method="get" class="control-strip wrap">
-            <input type="hidden" name="page" value="team">
-            <input type="hidden" name="team_id" value="<?= (int) $team['id'] ?>">
-            <?php if ($teamGoalDebugEnabled): ?>
-                <input type="hidden" name="debug_goal" value="1">
-            <?php endif; ?>
-            <?php if ($teamSection === 'member' && !empty($memberUser['id'])): ?>
-                <input type="hidden" name="section" value="member">
-                <input type="hidden" name="user_id" value="<?= (int) $memberUser['id'] ?>">
-            <?php endif; ?>
-            <?php if ($teamMetricDetail !== null): ?>
-                <input type="hidden" name="metric" value="<?= e((string) ($teamMetricDetail['key'] ?? '')) ?>">
-            <?php endif; ?>
-            <label>
-                <?= e(t('dashboard.view_mode')) ?>
-                <select name="view" onchange="this.form.submit()">
-                    <option value="current_week" <?= $teamView === 'current_week' ? 'selected' : '' ?>><?= e(t('dashboard.current_week')) ?></option>
-                    <option value="total" <?= $teamView === 'total' ? 'selected' : '' ?>><?= e(t('metric.total')) ?></option>
-                    <?php foreach ($teamWeekOptions as $weekStart): ?>
-                        <option value="<?= e((string) $weekStart) ?>" <?= $teamView === (string) $weekStart ? 'selected' : '' ?>><?= e(format_date_eu((string) $weekStart)) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
-        </form>
-    </article>
 
     <?php if ($teamSection === 'member' && $teamMemberDetail !== null && $memberUser !== [] && $memberMetric !== []): ?>
         <article class="panel">
@@ -428,6 +402,25 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 <canvas id="teamDistanceChart" height="170"></canvas>
             </article>
         </div>
+
+        <article class="panel chart-card">
+            <div class="panel-head">
+                <div>
+                    <h2><?= e(t('team.cumulative_progress')) ?></h2>
+                    <p class="muted"><?= e(t('team.cumulative_progress_hint')) ?></p>
+                </div>
+            </div>
+            <div class="grid-two">
+                <article class="mini-card chart-card">
+                    <h3><?= e(t('team.cumulative_steps')) ?></h3>
+                    <canvas id="teamCumulativeStepsChart" height="170"></canvas>
+                </article>
+                <article class="mini-card chart-card">
+                    <h3><?= e(t('team.cumulative_distance')) ?></h3>
+                    <canvas id="teamCumulativeDistanceChart" height="170"></canvas>
+                </article>
+            </div>
+        </article>
 
         <div class="grid-two">
             <article class="panel chart-card">
@@ -839,6 +832,80 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     fill: true,
                     tension: 0.3,
                 }]
+            },
+            options: lineOpts
+        });
+    }
+
+    const cumulativePalette = ['#6366f1', '#f97316', '#ef4444', '#22c55e', '#a855f7', '#0ea5e9', '#f59e0b', '#14b8a6'];
+    const cumulativeUsers = <?= json_encode($teamCumulativeByUser ?? []) ?>;
+    const cumulativeLabels = <?= json_encode($teamCumulativeLabels ?? []) ?>;
+
+    const cumulativeStepsCtx = document.getElementById('teamCumulativeStepsChart');
+    if (cumulativeStepsCtx) {
+        const datasets = [{
+            label: <?= json_encode(t('team.cumulative_total_steps')) ?>,
+            data: <?= json_encode($teamCumulativeSteps ?? []) ?>,
+            borderColor: '#14a38b',
+            backgroundColor: 'rgba(20, 163, 139, 0.14)',
+            fill: true,
+            tension: 0.25,
+            borderWidth: 2.5,
+        }];
+
+        cumulativeUsers.forEach((user, index) => {
+            const color = cumulativePalette[index % cumulativePalette.length];
+            datasets.push({
+                label: String(user.display_name || ''),
+                data: Array.isArray(user.steps) ? user.steps : [],
+                borderColor: color,
+                backgroundColor: 'transparent',
+                fill: false,
+                tension: 0.22,
+                borderWidth: 1.6,
+            });
+        });
+
+        new Chart(cumulativeStepsCtx, {
+            type: 'line',
+            data: {
+                labels: cumulativeLabels,
+                datasets
+            },
+            options: lineOpts
+        });
+    }
+
+    const cumulativeDistanceCtx = document.getElementById('teamCumulativeDistanceChart');
+    if (cumulativeDistanceCtx) {
+        const datasets = [{
+            label: <?= json_encode(t('team.cumulative_total_distance')) ?>,
+            data: <?= json_encode($teamCumulativeDistance ?? []) ?>,
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.14)',
+            fill: true,
+            tension: 0.25,
+            borderWidth: 2.5,
+        }];
+
+        cumulativeUsers.forEach((user, index) => {
+            const color = cumulativePalette[(index + 2) % cumulativePalette.length];
+            datasets.push({
+                label: String(user.display_name || ''),
+                data: Array.isArray(user.distance) ? user.distance : [],
+                borderColor: color,
+                backgroundColor: 'transparent',
+                fill: false,
+                tension: 0.22,
+                borderWidth: 1.6,
+            });
+        });
+
+        new Chart(cumulativeDistanceCtx, {
+            type: 'line',
+            data: {
+                labels: cumulativeLabels,
+                datasets
             },
             options: lineOpts
         });

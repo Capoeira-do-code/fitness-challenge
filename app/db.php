@@ -430,6 +430,25 @@ function initialize_database(PDO $pdo, array $config): void
     );
 
     $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS system_backups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_path TEXT NOT NULL,
+            trigger_type TEXT NOT NULL,
+            scope TEXT NOT NULL DEFAULT "db_uploads",
+            size_bytes INTEGER NOT NULL DEFAULT 0,
+            checksum_sha256 TEXT,
+            status TEXT NOT NULL DEFAULT "created",
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            restored_by INTEGER,
+            restored_at TEXT,
+            error_message TEXT,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (restored_by) REFERENCES users(id) ON DELETE SET NULL
+        )'
+    );
+
+    $pdo->exec(
         'CREATE TABLE IF NOT EXISTS achievement_rules (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             achievement_id INTEGER NOT NULL,
@@ -615,6 +634,13 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'strike_review_requests', 'eligible_voters_json', 'TEXT NOT NULL DEFAULT "[]"');
     ensure_column($pdo, 'strike_review_requests', 'resent_count', 'INTEGER NOT NULL DEFAULT 0');
     ensure_column($pdo, 'strike_review_requests', 'resolved_at', 'TEXT');
+
+    ensure_column($pdo, 'system_backups', 'scope', 'TEXT NOT NULL DEFAULT "db_uploads"');
+    ensure_column($pdo, 'system_backups', 'checksum_sha256', 'TEXT');
+    ensure_column($pdo, 'system_backups', 'status', 'TEXT NOT NULL DEFAULT "created"');
+    ensure_column($pdo, 'system_backups', 'restored_by', 'INTEGER');
+    ensure_column($pdo, 'system_backups', 'restored_at', 'TEXT');
+    ensure_column($pdo, 'system_backups', 'error_message', 'TEXT');
 }
 
 function ensure_column(PDO $pdo, string $table, string $column, string $definition): void
@@ -665,6 +691,8 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON user_notifications(user_id, created_at)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON user_notifications(user_id, is_read)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_user_unique_key ON user_notifications(user_id, unique_key) WHERE unique_key IS NOT NULL');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_system_backups_created ON system_backups(created_at DESC)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_system_backups_status ON system_backups(status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_challenge_archives_archived_at ON challenge_archives(archived_at DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_requests_target ON strike_review_requests(target_user_id, week_start, event_date)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_requests_status ON strike_review_requests(status)');
