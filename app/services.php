@@ -6654,10 +6654,6 @@ function create_system_backup(PDO $pdo, array $config, string $triggerType, ?int
                 continue;
             }
             $zipPath = 'uploads/' . ltrim(str_replace('\\', '/', $relative), '/');
-            if (!$zip->addFile($absolute, $zipPath)) {
-                $zip->close();
-                throw new RuntimeException('Could not add upload file to archive.');
-            }
             $manifest['uploads'][] = [
                 'path' => $zipPath,
                 'size_bytes' => (int) (@filesize($absolute) ?: 0),
