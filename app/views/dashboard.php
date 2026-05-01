@@ -63,6 +63,7 @@ if (!in_array('distance_cumulative', $visibleWidgets, true)) {
 }
 $showWidget = static fn(string $widget): bool => in_array($widget, $visibleWidgets, true);
 $dashboardWidgets = ['kpis', 'distance_walked', 'calories', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
+$dashboardEditorWidgets = array_values(array_unique(array_merge($visibleWidgets, $dashboardWidgets)));
 $layoutOrder = array_flip($visibleWidgets);
 $widgetOrder = static function (string ...$widgets) use ($visibleWidgets): int {
     $orders = [];
@@ -297,22 +298,32 @@ ob_start();
             </select>
         </label>
         </form>
-        <details class="inline-context-sub">
-            <summary class="btn btn-ghost btn-block"><?= e(t('dashboard.edit_layout')) ?></summary>
-            <form method="post" action="/?page=dashboard" class="stack">
+        <details class="inline-context-sub dashboard-layout-context">
+            <summary class="btn btn-ghost btn-block dashboard-edit-layout-trigger"><?= e(t('dashboard.edit_layout')) ?></summary>
+            <form method="post" action="/?page=dashboard" class="team-layout-editor dashboard-layout-editor" data-dashboard-layout-editor>
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="save_dashboard_layout">
                 <input type="hidden" name="dashboard_view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
-                <div class="chip-group">
-                    <?php foreach ($dashboardWidgets as $widget): ?>
-                        <label class="chip">
-                            <input type="checkbox" name="dashboard_widgets[]" value="<?= e($widget) ?>" <?= in_array($widget, $visibleWidgets, true) ? 'checked' : '' ?>>
-                            <?= e(t('dashboard.widget_' . $widget)) ?>
-                            <input type="number" name="dashboard_order[<?= e($widget) ?>]" value="<?= e((string) (($layoutOrder[$widget] ?? array_search($widget, $dashboardWidgets, true)) + 1)) ?>" min="1" max="<?= count($dashboardWidgets) ?>">
-                        </label>
+                <div class="team-layout-editor-head">
+                    <strong><?= e(t('dashboard.edit_layout')) ?></strong>
+                    <small><?= e(t('dashboard.layout_hint')) ?></small>
+                </div>
+                <div class="team-layout-editor-list dashboard-layout-editor-list" data-dashboard-layout-list>
+                    <?php foreach ($dashboardEditorWidgets as $idx => $widget): ?>
+                        <div class="team-layout-editor-item dashboard-layout-editor-item" draggable="true" data-dashboard-layout-item>
+                            <span class="team-layout-drag-handle" aria-hidden="true">::</span>
+                            <label class="dashboard-layout-toggle">
+                                <input type="checkbox" name="dashboard_widgets[]" value="<?= e($widget) ?>" <?= in_array($widget, $visibleWidgets, true) ? 'checked' : '' ?>>
+                                <span><?= e(t('dashboard.widget_' . $widget)) ?></span>
+                            </label>
+                            <input type="hidden" name="dashboard_order[<?= e($widget) ?>]" value="<?= e((string) ($idx + 1)) ?>" data-dashboard-order-input>
+                        </div>
                     <?php endforeach; ?>
                 </div>
-                <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+                <div class="team-layout-editor-actions">
+                    <button class="btn btn-ghost small" type="submit" name="reset_dashboard_layout" value="1"><?= e(t('dashboard.reset_layout')) ?></button>
+                    <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
+                </div>
             </form>
         </details>
     </div>
@@ -388,10 +399,10 @@ $topbarControls = ob_get_clean();
         <article class="panel dashboard-panel dashboard-span-full dashboard-weekly-history" style="order: -10">
             <div class="panel-head">
                 <h2><?= e(t('dashboard.weekly_history')) ?></h2>
-                <a class="btn btn-ghost" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week=<?= e(date_to_iso_week((string) $selectedWeekStart)) ?>"><?= e(t('table.open_editor')) ?></a>
+                <a class="btn btn-ghost small dashboard-panel-action" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week=<?= e(date_to_iso_week((string) $selectedWeekStart)) ?>"><?= e(t('table.open_editor')) ?></a>
             </div>
             <div class="table-wrap">
-                <table class="table compact">
+                <table class="table compact responsive-card-table dashboard-weekly-table">
                     <thead>
                     <tr>
                         <th><?= e(t('common.week')) ?></th>
@@ -421,15 +432,15 @@ $topbarControls = ob_get_clean();
                         ]);
                         ?>
                         <tr>
-                            <td><?= e(format_date_eu((string) $week['week_start'])) ?> -> <?= e(format_date_eu((string) $week['week_end'])) ?></td>
-                            <td><?= e(label_for_status((string) $week['status'])) ?></td>
-                            <td><?= e((string) $week['step_failures']) ?></td>
-                            <td><?= e((string) $week['workout_failures']) ?></td>
-                            <td><?= e((string) ($week['skip_warnings'] ?? 0)) ?></td>
-                            <td><span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) ($week['penalty'] ?? 0))) ?>">€<?= e(number_format((float) ($week['penalty'] ?? 0), 2, '.', '')) ?></span></td>
-                            <td><?= (int) $week['strike_reduction'] > 0 ? '-1' : '-' ?></td>
-                            <td><?= e((string) $week['strikes_after_week']) ?></td>
-                            <td>
+                            <td data-label="<?= e(t('common.week')) ?>"><?= e(format_date_eu((string) $week['week_start'])) ?> -> <?= e(format_date_eu((string) $week['week_end'])) ?></td>
+                            <td data-label="<?= e(t('common.status')) ?>"><?= e(label_for_status((string) $week['status'])) ?></td>
+                            <td data-label="<?= e(t('metric.step_failures')) ?>"><?= e((string) $week['step_failures']) ?></td>
+                            <td data-label="<?= e(t('metric.workout_failures')) ?>"><?= e((string) $week['workout_failures']) ?></td>
+                            <td data-label="<?= e(t('metric.warnings')) ?>"><?= e((string) ($week['skip_warnings'] ?? 0)) ?></td>
+                            <td data-label="<?= e(t('strikes.economic_impact')) ?>"><span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) ($week['penalty'] ?? 0))) ?>">€<?= e(number_format((float) ($week['penalty'] ?? 0), 2, '.', '')) ?></span></td>
+                            <td data-label="<?= e(t('dashboard.strike_reduction')) ?>"><?= (int) $week['strike_reduction'] > 0 ? '-1' : '-' ?></td>
+                            <td data-label="<?= e(t('dashboard.strikes_after_week')) ?>"><?= e((string) $week['strikes_after_week']) ?></td>
+                            <td data-label="<?= e(t('common.actions')) ?>">
                                 <div class="dashboard-week-actions">
                                     <a class="btn btn-ghost small" href="<?= e($weekEditorHref) ?>"><?= e(t('dashboard.edit_week')) ?></a>
                                     <a class="btn btn-ghost small" href="<?= e($weekStrikesHref) ?>"><?= e(t('dashboard.penalty_history')) ?></a>
@@ -453,12 +464,18 @@ $topbarControls = ob_get_clean();
 
         <?php if ($showWidget('calories')): ?>
         <article class="panel chart-card dashboard-panel dashboard-calories" style="order: <?= $contentWidgetOrder('calories') ?>">
-            <div class="panel-head">
-                <div>
-                    <h2><?= e(t('dashboard.calories_title')) ?></h2>
+            <div class="panel-head dashboard-calories-head">
+                <div class="dashboard-calories-title">
+                    <div class="dashboard-calories-title-row">
+                        <h2><?= e(t('dashboard.calories_title')) ?></h2>
+                        <span class="badge"><?= e((string) ($calorieStats['tracked_days'] ?? 0)) ?> <?= e(t('dashboard.calories_tracked_days')) ?></span>
+                    </div>
                     <p class="muted small"><?= e($calorieRangeText) ?></p>
                 </div>
-                <span class="badge"><?= e((string) ($calorieStats['tracked_days'] ?? 0)) ?> <?= e(t('dashboard.calories_tracked_days')) ?></span>
+                <details class="metric-help-popover">
+                    <summary aria-label="<?= e(t('dashboard.calories_hint_label')) ?>" title="<?= e(t('dashboard.calories_hint_label')) ?>">?</summary>
+                    <div class="metric-help-popover-content"><?= e(t('dashboard.calories_hint')) ?></div>
+                </details>
             </div>
             <div class="calories-overview">
                 <div class="metric-box">
@@ -475,13 +492,6 @@ $topbarControls = ob_get_clean();
             <?php else: ?>
                 <canvas id="calorieChart" height="150"></canvas>
             <?php endif; ?>
-            <div class="panel-head panel-head-help">
-                <span class="muted small"><?= e(t('dashboard.calories_hint_label')) ?></span>
-                <details class="metric-help-popover">
-                    <summary aria-label="<?= e(t('dashboard.calories_hint_label')) ?>" title="<?= e(t('dashboard.calories_hint_label')) ?>">?</summary>
-                    <div class="metric-help-popover-content"><?= e(t('dashboard.calories_hint')) ?></div>
-                </details>
-            </div>
         </article>
         <?php endif; ?>
 
@@ -670,10 +680,10 @@ $topbarControls = ob_get_clean();
                         </a>
                     <?php endforeach; ?>
                 </div>
-                <div class="panel-inline-empty chip-group">
-                    <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=month&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>"><?= e(t('calendar.view_month')) ?></a>
-                    <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=week&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>"><?= e(t('calendar.view_week')) ?></a>
-                    <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=day&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>"><?= e(t('calendar.view_day')) ?></a>
+                <div class="dashboard-calendar-links segmented-control compact-segmented-control">
+                    <a class="btn btn-ghost small" href="/?page=entries&mode=calendar&calendar_view=month&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>"><?= e(t('calendar.view_month')) ?></a>
+                    <a class="btn btn-ghost small" href="/?page=entries&mode=calendar&calendar_view=week&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>"><?= e(t('calendar.view_week')) ?></a>
+                    <a class="btn btn-ghost small" href="/?page=entries&mode=calendar&calendar_view=day&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>"><?= e(t('calendar.view_day')) ?></a>
                 </div>
             <?php endif; ?>
         </article>
@@ -703,7 +713,7 @@ $topbarControls = ob_get_clean();
             </p>
 
             <div class="table-wrap compact-wrap">
-                <table class="table compact">
+                <table class="table compact responsive-card-table dashboard-settlement-table">
                     <?php if ($isTotalMoneyView): ?>
                     <thead>
                     <tr>
@@ -725,11 +735,11 @@ $topbarControls = ob_get_clean();
                         ]);
                         ?>
                         <tr onclick="window.location='<?= e($metricStrikesHref) ?>'" style="cursor:pointer;">
-                            <td><?= e((string) $metric['user']['display_name']) ?></td>
-                            <td><?= e((string) $metric['current_strikes']) ?></td>
-                            <td><?= e((string) ($metric['skip_warning_events'] ?? 0)) ?></td>
-                            <td><a href="<?= e($metricStrikesHref) ?>" class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">€<?= e(number_format((float) $penaltyValue, 2, '.', '')) ?></a></td>
-                            <td><?= e((string) $metric['score']) ?></td>
+                            <td data-label="<?= e(t('common.user')) ?>"><?= e((string) $metric['user']['display_name']) ?></td>
+                            <td data-label="<?= e(t('metric.strikes')) ?>"><?= e((string) $metric['current_strikes']) ?></td>
+                            <td data-label="<?= e(t('metric.skip_warnings')) ?>"><?= e((string) ($metric['skip_warning_events'] ?? 0)) ?></td>
+                            <td data-label="<?= e(t('strikes.economic_impact')) ?>"><a href="<?= e($metricStrikesHref) ?>" class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">€<?= e(number_format((float) $penaltyValue, 2, '.', '')) ?></a></td>
+                            <td data-label="<?= e(t('metric.score')) ?>"><?= e((string) $metric['score']) ?></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
@@ -755,12 +765,12 @@ $topbarControls = ob_get_clean();
                         ]);
                         ?>
                         <tr onclick="window.location='<?= e($entryStrikesHref) ?>'" style="cursor:pointer;">
-                            <td><?= e((string) $entry['display_name']) ?></td>
-                            <td><?= e((string) $entry['step_failures']) ?></td>
-                            <td><?= e((string) $entry['workout_failures']) ?></td>
-                            <td><?= e((string) $entry['skip_warnings']) ?></td>
-                            <td><a href="<?= e($entryStrikesHref) ?>" class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">€<?= e(number_format((float) $penaltyValue, 2, '.', '')) ?></a></td>
-                            <td><?= e(label_for_status((string) $entry['status'])) ?></td>
+                            <td data-label="<?= e(t('common.user')) ?>"><?= e((string) $entry['display_name']) ?></td>
+                            <td data-label="<?= e(t('metric.step_failures')) ?>"><?= e((string) $entry['step_failures']) ?></td>
+                            <td data-label="<?= e(t('metric.workout_failures')) ?>"><?= e((string) $entry['workout_failures']) ?></td>
+                            <td data-label="<?= e(t('metric.skip_warnings')) ?>"><?= e((string) $entry['skip_warnings']) ?></td>
+                            <td data-label="<?= e(t('strikes.economic_impact')) ?>"><a href="<?= e($entryStrikesHref) ?>" class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">€<?= e(number_format((float) $penaltyValue, 2, '.', '')) ?></a></td>
+                            <td data-label="<?= e(t('common.status')) ?>"><?= e(label_for_status((string) $entry['status'])) ?></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>

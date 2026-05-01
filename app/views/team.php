@@ -515,17 +515,30 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                         <strong><?= e((string) $goal['title']) ?></strong>
                                         <span class="team-goal-status status-<?= e($statusBadgeClass) ?>"><?= e($statusBadgeText) ?></span>
                                     </div>
-                                    <span>
-                                        <?= e((string) ($goal['target_type_label'] ?? t('common.other'))) ?>
-                                        · <?= e((string) ($goal['target_display'] ?? '-')) ?>
+                                    <div class="team-goal-meta-grid">
+                                        <span>
+                                            <small><?= e(t('goals.target')) ?></small>
+                                            <strong><?= e((string) ($goal['target_type_label'] ?? t('common.other'))) ?> · <?= e((string) ($goal['target_display'] ?? '-')) ?></strong>
+                                        </span>
                                         <?php if ($startDate !== ''): ?>
-                                            · <?= e(t('goals.start_date')) ?>: <?= e(format_date_eu($startDate)) ?><?= $startTime !== '' ? ' ' . e($startTime) : '' ?>
+                                            <span>
+                                                <small><?= e(t('goals.start_date')) ?></small>
+                                                <strong><?= e(format_date_eu($startDate)) ?><?= $startTime !== '' ? ' ' . e($startTime) : '' ?></strong>
+                                            </span>
                                         <?php endif; ?>
                                         <?php if ($dueDate !== ''): ?>
-                                            · <?= e(t('goals.due_date')) ?>: <?= e(format_date_eu($dueDate)) ?><?= $dueTime !== '' ? ' ' . e($dueTime) : '' ?>
+                                            <span>
+                                                <small><?= e(t('goals.due_date')) ?></small>
+                                                <strong><?= e(format_date_eu($dueDate)) ?><?= $dueTime !== '' ? ' ' . e($dueTime) : '' ?></strong>
+                                            </span>
                                         <?php endif; ?>
-                                        <?php if ($isExpired): ?> · <?= e(t('goals.expired')) ?><?php endif; ?>
-                                    </span>
+                                        <?php if ($isExpired): ?>
+                                            <span>
+                                                <small><?= e(t('common.status')) ?></small>
+                                                <strong><?= e(t('goals.expired')) ?></strong>
+                                            </span>
+                                        <?php endif; ?>
+                                    </div>
                                     <?php if ($status === 'active' && !$hasStarted): ?>
                                         <small class="muted">
                                             <?= e(t('team.active_challenge_starts_in')) ?>:
@@ -539,7 +552,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                             ><?= e($countdownText) ?></span>
                                         </small>
                                     <?php endif; ?>
-                                    <span><?= e((string) ($goal['progress_display'] ?? '0')) ?> / <?= e((string) ($goal['target_display'] ?? '-')) ?></span>
+                                    <span class="team-goal-progress-text"><?= e((string) ($goal['progress_display'] ?? '0')) ?> / <?= e((string) ($goal['target_display'] ?? '-')) ?></span>
                                     <?php if ($teamGoalDebugEnabled): ?>
                                         <small class="team-goal-debug" data-goal-debug>
                                             cur <?= e((string) ($progressDebug['current_metric'] ?? '-')) ?>
@@ -615,9 +628,9 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 <div class="panel-head">
                     <div>
                         <p class="eyebrow"><?= e(t('team.members')) ?></p>
-                        <h2><?= e(t('team.active_members')) ?></h2>
+                        <h2><?= e(t('team.active_members')) ?> <span class="badge team-mobile-title-badge"><?= count($members ?? []) ?></span></h2>
                     </div>
-                    <span class="badge"><?= count($members ?? []) ?></span>
+                    <span class="badge team-panel-count-badge"><?= count($members ?? []) ?></span>
                 </div>
                 <div class="card-list">
                     <?php foreach (($members ?? []) as $member): ?>
@@ -675,9 +688,9 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('achievements.title')) ?></p>
-                    <h2><?= e(t('team.achievements')) ?></h2>
+                    <h2><?= e(t('team.achievements')) ?> <span class="badge team-mobile-title-badge"><?= count($teamAchievements ?? []) ?></span></h2>
                 </div>
-                <span class="badge"><?= count($teamAchievements ?? []) ?></span>
+                <span class="badge team-panel-count-badge"><?= count($teamAchievements ?? []) ?></span>
             </div>
             <div class="achievement-grid achievement-grid-collapsible" data-achievement-grid>
                 <?php if (($teamAchievements ?? []) === []): ?>

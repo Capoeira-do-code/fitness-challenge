@@ -1868,15 +1868,33 @@
     };
 
     const initTeamLayoutEditor = () => {
-        document.querySelectorAll('[data-team-layout-list]').forEach((list) => {
+        document.querySelectorAll('[data-team-layout-list], [data-dashboard-layout-list]').forEach((list) => {
             if (!(list instanceof HTMLElement)) {
                 return;
             }
 
             let dragged = null;
+            const isDashboardLayout = list.hasAttribute('data-dashboard-layout-list');
+            const itemSelector = isDashboardLayout ? '[data-dashboard-layout-item]' : '[data-team-layout-item]';
+
+            const refreshOrderInputs = () => {
+                if (!isDashboardLayout) {
+                    return;
+                }
+                list.querySelectorAll(itemSelector).forEach((item, index) => {
+                    if (!(item instanceof HTMLElement)) {
+                        return;
+                    }
+                    item.querySelectorAll('[data-dashboard-order-input]').forEach((input) => {
+                        if (input instanceof HTMLInputElement) {
+                            input.value = String(index + 1);
+                        }
+                    });
+                });
+            };
 
             const getAfterElement = (container, y) => {
-                const items = [...container.querySelectorAll('[data-team-layout-item]:not(.is-dragging)')];
+                const items = [...container.querySelectorAll(`${itemSelector}:not(.is-dragging)`)];
                 return items.reduce((closest, child) => {
                     const box = child.getBoundingClientRect();
                     const offset = y - box.top - box.height / 2;
@@ -1888,7 +1906,7 @@
                 }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
             };
 
-            list.querySelectorAll('[data-team-layout-item]').forEach((item) => {
+            list.querySelectorAll(itemSelector).forEach((item) => {
                 if (!(item instanceof HTMLElement)) {
                     return;
                 }
@@ -1901,6 +1919,7 @@
                 item.addEventListener('dragend', () => {
                     item.classList.remove('is-dragging');
                     dragged = null;
+                    refreshOrderInputs();
                 });
             });
 
@@ -1916,7 +1935,9 @@
                 } else {
                     list.insertBefore(dragged, afterElement);
                 }
+                refreshOrderInputs();
             });
+            refreshOrderInputs();
         });
     };
 

@@ -4207,28 +4207,32 @@ if ($page === 'dashboard') {
 
         if ($action === 'save_dashboard_layout' || $action === 'save_dashboard_prefs') {
             $allowedWidgets = ['kpis', 'distance_walked', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories'];
-            $widgets = array_values(array_intersect(array_map('strval', (array) ($_POST['dashboard_widgets'] ?? [])), $allowedWidgets));
-            $widgets = array_values(array_unique(array_map(
-                static fn(string $widget): string => $widget === 'money' ? 'distance_walked' : $widget,
-                $widgets
-            )));
-            $widgetOrder = (array) ($_POST['dashboard_order'] ?? []);
-            usort($widgets, static function (string $left, string $right) use ($widgetOrder, $allowedWidgets): int {
-                $leftOrder = isset($widgetOrder[$left]) ? (int) $widgetOrder[$left] : (int) array_search($left, $allowedWidgets, true);
-                $rightOrder = isset($widgetOrder[$right]) ? (int) $widgetOrder[$right] : (int) array_search($right, $allowedWidgets, true);
-                return $leftOrder <=> $rightOrder;
-            });
+            $resetLayout = bool_from_form('reset_dashboard_layout') === 1;
+            $widgets = [];
+            if (!$resetLayout) {
+                $widgets = array_values(array_intersect(array_map('strval', (array) ($_POST['dashboard_widgets'] ?? [])), $allowedWidgets));
+                $widgets = array_values(array_unique(array_map(
+                    static fn(string $widget): string => $widget === 'money' ? 'distance_walked' : $widget,
+                    $widgets
+                )));
+                $widgetOrder = (array) ($_POST['dashboard_order'] ?? []);
+                usort($widgets, static function (string $left, string $right) use ($widgetOrder, $allowedWidgets): int {
+                    $leftOrder = isset($widgetOrder[$left]) ? (int) $widgetOrder[$left] : (int) array_search($left, $allowedWidgets, true);
+                    $rightOrder = isset($widgetOrder[$right]) ? (int) $widgetOrder[$right] : (int) array_search($right, $allowedWidgets, true);
+                    return $leftOrder <=> $rightOrder;
+                });
+            }
             db_execute(
                 $pdo,
                 'UPDATE users SET dashboard_view = :dashboard_view, dashboard_layout_json = :layout, updated_at = :updated_at WHERE id = :id',
                 [
                     ':dashboard_view' => (string) ($_POST['dashboard_view'] ?? 'current_week'),
-                    ':layout' => json_encode($widgets, JSON_UNESCAPED_SLASHES),
+                    ':layout' => $resetLayout ? '[]' : json_encode($widgets, JSON_UNESCAPED_SLASHES),
                     ':updated_at' => now_iso(),
                     ':id' => (int) $currentUser['id'],
                 ]
             );
-            audit_log($pdo, (int) $currentUser['id'], 'dashboard_preferences_updated', 'user', (string) $currentUser['id'], 'Dashboard preferences updated.', null, ['dashboard_view' => $_POST['dashboard_view'] ?? 'current_week', 'widgets' => $widgets]);
+            audit_log($pdo, (int) $currentUser['id'], 'dashboard_preferences_updated', 'user', (string) $currentUser['id'], 'Dashboard preferences updated.', null, ['dashboard_view' => $_POST['dashboard_view'] ?? 'current_week', 'widgets' => $widgets, 'reset' => $resetLayout]);
             flash_set('success', t('flash.preferences_updated'));
             redirect('/?page=dashboard&view=' . rawurlencode((string) ($_POST['dashboard_view'] ?? 'current_week')));
         }
