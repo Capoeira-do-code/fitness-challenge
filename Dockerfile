@@ -1,7 +1,7 @@
 FROM php:8.3-fpm-alpine
 
-RUN apk add --no-cache sqlite sqlite-dev \
-    && docker-php-ext-install pdo pdo_sqlite
+RUN apk add --no-cache sqlite sqlite-dev libzip-dev \
+    && docker-php-ext-install pdo pdo_sqlite zip
 
 RUN { \
       echo 'upload_max_filesize=20M'; \

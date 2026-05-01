@@ -957,15 +957,6 @@
                     return;
                 }
                 event.preventDefault();
-                if (link.hasAttribute('data-spa-back')) {
-                    if (window.history.length > 1) {
-                        window.history.back();
-                        return;
-                    }
-                    const fallbackHref = link.getAttribute('href') || '/?page=admin';
-                    navigate(root, fallbackHref);
-                    return;
-                }
                 navigate(root, link.href);
             });
         });

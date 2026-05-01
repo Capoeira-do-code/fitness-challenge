@@ -85,11 +85,6 @@ for ($i = 0; $i < 7; $i++) {
                 <?php endforeach; ?>
             </div>
 
-            <label>
-                <?= e(t('users.motivation_quote')) ?>
-                <input type="text" name="motivation_quote" placeholder="<?= e(t('users.motivation_placeholder')) ?>">
-            </label>
-
             <label class="check standalone-check">
                 <input type="checkbox" name="active" value="1" checked>
                 <?= e(t('users.active_user')) ?>
@@ -184,11 +179,6 @@ for ($i = 0; $i < 7; $i++) {
                             </label>
                         <?php endforeach; ?>
                     </div>
-
-                    <label>
-                        <?= e(t('users.motivation_quote')) ?>
-                        <input type="text" name="motivation_quote" value="<?= e((string) $user['motivation_quote']) ?>">
-                    </label>
 
                     <label class="check standalone-check">
                         <input type="checkbox" name="active" value="1" <?= (int) $user['active'] === 1 ? 'checked' : '' ?>>

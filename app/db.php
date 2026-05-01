@@ -430,6 +430,18 @@ function initialize_database(PDO $pdo, array $config): void
     );
 
     $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS motivational_quotes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            quote_text TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )'
+    );
+
+    $pdo->exec(
         'CREATE TABLE IF NOT EXISTS system_backups (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             file_path TEXT NOT NULL,
@@ -564,6 +576,7 @@ function initialize_database(PDO $pdo, array $config): void
     seed_default_team($pdo);
     seed_default_habits($pdo);
     seed_default_achievements($pdo);
+    seed_default_motivational_quotes($pdo);
     seed_workout_types_from_logs($pdo);
     backfill_workout_type_ids($pdo);
     backfill_daily_log_workouts($pdo);
@@ -688,6 +701,7 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_log_workouts_log ON daily_log_workouts(log_id, sort_order)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_rules_achievement ON achievement_rules(achievement_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_login_attempts_user_ip ON login_attempts(username, ip_address, attempted_at)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_motivational_quotes_active ON motivational_quotes(active, created_at DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON user_notifications(user_id, created_at)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON user_notifications(user_id, is_read)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_user_unique_key ON user_notifications(user_id, unique_key) WHERE unique_key IS NOT NULL');
@@ -824,6 +838,42 @@ function seed_default_achievements(PDO $pdo): void
                 ':description' => $description,
                 ':scope' => $scope,
                 ':trigger_key' => $trigger,
+                ':created_at' => $now,
+                ':updated_at' => $now,
+            ]
+        );
+    }
+}
+
+function seed_default_motivational_quotes(PDO $pdo): void
+{
+    $existing = db_fetch_one($pdo, 'SELECT COUNT(*) AS total FROM motivational_quotes');
+    if ((int) ($existing['total'] ?? 0) > 0) {
+        return;
+    }
+
+    $quotes = default_motivation_quotes();
+    $userQuotes = db_fetch_all(
+        $pdo,
+        'SELECT DISTINCT TRIM(motivation_quote) AS quote_text
+         FROM users
+         WHERE motivation_quote IS NOT NULL AND TRIM(motivation_quote) != ""'
+    );
+    foreach ($userQuotes as $row) {
+        $quote = trim((string) ($row['quote_text'] ?? ''));
+        if ($quote !== '' && !in_array($quote, $quotes, true)) {
+            $quotes[] = $quote;
+        }
+    }
+
+    $now = now_iso();
+    foreach ($quotes as $quote) {
+        db_execute(
+            $pdo,
+            'INSERT INTO motivational_quotes (quote_text, active, created_by, created_at, updated_at)
+             VALUES (:quote_text, 1, NULL, :created_at, :updated_at)',
+            [
+                ':quote_text' => $quote,
                 ':created_at' => $now,
                 ':updated_at' => $now,
             ]

@@ -302,7 +302,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                         <p class="muted"><?= e(t('team.penalty_rank_hint')) ?></p>
                     <?php endif; ?>
                 </div>
-                <a class="btn btn-ghost" href="<?= e($teamBaseUrl) ?>" data-history-back>← <?= e(t('common.back')) ?></a>
+                <a class="btn btn-ghost" href="<?= e($teamBaseUrl) ?>">← <?= e(t('common.back')) ?></a>
             </div>
 
             <div class="team-metric-detail-grid">
@@ -647,24 +647,21 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             </article>
         </div>
 
-        <article class="panel chart-card" style="order: 60">
-            <div class="panel-head">
-                <div>
-                    <h2><?= e(t('team.cumulative_progress')) ?></h2>
-                    <p class="muted"><?= e(t('team.cumulative_progress_hint')) ?></p>
-                </div>
-            </div>
-            <div class="grid-two">
-                <article class="mini-card chart-card">
-                    <h3><?= e(t('team.cumulative_steps')) ?></h3>
-                    <canvas id="teamCumulativeStepsChart" height="170"></canvas>
-                </article>
-                <article class="mini-card chart-card">
-                    <h3><?= e(t('team.cumulative_distance')) ?></h3>
-                    <canvas id="teamCumulativeDistanceChart" height="170"></canvas>
-                </article>
-            </div>
-        </article>
+        <div class="section-heading team-cumulative-heading" style="order: 60">
+            <h2><?= e(t('team.cumulative_progress')) ?></h2>
+            <p class="muted"><?= e(t('team.cumulative_progress_hint')) ?></p>
+        </div>
+
+        <div class="grid-two team-cumulative-grid" style="order: 61">
+            <article class="panel chart-card team-cumulative-chart-card">
+                <h3><?= e(t('team.cumulative_steps')) ?></h3>
+                <canvas id="teamCumulativeStepsChart" height="170"></canvas>
+            </article>
+            <article class="panel chart-card team-cumulative-chart-card">
+                <h3><?= e(t('team.cumulative_distance')) ?></h3>
+                <canvas id="teamCumulativeDistanceChart" height="170"></canvas>
+            </article>
+        </div>
 
         <div class="grid-two" style="order: 70">
             <article class="panel chart-card">
@@ -1418,27 +1415,5 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         });
     }
 
-    document.querySelectorAll('[data-history-back]').forEach((link) => {
-        if (!(link instanceof HTMLAnchorElement)) {
-            return;
-        }
-        link.addEventListener('click', (event) => {
-            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-                return;
-            }
-            const hasSameOriginReferrer = document.referrer !== ''
-                && (() => {
-                    try {
-                        return new URL(document.referrer).origin === window.location.origin;
-                    } catch {
-                        return false;
-                    }
-                })();
-            if (window.history.length > 1 && hasSameOriginReferrer) {
-                event.preventDefault();
-                window.history.back();
-            }
-        });
-    });
 })();
 </script>

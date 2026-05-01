@@ -1742,7 +1742,6 @@ if ($page === 'admin') {
                 'workout_days_mask' => normalize_mask($_POST['workout_days'] ?? []),
                 'workout_strict' => (int) ($_POST['workout_strict'] ?? 0) === 1 ? 1 : 0,
                 'ideal_weight' => ($_POST['ideal_weight'] ?? '') !== '' ? (float) $_POST['ideal_weight'] : null,
-                'motivation_quote' => trim((string) ($_POST['motivation_quote'] ?? '')),
                 'primary_goal_type' => in_array(($_POST['primary_goal_type'] ?? 'steps'), ['steps', 'km'], true) ? (string) $_POST['primary_goal_type'] : 'steps',
                 'primary_goal_value' => ($_POST['primary_goal_value'] ?? '') !== '' ? (float) $_POST['primary_goal_value'] : null,
                 'active' => bool_from_form('active'),
@@ -1782,7 +1781,6 @@ if ($page === 'admin') {
                 'workout_days_mask' => normalize_mask($_POST['workout_days'] ?? []),
                 'workout_strict' => (int) ($_POST['workout_strict'] ?? 0) === 1 ? 1 : 0,
                 'ideal_weight' => ($_POST['ideal_weight'] ?? '') !== '' ? (float) $_POST['ideal_weight'] : null,
-                'motivation_quote' => trim((string) ($_POST['motivation_quote'] ?? '')),
                 'primary_goal_type' => in_array(($_POST['primary_goal_type'] ?? 'steps'), ['steps', 'km'], true) ? (string) $_POST['primary_goal_type'] : 'steps',
                 'primary_goal_value' => ($_POST['primary_goal_value'] ?? '') !== '' ? (float) $_POST['primary_goal_value'] : null,
                 'active' => bool_from_form('active'),
@@ -2005,6 +2003,16 @@ if ($page === 'admin') {
             delete_achievement_award($pdo, $awardId, (int) $currentUser['id']);
             flash_set('success', t('flash.achievement_deleted'));
             redirect('/?page=admin&section=achievements');
+        }
+
+        if ($action === 'create_motivational_quote') {
+            try {
+                create_motivational_quote($pdo, (string) ($_POST['quote_text'] ?? ''), (int) $currentUser['id']);
+                flash_set('success', t('flash.motivational_quote_created'));
+            } catch (Throwable $e) {
+                flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : 'Motivational quote could not be created.');
+            }
+            redirect('/?page=admin&section=motivational_quotes');
         }
 
         if ($action === 'resolve_join_request') {
@@ -2242,6 +2250,7 @@ if ($page === 'admin') {
         'achievements' => list_achievements($pdo, true),
         'adminAchievements' => list_achievements_for_admin($pdo),
         'achievementAwards' => list_recent_achievement_awards($pdo, 300),
+        'motivationalQuotes' => list_motivational_quotes($pdo),
         'appIconPath' => $appIconPath,
         'appIconVersion' => $appIconVersion,
         'appNameSetting' => app_setting($pdo, 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge Tracker')),
@@ -4243,7 +4252,7 @@ if ($page === 'dashboard') {
         'dashboardCalorieStats' => $dashboardCalorieStats,
         'dashboardCalorieRangeStart' => $calorieStartDate,
         'dashboardCalorieRangeEnd' => $calorieEndDate,
-        'motivationQuote' => random_motivation_quote(),
+        'motivationQuote' => random_motivation_quote_from_db($pdo),
         'config' => $config,
     ]);
 }

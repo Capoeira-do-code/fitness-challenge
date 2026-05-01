@@ -405,7 +405,6 @@ $nutritionSummary = static function (array $photo): string {
                 <a
                     class="btn btn-ghost"
                     href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"
-                    onclick="if (window.history.length > 1) { event.preventDefault(); window.history.back(); }"
                 >← <?= e(t('common.back')) ?></a>
             </div>
             <form method="get" action="/" class="control-strip entries-calendar-controls">

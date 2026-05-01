@@ -62,9 +62,9 @@ function date_to_iso_week(string $date): string
     }
 }
 
-function random_motivation_quote(): string
+function default_motivation_quotes(): array
 {
-    $quotes = [
+    return [
         'Consistency is the shortcut.',
         'Do what your future self will thank you for.',
         'Small wins compound faster than motivation fades.',
@@ -78,6 +78,11 @@ function random_motivation_quote(): string
         'Done beats perfect every single time.',
         'You are building evidence, not just results.',
     ];
+}
+
+function random_motivation_quote(): string
+{
+    $quotes = default_motivation_quotes();
 
     return $quotes[array_rand($quotes)];
 }

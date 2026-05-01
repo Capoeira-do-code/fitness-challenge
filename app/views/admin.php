@@ -6,9 +6,9 @@ $days = [];
 for ($i = 0; $i < 7; $i++) {
     $days[$i] = t('weekday.' . $i);
 }
-$entityTypes = ['daily_log', 'approval_request', 'user', 'team_membership', 'goal', 'achievement', 'workout_type', 'photo_entry', 'app_setting', 'system_backup'];
+$entityTypes = ['daily_log', 'approval_request', 'user', 'team_membership', 'goal', 'achievement', 'workout_type', 'photo_entry', 'app_setting', 'system_backup', 'motivational_quote'];
 $activeSection = (string) ($_GET['section'] ?? '');
-$allowedSections = ['users', 'challenge', 'app', 'backups', 'habits', 'workout_types', 'achievements', 'audit'];
+$allowedSections = ['users', 'challenge', 'app', 'backups', 'habits', 'workout_types', 'achievements', 'motivational_quotes', 'audit'];
 if (!in_array($activeSection, $allowedSections, true)) {
     $activeSection = '';
 }
@@ -16,7 +16,7 @@ $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : 0;
 $createUserMode = (string) ($_GET['create_user'] ?? '') === '1';
 $selectedHabitId = (string) ($_GET['habit_id'] ?? '');
 $selectedTypeId = (string) ($_GET['type_id'] ?? '');
-$selectedAchievementId = isset($_GET['achievement_id']) ? (int) $_GET['achievement_id'] : 0;
+$selectedAchievementId = (string) ($_GET['achievement_id'] ?? '');
 $sectionRows = [
     'users' => 'Users',
     'challenge' => 'Challenge',
@@ -25,6 +25,7 @@ $sectionRows = [
     'habits' => 'Habits',
     'workout_types' => 'Workout Types',
     'achievements' => 'Achievements',
+    'motivational_quotes' => t('admin.motivational_quotes'),
     'audit' => 'Audit Log',
 ];
 $activeLoginBackgroundPath = trim((string) ($loginBackgroundPath ?? ''));
@@ -132,7 +133,6 @@ $backupStatusLabel = static function (string $status): string {
                         <label class="chip"><input type="checkbox" name="workout_days[]" value="<?= $idx ?>"> <?= e($label) ?></label>
                     <?php endforeach; ?>
                 </div>
-                <label><?= e(t('users.motivation_quote')) ?><input type="text" name="motivation_quote" placeholder="<?= e(t('users.motivation_placeholder')) ?>"></label>
                 <label class="check standalone-check"><input type="checkbox" name="active" value="1" checked><?= e(t('users.active_user')) ?></label>
                 <button type="submit" class="btn btn-primary"><?= e(t('users.create')) ?></button>
             </form>
@@ -174,7 +174,6 @@ $backupStatusLabel = static function (string $status): string {
                             <label class="chip"><input type="checkbox" name="workout_days[]" value="<?= $idx ?>" <?= isset($user['workout_days_mask'][$idx]) && $user['workout_days_mask'][$idx] === '1' ? 'checked' : '' ?>> <?= e($label) ?></label>
                         <?php endforeach; ?>
                     </div>
-                    <label><?= e(t('users.motivation_quote')) ?><input type="text" name="motivation_quote" value="<?= e((string) $user['motivation_quote']) ?>"></label>
                     <label class="check standalone-check"><input type="checkbox" name="active" value="1" <?= (int) $user['active'] === 1 ? 'checked' : '' ?>><?= e(t('common.active')) ?></label>
                     <button type="submit" class="btn btn-primary"><?= e(t('users.save_user', ['name' => (string) $user['display_name']])) ?></button>
                 </form>
@@ -416,7 +415,10 @@ $backupStatusLabel = static function (string $status): string {
 
     <article class="panel settings-panel<?= $activeSection === 'habits' ? ' active' : '' ?>" data-spa-section="habits" <?= $activeSection === 'habits' ? '' : 'hidden' ?>>
         <div class="panel-head admin-section-list" data-spa-show-when-no-param="habit_id" <?= $selectedHabitId !== '' ? 'hidden' : '' ?>>
-            <h2>Habits</h2>
+            <div>
+                <h2>Habits</h2>
+                <p class="muted admin-section-help"><?= e(t('admin.habits_help')) ?></p>
+            </div>
             <div class="inline-actions-mini">
                 <a class="btn btn-primary small" href="/?page=admin&section=habits&habit_id=new" data-spa-link><?= e(t('common.create')) ?></a>
                 <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
@@ -424,10 +426,6 @@ $backupStatusLabel = static function (string $status): string {
         </div>
 
         <div class="settings-list compact-list admin-section-list" data-spa-show-when-no-param="habit_id" <?= $selectedHabitId !== '' ? 'hidden' : '' ?>>
-            <a class="settings-row" href="/?page=admin&section=habits&habit_id=new" data-spa-link>
-                <span><?= e(t('common.save')) ?> <?= e(t('admin.habits')) ?></span>
-                <span class="settings-chevron" aria-hidden="true">›</span>
-            </a>
             <?php foreach (($habits ?? []) as $habit): ?>
                 <a class="settings-row" href="/?page=admin&section=habits&habit_id=<?= (int) $habit['id'] ?>" data-spa-link>
                     <span><?= e((string) $habit['label']) ?></span>
@@ -438,7 +436,7 @@ $backupStatusLabel = static function (string $status): string {
 
         <div class="stack admin-create-view" data-spa-param-show="habit_id" data-spa-value="new" <?= $selectedHabitId === 'new' ? '' : 'hidden' ?>>
             <div class="panel-head">
-                <h3><?= e(t('common.save')) ?> <?= e(t('admin.habits')) ?></h3>
+                <h3><?= e(t('admin.create_habit')) ?></h3>
                 <a class="btn btn-ghost" href="/?page=admin&section=habits" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
             </div>
             <form method="post" action="/?page=admin" class="mini-card editable-card compact-form">
@@ -480,7 +478,10 @@ $backupStatusLabel = static function (string $status): string {
 
     <article class="panel settings-panel<?= $activeSection === 'workout_types' ? ' active' : '' ?>" data-spa-section="workout_types" <?= $activeSection === 'workout_types' ? '' : 'hidden' ?>>
         <div class="panel-head admin-section-list" data-spa-show-when-no-param="type_id" <?= $selectedTypeId !== '' ? 'hidden' : '' ?>>
-            <h2>Workout Types</h2>
+            <div>
+                <h2>Workout Types</h2>
+                <p class="muted admin-section-help"><?= e(t('admin.workout_types_help')) ?></p>
+            </div>
             <div class="inline-actions-mini">
                 <a class="btn btn-primary small" href="/?page=admin&section=workout_types&type_id=new" data-spa-link><?= e(t('common.create')) ?></a>
                 <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
@@ -488,10 +489,6 @@ $backupStatusLabel = static function (string $status): string {
         </div>
 
         <div class="settings-list compact-list admin-section-list" data-spa-show-when-no-param="type_id" <?= $selectedTypeId !== '' ? 'hidden' : '' ?>>
-            <a class="settings-row" href="/?page=admin&section=workout_types&type_id=new" data-spa-link>
-                <span><?= e(t('workout_types.title')) ?> +</span>
-                <span class="settings-chevron" aria-hidden="true">›</span>
-            </a>
             <?php foreach (($workoutTypes ?? []) as $type): ?>
                 <a class="settings-row" href="/?page=admin&section=workout_types&type_id=<?= (int) $type['id'] ?>" data-spa-link>
                     <span><?= e((string) $type['name']) ?></span>
@@ -502,7 +499,7 @@ $backupStatusLabel = static function (string $status): string {
 
         <div class="stack admin-create-view" data-spa-param-show="type_id" data-spa-value="new" <?= $selectedTypeId === 'new' ? '' : 'hidden' ?>>
             <div class="panel-head">
-                <h3><?= e(t('workout_types.title')) ?> +</h3>
+                <h3><?= e(t('admin.create_workout_type')) ?></h3>
                 <a class="btn btn-ghost" href="/?page=admin&section=workout_types" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
             </div>
             <form method="post" action="/?page=admin" class="mini-card editable-card">
@@ -538,17 +535,59 @@ $backupStatusLabel = static function (string $status): string {
     </article>
 
     <article class="panel settings-panel<?= $activeSection === 'achievements' ? ' active' : '' ?>" data-spa-section="achievements" <?= $activeSection === 'achievements' ? '' : 'hidden' ?>>
-        <div class="panel-head admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
-            <h2>Achievements</h2>
+        <div class="panel-head admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId !== '' ? 'hidden' : '' ?>>
+            <div>
+                <h2>Achievements</h2>
+                <p class="muted admin-section-help"><?= e(t('admin.achievements_help')) ?></p>
+            </div>
             <div class="inline-actions-mini">
-                <a class="btn btn-primary small" href="/?page=admin&section=achievements#achievement-create" data-spa-link><?= e(t('common.create')) ?></a>
+                <a class="btn btn-primary small" href="/?page=admin&section=achievements&achievement_id=new" data-spa-link><?= e(t('common.create')) ?></a>
                 <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
             </div>
         </div>
 
-        <section id="achievement-create" class="stack compact-form admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
-            <h3><?= e(t('achievements.create')) ?></h3>
-            <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack" data-achievement-form>
+        <section class="stack admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId !== '' ? 'hidden' : '' ?>>
+            <h3><?= e(t('admin.achievements_created')) ?></h3>
+            <div class="settings-list compact-list">
+                <?php foreach (($adminAchievements ?? []) as $achievement): ?>
+                    <?php
+                    $triggerKey = trim((string) ($achievement['trigger_key'] ?? ''));
+                    $conditionSummary = 'Manual';
+                    if ($triggerKey !== '') {
+                        if (!empty($achievement['rule_id'])) {
+                            $conditionSummary = $triggerKey
+                                . ' '
+                                . (string) ($achievement['trigger_operator'] ?? '>=')
+                                . ' '
+                                . (string) ($achievement['trigger_target'] ?? '1')
+                                . ' · '
+                                . (string) ($achievement['trigger_window'] ?? 'total');
+                        } else {
+                            $conditionSummary = $triggerKey . ' · ' . t('admin.pending');
+                        }
+                    }
+                    ?>
+                    <a class="settings-row admin-achievement-row" href="/?page=admin&section=achievements&achievement_id=<?= (int) $achievement['id'] ?>" data-spa-link>
+                        <span>
+                            <strong><?= e((string) $achievement['name']) ?></strong>
+                            <small class="muted"><?= e((string) $achievement['scope']) ?> · <?= e($conditionSummary) ?></small>
+                        </span>
+                        <span class="badge badge-ok"><?= e(t('common.active')) ?></span>
+                        <span class="settings-chevron" aria-hidden="true">›</span>
+                    </a>
+                <?php endforeach; ?>
+                <?php if (($adminAchievements ?? []) === []): ?>
+                    <p class="muted panel-inline-empty"><?= e(t('achievements.empty')) ?></p>
+                <?php endif; ?>
+            </div>
+        </section>
+
+        <div class="stack admin-create-view" data-spa-param-show="achievement_id" data-spa-value="new" <?= $selectedAchievementId === 'new' ? '' : 'hidden' ?>>
+            <div class="panel-head">
+                <h3><?= e(t('achievements.create')) ?></h3>
+                <a class="btn btn-ghost" href="/?page=admin&section=achievements" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+            </div>
+            <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack compact-form" data-achievement-form>
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="create_achievement">
                 <div class="grid-inline">
@@ -591,10 +630,10 @@ $backupStatusLabel = static function (string $status): string {
                 </div>
                 <button class="btn btn-primary" type="submit"><?= e(t('achievements.create')) ?></button>
             </form>
-        </section>
+        </div>
 
-        <section class="stack compact-form admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
-            <h3>Grant achievement</h3>
+        <section class="stack compact-form admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId !== '' ? 'hidden' : '' ?>>
+            <h3><?= e(t('achievements.grant')) ?></h3>
             <form method="post" action="/?page=admin" class="stack">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="grant_achievement">
@@ -607,42 +646,6 @@ $backupStatusLabel = static function (string $status): string {
                 <label><?= e(t('common.notes')) ?><input type="text" name="note"></label>
                 <button class="btn btn-secondary" type="submit"><?= e(t('achievements.grant')) ?></button>
             </form>
-        </section>
-
-        <section class="stack admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
-            <h3><?= e(t('admin.achievements_created')) ?></h3>
-            <div class="settings-list compact-list">
-                <?php foreach (($adminAchievements ?? []) as $achievement): ?>
-                    <?php
-                    $triggerKey = trim((string) ($achievement['trigger_key'] ?? ''));
-                    $conditionSummary = 'Manual';
-                    if ($triggerKey !== '') {
-                        if (!empty($achievement['rule_id'])) {
-                            $conditionSummary = $triggerKey
-                                . ' '
-                                . (string) ($achievement['trigger_operator'] ?? '>=')
-                                . ' '
-                                . (string) ($achievement['trigger_target'] ?? '1')
-                                . ' · '
-                                . (string) ($achievement['trigger_window'] ?? 'total');
-                        } else {
-                            $conditionSummary = $triggerKey . ' · ' . t('admin.pending');
-                        }
-                    }
-                    $status = (int) ($achievement['active'] ?? 1) === 1 ? 'active' : 'inactive';
-                    ?>
-                    <a class="settings-row" href="/?page=admin&section=achievements&achievement_id=<?= (int) $achievement['id'] ?>" data-spa-link>
-                        <span>
-                            <strong><?= e((string) $achievement['name']) ?></strong>
-                            <small class="muted"><?= e((string) $achievement['scope']) ?> · <?= e($conditionSummary) ?> · <?= e($status) ?></small>
-                        </span>
-                        <span class="settings-chevron" aria-hidden="true">›</span>
-                    </a>
-                <?php endforeach; ?>
-                <?php if (($adminAchievements ?? []) === []): ?>
-                    <p class="muted panel-inline-empty"><?= e(t('achievements.empty')) ?></p>
-                <?php endif; ?>
-            </div>
         </section>
 
         <?php foreach (($adminAchievements ?? []) as $achievement): ?>
@@ -661,7 +664,7 @@ $backupStatusLabel = static function (string $status): string {
                 $achievementWindow = 'current_week';
             }
             ?>
-            <div class="stack admin-detail-view" data-spa-param-show="achievement_id" data-spa-value="<?= (int) $achievement['id'] ?>" <?= $selectedAchievementId === (int) $achievement['id'] ? '' : 'hidden' ?>>
+            <div class="stack admin-detail-view" data-spa-param-show="achievement_id" data-spa-value="<?= (int) $achievement['id'] ?>" <?= $selectedAchievementId === (string) ((int) $achievement['id']) ? '' : 'hidden' ?>>
                 <div class="panel-head">
                     <h3><?= e((string) $achievement['name']) ?></h3>
                     <a class="btn btn-ghost" href="/?page=admin&section=achievements" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
@@ -718,7 +721,7 @@ $backupStatusLabel = static function (string $status): string {
                     </div>
                     <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
                 </form>
-                <form method="post" action="/?page=admin" onsubmit="return confirm('<?= e(t('admin.deactivate_achievement_confirm')) ?>');">
+                <form method="post" action="/?page=admin" class="admin-danger-zone" onsubmit="return confirm('<?= e(t('admin.deactivate_achievement_confirm')) ?>');">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="deactivate_achievement">
                     <input type="hidden" name="achievement_id" value="<?= (int) $achievement['id'] ?>">
@@ -727,7 +730,7 @@ $backupStatusLabel = static function (string $status): string {
             </div>
         <?php endforeach; ?>
 
-        <section class="stack compact-form admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId > 0 ? 'hidden' : '' ?>>
+        <section class="stack compact-form admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId !== '' ? 'hidden' : '' ?>>
             <h3><?= e(t('admin.achievement_awards')) ?></h3>
             <div class="card-list">
                 <?php foreach (($achievementAwards ?? []) as $award): ?>
@@ -744,6 +747,41 @@ $backupStatusLabel = static function (string $status): string {
                 <?php endforeach; ?>
                 <?php if (($achievementAwards ?? []) === []): ?>
                     <p class="muted"><?= e(t('achievements.empty')) ?></p>
+                <?php endif; ?>
+            </div>
+        </section>
+    </article>
+
+    <article class="panel settings-panel<?= $activeSection === 'motivational_quotes' ? ' active' : '' ?>" data-spa-section="motivational_quotes" <?= $activeSection === 'motivational_quotes' ? '' : 'hidden' ?>>
+        <div class="panel-head">
+            <div>
+                <h2><?= e(t('admin.motivational_quotes')) ?></h2>
+                <p class="muted admin-section-help"><?= e(t('admin.motivational_quotes_help')) ?></p>
+            </div>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+        </div>
+
+        <form method="post" action="/?page=admin" class="stack compact-form admin-quote-form">
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="create_motivational_quote">
+            <label><?= e(t('admin.quote_text')) ?><textarea name="quote_text" rows="2" maxlength="280" required></textarea></label>
+            <button class="btn btn-primary" type="submit"><?= e(t('common.create')) ?></button>
+        </form>
+
+        <section class="stack">
+            <h3><?= e(t('admin.motivational_quotes_all')) ?></h3>
+            <div class="card-list admin-quote-list">
+                <?php foreach (($motivationalQuotes ?? []) as $quote): ?>
+                    <article class="mini-card admin-quote-item">
+                        <div>
+                            <strong><?= e((string) $quote['quote_text']) ?></strong>
+                            <span><?= e(format_date_eu((string) ($quote['created_at'] ?? ''))) ?><?php if (!empty($quote['created_by_name'])): ?> · <?= e((string) $quote['created_by_name']) ?><?php endif; ?></span>
+                        </div>
+                        <span class="badge <?= (int) ($quote['active'] ?? 1) === 1 ? 'badge-ok' : 'badge-warn' ?>"><?= (int) ($quote['active'] ?? 1) === 1 ? e(t('common.active')) : e(t('workout_types.inactive')) ?></span>
+                    </article>
+                <?php endforeach; ?>
+                <?php if (($motivationalQuotes ?? []) === []): ?>
+                    <p class="muted"><?= e(t('common.none')) ?></p>
                 <?php endif; ?>
             </div>
         </section>

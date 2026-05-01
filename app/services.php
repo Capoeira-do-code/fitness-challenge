@@ -2110,12 +2110,12 @@ function create_user(PDO $pdo, array $payload): void
             username, password_hash, display_name, role,
             step_goal, step_days_mask, workout_target,
             workout_days_mask, workout_strict, ideal_weight,
-            motivation_quote, primary_goal_type, primary_goal_value, active, created_at, updated_at
+            primary_goal_type, primary_goal_value, active, created_at, updated_at
         ) VALUES (
             :username, :password_hash, :display_name, :role,
             :step_goal, :step_days_mask, :workout_target,
             :workout_days_mask, :workout_strict, :ideal_weight,
-            :motivation_quote, :primary_goal_type, :primary_goal_value, :active, :created_at, :updated_at
+            :primary_goal_type, :primary_goal_value, :active, :created_at, :updated_at
         )',
         [
             ':username' => $payload['username'],
@@ -2128,7 +2128,6 @@ function create_user(PDO $pdo, array $payload): void
             ':workout_days_mask' => $payload['workout_days_mask'],
             ':workout_strict' => $payload['workout_strict'],
             ':ideal_weight' => $payload['ideal_weight'],
-            ':motivation_quote' => $payload['motivation_quote'],
             ':primary_goal_type' => $payload['primary_goal_type'] ?? 'steps',
             ':primary_goal_value' => $payload['primary_goal_value'] ?? null,
             ':active' => $payload['active'],
@@ -2151,7 +2150,6 @@ function update_user(PDO $pdo, int $userId, array $payload): void
              workout_days_mask = :workout_days_mask,
              workout_strict = :workout_strict,
              ideal_weight = :ideal_weight,
-             motivation_quote = :motivation_quote,
              primary_goal_type = :primary_goal_type,
              primary_goal_value = :primary_goal_value,
              active = :active,
@@ -2166,7 +2164,6 @@ function update_user(PDO $pdo, int $userId, array $payload): void
             ':workout_days_mask' => $payload['workout_days_mask'],
             ':workout_strict' => $payload['workout_strict'],
             ':ideal_weight' => $payload['ideal_weight'],
-            ':motivation_quote' => $payload['motivation_quote'],
             ':primary_goal_type' => $payload['primary_goal_type'] ?? 'steps',
             ':primary_goal_value' => $payload['primary_goal_value'] ?? null,
             ':active' => $payload['active'],
@@ -2186,6 +2183,58 @@ function update_user(PDO $pdo, int $userId, array $payload): void
             ]
         );
     }
+}
+
+function list_motivational_quotes(PDO $pdo, bool $activeOnly = false): array
+{
+    $where = $activeOnly ? 'WHERE mq.active = 1' : '';
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT mq.*, u.display_name AS created_by_name
+         FROM motivational_quotes mq
+         LEFT JOIN users u ON u.id = mq.created_by
+         ' . $where . '
+         ORDER BY mq.active DESC, mq.created_at DESC, mq.id DESC'
+    );
+}
+
+function create_motivational_quote(PDO $pdo, string $quoteText, int $actorUserId): int
+{
+    $quoteText = trim($quoteText);
+    if ($quoteText === '') {
+        throw new InvalidArgumentException('Motivational quote is required.');
+    }
+
+    $now = now_iso();
+    db_execute(
+        $pdo,
+        'INSERT INTO motivational_quotes (quote_text, active, created_by, created_at, updated_at)
+         VALUES (:quote_text, 1, :created_by, :created_at, :updated_at)',
+        [
+            ':quote_text' => $quoteText,
+            ':created_by' => $actorUserId,
+            ':created_at' => $now,
+            ':updated_at' => $now,
+        ]
+    );
+
+    $quote = db_fetch_one($pdo, 'SELECT * FROM motivational_quotes WHERE id = last_insert_rowid()');
+    $quoteId = (int) ($quote['id'] ?? 0);
+    audit_log($pdo, $actorUserId, 'motivational_quote_created', 'motivational_quote', (string) $quoteId, 'Motivational quote created.', null, audit_snapshot($quote));
+
+    return $quoteId;
+}
+
+function random_motivation_quote_from_db(PDO $pdo): string
+{
+    $row = db_fetch_one(
+        $pdo,
+        'SELECT quote_text FROM motivational_quotes WHERE active = 1 ORDER BY RANDOM() LIMIT 1'
+    );
+    $quote = trim((string) ($row['quote_text'] ?? ''));
+
+    return $quote !== '' ? $quote : random_motivation_quote();
 }
 
 function change_password(PDO $pdo, int $userId, string $currentPassword, string $newPassword): bool
@@ -3543,14 +3592,15 @@ function list_achievements_for_admin(PDO $pdo): array
                 ar."window" AS trigger_window,
                 ar.active AS rule_active
          FROM achievements a
-         LEFT JOIN achievement_rules ar ON ar.id = (
-            SELECT rr.id
-            FROM achievement_rules rr
-            WHERE rr.achievement_id = a.id AND rr.active = 1
-            ORDER BY rr.id DESC
-            LIMIT 1
-         )
-         ORDER BY a.created_at DESC, a.name ASC'
+          LEFT JOIN achievement_rules ar ON ar.id = (
+             SELECT rr.id
+             FROM achievement_rules rr
+             WHERE rr.achievement_id = a.id AND rr.active = 1
+             ORDER BY rr.id DESC
+             LIMIT 1
+          )
+          WHERE a.active = 1
+          ORDER BY a.created_at DESC, a.name ASC'
     );
 }
 
@@ -4004,6 +4054,10 @@ function award_achievement(PDO $pdo, int $achievementId, ?int $userId, ?int $tea
     if ($userId === null && $teamId === null) {
         return;
     }
+    $achievement = db_fetch_one($pdo, 'SELECT id, active FROM achievements WHERE id = :id', [':id' => $achievementId]);
+    if ($achievement === null || (int) ($achievement['active'] ?? 0) !== 1) {
+        return;
+    }
 
     if (!$manualGrant && is_achievement_award_suppressed($pdo, $achievementId, $userId, $teamId)) {
         return;
@@ -4071,7 +4125,7 @@ function list_awarded_achievements(PDO $pdo, ?int $userId = null, ?int $teamId =
          FROM achievement_awards aa
          JOIN achievements a ON a.id = aa.achievement_id
          LEFT JOIN users u ON u.id = aa.awarded_by
-         WHERE ' . implode(' AND ', $conditions) . '
+         WHERE a.active = 1 AND ' . implode(' AND ', $conditions) . '
          ORDER BY aa.awarded_at DESC',
         $params
     );
@@ -4092,6 +4146,7 @@ function list_recent_achievement_awards(PDO $pdo, int $limit = 200): array
          LEFT JOIN users u ON u.id = aa.awarded_by
          LEFT JOIN users owner ON owner.id = aa.user_id
          LEFT JOIN teams t ON t.id = aa.team_id
+         WHERE a.active = 1
          ORDER BY aa.awarded_at DESC
          LIMIT ' . $safeLimit
     );
@@ -6384,8 +6439,17 @@ function prune_system_backups(PDO $pdo, array $config, int $keepCount): int
     return $deleted;
 }
 
+function ensure_zip_archive_available(): void
+{
+    if (!class_exists('ZipArchive')) {
+        throw new RuntimeException('PHP zip extension is not installed. Rebuild the Docker image or install/enable the zip extension for this PHP runtime.');
+    }
+}
+
 function create_system_backup(PDO $pdo, array $config, string $triggerType, ?int $actorUserId = null): array
 {
+    ensure_zip_archive_available();
+
     $trigger = in_array($triggerType, ['manual', 'auto'], true) ? $triggerType : 'manual';
     $lockHandle = system_backup_acquire_lock($config);
     if ($lockHandle === false) {
@@ -6555,6 +6619,8 @@ function mark_system_backup_restore_result(PDO $pdo, int $backupId, string $stat
 
 function validate_system_backup_archive(string $archivePath): array
 {
+    ensure_zip_archive_available();
+
     if (!is_file($archivePath)) {
         throw new RuntimeException('Backup file not found.');
     }
@@ -6613,6 +6679,7 @@ function validate_system_backup_archive(string $archivePath): array
 
 function restore_system_backup_archive(array $config, string $archivePath): void
 {
+    ensure_zip_archive_available();
     validate_system_backup_archive($archivePath);
 
     $backupDir = ensure_system_backup_storage_dir($config);

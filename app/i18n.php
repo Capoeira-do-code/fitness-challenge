@@ -2066,6 +2066,45 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
     ],
 ]);
 
+$TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
+    'en' => [
+        'admin.workout_types_help' => 'Manage the workout options available when logging training.',
+        'admin.habits_help' => 'Manage the habit checklist options shown in daily and weekly logging.',
+        'admin.achievements_help' => 'Create achievements, define optional unlock rules, and grant active achievements manually.',
+        'admin.create_workout_type' => 'Create workout type',
+        'admin.create_habit' => 'Create habit',
+        'admin.motivational_quotes' => 'Motivational quotes',
+        'admin.motivational_quotes_help' => 'Manage the rotating quotes shown on the dashboard.',
+        'admin.motivational_quotes_all' => 'Created quotes',
+        'admin.quote_text' => 'Quote text',
+        'flash.motivational_quote_created' => 'Motivational quote created.',
+    ],
+    'es' => [
+        'admin.workout_types_help' => 'Gestiona las opciones de entreno disponibles al registrar actividad.',
+        'admin.habits_help' => 'Gestiona los habitos que aparecen en el checklist diario y semanal.',
+        'admin.achievements_help' => 'Crea logros, define reglas opcionales y concede logros activos manualmente.',
+        'admin.create_workout_type' => 'Crear tipo de entreno',
+        'admin.create_habit' => 'Crear habito',
+        'admin.motivational_quotes' => 'Frases motivacionales',
+        'admin.motivational_quotes_help' => 'Gestiona las frases rotativas que aparecen en el dashboard.',
+        'admin.motivational_quotes_all' => 'Frases creadas',
+        'admin.quote_text' => 'Texto de la frase',
+        'flash.motivational_quote_created' => 'Frase motivacional creada.',
+    ],
+    'it' => [
+        'admin.workout_types_help' => 'Gestisci le opzioni workout disponibili quando registri un allenamento.',
+        'admin.habits_help' => 'Gestisci le abitudini mostrate nel checklist giornaliero e settimanale.',
+        'admin.achievements_help' => 'Crea achievement, definisci regole opzionali e assegna achievement attivi manualmente.',
+        'admin.create_workout_type' => 'Crea tipo workout',
+        'admin.create_habit' => 'Crea abitudine',
+        'admin.motivational_quotes' => 'Frasi motivazionali',
+        'admin.motivational_quotes_help' => 'Gestisci le frasi a rotazione mostrate nella dashboard.',
+        'admin.motivational_quotes_all' => 'Frasi create',
+        'admin.quote_text' => 'Testo frase',
+        'flash.motivational_quote_created' => 'Frase motivazionale creata.',
+    ],
+]);
+
 function locale_options(): array
 {
     return [

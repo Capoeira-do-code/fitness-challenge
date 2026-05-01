@@ -710,6 +710,17 @@ img.settings-avatar-preview {
     min-width: 0;
 }
 
+.section-heading {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.section-heading h2,
+.section-heading p {
+    margin: 0;
+}
+
 .panel-head {
     display: flex;
     align-items: flex-start;
@@ -1706,6 +1717,16 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     overflow: hidden;
 }
 
+.team-cumulative-chart-card {
+    min-height: 320px;
+    overflow: visible;
+}
+
+.team-cumulative-chart-card canvas {
+    height: 250px !important;
+    max-height: 250px;
+}
+
 .range-form select {
     min-width: 120px;
 }
@@ -2600,6 +2621,47 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     min-height: 36px;
     padding: 0.45rem 0.55rem;
     max-width: 152px;
+}
+
+.admin-section-help {
+    margin: 0.2rem 0 0;
+    max-width: 68ch;
+}
+
+.admin-achievement-row {
+    display: grid;
+    align-items: center;
+    justify-content: stretch;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.admin-danger-zone {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 0.7rem;
+    border-top: 1px solid rgba(223, 76, 67, 0.22);
+}
+
+.admin-quote-form {
+    margin-bottom: 1rem;
+}
+
+.mini-card.admin-quote-item {
+    display: grid;
+    align-items: flex-start;
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.mini-card.admin-quote-item strong {
+    line-height: 1.35;
+    overflow: visible;
+    text-overflow: initial;
+    white-space: normal;
+}
+
+.mini-card.admin-quote-item span:not(.badge) {
+    color: var(--muted);
+    font-size: 0.8rem;
 }
 
 .profile-chip {
@@ -3848,12 +3910,22 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     }
 
     .inline-actions-mini {
-        justify-content: stretch;
+        justify-content: flex-end;
     }
 
     .inline-actions-mini .btn,
     .mini-card form .btn {
         width: 100%;
+    }
+
+    .panel-head > .btn,
+    .panel-head > .inline-actions-mini {
+        justify-self: end;
+    }
+
+    .panel-head > .btn,
+    .panel-head .inline-actions-mini .btn {
+        width: auto;
     }
 
     .table {
