@@ -64,7 +64,7 @@ $renderAchievementCard = static function (array $achievement) use ($achievements
         <h1><?= e(t('achievements.all_title')) ?></h1>
         <p class="muted"><?= e($ownerName) ?></p>
     </div>
-    <a class="btn btn-ghost" href="<?= e($backHref) ?>"><?= e(t('common.back')) ?></a>
+    <a class="btn btn-ghost achievements-back-btn" href="<?= e($backHref) ?>"><?= e(t('common.back')) ?></a>
 </section>
 
 <section class="achievement-summary-strip">

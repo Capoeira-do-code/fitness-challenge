@@ -50,7 +50,7 @@ if (is_array($dashboardLayout) && $dashboardLayout !== []) {
     }
 }
 if ($visibleWidgets === []) {
-    $visibleWidgets = ['kpis', 'distance_walked', 'calories', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
+    $visibleWidgets = ['kpis', 'achievements', 'distance_walked', 'calories', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
 }
 if (!in_array('meals', $visibleWidgets, true)) {
     $visibleWidgets[] = 'meals';
@@ -62,7 +62,7 @@ if (!in_array('distance_cumulative', $visibleWidgets, true)) {
     $visibleWidgets[] = 'distance_cumulative';
 }
 $showWidget = static fn(string $widget): bool => in_array($widget, $visibleWidgets, true);
-$dashboardWidgets = ['kpis', 'distance_walked', 'calories', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
+$dashboardWidgets = ['kpis', 'achievements', 'distance_walked', 'calories', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
 $dashboardEditorWidgets = array_values(array_unique(array_merge($visibleWidgets, $dashboardWidgets)));
 $layoutOrder = array_flip($visibleWidgets);
 $widgetOrder = static function (string ...$widgets) use ($visibleWidgets): int {
@@ -77,6 +77,17 @@ $widgetOrder = static function (string ...$widgets) use ($visibleWidgets): int {
     return $orders === [] ? 99 : min($orders);
 };
 $contentWidgetOrder = static fn(string ...$widgets): int => 100 + $widgetOrder(...$widgets);
+$dashboardAchievementsAll = array_values((array) ($dashboardAchievements ?? []));
+$dashboardUnlockedAchievements = array_values(array_filter($dashboardAchievementsAll, static fn(array $achievement): bool => !empty($achievement['is_unlocked'])));
+$dashboardLockedAchievements = array_values(array_filter($dashboardAchievementsAll, static fn(array $achievement): bool => empty($achievement['is_unlocked'])));
+$dashboardAchievementPreview = array_slice($dashboardAchievementsAll, 0, 4);
+$dashboardAchievementsUrl = '/?' . http_build_query([
+    'page' => 'achievements',
+    'scope' => 'user',
+    'user_id' => (int) ($selectedUser['id'] ?? 0),
+    'back' => 'dashboard',
+    'view' => (string) ($dashboardView ?? 'current_week'),
+]);
 $isTotalMoneyView = ($dashboardView ?? '') === 'total';
 $penaltySeverityClass = static function (int|float $penalty): string {
     $value = (float) $penalty;
@@ -394,6 +405,49 @@ $topbarControls = ob_get_clean();
                 </a>
             </div>
         </article>
+
+        <?php if ($showWidget('achievements')): ?>
+        <article class="panel dashboard-panel dashboard-achievements-panel dashboard-span-full" style="order: <?= $contentWidgetOrder('achievements') ?>">
+            <div class="panel-head">
+                <div>
+                    <p class="eyebrow"><?= e(t('achievements.title')) ?></p>
+                    <h2><?= e(t('dashboard.achievements_panel')) ?></h2>
+                </div>
+                <div class="dashboard-achievements-summary">
+                    <span class="badge"><?= count($dashboardUnlockedAchievements) ?> <?= e(t('achievements.unlocked')) ?></span>
+                    <span class="badge"><?= count($dashboardLockedAchievements) ?> <?= e(t('achievements.locked')) ?></span>
+                    <a class="btn btn-ghost small dashboard-panel-action" href="<?= e($dashboardAchievementsUrl) ?>"><?= e(t('common.view_all')) ?></a>
+                </div>
+            </div>
+            <div class="dashboard-achievements-grid">
+                <?php foreach ($dashboardAchievementPreview as $achievement): ?>
+                    <?php
+                    $isUnlocked = !empty($achievement['is_unlocked']);
+                    $progressPct = is_numeric($achievement['progress_pct'] ?? null) ? max(0.0, min(100.0, (float) $achievement['progress_pct'])) : null;
+                    ?>
+                    <article class="achievement-card dashboard-achievement-card <?= $isUnlocked ? 'is-unlocked' : 'is-locked' ?>" <?= achievement_modal_attrs($achievement) ?>>
+                        <?= achievement_visual_html($achievement, 'achievement-visual') ?>
+                        <div class="dashboard-achievement-content">
+                            <div class="dashboard-achievement-title-row">
+                                <strong><?= e((string) ($achievement['name'] ?? '')) ?></strong>
+                                <span class="achievement-chip <?= $isUnlocked ? 'achievement-chip-ok' : 'achievement-chip-muted' ?>"><?= e($isUnlocked ? t('achievements.unlocked') : t('achievements.locked')) ?></span>
+                            </div>
+                            <p><?= e((string) ($achievement['description'] ?? '')) ?></p>
+                            <?php if ($progressPct !== null): ?>
+                                <div class="achievement-progress">
+                                    <div class="goal-progress"><span style="width: <?= e((string) $progressPct) ?>%"></span></div>
+                                    <small><?= e((string) ($achievement['progress_text'] ?? '')) ?></small>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </article>
+                <?php endforeach; ?>
+                <?php if ($dashboardAchievementPreview === []): ?>
+                    <p class="muted panel-inline-empty"><?= e(t('achievements.empty')) ?></p>
+                <?php endif; ?>
+            </div>
+        </article>
+        <?php endif; ?>
 
         <?php if ($showWidget('weekly')): ?>
         <article class="panel dashboard-panel dashboard-span-full dashboard-weekly-history" style="order: -10">

@@ -2234,6 +2234,8 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'achievements.no_unlocked' => 'No achievements unlocked yet.',
         'achievements.no_locked' => 'No locked achievements left.',
         'achievements.details' => 'Achievement details',
+        'dashboard.achievements_panel' => 'Achievements',
+        'dashboard.widget_achievements' => 'Achievements',
     ],
     'es' => [
         'achievements.all_title' => 'Todos los logros',
@@ -2249,6 +2251,8 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'achievements.no_unlocked' => 'Aun no hay logros desbloqueados.',
         'achievements.no_locked' => 'No quedan logros bloqueados.',
         'achievements.details' => 'Detalle del logro',
+        'dashboard.achievements_panel' => 'Logros',
+        'dashboard.widget_achievements' => 'Logros',
     ],
     'it' => [
         'achievements.all_title' => 'Tutti gli achievement',
@@ -2264,6 +2268,8 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'achievements.no_unlocked' => 'Nessun achievement sbloccato.',
         'achievements.no_locked' => 'Nessun achievement bloccato rimasto.',
         'achievements.details' => 'Dettagli achievement',
+        'dashboard.achievements_panel' => 'Achievement',
+        'dashboard.widget_achievements' => 'Achievement',
     ],
 ]);
 

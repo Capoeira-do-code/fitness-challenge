@@ -4957,6 +4957,30 @@ function achievement_progress_for_row(PDO $pdo, array $achievement, string $scop
             'habit_reader_streak' => achievement_progress_payload(max((float) ($userMetric['habit_counts']['reading'] ?? 0), (float) user_habit_completion_count($pdo, $userId, 'reading')), 5, 'days'),
             'weight_logged' => achievement_progress_payload(((float) ($userMetric['latest_weight'] ?? 0) > 0 || achievement_user_count($pdo, 'daily_logs', 'user_id = :user_id AND COALESCE(weight, 0) > 0', [':user_id' => $userId]) > 0) ? 1 : 0, 1),
             'calorie_tracker' => achievement_progress_payload(user_has_calorie_tracking($pdo, $userId) ? 1 : 0, 1),
+            'five_logs_total' => achievement_progress_payload((float) user_daily_log_count($pdo, $userId), 5, 'logs'),
+            'fourteen_logs_total' => achievement_progress_payload((float) user_daily_log_count($pdo, $userId), 14, 'logs'),
+            'thirty_logs_total' => achievement_progress_payload((float) user_daily_log_count($pdo, $userId), 30, 'logs'),
+            'steps_100k_total' => achievement_progress_payload((float) ($userMetric['total_steps'] ?? 0), 100000, 'steps'),
+            'steps_250k_total' => achievement_progress_payload((float) ($userMetric['total_steps'] ?? 0), 250000, 'steps'),
+            'steps_500k_total' => achievement_progress_payload((float) ($userMetric['total_steps'] ?? 0), 500000, 'steps'),
+            'distance_150k_total' => achievement_progress_payload((float) ($userMetric['total_km'] ?? 0), 150, 'km'),
+            'distance_250k_total' => achievement_progress_payload((float) ($userMetric['total_km'] ?? 0), 250, 'km'),
+            'distance_5k_day' => achievement_progress_payload(user_max_daily_distance($pdo, $userId), 5, 'km'),
+            'workouts_25_total' => achievement_progress_payload(max((float) ($userMetric['workout_count'] ?? 0), (float) ($userMetric['workout_success'] ?? 0)), 25, 'workouts'),
+            'workouts_50_total' => achievement_progress_payload(max((float) ($userMetric['workout_count'] ?? 0), (float) ($userMetric['workout_success'] ?? 0)), 50, 'workouts'),
+            'workout_variety_3' => achievement_progress_payload((float) achievement_workout_type_variety($pdo, $userId, null), 3, 'types'),
+            'three_photo_days' => achievement_progress_payload((float) user_photo_day_count($pdo, $userId), 3, 'days'),
+            'seven_photos_total' => achievement_progress_payload((float) user_photo_count($pdo, $userId), 7, 'photos'),
+            'calorie_7_days' => achievement_progress_payload((float) user_calorie_tracking_day_count($pdo, $userId), 7, 'days'),
+            'weight_5_logs' => achievement_progress_payload((float) user_weight_log_count($pdo, $userId), 5, 'logs'),
+            'no_junk_7_days' => achievement_progress_payload((float) user_no_junk_log_count($pdo, $userId), 7, 'days'),
+            'clean_two_weeks' => achievement_progress_payload((float) user_clean_week_count($userMetric), 2, 'weeks'),
+            'perfect_two_weeks' => achievement_progress_payload((float) user_perfect_week_count($userMetric), 2, 'weeks'),
+            'top_score_90' => achievement_progress_payload((float) ($userMetric['score'] ?? 0), 90, 'score'),
+            'chores_5_total' => achievement_progress_payload((float) user_habit_completion_count($pdo, $userId, 'evening_chores'), 5, 'days'),
+            'reading_10_total' => achievement_progress_payload(max((float) ($userMetric['habit_counts']['reading'] ?? 0), (float) user_habit_completion_count($pdo, $userId, 'reading')), 10, 'days'),
+            'morning_logs_5' => achievement_progress_payload((float) user_morning_log_count($pdo, $userId), 5, 'logs'),
+            'consistent_week_logger' => achievement_progress_payload((float) user_max_weekly_log_days($pdo, $userId), 7, 'days'),
             default => null,
         };
     }
@@ -4982,6 +5006,22 @@ function achievement_progress_for_row(PDO $pdo, array $achievement, string $scop
             'team_250km_total' => achievement_progress_payload((float) ($teamSummary['total_km'] ?? 0), 250, 'km'),
             'team_clean_week' => achievement_progress_payload(team_has_clean_complete_week($metricsByUser) ? 1 : 0, 1),
             'team_training_mix' => achievement_progress_payload(max((float) ($teamSummary['workout_success'] ?? 0), (float) ($teamSummary['workout_count'] ?? 0)), 5, 'workouts'),
+            'team_500k_steps_total' => achievement_progress_payload((float) ($teamSummary['total_steps'] ?? 0), 500000, 'steps'),
+            'team_1m_steps_total' => achievement_progress_payload((float) ($teamSummary['total_steps'] ?? 0), 1000000, 'steps'),
+            'team_500km_total' => achievement_progress_payload((float) ($teamSummary['total_km'] ?? 0), 500, 'km'),
+            'team_1000km_total' => achievement_progress_payload((float) ($teamSummary['total_km'] ?? 0), 1000, 'km'),
+            'team_10_workouts_total' => achievement_progress_payload(max((float) ($teamSummary['workout_success'] ?? 0), (float) ($teamSummary['workout_count'] ?? 0)), 10, 'workouts'),
+            'team_25_workouts_total' => achievement_progress_payload(max((float) ($teamSummary['workout_success'] ?? 0), (float) ($teamSummary['workout_count'] ?? 0)), 25, 'workouts'),
+            'team_50_workouts_total' => achievement_progress_payload(max((float) ($teamSummary['workout_success'] ?? 0), (float) ($teamSummary['workout_count'] ?? 0)), 50, 'workouts'),
+            'team_training_variety_4' => achievement_progress_payload((float) achievement_workout_type_variety($pdo, null, $teamId), 4, 'types'),
+            'team_3_challenges_created' => achievement_progress_payload((float) team_goal_count($pdo, $teamId), 3, 'challenges'),
+            'team_5_challenges_created' => achievement_progress_payload((float) team_goal_count($pdo, $teamId), 5, 'challenges'),
+            'team_3_challenges_completed' => achievement_progress_payload((float) team_goal_count($pdo, $teamId, 'complete'), 3, 'challenges'),
+            'team_no_penalty_two_weeks' => achievement_progress_payload((float) team_clean_complete_week_count($metricsByUser), 2, 'weeks'),
+            'team_everyone_logged_week' => achievement_progress_payload((float) team_everyone_week_count($pdo, $teamId, false), 1),
+            'team_everyone_workout_week' => achievement_progress_payload((float) team_everyone_week_count($pdo, $teamId, true), 1),
+            'team_photo_wall_20' => achievement_progress_payload((float) team_photo_count($pdo, $teamId), 20, 'photos'),
+            'team_1000_calories_burned' => achievement_progress_payload(team_training_calories_burned($pdo, $teamId), 1000, 'kcal'),
             default => null,
         };
     }
@@ -5133,6 +5173,273 @@ function user_habit_completion_count(PDO $pdo, int $userId, string $habitCode): 
     return (int) ($row['total'] ?? 0);
 }
 
+function user_daily_log_count(PDO $pdo, int $userId): int
+{
+    return achievement_user_count($pdo, 'daily_logs', 'user_id = :user_id', [':user_id' => $userId]);
+}
+
+function user_photo_count(PDO $pdo, int $userId): int
+{
+    return achievement_user_count($pdo, 'photo_entries', 'user_id = :user_id', [':user_id' => $userId]);
+}
+
+function user_photo_day_count(PDO $pdo, int $userId): int
+{
+    $row = db_fetch_one($pdo, 'SELECT COUNT(DISTINCT log_date) AS total FROM photo_entries WHERE user_id = :user_id', [':user_id' => $userId]);
+
+    return (int) ($row['total'] ?? 0);
+}
+
+function user_calorie_tracking_day_count(PDO $pdo, int $userId): int
+{
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT log_date
+         FROM daily_logs
+         WHERE user_id = :user_id AND COALESCE(training_calories_burned, 0) > 0
+         UNION
+         SELECT log_date
+         FROM photo_entries
+         WHERE user_id = :user_id AND COALESCE(calories, 0) > 0',
+        [':user_id' => $userId]
+    );
+
+    return count($rows);
+}
+
+function user_weight_log_count(PDO $pdo, int $userId): int
+{
+    return achievement_user_count($pdo, 'daily_logs', 'user_id = :user_id AND COALESCE(weight, 0) > 0', [':user_id' => $userId]);
+}
+
+function user_no_junk_log_count(PDO $pdo, int $userId): int
+{
+    return achievement_user_count($pdo, 'daily_logs', 'user_id = :user_id AND COALESCE(junk_food, 0) = 0', [':user_id' => $userId]);
+}
+
+function user_morning_log_count(PDO $pdo, int $userId): int
+{
+    return achievement_user_count(
+        $pdo,
+        'daily_logs',
+        'user_id = :user_id AND log_time IS NOT NULL AND log_time != "" AND substr(log_time, 1, 5) <= "09:00"',
+        [':user_id' => $userId]
+    );
+}
+
+function user_max_daily_distance(PDO $pdo, int $userId): float
+{
+    $row = db_fetch_one($pdo, 'SELECT MAX(COALESCE(distance_km, 0)) AS value FROM daily_logs WHERE user_id = :user_id', [':user_id' => $userId]);
+
+    return (float) ($row['value'] ?? 0);
+}
+
+function achievement_week_key(string $date): string
+{
+    try {
+        return week_start_for(new DateTimeImmutable($date))->format('Y-m-d');
+    } catch (Throwable) {
+        return '';
+    }
+}
+
+function user_max_weekly_log_days(PDO $pdo, int $userId): int
+{
+    $rows = db_fetch_all($pdo, 'SELECT DISTINCT log_date FROM daily_logs WHERE user_id = :user_id', [':user_id' => $userId]);
+    $byWeek = [];
+    foreach ($rows as $row) {
+        $week = achievement_week_key((string) ($row['log_date'] ?? ''));
+        if ($week === '') {
+            continue;
+        }
+        $byWeek[$week] = ($byWeek[$week] ?? 0) + 1;
+    }
+
+    return $byWeek !== [] ? max($byWeek) : 0;
+}
+
+function user_clean_week_count(array $metric): int
+{
+    $count = 0;
+    foreach ((array) ($metric['weekly'] ?? []) as $week) {
+        if ((string) ($week['status'] ?? '') === 'complete' && (float) ($week['penalty'] ?? 0) <= 0.0) {
+            $count++;
+        }
+    }
+
+    return $count;
+}
+
+function user_perfect_week_count(array $metric): int
+{
+    $count = 0;
+    foreach ((array) ($metric['weekly'] ?? []) as $week) {
+        if ((string) ($week['status'] ?? '') === 'complete' && (int) ($week['total_failures'] ?? 0) === 0) {
+            $count++;
+        }
+    }
+
+    return $count;
+}
+
+function achievement_workout_type_variety(PDO $pdo, ?int $userId = null, ?int $teamId = null): int
+{
+    $params = [];
+    $where = '1 = 1';
+    $joinTeam = '';
+    if ($userId !== null) {
+        $where .= ' AND dl.user_id = :user_id';
+        $params[':user_id'] = $userId;
+    }
+    if ($teamId !== null) {
+        $joinTeam = 'JOIN team_memberships tm ON tm.user_id = dl.user_id AND tm.active = 1';
+        $where .= ' AND tm.team_id = :team_id';
+        $params[':team_id'] = $teamId;
+    }
+
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT dl.workout_type_id AS legacy_type_id,
+                dl.workout_type AS legacy_type,
+                dlw.workout_type_id AS row_type_id,
+                dlw.workout_type AS row_type
+         FROM daily_logs dl
+         ' . $joinTeam . '
+         LEFT JOIN daily_log_workouts dlw ON dlw.log_id = dl.id
+         WHERE ' . $where . ' AND (COALESCE(dl.workout_done, 0) = 1 OR dlw.id IS NOT NULL)',
+        $params
+    );
+
+    $keys = [];
+    foreach ($rows as $row) {
+        $typeId = (int) ($row['row_type_id'] ?? 0);
+        $typeText = trim((string) ($row['row_type'] ?? ''));
+        if ($typeId <= 0) {
+            $typeId = (int) ($row['legacy_type_id'] ?? 0);
+            $typeText = trim((string) ($row['legacy_type'] ?? $typeText));
+        }
+        $key = $typeId > 0 ? 'id:' . $typeId : 'text:' . strtolower($typeText);
+        if ($key !== 'text:') {
+            $keys[$key] = true;
+        }
+    }
+
+    return count($keys);
+}
+
+function team_goal_count(PDO $pdo, int $teamId, ?string $status = null): int
+{
+    $params = [':team_id' => $teamId];
+    $where = 'scope = "team" AND team_id = :team_id';
+    if ($status !== null) {
+        $where .= ' AND status = :status';
+        $params[':status'] = $status;
+    }
+
+    return achievement_user_count($pdo, 'goals', $where, $params);
+}
+
+function team_photo_count(PDO $pdo, int $teamId): int
+{
+    $row = db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS total
+         FROM photo_entries pe
+         JOIN team_memberships tm ON tm.user_id = pe.user_id AND tm.active = 1
+         WHERE tm.team_id = :team_id',
+        [':team_id' => $teamId]
+    );
+
+    return (int) ($row['total'] ?? 0);
+}
+
+function team_training_calories_burned(PDO $pdo, int $teamId): float
+{
+    $row = db_fetch_one(
+        $pdo,
+        'SELECT SUM(COALESCE(dl.training_calories_burned, 0)) AS total
+         FROM daily_logs dl
+         JOIN team_memberships tm ON tm.user_id = dl.user_id AND tm.active = 1
+         WHERE tm.team_id = :team_id',
+        [':team_id' => $teamId]
+    );
+
+    return (float) ($row['total'] ?? 0);
+}
+
+function team_clean_complete_week_count(array $metricsByUser): int
+{
+    $memberCount = count($metricsByUser);
+    if ($memberCount <= 0) {
+        return 0;
+    }
+
+    $weeks = [];
+    foreach ($metricsByUser as $metric) {
+        foreach ((array) ($metric['weekly'] ?? []) as $week) {
+            $weekStart = (string) ($week['week_start'] ?? '');
+            if ($weekStart === '') {
+                continue;
+            }
+            if (!isset($weeks[$weekStart])) {
+                $weeks[$weekStart] = ['members' => 0, 'complete' => 0, 'penalty' => 0.0];
+            }
+            $weeks[$weekStart]['members']++;
+            if ((string) ($week['status'] ?? '') === 'complete') {
+                $weeks[$weekStart]['complete']++;
+            }
+            $weeks[$weekStart]['penalty'] += (float) ($week['penalty'] ?? 0);
+        }
+    }
+
+    $count = 0;
+    foreach ($weeks as $week) {
+        if ((int) $week['members'] >= $memberCount && (int) $week['complete'] >= $memberCount && (float) $week['penalty'] <= 0.0) {
+            $count++;
+        }
+    }
+
+    return $count;
+}
+
+function team_everyone_week_count(PDO $pdo, int $teamId, bool $workoutOnly = false): int
+{
+    $members = db_fetch_all($pdo, 'SELECT user_id FROM team_memberships WHERE team_id = :team_id AND active = 1', [':team_id' => $teamId]);
+    $memberIds = array_map(static fn(array $row): int => (int) ($row['user_id'] ?? 0), $members);
+    $memberIds = array_values(array_filter($memberIds, static fn(int $id): bool => $id > 0));
+    $memberCount = count($memberIds);
+    if ($memberCount <= 0) {
+        return 0;
+    }
+
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT dl.user_id, dl.log_date, dl.workout_done
+         FROM daily_logs dl
+         JOIN team_memberships tm ON tm.user_id = dl.user_id AND tm.active = 1
+         WHERE tm.team_id = :team_id' . ($workoutOnly ? ' AND COALESCE(dl.workout_done, 0) = 1' : ''),
+        [':team_id' => $teamId]
+    );
+    $weeks = [];
+    foreach ($rows as $row) {
+        $week = achievement_week_key((string) ($row['log_date'] ?? ''));
+        $userId = (int) ($row['user_id'] ?? 0);
+        if ($week === '' || $userId <= 0) {
+            continue;
+        }
+        $weeks[$week][$userId] = true;
+    }
+
+    $count = 0;
+    foreach ($weeks as $users) {
+        if (count($users) >= $memberCount) {
+            $count++;
+        }
+    }
+
+    return $count;
+}
+
 function team_has_weekly_steps_total(array $metricsByUser, int $targetSteps): bool
 {
     $byWeek = [];
@@ -5253,6 +5560,70 @@ function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $t
         if (isset($byTrigger['calorie_tracker']) && user_has_calorie_tracking($pdo, $userId)) {
             award_achievement($pdo, (int) $byTrigger['calorie_tracker']['id'], $userId, null, null, 'Automatic unlock.');
         }
+
+        $logCount = user_daily_log_count($pdo, $userId);
+        foreach (['five_logs_total' => 5, 'fourteen_logs_total' => 14, 'thirty_logs_total' => 30] as $trigger => $target) {
+            if (isset($byTrigger[$trigger]) && $logCount >= $target) {
+                award_achievement($pdo, (int) $byTrigger[$trigger]['id'], $userId, null, null, 'Automatic unlock.');
+            }
+        }
+        foreach (['steps_100k_total' => 100000, 'steps_250k_total' => 250000, 'steps_500k_total' => 500000] as $trigger => $target) {
+            if (isset($byTrigger[$trigger]) && (int) ($metric['total_steps'] ?? 0) >= $target) {
+                award_achievement($pdo, (int) $byTrigger[$trigger]['id'], $userId, null, null, 'Automatic unlock.');
+            }
+        }
+        foreach (['distance_150k_total' => 150.0, 'distance_250k_total' => 250.0] as $trigger => $target) {
+            if (isset($byTrigger[$trigger]) && (float) ($metric['total_km'] ?? 0) >= $target) {
+                award_achievement($pdo, (int) $byTrigger[$trigger]['id'], $userId, null, null, 'Automatic unlock.');
+            }
+        }
+        if (isset($byTrigger['distance_5k_day']) && user_max_daily_distance($pdo, $userId) >= 5.0) {
+            award_achievement($pdo, (int) $byTrigger['distance_5k_day']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        foreach (['workouts_25_total' => 25, 'workouts_50_total' => 50] as $trigger => $target) {
+            if (isset($byTrigger[$trigger]) && $workoutTotal >= $target) {
+                award_achievement($pdo, (int) $byTrigger[$trigger]['id'], $userId, null, null, 'Automatic unlock.');
+            }
+        }
+        if (isset($byTrigger['workout_variety_3']) && achievement_workout_type_variety($pdo, $userId, null) >= 3) {
+            award_achievement($pdo, (int) $byTrigger['workout_variety_3']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['three_photo_days']) && user_photo_day_count($pdo, $userId) >= 3) {
+            award_achievement($pdo, (int) $byTrigger['three_photo_days']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['seven_photos_total']) && user_photo_count($pdo, $userId) >= 7) {
+            award_achievement($pdo, (int) $byTrigger['seven_photos_total']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['calorie_7_days']) && user_calorie_tracking_day_count($pdo, $userId) >= 7) {
+            award_achievement($pdo, (int) $byTrigger['calorie_7_days']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['weight_5_logs']) && user_weight_log_count($pdo, $userId) >= 5) {
+            award_achievement($pdo, (int) $byTrigger['weight_5_logs']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['no_junk_7_days']) && user_no_junk_log_count($pdo, $userId) >= 7) {
+            award_achievement($pdo, (int) $byTrigger['no_junk_7_days']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['clean_two_weeks']) && user_clean_week_count($metric) >= 2) {
+            award_achievement($pdo, (int) $byTrigger['clean_two_weeks']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['perfect_two_weeks']) && user_perfect_week_count($metric) >= 2) {
+            award_achievement($pdo, (int) $byTrigger['perfect_two_weeks']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['top_score_90']) && (float) ($metric['score'] ?? 0) >= 90.0) {
+            award_achievement($pdo, (int) $byTrigger['top_score_90']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['chores_5_total']) && user_habit_completion_count($pdo, $userId, 'evening_chores') >= 5) {
+            award_achievement($pdo, (int) $byTrigger['chores_5_total']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['reading_10_total']) && max((int) (($metric['habit_counts']['reading'] ?? 0)), user_habit_completion_count($pdo, $userId, 'reading')) >= 10) {
+            award_achievement($pdo, (int) $byTrigger['reading_10_total']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['morning_logs_5']) && user_morning_log_count($pdo, $userId) >= 5) {
+            award_achievement($pdo, (int) $byTrigger['morning_logs_5']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['consistent_week_logger']) && user_max_weekly_log_days($pdo, $userId) >= 7) {
+            award_achievement($pdo, (int) $byTrigger['consistent_week_logger']['id'], $userId, null, null, 'Automatic unlock.');
+        }
     }
 
     if ($teamId !== null) {
@@ -5281,6 +5652,47 @@ function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $t
         $teamWorkoutTotal = max((int) ($teamSummary['workout_success'] ?? 0), (int) ($teamSummary['workout_count'] ?? 0));
         if (isset($byTrigger['team_training_mix']) && $teamWorkoutTotal >= 5) {
             award_achievement($pdo, (int) $byTrigger['team_training_mix']['id'], null, $teamId, null, 'Automatic unlock.');
+        }
+        foreach (['team_500k_steps_total' => 500000, 'team_1m_steps_total' => 1000000] as $trigger => $target) {
+            if (isset($byTrigger[$trigger]) && (int) ($teamSummary['total_steps'] ?? 0) >= $target) {
+                award_achievement($pdo, (int) $byTrigger[$trigger]['id'], null, $teamId, null, 'Automatic unlock.');
+            }
+        }
+        foreach (['team_500km_total' => 500.0, 'team_1000km_total' => 1000.0] as $trigger => $target) {
+            if (isset($byTrigger[$trigger]) && (float) ($teamSummary['total_km'] ?? 0) >= $target) {
+                award_achievement($pdo, (int) $byTrigger[$trigger]['id'], null, $teamId, null, 'Automatic unlock.');
+            }
+        }
+        foreach (['team_10_workouts_total' => 10, 'team_25_workouts_total' => 25, 'team_50_workouts_total' => 50] as $trigger => $target) {
+            if (isset($byTrigger[$trigger]) && $teamWorkoutTotal >= $target) {
+                award_achievement($pdo, (int) $byTrigger[$trigger]['id'], null, $teamId, null, 'Automatic unlock.');
+            }
+        }
+        if (isset($byTrigger['team_training_variety_4']) && achievement_workout_type_variety($pdo, null, $teamId) >= 4) {
+            award_achievement($pdo, (int) $byTrigger['team_training_variety_4']['id'], null, $teamId, null, 'Automatic unlock.');
+        }
+        foreach (['team_3_challenges_created' => 3, 'team_5_challenges_created' => 5] as $trigger => $target) {
+            if (isset($byTrigger[$trigger]) && team_goal_count($pdo, $teamId) >= $target) {
+                award_achievement($pdo, (int) $byTrigger[$trigger]['id'], null, $teamId, null, 'Automatic unlock.');
+            }
+        }
+        if (isset($byTrigger['team_3_challenges_completed']) && team_goal_count($pdo, $teamId, 'complete') >= 3) {
+            award_achievement($pdo, (int) $byTrigger['team_3_challenges_completed']['id'], null, $teamId, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['team_no_penalty_two_weeks']) && team_clean_complete_week_count($metricsByUser) >= 2) {
+            award_achievement($pdo, (int) $byTrigger['team_no_penalty_two_weeks']['id'], null, $teamId, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['team_everyone_logged_week']) && team_everyone_week_count($pdo, $teamId, false) >= 1) {
+            award_achievement($pdo, (int) $byTrigger['team_everyone_logged_week']['id'], null, $teamId, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['team_everyone_workout_week']) && team_everyone_week_count($pdo, $teamId, true) >= 1) {
+            award_achievement($pdo, (int) $byTrigger['team_everyone_workout_week']['id'], null, $teamId, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['team_photo_wall_20']) && team_photo_count($pdo, $teamId) >= 20) {
+            award_achievement($pdo, (int) $byTrigger['team_photo_wall_20']['id'], null, $teamId, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['team_1000_calories_burned']) && team_training_calories_burned($pdo, $teamId) >= 1000.0) {
+            award_achievement($pdo, (int) $byTrigger['team_1000_calories_burned']['id'], null, $teamId, null, 'Automatic unlock.');
         }
     }
 

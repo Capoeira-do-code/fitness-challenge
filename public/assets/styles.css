@@ -5344,6 +5344,10 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     margin-bottom: 1rem;
 }
 
+.achievements-back-btn {
+    align-self: flex-start;
+}
+
 .achievement-summary-strip {
     display: flex;
     gap: 0.5rem;
@@ -5445,13 +5449,93 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     gap: 0.75rem;
 }
 
+.dashboard-achievements-panel .panel-head {
+    align-items: center;
+}
+
+.dashboard-achievements-summary {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+.dashboard-achievements-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.dashboard-achievement-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 0.65rem;
+    min-height: 132px;
+    height: 132px;
+    overflow: hidden;
+}
+
+.dashboard-achievement-card .achievement-visual {
+    width: 48px;
+    height: 48px;
+    flex-basis: 48px;
+    border-radius: 14px;
+}
+
+.dashboard-achievement-card .achievement-visual svg {
+    width: 24px;
+    height: 24px;
+}
+
+.dashboard-achievement-content {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.dashboard-achievement-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.45rem;
+}
+
+.dashboard-achievement-title-row strong {
+    min-width: 0;
+    line-height: 1.2;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.dashboard-achievement-content p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
 @media (max-width: 720px) {
     .achievement-page-hero {
-        align-items: flex-start;
+        align-items: center;
+        gap: 0.75rem;
     }
 
     .achievement-page-hero .btn {
         flex: 0 0 auto;
+        min-height: 36px;
+        padding-inline: 0.7rem;
+    }
+
+    .achievements-back-btn {
+        align-self: center;
     }
 
     .profile-achievement-card,
@@ -5503,5 +5587,41 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 
     .achievement-icon-picker {
         grid-template-columns: 1fr 1fr;
+    }
+
+    .dashboard-achievements-panel .panel-head {
+        align-items: flex-start;
+        gap: 0.7rem;
+    }
+
+    .dashboard-achievements-summary {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .dashboard-achievements-summary .dashboard-panel-action {
+        margin-left: auto;
+    }
+
+    .dashboard-achievements-grid {
+        grid-template-columns: 1fr;
+        gap: 0.6rem;
+    }
+
+    .dashboard-achievement-card {
+        min-height: 112px;
+        height: 112px;
+        grid-template-columns: 46px minmax(0, 1fr);
+        gap: 0.55rem;
+    }
+
+    .dashboard-achievement-card .achievement-visual {
+        width: 42px;
+        height: 42px;
+        flex-basis: 42px;
+    }
+
+    .dashboard-achievement-card:nth-child(n+3) {
+        display: none;
     }
 }

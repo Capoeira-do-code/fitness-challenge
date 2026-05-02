@@ -1062,7 +1062,7 @@ if ($page === 'settings') {
             $layoutJson = (string) ($before['dashboard_layout_json'] ?? '[]');
             $hasWidgetPayload = array_key_exists('dashboard_widgets', $_POST) || array_key_exists('dashboard_order', $_POST);
             if ($hasWidgetPayload) {
-                $allowedWidgets = ['kpis', 'distance_walked', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories'];
+                $allowedWidgets = ['kpis', 'distance_walked', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories', 'achievements'];
                 $selectedWidgets = array_values(array_intersect(array_map('strval', (array) ($_POST['dashboard_widgets'] ?? [])), $allowedWidgets));
                 $selectedWidgets = array_values(array_unique(array_map(
                     static fn(string $widget): string => $widget === 'money' ? 'distance_walked' : $widget,
@@ -1806,9 +1806,17 @@ if ($page === 'achievements') {
         $achievementOwner = $profileUser;
         $achievementUserId = (int) $profileUser['id'];
         $canDeleteAchievements = is_admin($currentUser) || $isOwnProfile;
-        $backParams = ['page' => 'profile'];
-        if (!$isOwnProfile) {
-            $backParams['user_id'] = $achievementUserId;
+        if ((string) ($_GET['back'] ?? '') === 'dashboard') {
+            $backParams = ['page' => 'dashboard', 'user_id' => $achievementUserId];
+            $backView = trim((string) ($_GET['view'] ?? ''));
+            if ($backView !== '') {
+                $backParams['view'] = $backView;
+            }
+        } else {
+            $backParams = ['page' => 'profile'];
+            if (!$isOwnProfile) {
+                $backParams['user_id'] = $achievementUserId;
+            }
         }
         $backHref = '/?' . http_build_query($backParams);
     }
@@ -1818,6 +1826,13 @@ if ($page === 'achievements') {
         $pageParams['team_id'] = $achievementTeamId;
     } else {
         $pageParams['user_id'] = $achievementUserId;
+        if ((string) ($_GET['back'] ?? '') === 'dashboard') {
+            $pageParams['back'] = 'dashboard';
+            $backView = trim((string) ($_GET['view'] ?? ''));
+            if ($backView !== '') {
+                $pageParams['view'] = $backView;
+            }
+        }
     }
     $achievementsUrl = '/?' . http_build_query($pageParams);
 
@@ -3705,6 +3720,7 @@ if ($page === 'metric') {
         (string) $settings['challenge_end']
     );
     $metricsByUser = apply_strike_review_overrides_to_metrics($pdo, $metricsByUser);
+    evaluate_automatic_achievements($pdo, $metricsByUser, (int) $team['id']);
 
     $metricsById = [];
     foreach ($metricsByUser as $userId => $metric) {
@@ -4383,7 +4399,7 @@ if ($page === 'dashboard') {
         }
 
         if ($action === 'save_dashboard_layout' || $action === 'save_dashboard_prefs') {
-            $allowedWidgets = ['kpis', 'distance_walked', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories'];
+            $allowedWidgets = ['kpis', 'distance_walked', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories', 'achievements'];
             $resetLayout = bool_from_form('reset_dashboard_layout') === 1;
             $widgets = [];
             if (!$resetLayout) {
@@ -4549,6 +4565,14 @@ if ($page === 'dashboard') {
 
     $dashboardMealDate = to_date($_GET['meal_date'] ?? $selectedWeekStart);
     $dashboardMealCalendar = fetch_meal_calendar($pdo, $dashboardMealDate, (int) $selectedMetric['user']['id'], 'week');
+    $dashboardAchievementUserId = (int) ($selectedMetric['user']['id'] ?? $selectedUserId);
+    $dashboardAchievements = list_achievement_collection(
+        $pdo,
+        'user',
+        $dashboardAchievementUserId,
+        null,
+        [$dashboardAchievementUserId => $selectedMetric]
+    );
     if ($dashboardView !== (string) ($currentUser['dashboard_view'] ?? 'current_week')) {
         db_execute($pdo, 'UPDATE users SET dashboard_view = :view, updated_at = :updated_at WHERE id = :id', [':view' => $dashboardView, ':updated_at' => now_iso(), ':id' => (int) $currentUser['id']]);
         $currentUser['dashboard_view'] = $dashboardView;
@@ -4575,6 +4599,7 @@ if ($page === 'dashboard') {
         'dashboardCalorieStats' => $dashboardCalorieStats,
         'dashboardCalorieRangeStart' => $calorieStartDate,
         'dashboardCalorieRangeEnd' => $calorieEndDate,
+        'dashboardAchievements' => $dashboardAchievements,
         'motivationQuote' => random_motivation_quote_from_db($pdo),
         'config' => $config,
     ]);
