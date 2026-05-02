@@ -295,6 +295,7 @@ function initialize_database(PDO $pdo, array $config): void
             scope TEXT NOT NULL DEFAULT "user",
             trigger_key TEXT,
             image_path TEXT,
+            icon_key TEXT,
             reward_text TEXT,
             active INTEGER NOT NULL DEFAULT 1,
             created_by INTEGER,
@@ -688,6 +689,7 @@ function ensure_schema_columns(PDO $pdo, array $config): void
 
     ensure_column($pdo, 'achievements', 'trigger_key', 'TEXT');
     ensure_column($pdo, 'achievements', 'image_path', 'TEXT');
+    ensure_column($pdo, 'achievements', 'icon_key', 'TEXT');
     ensure_column($pdo, 'achievements', 'reward_text', 'TEXT');
     ensure_column($pdo, 'achievements', 'active', 'INTEGER NOT NULL DEFAULT 1');
     ensure_column($pdo, 'achievement_translations', 'description', 'TEXT NOT NULL DEFAULT ""');
@@ -889,6 +891,29 @@ function seed_default_team(PDO $pdo): void
 function seed_default_achievements(PDO $pdo): void
 {
     $now = now_iso();
+    $defaultIcons = [
+        'first_log' => 'calendar-check',
+        'first_photo' => 'camera',
+        'three_workouts_week' => 'dumbbell',
+        'perfect_week' => 'trophy',
+        'step_streak' => 'footprints',
+        'no_strike_week' => 'shield-check',
+        'seven_day_step_streak' => 'footprints',
+        'ten_workouts_total' => 'dumbbell',
+        'distance_50k_total' => 'target',
+        'distance_100k_total' => 'flag',
+        'early_logger' => 'calendar-check',
+        'habit_reader_streak' => 'sparkles',
+        'weight_logged' => 'target',
+        'calorie_tracker' => 'flame',
+        'team_active' => 'users',
+        'team_first_challenge' => 'flag',
+        'team_challenge_complete' => 'trophy',
+        'team_100k_steps_week' => 'footprints',
+        'team_250km_total' => 'target',
+        'team_clean_week' => 'shield-check',
+        'team_training_mix' => 'dumbbell',
+    ];
     $achievements = [
         ['first_log', 'user', 'first_log', [
             'en' => ['First Log', 'Saved the first daily log.', ''],
@@ -1002,20 +1027,22 @@ function seed_default_achievements(PDO $pdo): void
         $name = (string) ($english[0] ?? $code);
         $description = (string) ($english[1] ?? '');
         $rewardText = (string) ($english[2] ?? '');
+        $iconKey = normalize_achievement_icon_key((string) ($defaultIcons[$code] ?? 'trophy'));
         $existing = db_fetch_one($pdo, 'SELECT id FROM achievements WHERE code = :code', [':code' => $code]);
         $achievementId = (int) ($existing['id'] ?? 0);
 
         if ($achievementId <= 0) {
             db_execute(
                 $pdo,
-                'INSERT INTO achievements (code, name, description, scope, trigger_key, reward_text, active, created_by, created_at, updated_at)
-                 VALUES (:code, :name, :description, :scope, :trigger_key, :reward_text, 1, NULL, :created_at, :updated_at)',
+                'INSERT INTO achievements (code, name, description, scope, trigger_key, image_path, icon_key, reward_text, active, created_by, created_at, updated_at)
+                 VALUES (:code, :name, :description, :scope, :trigger_key, NULL, :icon_key, :reward_text, 1, NULL, :created_at, :updated_at)',
                 [
                     ':code' => $code,
                     ':name' => $name,
                     ':description' => $description,
                     ':scope' => $scope,
                     ':trigger_key' => $trigger,
+                    ':icon_key' => $iconKey,
                     ':reward_text' => $rewardText !== '' ? $rewardText : null,
                     ':created_at' => $now,
                     ':updated_at' => $now,
@@ -1028,6 +1055,18 @@ function seed_default_achievements(PDO $pdo): void
         if ($achievementId <= 0) {
             continue;
         }
+
+        db_execute(
+            $pdo,
+            'UPDATE achievements
+             SET icon_key = :icon_key, updated_at = :updated_at
+             WHERE id = :id AND (icon_key IS NULL OR TRIM(icon_key) = "")',
+            [
+                ':icon_key' => $iconKey,
+                ':updated_at' => $now,
+                ':id' => $achievementId,
+            ]
+        );
 
         foreach ($translations as $locale => $translation) {
             db_execute(

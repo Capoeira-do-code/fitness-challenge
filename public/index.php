@@ -1714,6 +1714,160 @@ if ($page === 'profile') {
     ]);
 }
 
+if ($page === 'achievements') {
+    $scope = (string) ($_GET['scope'] ?? 'user');
+    $scope = $scope === 'team' ? 'team' : 'user';
+    $settings = challenge_settings($pdo, $config);
+    $achievementOwner = null;
+    $achievementsMetrics = [];
+    $achievementUserId = null;
+    $achievementTeamId = null;
+    $canDeleteAchievements = false;
+    $backHref = '/?page=profile';
+
+    if ($scope === 'team') {
+        $achievementTeamId = isset($_GET['team_id']) ? (int) $_GET['team_id'] : 0;
+        if ($achievementTeamId <= 0) {
+            $userTeams = list_user_teams($pdo, (int) $currentUser['id']);
+            $achievementTeamId = (int) ($userTeams[0]['id'] ?? 0);
+        }
+        $team = $achievementTeamId > 0
+            ? db_fetch_one($pdo, 'SELECT * FROM teams WHERE id = :id', [':id' => $achievementTeamId])
+            : null;
+        if ($team === null) {
+            flash_set('error', t('flash.not_found'));
+            redirect('/?page=team');
+        }
+
+        $isMember = db_fetch_one(
+            $pdo,
+            'SELECT id FROM team_memberships WHERE team_id = :team_id AND user_id = :user_id AND active = 1 LIMIT 1',
+            [':team_id' => (int) $team['id'], ':user_id' => (int) $currentUser['id']]
+        ) !== null;
+        if (!$isMember && !is_admin($currentUser)) {
+            flash_set('error', t('flash.no_permission'));
+            redirect('/?page=team');
+        }
+
+        $teamUsers = list_active_team_users($pdo, (int) $team['id']);
+        $achievementsMetrics = compute_challenge_metrics(
+            $pdo,
+            $teamUsers,
+            (string) $settings['challenge_start'],
+            (string) $settings['challenge_end']
+        );
+        $achievementsMetrics = apply_strike_review_overrides_to_metrics($pdo, $achievementsMetrics);
+        evaluate_automatic_achievements($pdo, $achievementsMetrics, (int) $team['id']);
+        $achievementOwner = $team;
+        $achievementTeamId = (int) $team['id'];
+        $canDeleteAchievements = can_manage_team($pdo, $currentUser, $achievementTeamId);
+        $backHref = '/?' . http_build_query(['page' => 'team', 'team_id' => $achievementTeamId]);
+    } else {
+        $achievementUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
+        if ($achievementUserId <= 0) {
+            $achievementUserId = (int) $currentUser['id'];
+        }
+        $profileUser = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id AND active = 1', [':id' => $achievementUserId]);
+        if ($profileUser === null) {
+            flash_set('error', t('flash.no_permission'));
+            redirect('/?page=profile');
+        }
+
+        $isOwnProfile = (int) $profileUser['id'] === (int) $currentUser['id'];
+        $sharesTeamWithTarget = false;
+        if (!$isOwnProfile && !is_admin($currentUser)) {
+            $sharesTeamWithTarget = db_fetch_one(
+                $pdo,
+                'SELECT tm1.team_id
+                 FROM team_memberships tm1
+                 JOIN team_memberships tm2 ON tm2.team_id = tm1.team_id
+                 WHERE tm1.user_id = :viewer_id AND tm1.active = 1
+                   AND tm2.user_id = :target_id AND tm2.active = 1
+                 LIMIT 1',
+                [
+                    ':viewer_id' => (int) $currentUser['id'],
+                    ':target_id' => (int) $profileUser['id'],
+                ]
+            ) !== null;
+        }
+        if (!$isOwnProfile && !is_admin($currentUser) && !$sharesTeamWithTarget) {
+            flash_set('error', t('flash.no_permission'));
+            redirect('/?page=profile');
+        }
+
+        $achievementsMetrics = compute_challenge_metrics(
+            $pdo,
+            [$profileUser],
+            (string) $settings['challenge_start'],
+            (string) $settings['challenge_end']
+        );
+        $achievementsMetrics = apply_strike_review_overrides_to_metrics($pdo, $achievementsMetrics);
+        evaluate_automatic_achievements($pdo, $achievementsMetrics);
+        $achievementOwner = $profileUser;
+        $achievementUserId = (int) $profileUser['id'];
+        $canDeleteAchievements = is_admin($currentUser) || $isOwnProfile;
+        $backParams = ['page' => 'profile'];
+        if (!$isOwnProfile) {
+            $backParams['user_id'] = $achievementUserId;
+        }
+        $backHref = '/?' . http_build_query($backParams);
+    }
+
+    $pageParams = ['page' => 'achievements', 'scope' => $scope];
+    if ($scope === 'team') {
+        $pageParams['team_id'] = $achievementTeamId;
+    } else {
+        $pageParams['user_id'] = $achievementUserId;
+    }
+    $achievementsUrl = '/?' . http_build_query($pageParams);
+
+    if (is_post()) {
+        if (!csrf_verify()) {
+            flash_set('error', t('flash.csrf'));
+            redirect($achievementsUrl);
+        }
+        $action = (string) ($_POST['action'] ?? '');
+        if ($action === 'delete_achievement_award') {
+            if (!$canDeleteAchievements) {
+                flash_set('error', t('flash.no_permission'));
+                redirect($achievementsUrl);
+            }
+            $awardId = (int) ($_POST['award_id'] ?? 0);
+            $award = $awardId > 0
+                ? db_fetch_one($pdo, 'SELECT * FROM achievement_awards WHERE id = :id', [':id' => $awardId])
+                : null;
+            $allowedAward = false;
+            if ($award !== null && $scope === 'team') {
+                $allowedAward = (int) ($award['team_id'] ?? 0) === $achievementTeamId;
+            } elseif ($award !== null) {
+                $allowedAward = (int) ($award['user_id'] ?? 0) === $achievementUserId;
+            }
+            if ($allowedAward) {
+                delete_achievement_award($pdo, $awardId, (int) $currentUser['id']);
+                flash_set('success', t('flash.achievement_deleted'));
+            } else {
+                flash_set('error', t('flash.no_permission'));
+            }
+            redirect($achievementsUrl);
+        }
+    }
+
+    $achievementsAll = list_achievement_collection($pdo, $scope, $achievementUserId, $achievementTeamId, $achievementsMetrics);
+
+    render_view('achievements', [
+        'title' => t('achievements.title'),
+        'currentPage' => 'achievements',
+        'currentUser' => $currentUser,
+        'achievementScope' => $scope,
+        'achievementOwner' => $achievementOwner,
+        'achievementsAll' => $achievementsAll,
+        'canDeleteAchievements' => $canDeleteAchievements,
+        'achievementsUrl' => $achievementsUrl,
+        'backHref' => $backHref,
+        'config' => $config,
+    ]);
+}
+
 if ($page === 'admin') {
     require_admin($currentUser);
 
@@ -1913,6 +2067,7 @@ if ($page === 'admin') {
                 $code = trim((string) ($_POST['code'] ?? ''));
                 $scope = (string) ($_POST['scope'] ?? 'user');
                 $active = bool_from_form('active') === 1;
+                $iconKey = normalize_achievement_icon_key((string) ($_POST['icon_key'] ?? 'trophy'));
                 if ($name === '') {
                     throw new RuntimeException('Achievement name is required.');
                 }
@@ -1931,6 +2086,7 @@ if ($page === 'admin') {
                         'scope' => $scope,
                         'active' => $active ? 1 : 0,
                         'image_path' => $imagePath,
+                        'icon_key' => $iconKey,
                         'reward_text' => $rewardText,
                         'translations' => $translations,
                         'metric_key' => (string) ($_POST['metric'] ?? ($_POST['metric_key'] ?? 'steps')),
@@ -1943,7 +2099,7 @@ if ($page === 'admin') {
                     create_manual_achievement(
                         $pdo,
                         $name,
-                        trim((string) ($_POST['description'] ?? '')),
+                        $description,
                         $scope,
                         (int) $currentUser['id'],
                         $imagePath,
@@ -1951,6 +2107,7 @@ if ($page === 'admin') {
                         $code,
                         $active,
                         null,
+                        $iconKey,
                         $translations
                     );
                 }
@@ -1973,7 +2130,7 @@ if ($page === 'admin') {
                     throw new RuntimeException('Achievement not found.');
                 }
 
-                $imagePath = (string) ($existing['image_path'] ?? '');
+                $imagePath = bool_from_form('remove_image') === 1 ? '' : (string) ($existing['image_path'] ?? '');
                 if (!empty($_FILES['image']['name'])) {
                     $imagePath = save_uploaded_image($config, $_FILES['image'], 'achievements', 'achievement');
                 }
@@ -1993,6 +2150,7 @@ if ($page === 'admin') {
                     'reward_text' => trim((string) ($englishTranslation['reward_text'] ?? '')),
                     'translations' => $translations,
                     'image_path' => $imagePath !== '' ? $imagePath : null,
+                    'icon_key' => normalize_achievement_icon_key((string) ($_POST['icon_key'] ?? ($existing['icon_key'] ?? 'trophy'))),
                     'active' => bool_from_form('active') === 1,
                     'conditional_enabled' => bool_from_form('conditional_enabled') === 1,
                     'metric_key' => (string) ($_POST['metric'] ?? ($_POST['metric_key'] ?? 'steps')),

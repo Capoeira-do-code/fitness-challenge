@@ -484,6 +484,97 @@ function avatar_url(array $user): string
     return $avatarUrl;
 }
 
+function achievement_icon_options(): array
+{
+    return [
+        'trophy' => 'Trophy',
+        'medal' => 'Medal',
+        'target' => 'Target',
+        'footprints' => 'Footprints',
+        'dumbbell' => 'Dumbbell',
+        'flame' => 'Flame',
+        'camera' => 'Camera',
+        'calendar-check' => 'Calendar check',
+        'shield-check' => 'Shield check',
+        'users' => 'Users',
+        'flag' => 'Flag',
+        'sparkles' => 'Sparkles',
+    ];
+}
+
+function normalize_achievement_icon_key(?string $key): string
+{
+    $key = trim((string) $key);
+
+    return array_key_exists($key, achievement_icon_options()) ? $key : 'trophy';
+}
+
+function achievement_icon_svg(?string $key): string
+{
+    $key = normalize_achievement_icon_key($key);
+    $common = 'viewBox="0 0 24 24" aria-hidden="true" focusable="false"';
+
+    return match ($key) {
+        'medal' => '<svg ' . $common . '><path d="m8 2 4 7 4-7"/><path d="M12 9a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z"/><path d="m10.2 14.1 1.8-.95 1.8.95-.34-2 1.46-1.42-2.02-.3L12 8.55l-.9 1.83-2.02.3 1.46 1.42-.34 2Z"/></svg>',
+        'target' => '<svg ' . $common . '><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>',
+        'footprints' => '<svg ' . $common . '><path d="M4.5 12.5c1.8.2 3.1 1.6 2.8 3.2-.2 1.3-1.4 2.2-2.7 2-1.5-.2-2.5-1.6-2.2-3 .2-1.1.9-2.2 2.1-2.2Z"/><path d="M9.2 4.4c1.6.2 2.7 1.5 2.5 2.9-.2 1.2-1.2 2-2.4 1.9C8 9 7.1 7.8 7.3 6.5c.2-1 1-2.2 1.9-2.1Z"/><path d="M19.5 11.5c-1.8.2-3.1 1.6-2.8 3.2.2 1.3 1.4 2.2 2.7 2 1.5-.2 2.5-1.6 2.2-3-.2-1.1-.9-2.2-2.1-2.2Z"/><path d="M14.8 3.4c-1.6.2-2.7 1.5-2.5 2.9.2 1.2 1.2 2 2.4 1.9C16 8 16.9 6.8 16.7 5.5c-.2-1-1-2.2-1.9-2.1Z"/></svg>',
+        'dumbbell' => '<svg ' . $common . '><path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/></svg>',
+        'flame' => '<svg ' . $common . '><path d="M12 22c4 0 7-2.8 7-6.7 0-2.5-1.4-4.8-3.4-6.6-.9 2.2-2.4 3.1-2.4 3.1.4-3.1-1.2-6.2-4-8.8.2 3-1.3 4.9-2.7 6.6C5.1 11.4 5 13 5 15.3 5 19.2 8 22 12 22Z"/></svg>',
+        'camera' => '<svg ' . $common . '><path d="M5 7h3l1.5-2h5L16 7h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"/><circle cx="12" cy="13" r="3"/></svg>',
+        'calendar-check' => '<svg ' . $common . '><path d="M8 2v4M16 2v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="m8 16 2.5 2.5L16 13"/></svg>',
+        'shield-check' => '<svg ' . $common . '><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m8.5 12.5 2.2 2.2 4.8-5"/></svg>',
+        'users' => '<svg ' . $common . '><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+        'flag' => '<svg ' . $common . '><path d="M4 22V4"/><path d="M4 5h11l-.8 4 5.8 1v8H4"/></svg>',
+        'sparkles' => '<svg ' . $common . '><path d="m12 3 1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3Z"/><path d="m19 14 .9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9L19 14Z"/><path d="m5 14 .9 2.1L8 17l-2.1.9L5 20l-.9-2.1L2 17l2.1-.9L5 14Z"/></svg>',
+        default => '<svg ' . $common . '><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v4a5 5 0 0 1-10 0V4Z"/><path d="M17 6h2a2 2 0 0 1 0 4h-2"/><path d="M7 6H5a2 2 0 0 0 0 4h2"/></svg>',
+    };
+}
+
+function achievement_visual_html(array $achievement, string $className = 'achievement-visual'): string
+{
+    $name = (string) ($achievement['name'] ?? '');
+    $imageUrl = '';
+    if (!empty($achievement['image_path'])) {
+        $imageUrl = media_url((string) ($achievement['image_path'] ?? ''));
+    }
+
+    if ($imageUrl !== '') {
+        return '<div class="' . e($className) . ' achievement-visual-image"><img src="' . e($imageUrl) . '" alt="' . e($name) . '"></div>';
+    }
+
+    return '<div class="' . e($className) . ' achievement-visual-icon">' . achievement_icon_svg((string) ($achievement['icon_key'] ?? 'trophy')) . '</div>';
+}
+
+function achievement_modal_attrs(array $achievement): string
+{
+    $isUnlocked = array_key_exists('is_unlocked', $achievement)
+        ? !empty($achievement['is_unlocked'])
+        : (!empty($achievement['awarded_at']) || !empty($achievement['award_id']));
+    $status = $isUnlocked ? (string) t('achievements.unlocked') : (string) t('achievements.locked');
+    $date = !empty($achievement['awarded_at']) ? format_date_eu((string) $achievement['awarded_at']) : '';
+    $progressPct = is_numeric($achievement['progress_pct'] ?? null) ? (float) $achievement['progress_pct'] : null;
+    $progressText = trim((string) ($achievement['progress_text'] ?? ''));
+
+    $attrs = [
+        'data-achievement-modal' => '1',
+        'data-achievement-name' => (string) ($achievement['name'] ?? ''),
+        'data-achievement-description' => (string) ($achievement['description'] ?? ''),
+        'data-achievement-reward' => (string) ($achievement['reward_text'] ?? ''),
+        'data-achievement-status' => $status,
+        'data-achievement-date' => $date,
+        'data-achievement-progress' => $progressPct !== null ? '1' : '',
+        'data-achievement-progress-pct' => $progressPct !== null ? (string) max(0, min(100, $progressPct)) : '',
+        'data-achievement-progress-text' => $progressText,
+    ];
+
+    $out = ' role="button" tabindex="0"';
+    foreach ($attrs as $name => $value) {
+        $out .= ' ' . $name . '="' . e($value) . '"';
+    }
+
+    return $out;
+}
+
 function weekday_index(string $date): int
 {
     $d = new DateTimeImmutable($date);

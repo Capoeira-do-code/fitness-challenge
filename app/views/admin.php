@@ -18,6 +18,7 @@ $selectedHabitId = (string) ($_GET['habit_id'] ?? '');
 $selectedTypeId = (string) ($_GET['type_id'] ?? '');
 $selectedAchievementId = (string) ($_GET['achievement_id'] ?? '');
 $achievementLocales = locale_options();
+$achievementIconOptions = achievement_icon_options();
 $sectionRows = [
     'users' => 'Users',
     'challenge' => 'Challenge',
@@ -694,8 +695,20 @@ $workoutFieldDataKeyLabels = [
                 <div class="grid-inline">
                     <label>Code <input type="text" name="code" placeholder="my_achievement_code"></label>
                     <label><?= e(t('achievements.scope')) ?><select name="scope"><option value="user"><?= e(t('common.user')) ?></option><option value="team"><?= e(t('nav.team')) ?></option></select></label>
-                    <label><?= e(t('common.photo')) ?><input type="file" name="image" accept="image/*"></label>
                 </div>
+                <fieldset class="achievement-visual-fieldset">
+                    <legend><?= e(t('achievements.visual')) ?></legend>
+                    <div class="achievement-icon-picker" role="radiogroup" aria-label="<?= e(t('achievements.icon')) ?>">
+                        <?php foreach ($achievementIconOptions as $iconKey => $iconLabel): ?>
+                            <label class="achievement-icon-option">
+                                <input type="radio" name="icon_key" value="<?= e((string) $iconKey) ?>" <?= $iconKey === 'trophy' ? 'checked' : '' ?>>
+                                <span class="achievement-icon-option-media"><?= achievement_icon_svg((string) $iconKey) ?></span>
+                                <span><?= e((string) $iconLabel) ?></span>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                    <label><?= e(t('achievements.custom_image')) ?><input type="file" name="image" accept="image/*"></label>
+                </fieldset>
                 <div class="achievement-translation-fields">
                     <?php foreach ($achievementLocales as $localeCode => $localeLabel): ?>
                         <fieldset class="achievement-translation-card">
@@ -771,6 +784,7 @@ $workoutFieldDataKeyLabels = [
             if ($achievementWindow === 'week') {
                 $achievementWindow = 'current_week';
             }
+            $achievementIconKey = normalize_achievement_icon_key((string) ($achievement['icon_key'] ?? 'trophy'));
             $achievementTranslations = is_array($achievement['translations_by_locale'] ?? null) ? (array) $achievement['translations_by_locale'] : [];
             ?>
             <div class="stack admin-detail-view" data-spa-param-show="achievement_id" data-spa-value="<?= (int) $achievement['id'] ?>" <?= $selectedAchievementId === (string) ((int) $achievement['id']) ? '' : 'hidden' ?>>
@@ -785,8 +799,29 @@ $workoutFieldDataKeyLabels = [
                     <div class="grid-inline">
                         <label>Code <input type="text" name="code" value="<?= e((string) $achievement['code']) ?>"></label>
                         <label><?= e(t('achievements.scope')) ?><select name="scope"><option value="user" <?= (string) $achievement['scope'] === 'user' ? 'selected' : '' ?>><?= e(t('common.user')) ?></option><option value="team" <?= (string) $achievement['scope'] === 'team' ? 'selected' : '' ?>><?= e(t('nav.team')) ?></option></select></label>
-                        <label><?= e(t('common.photo')) ?><input type="file" name="image" accept="image/*"></label>
                     </div>
+                    <fieldset class="achievement-visual-fieldset">
+                        <legend><?= e(t('achievements.visual')) ?></legend>
+                        <div class="achievement-icon-picker" role="radiogroup" aria-label="<?= e(t('achievements.icon')) ?>">
+                            <?php foreach ($achievementIconOptions as $iconKey => $iconLabel): ?>
+                                <label class="achievement-icon-option">
+                                    <input type="radio" name="icon_key" value="<?= e((string) $iconKey) ?>" <?= $achievementIconKey === (string) $iconKey ? 'checked' : '' ?>>
+                                    <span class="achievement-icon-option-media"><?= achievement_icon_svg((string) $iconKey) ?></span>
+                                    <span><?= e((string) $iconLabel) ?></span>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+                        <label><?= e(t('achievements.custom_image')) ?><input type="file" name="image" accept="image/*"></label>
+                        <?php if (!empty($achievement['image_path'])): ?>
+                            <?php $achievementImageUrl = media_url((string) ($achievement['image_path'] ?? '')); ?>
+                            <?php if ($achievementImageUrl !== ''): ?>
+                                <img class="settings-avatar-preview" src="<?= e($achievementImageUrl) ?>" alt="<?= e((string) $achievement['name']) ?>">
+                            <?php else: ?>
+                                <div class="entries-calendar-empty"><?= e(t('admin.no_photo')) ?></div>
+                            <?php endif; ?>
+                            <label class="check"><input type="checkbox" name="remove_image" value="1"><?= e(t('achievements.remove_image')) ?></label>
+                        <?php endif; ?>
+                    </fieldset>
                     <div class="achievement-translation-fields">
                         <?php foreach ($achievementLocales as $localeCode => $localeLabel): ?>
                             <?php
@@ -811,14 +846,6 @@ $workoutFieldDataKeyLabels = [
                         <label class="check"><input type="checkbox" name="active" value="1" <?= (int) ($achievement['active'] ?? 1) === 1 ? 'checked' : '' ?>><?= e(t('common.active')) ?></label>
                         <label class="check"><input type="checkbox" name="conditional_enabled" value="1" data-achievement-conditional-toggle <?= $achievementConditional ? 'checked' : '' ?>><?= e(t('achievements.conditional')) ?></label>
                     </div>
-                    <?php if (!empty($achievement['image_path'])): ?>
-                        <?php $achievementImageUrl = media_url((string) ($achievement['image_path'] ?? '')); ?>
-                        <?php if ($achievementImageUrl !== ''): ?>
-                            <img class="settings-avatar-preview" src="<?= e($achievementImageUrl) ?>" alt="<?= e((string) $achievement['name']) ?>">
-                        <?php else: ?>
-                            <div class="entries-calendar-empty"><?= e(t('admin.no_photo')) ?></div>
-                        <?php endif; ?>
-                    <?php endif; ?>
                     <div class="grid-inline" data-achievement-conditional-fields <?= $achievementConditional ? '' : 'hidden' ?>>
                         <label>
                             <?= e(t('achievements.metric')) ?>

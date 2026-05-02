@@ -2219,6 +2219,54 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
     ],
 ]);
 
+$TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
+    'en' => [
+        'achievements.all_title' => 'All achievements',
+        'achievements.unlocked' => 'Unlocked',
+        'achievements.locked' => 'Locked',
+        'achievements.unlocked_title' => 'Unlocked achievements',
+        'achievements.locked_title' => 'Locked achievements',
+        'achievements.progress' => 'Progress',
+        'achievements.visual' => 'Visual',
+        'achievements.icon' => 'Icon',
+        'achievements.custom_image' => 'Custom image',
+        'achievements.remove_image' => 'Remove custom image',
+        'achievements.no_unlocked' => 'No achievements unlocked yet.',
+        'achievements.no_locked' => 'No locked achievements left.',
+        'achievements.details' => 'Achievement details',
+    ],
+    'es' => [
+        'achievements.all_title' => 'Todos los logros',
+        'achievements.unlocked' => 'Desbloqueado',
+        'achievements.locked' => 'Bloqueado',
+        'achievements.unlocked_title' => 'Logros desbloqueados',
+        'achievements.locked_title' => 'Logros bloqueados',
+        'achievements.progress' => 'Progreso',
+        'achievements.visual' => 'Visual',
+        'achievements.icon' => 'Icono',
+        'achievements.custom_image' => 'Imagen personalizada',
+        'achievements.remove_image' => 'Quitar imagen personalizada',
+        'achievements.no_unlocked' => 'Aun no hay logros desbloqueados.',
+        'achievements.no_locked' => 'No quedan logros bloqueados.',
+        'achievements.details' => 'Detalle del logro',
+    ],
+    'it' => [
+        'achievements.all_title' => 'Tutti gli achievement',
+        'achievements.unlocked' => 'Sbloccato',
+        'achievements.locked' => 'Bloccato',
+        'achievements.unlocked_title' => 'Achievement sbloccati',
+        'achievements.locked_title' => 'Achievement bloccati',
+        'achievements.progress' => 'Progresso',
+        'achievements.visual' => 'Visual',
+        'achievements.icon' => 'Icona',
+        'achievements.custom_image' => 'Immagine personalizzata',
+        'achievements.remove_image' => 'Rimuovi immagine personalizzata',
+        'achievements.no_unlocked' => 'Nessun achievement sbloccato.',
+        'achievements.no_locked' => 'Nessun achievement bloccato rimasto.',
+        'achievements.details' => 'Dettagli achievement',
+    ],
+]);
+
 function locale_options(): array
 {
     return [

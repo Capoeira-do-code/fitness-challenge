@@ -1143,6 +1143,139 @@
         });
     };
 
+    const initAchievementInfoModal = () => {
+        const cards = document.querySelectorAll('[data-achievement-modal]');
+        if (cards.length === 0) {
+            return;
+        }
+
+        const ensureModal = () => {
+            const existing = document.querySelector('[data-achievement-info-modal]');
+            if (existing instanceof HTMLElement) {
+                return existing;
+            }
+
+            const modal = document.createElement('div');
+            modal.className = 'confirm-modal achievement-info-modal';
+            modal.hidden = true;
+            modal.setAttribute('aria-hidden', 'true');
+            modal.setAttribute('data-achievement-info-modal', '');
+            modal.innerHTML = `
+                <div class="confirm-modal-backdrop" data-achievement-info-close></div>
+                <div class="confirm-modal-card achievement-info-modal-card" role="dialog" aria-modal="true" aria-labelledby="achievement-info-title">
+                    <button type="button" class="achievement-info-close" data-achievement-info-close aria-label="Close">x</button>
+                    <span class="achievement-chip" data-achievement-info-status></span>
+                    <h3 id="achievement-info-title" data-achievement-info-title></h3>
+                    <p data-achievement-info-description></p>
+                    <div class="achievement-info-meta">
+                        <span class="achievement-chip" data-achievement-info-date hidden></span>
+                        <span class="achievement-chip" data-achievement-info-reward hidden></span>
+                    </div>
+                    <div class="achievement-progress achievement-modal-progress" data-achievement-info-progress hidden>
+                        <div class="goal-progress"><span data-achievement-info-progress-bar></span></div>
+                        <small data-achievement-info-progress-text></small>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            return modal;
+        };
+
+        const modal = ensureModal();
+        const title = modal.querySelector('[data-achievement-info-title]');
+        const description = modal.querySelector('[data-achievement-info-description]');
+        const status = modal.querySelector('[data-achievement-info-status]');
+        const date = modal.querySelector('[data-achievement-info-date]');
+        const reward = modal.querySelector('[data-achievement-info-reward]');
+        const progress = modal.querySelector('[data-achievement-info-progress]');
+        const progressBar = modal.querySelector('[data-achievement-info-progress-bar]');
+        const progressText = modal.querySelector('[data-achievement-info-progress-text]');
+        const closeButtons = modal.querySelectorAll('[data-achievement-info-close]');
+
+        const setOptionalText = (element, text) => {
+            if (!(element instanceof HTMLElement)) {
+                return;
+            }
+            const value = String(text || '').trim();
+            element.hidden = value === '';
+            element.textContent = value;
+        };
+
+        const closeModal = () => {
+            modal.hidden = true;
+            modal.setAttribute('aria-hidden', 'true');
+            modal.classList.remove('is-open');
+        };
+
+        const openModal = (card) => {
+            if (!(card instanceof HTMLElement)) {
+                return;
+            }
+            if (title) {
+                title.textContent = card.dataset.achievementName || '';
+            }
+            if (description) {
+                description.textContent = card.dataset.achievementDescription || '';
+            }
+            if (status) {
+                status.textContent = card.dataset.achievementStatus || '';
+            }
+            setOptionalText(date, card.dataset.achievementDate || '');
+            setOptionalText(reward, card.dataset.achievementReward ? `Reward: ${card.dataset.achievementReward}` : '');
+
+            const hasProgress = card.dataset.achievementProgress === '1';
+            if (progress instanceof HTMLElement) {
+                progress.hidden = !hasProgress;
+            }
+            if (hasProgress) {
+                const pct = Math.max(0, Math.min(100, Number(card.dataset.achievementProgressPct || 0)));
+                if (progressBar instanceof HTMLElement) {
+                    progressBar.style.width = `${pct}%`;
+                }
+                if (progressText) {
+                    progressText.textContent = card.dataset.achievementProgressText || '';
+                }
+            }
+
+            modal.hidden = false;
+            modal.setAttribute('aria-hidden', 'false');
+            modal.classList.add('is-open');
+            const close = modal.querySelector('[data-achievement-info-close]');
+            if (close instanceof HTMLElement) {
+                close.focus();
+            }
+        };
+
+        const interactiveSelector = 'a, button, form, input, select, textarea, summary, details, label';
+        cards.forEach((card) => {
+            if (!(card instanceof HTMLElement) || card.dataset.achievementModalReady === '1') {
+                return;
+            }
+            card.dataset.achievementModalReady = '1';
+            card.addEventListener('click', (event) => {
+                const target = event.target;
+                if (target instanceof Element && target.closest(interactiveSelector)) {
+                    return;
+                }
+                openModal(card);
+            });
+            card.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') {
+                    return;
+                }
+                event.preventDefault();
+                openModal(card);
+            });
+        });
+
+        closeButtons.forEach((button) => button.addEventListener('click', closeModal));
+        window.addEventListener('keydown', (event) => {
+            if (!modal.hidden && event.key === 'Escape') {
+                closeModal();
+            }
+        });
+    };
+
     const initAchievementDeleteModal = () => {
         const triggers = document.querySelectorAll('[data-achievement-delete-trigger]');
         if (triggers.length === 0) {
@@ -1953,6 +2086,7 @@
         safeInit(initLoginLocale);
         safeInit(initSpaNavigation);
         safeInit(initAdminAchievementFields);
+        safeInit(initAchievementInfoModal);
         safeInit(initAchievementDeleteModal);
         safeInit(initPhotoDeleteModal);
         safeInit(initPhotoEditModal);

@@ -31,6 +31,11 @@ $profileUrl = static function (string $section = '', array $extra = []) use ($pr
 
     return '/?' . http_build_query($query);
 };
+$profileAchievementsUrl = '/?' . http_build_query([
+    'page' => 'achievements',
+    'scope' => 'user',
+    'user_id' => (int) ($profileUser['id'] ?? 0),
+]);
 
 $activeGoals = array_values(array_filter((array) ($personalGoals ?? []), static fn(array $goal): bool => (string) ($goal['status'] ?? 'active') === 'active'));
 $achievementCount = count($userAchievements ?? []);
@@ -465,19 +470,8 @@ $profileExportPayload = [
                 <?php foreach ($userAchievements as $achievement): ?>
                     <?php $awardId = (int) ($achievement['award_id'] ?? $achievement['id'] ?? 0); ?>
                     <?php $deleteFormId = 'delete-achievement-profile-' . $awardId; ?>
-                    <article class="achievement-card profile-achievement-card">
-                        <div class="profile-achievement-media">
-                            <?php if (!empty($achievement['image_path'])): ?>
-                                <?php $achievementImageUrl = media_url((string) ($achievement['image_path'] ?? '')); ?>
-                                <?php if ($achievementImageUrl !== ''): ?>
-                                    <img src="<?= e($achievementImageUrl) ?>" alt="<?= e((string) $achievement['name']) ?>">
-                                <?php else: ?>
-                                    <span>*</span>
-                                <?php endif; ?>
-                            <?php else: ?>
-                                <span>*</span>
-                            <?php endif; ?>
-                        </div>
+                    <article class="achievement-card profile-achievement-card" <?= achievement_modal_attrs($achievement) ?>>
+                        <?= achievement_visual_html($achievement, 'achievement-visual profile-achievement-media') ?>
                         <div class="profile-achievement-content">
                             <strong><?= e((string) $achievement['name']) ?></strong>
                             <p><?= e((string) $achievement['description']) ?></p>
@@ -502,11 +496,9 @@ $profileExportPayload = [
                 <?php endforeach; ?>
             <?php endif; ?>
         </div>
-        <?php if (count($userAchievements ?? []) > 4): ?>
-            <div class="achievement-toggle-wrap">
-                <button class="btn btn-ghost small achievement-toggle-btn js-toggle-achievements" type="button" data-expand-label="<?= e(t('common.view_all')) ?>" data-collapse-label="<?= e(t('common.view_less')) ?>"><?= e(t('common.view_all')) ?></button>
-            </div>
-        <?php endif; ?>
+        <div class="achievement-toggle-wrap">
+            <a class="btn btn-ghost small achievement-toggle-btn" href="<?= e($profileAchievementsUrl) ?>"><?= e(t('common.view_all')) ?></a>
+        </div>
     </article>
 
     <article class="panel settings-panel<?= $activeSection === 'config' ? ' active' : '' ?>" data-spa-section="config" <?= $activeSection === 'config' ? '' : 'hidden' ?>>

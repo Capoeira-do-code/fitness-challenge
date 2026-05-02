@@ -4247,6 +4247,7 @@ function create_manual_achievement(
     ?string $code = null,
     bool $active = true,
     ?string $triggerKey = null,
+    ?string $iconKey = null,
     array $translations = []
 ): int
 {
@@ -4263,11 +4264,12 @@ function create_manual_achievement(
     $rawCode = resolve_unique_achievement_code($pdo, $rawCode);
 
     $now = now_iso();
+    $iconKey = normalize_achievement_icon_key($iconKey);
 
     db_execute(
         $pdo,
-        'INSERT INTO achievements (code, name, description, scope, trigger_key, image_path, reward_text, active, created_by, created_at, updated_at)
-         VALUES (:code, :name, :description, :scope, :trigger_key, :image_path, :reward_text, :active, :created_by, :created_at, :updated_at)',
+        'INSERT INTO achievements (code, name, description, scope, trigger_key, image_path, icon_key, reward_text, active, created_by, created_at, updated_at)
+         VALUES (:code, :name, :description, :scope, :trigger_key, :image_path, :icon_key, :reward_text, :active, :created_by, :created_at, :updated_at)',
         [
             ':code' => $rawCode,
             ':name' => $name,
@@ -4275,6 +4277,7 @@ function create_manual_achievement(
             ':scope' => $scope,
             ':trigger_key' => $triggerKey,
             ':image_path' => $imagePath,
+            ':icon_key' => $iconKey,
             ':reward_text' => $rewardText,
             ':active' => $active ? 1 : 0,
             ':created_by' => $actorUserId,
@@ -4316,6 +4319,7 @@ function create_conditional_achievement(PDO $pdo, array $payload, int $actorUser
         (string) ($payload['code'] ?? ''),
         (int) (($payload['active'] ?? 1) ? 1 : 0) === 1,
         $metricKey,
+        (string) ($payload['icon_key'] ?? 'trophy'),
         is_array($payload['translations'] ?? null) ? (array) $payload['translations'] : []
     );
     if ($achievementId <= 0) {
@@ -4366,6 +4370,7 @@ function update_achievement(PDO $pdo, int $achievementId, array $payload, int $a
     $description = trim((string) ($english['description'] ?? $payload['description'] ?? ''));
     $rewardText = trim((string) ($english['reward_text'] ?? $payload['reward_text'] ?? ''));
     $scope = in_array(($payload['scope'] ?? 'user'), ['user', 'team'], true) ? (string) $payload['scope'] : 'user';
+    $iconKey = normalize_achievement_icon_key((string) ($payload['icon_key'] ?? $beforeAchievement['icon_key'] ?? 'trophy'));
     $desiredCode = trim((string) ($payload['code'] ?? ''));
     if ($desiredCode === '') {
         $desiredCode = $name;
@@ -4398,6 +4403,7 @@ function update_achievement(PDO $pdo, int $achievementId, array $payload, int $a
              scope = :scope,
              trigger_key = :trigger_key,
              image_path = :image_path,
+             icon_key = :icon_key,
              reward_text = :reward_text,
              active = :active,
              updated_at = :updated_at
@@ -4409,6 +4415,7 @@ function update_achievement(PDO $pdo, int $achievementId, array $payload, int $a
             ':scope' => $scope,
             ':trigger_key' => $triggerKey,
             ':image_path' => $payload['image_path'] ?? null,
+            ':icon_key' => $iconKey,
             ':reward_text' => $rewardText,
             ':active' => $active ? 1 : 0,
             ':updated_at' => now_iso(),
@@ -4740,7 +4747,7 @@ function list_awarded_achievements(PDO $pdo, ?int $userId = null, ?int $teamId =
 
     return localize_achievement_rows($pdo, db_fetch_all(
         $pdo,
-        'SELECT aa.*, aa.id AS award_id, a.name, a.description, a.scope, a.code, a.image_path, a.reward_text, u.display_name AS awarded_by_name
+        'SELECT aa.*, aa.id AS award_id, a.name, a.description, a.scope, a.code, a.image_path, a.icon_key, a.reward_text, u.display_name AS awarded_by_name
          FROM achievement_awards aa
          JOIN achievements a ON a.id = aa.achievement_id
          LEFT JOIN users u ON u.id = aa.awarded_by
@@ -4756,7 +4763,7 @@ function list_recent_achievement_awards(PDO $pdo, int $limit = 200): array
 
     return localize_achievement_rows($pdo, db_fetch_all(
         $pdo,
-        'SELECT aa.*, a.name, a.description, a.scope, a.code, a.image_path, a.reward_text,
+        'SELECT aa.*, a.name, a.description, a.scope, a.code, a.image_path, a.icon_key, a.reward_text,
                 u.display_name AS awarded_by_name,
                 owner.display_name AS owner_name,
                 t.name AS team_name
@@ -4769,6 +4776,291 @@ function list_recent_achievement_awards(PDO $pdo, int $limit = 200): array
          ORDER BY aa.awarded_at DESC
          LIMIT ' . $safeLimit
     ));
+}
+
+function achievement_metric_unit(string $metricKey): string
+{
+    $metricKey = normalize_achievement_rule_metric($metricKey);
+
+    return match ($metricKey) {
+        'steps' => 'steps',
+        'distance_km' => 'km',
+        'workouts' => 'workouts',
+        'score' => 'score',
+        'strikes' => 'strikes',
+        'penalties' => 'EUR',
+        'weight' => 'kg',
+        default => '',
+    };
+}
+
+function format_achievement_progress_number(float $value, string $unit = ''): string
+{
+    $absolute = abs($value);
+    if ($unit === 'km' || $unit === 'kg' || $unit === 'EUR') {
+        $formatted = number_format($value, 2, '.', '');
+        $formatted = rtrim(rtrim($formatted, '0'), '.');
+    } elseif ($absolute >= 1000 || fmod($value, 1.0) === 0.0) {
+        $formatted = number_format($value, 0, '.', '');
+    } else {
+        $formatted = number_format($value, 1, '.', '');
+        $formatted = rtrim(rtrim($formatted, '0'), '.');
+    }
+
+    if ($unit === 'EUR') {
+        return '€' . $formatted;
+    }
+
+    return $unit !== '' ? $formatted . ' ' . $unit : $formatted;
+}
+
+function achievement_progress_payload(float $current, float $target, string $unit = ''): ?array
+{
+    if (!is_finite($target) || $target <= 0.0) {
+        return null;
+    }
+    if (!is_finite($current)) {
+        $current = 0.0;
+    }
+
+    $pct = max(0.0, min(100.0, round(($current / $target) * 100, 1)));
+
+    return [
+        'current' => $current,
+        'target' => $target,
+        'pct' => $pct,
+        'text' => format_achievement_progress_number($current, $unit) . ' / ' . format_achievement_progress_number($target, $unit),
+    ];
+}
+
+function achievement_metric_for_user(array $metricsByUser, int $userId): array
+{
+    if (isset($metricsByUser[$userId]) && is_array($metricsByUser[$userId])) {
+        return (array) $metricsByUser[$userId];
+    }
+
+    foreach ($metricsByUser as $metric) {
+        if (!is_array($metric)) {
+            continue;
+        }
+        if ((int) ($metric['user']['id'] ?? 0) === $userId) {
+            return $metric;
+        }
+    }
+
+    return [];
+}
+
+function achievement_user_count(PDO $pdo, string $table, string $where, array $params): int
+{
+    $row = db_fetch_one($pdo, 'SELECT COUNT(*) AS total FROM ' . $table . ' WHERE ' . $where, $params);
+
+    return (int) ($row['total'] ?? 0);
+}
+
+function achievement_user_has_complete_week_without_failures(array $metric): bool
+{
+    foreach ((array) ($metric['weekly'] ?? []) as $week) {
+        if ((string) ($week['status'] ?? '') === 'complete' && (int) ($week['total_failures'] ?? 0) === 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function achievement_user_has_clean_week(array $metric): bool
+{
+    foreach ((array) ($metric['weekly'] ?? []) as $week) {
+        if ((string) ($week['status'] ?? '') === 'complete' && (float) ($week['penalty'] ?? 0) <= 0.0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function achievement_user_best_weekly_workouts(array $metric): int
+{
+    $best = 0;
+    foreach ((array) ($metric['weekly'] ?? []) as $week) {
+        $best = max($best, (int) ($week['workouts'] ?? 0));
+    }
+
+    return $best;
+}
+
+function achievement_team_best_weekly_steps(array $metricsByUser): int
+{
+    $byWeek = [];
+    foreach ($metricsByUser as $metric) {
+        foreach ((array) ($metric['weekly'] ?? []) as $week) {
+            $weekStart = (string) ($week['week_start'] ?? '');
+            if ($weekStart === '') {
+                continue;
+            }
+            $byWeek[$weekStart] = ($byWeek[$weekStart] ?? 0) + (int) ($week['steps'] ?? 0);
+        }
+    }
+
+    return $byWeek !== [] ? max($byWeek) : 0;
+}
+
+function achievement_progress_for_row(PDO $pdo, array $achievement, string $scope, ?int $userId, ?int $teamId, array $metricsByUser): ?array
+{
+    $triggerKey = trim((string) ($achievement['trigger_key'] ?? $achievement['code'] ?? ''));
+    $code = trim((string) ($achievement['code'] ?? ''));
+    $metricRows = $metricsByUser;
+    $userMetric = [];
+    if ($scope === 'user' && $userId !== null) {
+        $userMetric = achievement_metric_for_user($metricsByUser, $userId);
+        $metricRows = $userMetric !== [] ? [$userMetric] : [];
+    }
+
+    if (!empty($achievement['rule_id']) && (int) ($achievement['rule_active'] ?? 1) === 1) {
+        try {
+            $operator = normalize_achievement_rule_operator((string) ($achievement['trigger_operator'] ?? '>='));
+            $target = (float) ($achievement['trigger_target'] ?? 0);
+            if (!in_array($operator, ['>=', '>'], true) || $target <= 0.0) {
+                return null;
+            }
+            $metricKey = normalize_achievement_rule_metric((string) ($achievement['metric_key'] ?? $triggerKey));
+            $window = normalize_achievement_rule_window((string) ($achievement['trigger_window'] ?? 'total'));
+            $current = metric_value_for_rule($metricRows, $metricKey, $window);
+
+            return achievement_progress_payload($current, $target, achievement_metric_unit($metricKey));
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    if ($scope === 'user' && $userId !== null) {
+        $key = $triggerKey !== '' ? $triggerKey : $code;
+        return match ($key) {
+            'first_log' => achievement_progress_payload(
+                min(1, achievement_user_count($pdo, 'daily_logs', 'user_id = :user_id', [':user_id' => $userId])),
+                1
+            ),
+            'first_photo' => achievement_progress_payload(
+                min(1, achievement_user_count($pdo, 'photo_entries', 'user_id = :user_id', [':user_id' => $userId])),
+                1
+            ),
+            'perfect_week' => achievement_progress_payload(achievement_user_has_complete_week_without_failures($userMetric) ? 1 : 0, 1),
+            'no_strike_week' => achievement_progress_payload(achievement_user_has_clean_week($userMetric) ? 1 : 0, 1),
+            'step_streak' => achievement_progress_payload((float) ($userMetric['steps_success'] ?? 0), 5, 'days'),
+            'seven_day_step_streak' => achievement_progress_payload((float) ($userMetric['steps_success'] ?? 0), 7, 'days'),
+            'three_workouts_week' => achievement_progress_payload((float) achievement_user_best_weekly_workouts($userMetric), 3, 'workouts'),
+            'ten_workouts_total' => achievement_progress_payload(max((float) ($userMetric['workout_count'] ?? 0), (float) ($userMetric['workout_success'] ?? 0)), 10, 'workouts'),
+            'distance_50k_total' => achievement_progress_payload((float) ($userMetric['total_km'] ?? 0), 50, 'km'),
+            'distance_100k_total' => achievement_progress_payload((float) ($userMetric['total_km'] ?? 0), 100, 'km'),
+            'early_logger' => achievement_progress_payload(user_has_early_daily_log($pdo, $userId) ? 1 : 0, 1),
+            'habit_reader_streak' => achievement_progress_payload(max((float) ($userMetric['habit_counts']['reading'] ?? 0), (float) user_habit_completion_count($pdo, $userId, 'reading')), 5, 'days'),
+            'weight_logged' => achievement_progress_payload(((float) ($userMetric['latest_weight'] ?? 0) > 0 || achievement_user_count($pdo, 'daily_logs', 'user_id = :user_id AND COALESCE(weight, 0) > 0', [':user_id' => $userId]) > 0) ? 1 : 0, 1),
+            'calorie_tracker' => achievement_progress_payload(user_has_calorie_tracking($pdo, $userId) ? 1 : 0, 1),
+            default => null,
+        };
+    }
+
+    if ($scope === 'team' && $teamId !== null) {
+        $key = $triggerKey !== '' ? $triggerKey : $code;
+        $teamSummary = team_summary_from_metrics($metricsByUser);
+        return match ($key) {
+            'team_active' => achievement_progress_payload(
+                (float) achievement_user_count($pdo, 'team_memberships', 'team_id = :team_id AND active = 1', [':team_id' => $teamId]),
+                1,
+                'members'
+            ),
+            'team_first_challenge' => achievement_progress_payload(
+                min(1, achievement_user_count($pdo, 'goals', 'scope = "team" AND team_id = :team_id', [':team_id' => $teamId])),
+                1
+            ),
+            'team_challenge_complete' => achievement_progress_payload(
+                min(1, achievement_user_count($pdo, 'goals', 'scope = "team" AND team_id = :team_id AND status = "complete"', [':team_id' => $teamId])),
+                1
+            ),
+            'team_100k_steps_week' => achievement_progress_payload((float) achievement_team_best_weekly_steps($metricsByUser), 100000, 'steps'),
+            'team_250km_total' => achievement_progress_payload((float) ($teamSummary['total_km'] ?? 0), 250, 'km'),
+            'team_clean_week' => achievement_progress_payload(team_has_clean_complete_week($metricsByUser) ? 1 : 0, 1),
+            'team_training_mix' => achievement_progress_payload(max((float) ($teamSummary['workout_success'] ?? 0), (float) ($teamSummary['workout_count'] ?? 0)), 5, 'workouts'),
+            default => null,
+        };
+    }
+
+    return null;
+}
+
+function list_achievement_collection(PDO $pdo, string $scope, ?int $userId, ?int $teamId, array $metricsByUser): array
+{
+    $scope = $scope === 'team' ? 'team' : 'user';
+    $achievements = localize_achievement_rows($pdo, db_fetch_all(
+        $pdo,
+        'SELECT a.*,
+                ar.id AS rule_id,
+                ar.metric_key,
+                ar.operator AS trigger_operator,
+                ar.target_value AS trigger_target,
+                ar."window" AS trigger_window,
+                ar.active AS rule_active
+         FROM achievements a
+          LEFT JOIN achievement_rules ar ON ar.id = (
+             SELECT rr.id
+             FROM achievement_rules rr
+             WHERE rr.achievement_id = a.id AND rr.active = 1
+             ORDER BY rr.id DESC
+             LIMIT 1
+          )
+         WHERE a.active = 1 AND a.scope = :scope
+         ORDER BY a.created_at ASC, a.name ASC',
+        [':scope' => $scope]
+    ));
+
+    $awardParams = [];
+    if ($scope === 'team') {
+        $awardWhere = 'team_id = :team_id';
+        $awardParams[':team_id'] = $teamId ?? 0;
+    } else {
+        $awardWhere = 'user_id = :user_id';
+        $awardParams[':user_id'] = $userId ?? 0;
+    }
+    $awards = db_fetch_all($pdo, 'SELECT * FROM achievement_awards WHERE ' . $awardWhere, $awardParams);
+    $awardsByAchievement = [];
+    foreach ($awards as $award) {
+        $awardsByAchievement[(int) ($award['achievement_id'] ?? 0)] = $award;
+    }
+
+    $rows = [];
+    foreach ($achievements as $achievement) {
+        $achievementId = (int) ($achievement['id'] ?? 0);
+        $award = $awardsByAchievement[$achievementId] ?? null;
+        $progress = achievement_progress_for_row($pdo, $achievement, $scope, $userId, $teamId, $metricsByUser);
+        $row = $achievement;
+        $row['is_unlocked'] = $award !== null ? 1 : 0;
+        $row['award_id'] = $award !== null ? (int) ($award['id'] ?? 0) : null;
+        $row['awarded_at'] = $award !== null ? (string) ($award['awarded_at'] ?? '') : '';
+        $row['award_note'] = $award !== null ? (string) ($award['note'] ?? '') : '';
+        if ($progress !== null) {
+            $row['progress_current'] = $progress['current'];
+            $row['progress_target'] = $progress['target'];
+            $row['progress_pct'] = $progress['pct'];
+            $row['progress_text'] = $progress['text'];
+        }
+        $rows[] = $row;
+    }
+
+    usort($rows, static function (array $left, array $right): int {
+        $leftUnlocked = !empty($left['is_unlocked']);
+        $rightUnlocked = !empty($right['is_unlocked']);
+        if ($leftUnlocked !== $rightUnlocked) {
+            return $leftUnlocked ? -1 : 1;
+        }
+        if ($leftUnlocked && $rightUnlocked) {
+            return strcmp((string) ($right['awarded_at'] ?? ''), (string) ($left['awarded_at'] ?? ''));
+        }
+
+        return strcmp((string) ($left['name'] ?? ''), (string) ($right['name'] ?? ''));
+    });
+
+    return $rows;
 }
 
 function delete_achievement_award(PDO $pdo, int $awardId, int $actorUserId): void
