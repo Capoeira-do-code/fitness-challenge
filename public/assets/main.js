@@ -1276,6 +1276,188 @@
         });
     };
 
+    const initMealCalendar = () => {
+        const root = document.querySelector('[data-meal-calendar-root]');
+        if (!(root instanceof HTMLElement) || root.dataset.mealCalendarReady === '1') {
+            return;
+        }
+        const form = root.querySelector('[data-meal-calendar-form]');
+        const dateInput = root.querySelector('[data-meal-calendar-date]');
+        const viewSelect = root.querySelector('[data-meal-calendar-view]');
+        const daysGrid = root.querySelector('[data-meal-calendar-days]');
+        const backLink = root.querySelector('[data-meal-calendar-back]');
+        const photosPanel = document.querySelector('[data-meal-calendar-photos-panel]');
+        const photosTarget = photosPanel?.querySelector('[data-meal-calendar-selected-photos]');
+        const selectedDateLabel = photosPanel?.querySelector('.eyebrow');
+
+        if (!(form instanceof HTMLFormElement) || !(dateInput instanceof HTMLInputElement) || !(viewSelect instanceof HTMLSelectElement) || !(daysGrid instanceof HTMLElement)) {
+            return;
+        }
+
+        root.dataset.mealCalendarReady = '1';
+        dateInput.onchange = null;
+        viewSelect.onchange = null;
+        dateInput.removeAttribute('onchange');
+        viewSelect.removeAttribute('onchange');
+
+        const submitFallback = () => {
+            HTMLFormElement.prototype.submit.call(form);
+        };
+        const endpointUrl = () => {
+            const url = new URL('/', window.location.origin);
+            url.searchParams.set('page', 'api_meal_calendar');
+            url.searchParams.set('date', dateInput.value || '');
+            url.searchParams.set('calendar_view', viewSelect.value || 'week');
+            const userId = String(root.dataset.userId || '').trim();
+            if (userId !== '') {
+                url.searchParams.set('user_id', userId);
+            }
+            return url;
+        };
+        const pageUrl = (date, view) => {
+            const url = new URL('/', window.location.origin);
+            url.searchParams.set('page', 'entries');
+            url.searchParams.set('mode', 'calendar');
+            url.searchParams.set('calendar_view', view || 'week');
+            url.searchParams.set('date', date || '');
+            return url;
+        };
+        const appendText = (parent, tagName, text, className = '') => {
+            const node = document.createElement(tagName);
+            if (className !== '') {
+                node.className = className;
+            }
+            node.textContent = String(text || '');
+            parent.appendChild(node);
+            return node;
+        };
+        const renderDays = (payload) => {
+            const labels = payload.labels || {};
+            const selectedDate = String(payload.date || '');
+            daysGrid.classList.toggle('meal-calendar-month', payload.calendar_view === 'month');
+            daysGrid.innerHTML = '';
+            (Array.isArray(payload.days) ? payload.days : []).forEach((day) => {
+                const link = document.createElement('a');
+                link.className = `entries-calendar-day${day.has_log ? ' has-log' : ''}${String(day.date || '') === selectedDate ? ' is-selected' : ''}`;
+                link.href = String(day.href || '#');
+
+                const article = document.createElement('article');
+                appendText(article, 'strong', day.date_label || day.date || '');
+                if (day.preview_url) {
+                    const image = document.createElement('img');
+                    image.src = String(day.preview_url || '');
+                    image.alt = String(labels.photo || 'Photo');
+                    article.appendChild(image);
+                } else {
+                    appendText(article, 'div', labels.no_photo || 'No photo', 'entries-calendar-empty');
+                }
+                appendText(article, 'span', day.count_label || '', 'badge');
+
+                link.appendChild(article);
+                daysGrid.appendChild(link);
+            });
+        };
+        const renderPhotos = (payload) => {
+            if (!(photosTarget instanceof HTMLElement)) {
+                return;
+            }
+            const labels = payload.labels || {};
+            const photos = Array.isArray(payload.selected_photos) ? payload.selected_photos : [];
+            const selectedDay = (Array.isArray(payload.days) ? payload.days : []).find((day) => String(day.date || '') === String(payload.date || ''));
+            if (selectedDateLabel instanceof HTMLElement) {
+                selectedDateLabel.textContent = `${labels.date || 'Date'} | ${selectedDay?.date_label || payload.date || ''}`;
+            }
+            photosTarget.innerHTML = '';
+            if (photos.length === 0) {
+                appendText(photosTarget, 'p', labels.no_photos || 'No photos', 'muted');
+                return;
+            }
+
+            const grid = document.createElement('div');
+            grid.className = 'photo-grid';
+            photos.forEach((photo) => {
+                const figure = document.createElement('figure');
+                figure.className = 'photo-card';
+
+                const media = document.createElement('a');
+                media.className = 'photo-card-media';
+                media.href = String(photo.photo_href || '#');
+                if (photo.photo_url) {
+                    const image = document.createElement('img');
+                    image.src = String(photo.photo_url || '');
+                    image.alt = String(labels.photo || 'Photo');
+                    media.appendChild(image);
+                } else {
+                    appendText(media, 'div', labels.no_photo || 'No photo', 'entries-calendar-empty');
+                }
+                figure.appendChild(media);
+
+                const caption = document.createElement('figcaption');
+                appendText(caption, 'strong', photo.display_name || '');
+                appendText(caption, 'span', `${photo.date_label || ''} | ${photo.category_label || ''}`);
+                if (String(photo.caption || '').trim() !== '') {
+                    appendText(caption, 'span', photo.caption || '');
+                }
+                if (String(photo.nutrition || '').trim() !== '') {
+                    appendText(caption, 'span', photo.nutrition || '', 'photo-nutrition-line');
+                }
+                figure.appendChild(caption);
+                grid.appendChild(figure);
+            });
+            photosTarget.appendChild(grid);
+        };
+        const renderPayload = (payload) => {
+            if (!payload || payload.ok !== true) {
+                throw new Error('Calendar response was not ok.');
+            }
+            dateInput.value = String(payload.date || dateInput.value || '');
+            viewSelect.value = String(payload.calendar_view || viewSelect.value || 'week');
+            if (backLink instanceof HTMLAnchorElement) {
+                backLink.href = `/?page=entries&mode=meal&date=${encodeURIComponent(dateInput.value)}`;
+            }
+            renderDays(payload);
+            renderPhotos(payload);
+        };
+        const loadCalendar = async (pushState = true) => {
+            try {
+                root.classList.add('is-loading');
+                const response = await fetch(endpointUrl().toString(), {
+                    headers: { 'Accept': 'application/json' },
+                    credentials: 'same-origin',
+                });
+                const payload = await response.json();
+                renderPayload(payload);
+                if (pushState) {
+                    history.pushState({}, '', pageUrl(dateInput.value, viewSelect.value).toString());
+                }
+            } catch (error) {
+                console.error('Calendar update failed:', error);
+                submitFallback();
+            } finally {
+                root.classList.remove('is-loading');
+            }
+        };
+
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            loadCalendar(true);
+        });
+        form.addEventListener('change', (event) => {
+            if (event.target === dateInput || event.target === viewSelect) {
+                loadCalendar(true);
+            }
+        });
+        window.addEventListener('popstate', () => {
+            const url = new URL(window.location.href);
+            if (url.searchParams.get('page') !== 'entries' || url.searchParams.get('mode') !== 'calendar') {
+                return;
+            }
+            dateInput.value = url.searchParams.get('date') || dateInput.value;
+            viewSelect.value = url.searchParams.get('calendar_view') || viewSelect.value;
+            loadCalendar(false);
+        });
+    };
+
     const initAchievementDeleteModal = () => {
         const triggers = document.querySelectorAll('[data-achievement-delete-trigger]');
         if (triggers.length === 0) {
@@ -2088,6 +2270,7 @@
         safeInit(initAdminAchievementFields);
         safeInit(initAchievementInfoModal);
         safeInit(initAchievementDeleteModal);
+        safeInit(initMealCalendar);
         safeInit(initPhotoDeleteModal);
         safeInit(initPhotoEditModal);
         safeInit(initStrikeReviewModal);

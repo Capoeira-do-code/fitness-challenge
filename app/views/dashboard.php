@@ -411,7 +411,7 @@ $topbarControls = ob_get_clean();
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('achievements.title')) ?></p>
-                    <h2><?= e(t('dashboard.achievements_panel')) ?></h2>
+                    <h2><?= e(t('dashboard.personal_achievements')) ?></h2>
                 </div>
                 <div class="dashboard-achievements-summary">
                     <span class="badge"><?= count($dashboardUnlockedAchievements) ?> <?= e(t('achievements.unlocked')) ?></span>
@@ -702,16 +702,26 @@ $topbarControls = ob_get_clean();
             <div class="leaderboard-list">
                 <?php foreach ($metricsOrdered as $metric): ?>
                     <?php
+                    $leaderboardUser = is_array($metric['user'] ?? null) ? (array) $metric['user'] : [];
+                    $leaderboardName = (string) ($leaderboardUser['display_name'] ?? t('common.user'));
+                    $leaderboardAvatarUrl = avatar_url($leaderboardUser);
                     $rankingStrikesHref = '/?' . http_build_query([
                         'page' => 'strikes_detail',
-                        'user_id' => (int) ($metric['user']['id'] ?? 0),
+                        'user_id' => (int) ($leaderboardUser['id'] ?? 0),
                         'view' => (string) ($dashboardView ?? 'current_week'),
                     ]);
                     ?>
                     <article class="leaderboard-row">
                         <div class="leaderboard-name">
-                            <strong><?= e((string) $metric['user']['display_name']) ?></strong>
-                            <span><?= e(t('metric.warnings')) ?>: <?= e((string) ($metric['skip_warning_events'] ?? 0)) ?></span>
+                            <?php if ($leaderboardAvatarUrl !== ''): ?>
+                                <img class="member-avatar leaderboard-avatar" src="<?= e($leaderboardAvatarUrl) ?>" alt="<?= e($leaderboardName) ?>">
+                            <?php else: ?>
+                                <span class="member-avatar member-avatar-initials leaderboard-avatar"><?= e(initials_for($leaderboardName)) ?></span>
+                            <?php endif; ?>
+                            <span class="leaderboard-name-text">
+                                <strong><?= e($leaderboardName) ?></strong>
+                                <span><?= e(t('metric.warnings')) ?>: <?= e((string) ($metric['skip_warning_events'] ?? 0)) ?></span>
+                            </span>
                         </div>
                         <div class="leaderboard-stats">
                             <span class="badge"><?= e(t('metric.score')) ?> <?= e((string) $metric['score']) ?></span>
@@ -726,7 +736,7 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <?php if ($showWidget('meals')): ?>
-        <article class="panel dashboard-panel" style="order: <?= $contentWidgetOrder('meals') ?>">
+        <article class="panel dashboard-panel dashboard-meal-calendar-panel" style="order: <?= $contentWidgetOrder('meals') ?>">
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('common.week')) ?></p>

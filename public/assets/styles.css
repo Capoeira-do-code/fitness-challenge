@@ -335,12 +335,25 @@ img.settings-avatar-preview {
 }
 
 .btn-topbar {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
     min-height: 40px;
-    padding: 0.5rem 0.78rem;
+    padding: 0.48rem 0.74rem;
     border-radius: 999px;
-    background: #fff;
-    border-color: rgba(20, 163, 139, 0.22);
-    box-shadow: 0 8px 18px rgba(22, 35, 43, 0.08);
+    border-color: transparent;
+    background: rgba(20, 163, 139, 0.1);
+    color: var(--primary-dark);
+    box-shadow: none;
+}
+
+.btn-topbar::after {
+    content: "";
+    width: 0.42rem;
+    height: 0.42rem;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg) translateY(-1px);
 }
 
 .add-menu,
@@ -2196,7 +2209,29 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 }
 
 .leaderboard-name {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
     min-width: 0;
+}
+
+.leaderboard-avatar {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+}
+
+.leaderboard-name-text {
+    display: grid;
+    gap: 0.08rem;
+    min-width: 0;
+}
+
+.leaderboard-name-text strong,
+.leaderboard-name-text span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .leaderboard-stats {
@@ -3516,8 +3551,19 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     transform: translateY(-1px);
 }
 
+.entries-calendar-day.is-selected article {
+    border-color: rgba(20, 163, 139, 0.65);
+    box-shadow: 0 0 0 2px rgba(20, 163, 139, 0.12);
+}
+
 .entries-calendar-day.has-log article {
     background: #f4fbf8;
+}
+
+.entries-calendar-panel.is-loading .entries-calendar,
+.entries-calendar-panel.is-loading + .entries-calendar-photos-panel {
+    opacity: 0.62;
+    pointer-events: none;
 }
 
 .entries-calendar-empty {
@@ -4421,6 +4467,55 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
         grid-template-columns: 1fr;
     }
 
+    .dashboard-kpis.metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.55rem;
+    }
+
+    .dashboard-kpis .metric-card {
+        grid-template-columns: 44px minmax(0, 1fr);
+        gap: 0.42rem;
+        min-height: 86px;
+        padding: 0.55rem;
+    }
+
+    .dashboard-kpis .progress-ring {
+        width: 44px;
+        height: 44px;
+    }
+
+    .dashboard-kpis .progress-ring span {
+        width: 34px;
+        font-size: 0.62rem;
+    }
+
+    .dashboard-kpis .metric-card span {
+        font-size: 0.66rem;
+        line-height: 1.05;
+    }
+
+    .dashboard-kpis .metric-card strong {
+        font-size: 1rem;
+        overflow-wrap: anywhere;
+    }
+
+    .dashboard-kpis .metric-card p {
+        font-size: 0.68rem;
+        line-height: 1.12;
+    }
+
+    .dashboard-quick-actions-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.45rem;
+    }
+
+    .dashboard-quick-action {
+        min-height: 44px;
+        padding-inline: 0.45rem;
+        font-size: 0.76rem;
+        line-height: 1.15;
+    }
+
     .dashboard-week-actions {
         display: grid;
         width: 100%;
@@ -4493,6 +4588,54 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     .panel-head {
         align-items: stretch;
         display: grid;
+    }
+
+    .dashboard-weekly-history > .panel-head,
+    .dashboard-meal-calendar-panel > .panel-head,
+    .entries-calendar-panel > .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.55rem;
+    }
+
+    .dashboard-weekly-history .dashboard-panel-action,
+    .entries-calendar-back {
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+
+    .dashboard-meal-calendar-panel .control-strip {
+        flex: 0 0 auto;
+        justify-content: flex-end;
+    }
+
+    .dashboard-meal-calendar-panel .entry-date-inline {
+        min-width: 136px;
+        width: 136px;
+    }
+
+    .dashboard-meal-calendar-panel .entry-date-inline input {
+        padding-inline: 0.48rem;
+        font-size: 0.78rem;
+    }
+
+    .entries-calendar-controls {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
+
+    .entries-calendar-controls label,
+    .entries-calendar-controls .entry-date-inline {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .entries-calendar-controls input,
+    .entries-calendar-controls select {
+        padding-inline: 0.5rem;
+        font-size: 0.8rem;
     }
 
     .profile-title {
@@ -5604,21 +5747,33 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     }
 
     .dashboard-achievements-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0.6rem;
     }
 
     .dashboard-achievement-card {
-        min-height: 112px;
-        height: 112px;
-        grid-template-columns: 46px minmax(0, 1fr);
-        gap: 0.55rem;
+        min-height: 146px;
+        height: 146px;
+        grid-template-columns: 1fr;
+        align-content: start;
+        gap: 0.42rem;
+        padding: 0.58rem;
     }
 
     .dashboard-achievement-card .achievement-visual {
-        width: 42px;
-        height: 42px;
-        flex-basis: 42px;
+        width: 40px;
+        height: 40px;
+        flex-basis: 40px;
+    }
+
+    .dashboard-achievement-title-row {
+        display: grid;
+        gap: 0.28rem;
+    }
+
+    .dashboard-achievement-content p {
+        -webkit-line-clamp: 2;
+        font-size: 0.78rem;
     }
 
     .dashboard-achievement-card:nth-child(n+3) {

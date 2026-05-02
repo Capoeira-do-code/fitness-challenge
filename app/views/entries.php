@@ -453,34 +453,35 @@ $nutritionSummary = static function (array $photo): string {
     <?php endif; ?>
 
     <?php if ($entryMode === 'calendar'): ?>
-        <article class="panel">
-            <div class="panel-head">
+        <article class="panel entries-calendar-panel" data-meal-calendar-root data-user-id="<?= (int) ($selectedUserId ?? $currentUser['id'] ?? 0) ?>">
+            <div class="panel-head entries-calendar-head">
                 <div>
                     <p class="eyebrow"><?= e(t('nav.entries')) ?></p>
                     <h2><?= e(t('entries.calendar_title')) ?></h2>
                 </div>
                 <a
-                    class="btn btn-ghost"
+                    class="btn btn-ghost entries-calendar-back"
                     href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"
+                    data-meal-calendar-back
                 >← <?= e(t('common.back')) ?></a>
             </div>
-            <form method="get" action="/" class="control-strip entries-calendar-controls">
+            <form method="get" action="/" class="control-strip entries-calendar-controls" data-meal-calendar-form>
                 <input type="hidden" name="page" value="entries">
                 <input type="hidden" name="mode" value="calendar">
                 <label class="entry-date-inline">
                     <?= e(t('common.date')) ?>
-                    <input type="date" name="date" value="<?= e($selectedDate) ?>" onchange="this.form.submit()">
+                    <input type="date" name="date" value="<?= e($selectedDate) ?>" onchange="this.form.submit()" data-meal-calendar-date>
                 </label>
                 <label>
                     <?= e(t('calendar.view_mode')) ?>
-                    <select name="calendar_view" onchange="this.form.submit()">
+                    <select name="calendar_view" onchange="this.form.submit()" data-meal-calendar-view>
                         <option value="month" <?= $calendarView === 'month' ? 'selected' : '' ?>><?= e(t('calendar.view_month')) ?></option>
                         <option value="week" <?= $calendarView === 'week' ? 'selected' : '' ?>><?= e(t('calendar.view_week')) ?></option>
                         <option value="day" <?= $calendarView === 'day' ? 'selected' : '' ?>><?= e(t('calendar.view_day')) ?></option>
                     </select>
                 </label>
             </form>
-            <div class="meal-calendar<?= $calendarView === 'month' ? ' meal-calendar-month' : '' ?> entries-calendar">
+            <div class="meal-calendar<?= $calendarView === 'month' ? ' meal-calendar-month' : '' ?> entries-calendar" data-meal-calendar-days>
                 <?php foreach (($mealCalendar ?? []) as $dateKey => $day): ?>
                     <?php
                     $photoCount = (int) ($day['count'] ?? 0);
@@ -492,7 +493,7 @@ $nutritionSummary = static function (array $photo): string {
                         ? '/?page=photo&photo_id=' . $previewPhotoId
                         : '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey);
                     ?>
-                    <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?>" href="<?= e($calendarDayUrl) ?>">
+                    <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?><?= (string) $dateKey === $selectedDate ? ' is-selected' : '' ?>" href="<?= e($calendarDayUrl) ?>">
                         <article>
                             <strong><?= e(format_date_eu((string) $dateKey)) ?></strong>
                             <?php if ($previewUrl !== ''): ?>
@@ -507,17 +508,18 @@ $nutritionSummary = static function (array $photo): string {
             </div>
         </article>
 
-        <article class="panel">
+        <article class="panel entries-calendar-photos-panel" data-meal-calendar-photos-panel>
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('common.date')) ?> · <?= e(format_date_eu((string) $selectedDate)) ?></p>
                     <h2><?= e(t('entries.recent_photos')) ?></h2>
                 </div>
             </div>
-            <?php if ($calendarSelectedPhotos === []): ?>
-                <p class="muted"><?= e(t('entries.no_photos')) ?></p>
-            <?php else: ?>
-                <div class="photo-grid">
+            <div data-meal-calendar-selected-photos>
+                <?php if ($calendarSelectedPhotos === []): ?>
+                    <p class="muted"><?= e(t('entries.no_photos')) ?></p>
+                <?php else: ?>
+                    <div class="photo-grid">
                     <?php foreach ($calendarSelectedPhotos as $photo): ?>
                         <?php
                         $photoId = (int) ($photo['id'] ?? 0);
@@ -545,8 +547,9 @@ $nutritionSummary = static function (array $photo): string {
                             </figcaption>
                         </figure>
                     <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
         </article>
     <?php endif; ?>
 </section>

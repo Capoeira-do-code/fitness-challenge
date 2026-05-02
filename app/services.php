@@ -4963,22 +4963,30 @@ function achievement_progress_for_row(PDO $pdo, array $achievement, string $scop
             'steps_100k_total' => achievement_progress_payload((float) ($userMetric['total_steps'] ?? 0), 100000, 'steps'),
             'steps_250k_total' => achievement_progress_payload((float) ($userMetric['total_steps'] ?? 0), 250000, 'steps'),
             'steps_500k_total' => achievement_progress_payload((float) ($userMetric['total_steps'] ?? 0), 500000, 'steps'),
+            'steps_1m_total' => achievement_progress_payload((float) ($userMetric['total_steps'] ?? 0), 1000000, 'steps'),
             'distance_150k_total' => achievement_progress_payload((float) ($userMetric['total_km'] ?? 0), 150, 'km'),
             'distance_250k_total' => achievement_progress_payload((float) ($userMetric['total_km'] ?? 0), 250, 'km'),
+            'distance_500k_total' => achievement_progress_payload((float) ($userMetric['total_km'] ?? 0), 500, 'km'),
             'distance_5k_day' => achievement_progress_payload(user_max_daily_distance($pdo, $userId), 5, 'km'),
             'workouts_25_total' => achievement_progress_payload(max((float) ($userMetric['workout_count'] ?? 0), (float) ($userMetric['workout_success'] ?? 0)), 25, 'workouts'),
             'workouts_50_total' => achievement_progress_payload(max((float) ($userMetric['workout_count'] ?? 0), (float) ($userMetric['workout_success'] ?? 0)), 50, 'workouts'),
+            'workouts_100_total' => achievement_progress_payload(max((float) ($userMetric['workout_count'] ?? 0), (float) ($userMetric['workout_success'] ?? 0)), 100, 'workouts'),
             'workout_variety_3' => achievement_progress_payload((float) achievement_workout_type_variety($pdo, $userId, null), 3, 'types'),
             'three_photo_days' => achievement_progress_payload((float) user_photo_day_count($pdo, $userId), 3, 'days'),
             'seven_photos_total' => achievement_progress_payload((float) user_photo_count($pdo, $userId), 7, 'photos'),
+            'twenty_photos_total' => achievement_progress_payload((float) user_photo_count($pdo, $userId), 20, 'photos'),
             'calorie_7_days' => achievement_progress_payload((float) user_calorie_tracking_day_count($pdo, $userId), 7, 'days'),
+            'calorie_14_days' => achievement_progress_payload((float) user_calorie_tracking_day_count($pdo, $userId), 14, 'days'),
             'weight_5_logs' => achievement_progress_payload((float) user_weight_log_count($pdo, $userId), 5, 'logs'),
+            'weight_10_logs' => achievement_progress_payload((float) user_weight_log_count($pdo, $userId), 10, 'logs'),
             'no_junk_7_days' => achievement_progress_payload((float) user_no_junk_log_count($pdo, $userId), 7, 'days'),
+            'no_junk_14_days' => achievement_progress_payload((float) user_no_junk_log_count($pdo, $userId), 14, 'days'),
             'clean_two_weeks' => achievement_progress_payload((float) user_clean_week_count($userMetric), 2, 'weeks'),
             'perfect_two_weeks' => achievement_progress_payload((float) user_perfect_week_count($userMetric), 2, 'weeks'),
             'top_score_90' => achievement_progress_payload((float) ($userMetric['score'] ?? 0), 90, 'score'),
             'chores_5_total' => achievement_progress_payload((float) user_habit_completion_count($pdo, $userId, 'evening_chores'), 5, 'days'),
             'reading_10_total' => achievement_progress_payload(max((float) ($userMetric['habit_counts']['reading'] ?? 0), (float) user_habit_completion_count($pdo, $userId, 'reading')), 10, 'days'),
+            'reading_25_total' => achievement_progress_payload(max((float) ($userMetric['habit_counts']['reading'] ?? 0), (float) user_habit_completion_count($pdo, $userId, 'reading')), 25, 'days'),
             'morning_logs_5' => achievement_progress_payload((float) user_morning_log_count($pdo, $userId), 5, 'logs'),
             'consistent_week_logger' => achievement_progress_payload((float) user_max_weekly_log_days($pdo, $userId), 7, 'days'),
             default => null,
@@ -5567,12 +5575,12 @@ function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $t
                 award_achievement($pdo, (int) $byTrigger[$trigger]['id'], $userId, null, null, 'Automatic unlock.');
             }
         }
-        foreach (['steps_100k_total' => 100000, 'steps_250k_total' => 250000, 'steps_500k_total' => 500000] as $trigger => $target) {
+        foreach (['steps_100k_total' => 100000, 'steps_250k_total' => 250000, 'steps_500k_total' => 500000, 'steps_1m_total' => 1000000] as $trigger => $target) {
             if (isset($byTrigger[$trigger]) && (int) ($metric['total_steps'] ?? 0) >= $target) {
                 award_achievement($pdo, (int) $byTrigger[$trigger]['id'], $userId, null, null, 'Automatic unlock.');
             }
         }
-        foreach (['distance_150k_total' => 150.0, 'distance_250k_total' => 250.0] as $trigger => $target) {
+        foreach (['distance_150k_total' => 150.0, 'distance_250k_total' => 250.0, 'distance_500k_total' => 500.0] as $trigger => $target) {
             if (isset($byTrigger[$trigger]) && (float) ($metric['total_km'] ?? 0) >= $target) {
                 award_achievement($pdo, (int) $byTrigger[$trigger]['id'], $userId, null, null, 'Automatic unlock.');
             }
@@ -5580,7 +5588,7 @@ function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $t
         if (isset($byTrigger['distance_5k_day']) && user_max_daily_distance($pdo, $userId) >= 5.0) {
             award_achievement($pdo, (int) $byTrigger['distance_5k_day']['id'], $userId, null, null, 'Automatic unlock.');
         }
-        foreach (['workouts_25_total' => 25, 'workouts_50_total' => 50] as $trigger => $target) {
+        foreach (['workouts_25_total' => 25, 'workouts_50_total' => 50, 'workouts_100_total' => 100] as $trigger => $target) {
             if (isset($byTrigger[$trigger]) && $workoutTotal >= $target) {
                 award_achievement($pdo, (int) $byTrigger[$trigger]['id'], $userId, null, null, 'Automatic unlock.');
             }
@@ -5594,14 +5602,26 @@ function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $t
         if (isset($byTrigger['seven_photos_total']) && user_photo_count($pdo, $userId) >= 7) {
             award_achievement($pdo, (int) $byTrigger['seven_photos_total']['id'], $userId, null, null, 'Automatic unlock.');
         }
+        if (isset($byTrigger['twenty_photos_total']) && user_photo_count($pdo, $userId) >= 20) {
+            award_achievement($pdo, (int) $byTrigger['twenty_photos_total']['id'], $userId, null, null, 'Automatic unlock.');
+        }
         if (isset($byTrigger['calorie_7_days']) && user_calorie_tracking_day_count($pdo, $userId) >= 7) {
             award_achievement($pdo, (int) $byTrigger['calorie_7_days']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['calorie_14_days']) && user_calorie_tracking_day_count($pdo, $userId) >= 14) {
+            award_achievement($pdo, (int) $byTrigger['calorie_14_days']['id'], $userId, null, null, 'Automatic unlock.');
         }
         if (isset($byTrigger['weight_5_logs']) && user_weight_log_count($pdo, $userId) >= 5) {
             award_achievement($pdo, (int) $byTrigger['weight_5_logs']['id'], $userId, null, null, 'Automatic unlock.');
         }
+        if (isset($byTrigger['weight_10_logs']) && user_weight_log_count($pdo, $userId) >= 10) {
+            award_achievement($pdo, (int) $byTrigger['weight_10_logs']['id'], $userId, null, null, 'Automatic unlock.');
+        }
         if (isset($byTrigger['no_junk_7_days']) && user_no_junk_log_count($pdo, $userId) >= 7) {
             award_achievement($pdo, (int) $byTrigger['no_junk_7_days']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['no_junk_14_days']) && user_no_junk_log_count($pdo, $userId) >= 14) {
+            award_achievement($pdo, (int) $byTrigger['no_junk_14_days']['id'], $userId, null, null, 'Automatic unlock.');
         }
         if (isset($byTrigger['clean_two_weeks']) && user_clean_week_count($metric) >= 2) {
             award_achievement($pdo, (int) $byTrigger['clean_two_weeks']['id'], $userId, null, null, 'Automatic unlock.');
@@ -5617,6 +5637,9 @@ function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $t
         }
         if (isset($byTrigger['reading_10_total']) && max((int) (($metric['habit_counts']['reading'] ?? 0)), user_habit_completion_count($pdo, $userId, 'reading')) >= 10) {
             award_achievement($pdo, (int) $byTrigger['reading_10_total']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['reading_25_total']) && max((int) (($metric['habit_counts']['reading'] ?? 0)), user_habit_completion_count($pdo, $userId, 'reading')) >= 25) {
+            award_achievement($pdo, (int) $byTrigger['reading_25_total']['id'], $userId, null, null, 'Automatic unlock.');
         }
         if (isset($byTrigger['morning_logs_5']) && user_morning_log_count($pdo, $userId) >= 5) {
             award_achievement($pdo, (int) $byTrigger['morning_logs_5']['id'], $userId, null, null, 'Automatic unlock.');

@@ -441,6 +441,112 @@ if ($page === 'media') {
 
 $currentUser = require_login($pdo);
 
+if ($page === 'api_meal_calendar') {
+    $selectedDate = to_date($_GET['date'] ?? null);
+    $calendarView = (string) ($_GET['calendar_view'] ?? ($currentUser['meal_calendar_view'] ?? 'week'));
+    if (!in_array($calendarView, ['month', 'week', 'day'], true)) {
+        $calendarView = 'week';
+    }
+
+    $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
+    if (!is_admin($currentUser) && $selectedUserId !== (int) $currentUser['id']) {
+        $selectedUserId = (int) $currentUser['id'];
+    }
+    if ($selectedUserId <= 0) {
+        $selectedUserId = (int) $currentUser['id'];
+    }
+
+    $targetUser = db_fetch_one($pdo, 'SELECT id FROM users WHERE id = :id AND active = 1', [':id' => $selectedUserId]);
+    if ($targetUser === null) {
+        json_response(['ok' => false, 'message' => t('flash.invalid_user')], 404);
+    }
+
+    $categoryLabels = [
+        'breakfast' => t('entries.breakfast'),
+        'lunch' => t('entries.lunch'),
+        'dinner' => t('entries.dinner'),
+        'other' => t('common.other'),
+        'meal' => t('entries.lunch'),
+        'workout' => t('entries.workout'),
+    ];
+    $nutritionSummary = static function (array $photo): string {
+        $parts = [];
+        $calories = $photo['calories'] ?? null;
+        if ($calories !== null && $calories !== '') {
+            $parts[] = rtrim(rtrim(number_format((float) $calories, 1, '.', ''), '0'), '.') . ' kcal';
+        }
+        $protein = $photo['protein_g'] ?? null;
+        if ($protein !== null && $protein !== '') {
+            $parts[] = 'P ' . rtrim(rtrim(number_format((float) $protein, 1, '.', ''), '0'), '.') . 'g';
+        }
+        $carbs = $photo['carbs_g'] ?? null;
+        if ($carbs !== null && $carbs !== '') {
+            $parts[] = 'C ' . rtrim(rtrim(number_format((float) $carbs, 1, '.', ''), '0'), '.') . 'g';
+        }
+        $fat = $photo['fat_g'] ?? null;
+        if ($fat !== null && $fat !== '') {
+            $parts[] = 'F ' . rtrim(rtrim(number_format((float) $fat, 1, '.', ''), '0'), '.') . 'g';
+        }
+
+        return implode(' | ', $parts);
+    };
+
+    $mealCalendar = fetch_meal_calendar($pdo, $selectedDate, $selectedUserId, $calendarView);
+    $days = [];
+    foreach ($mealCalendar as $dateKey => $day) {
+        $photoCount = (int) ($day['count'] ?? 0);
+        $preview = is_array($day['preview'] ?? null) ? (array) $day['preview'] : null;
+        $previewPhotoId = $preview !== null ? (int) ($preview['id'] ?? 0) : 0;
+        $days[] = [
+            'date' => (string) $dateKey,
+            'date_label' => format_date_eu((string) $dateKey),
+            'has_log' => $photoCount > 0,
+            'count' => $photoCount,
+            'count_label' => $photoCount . ' ' . ($photoCount === 1 ? t('entries.photo_singular') : t('entries.photo_plural')),
+            'href' => $previewPhotoId > 0
+                ? '/?page=photo&photo_id=' . $previewPhotoId
+                : '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey),
+            'preview_url' => $preview !== null ? media_url((string) ($preview['file_path'] ?? '')) : '',
+        ];
+    }
+
+    $selectedDayData = is_array($mealCalendar[$selectedDate] ?? null) ? (array) $mealCalendar[$selectedDate] : [];
+    $selectedPhotos = [];
+    foreach (array_values((array) ($selectedDayData['photos'] ?? [])) as $photo) {
+        if (!is_array($photo)) {
+            continue;
+        }
+        $photoId = (int) ($photo['id'] ?? 0);
+        $category = (string) ($photo['category'] ?? 'other');
+        $selectedPhotos[] = [
+            'id' => $photoId,
+            'display_name' => (string) ($photo['display_name'] ?? ''),
+            'date_label' => format_date_eu((string) ($photo['log_date'] ?? $selectedDate)),
+            'category_label' => (string) ($categoryLabels[$category] ?? $category),
+            'caption' => (string) ($photo['caption'] ?? ''),
+            'nutrition' => $nutritionSummary($photo),
+            'photo_url' => media_url((string) ($photo['file_path'] ?? '')),
+            'photo_href' => '/?page=photo&photo_id=' . $photoId,
+        ];
+    }
+
+    json_response([
+        'ok' => true,
+        'date' => $selectedDate,
+        'calendar_view' => $calendarView,
+        'user_id' => $selectedUserId,
+        'days' => $days,
+        'selected_photos' => $selectedPhotos,
+        'labels' => [
+            'no_photo' => t('entries.no_photo'),
+            'no_photos' => t('entries.no_photos'),
+            'photo' => t('common.photo'),
+            'recent_photos' => t('entries.recent_photos'),
+            'date' => t('common.date'),
+        ],
+    ]);
+}
+
 if ($page === 'entries') {
     $entryMode = (string) ($_GET['mode'] ?? 'data');
     if (!in_array($entryMode, ['data', 'meal', 'calendar'], true)) {
