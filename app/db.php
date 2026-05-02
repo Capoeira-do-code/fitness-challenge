@@ -305,6 +305,21 @@ function initialize_database(PDO $pdo, array $config): void
     );
 
     $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS achievement_translations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            achievement_id INTEGER NOT NULL,
+            locale TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT "",
+            reward_text TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (achievement_id, locale),
+            FOREIGN KEY (achievement_id) REFERENCES achievements(id) ON DELETE CASCADE
+        )'
+    );
+
+    $pdo->exec(
         'CREATE TABLE IF NOT EXISTS achievement_awards (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             achievement_id INTEGER NOT NULL,
@@ -675,6 +690,10 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'achievements', 'image_path', 'TEXT');
     ensure_column($pdo, 'achievements', 'reward_text', 'TEXT');
     ensure_column($pdo, 'achievements', 'active', 'INTEGER NOT NULL DEFAULT 1');
+    ensure_column($pdo, 'achievement_translations', 'description', 'TEXT NOT NULL DEFAULT ""');
+    ensure_column($pdo, 'achievement_translations', 'reward_text', 'TEXT');
+    ensure_column($pdo, 'achievement_translations', 'created_at', 'TEXT');
+    ensure_column($pdo, 'achievement_translations', 'updated_at', 'TEXT');
     ensure_column($pdo, 'teams', 'description', 'TEXT NOT NULL DEFAULT ""');
 
     ensure_column($pdo, 'achievement_rules', 'operator', 'TEXT NOT NULL DEFAULT ">="');
@@ -741,6 +760,8 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_goal_team ON goals(team_id, status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_awards_user ON achievement_awards(user_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_awards_team ON achievement_awards(team_id)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_translations_locale ON achievement_translations(locale)');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_achievement_translations_unique ON achievement_translations(achievement_id, locale)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_achievement_awards_user_unique ON achievement_awards(achievement_id, user_id) WHERE user_id IS NOT NULL');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_achievement_awards_team_unique ON achievement_awards(achievement_id, team_id) WHERE team_id IS NOT NULL');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_suppressions_user ON achievement_award_suppressions(user_id)');
@@ -869,35 +890,161 @@ function seed_default_achievements(PDO $pdo): void
 {
     $now = now_iso();
     $achievements = [
-        ['first_log', 'First Log', 'Saved the first daily log.', 'user', 'first_log'],
-        ['first_photo', 'Proof Shot', 'Uploaded the first proof photo.', 'user', 'first_photo'],
-        ['three_workouts_week', 'Triple Training', 'Completed 3 workouts in one week.', 'user', 'three_workouts_week'],
-        ['perfect_week', 'Perfect Week', 'Completed a week with no failures.', 'user', 'perfect_week'],
-        ['step_streak', 'Step Streak', 'Hit step goal for 5 tracked days.', 'user', 'step_streak'],
-        ['no_strike_week', 'Clean Sheet', 'Closed a week with no penalty.', 'user', 'no_strike_week'],
-        ['team_active', 'Team Pulse', 'The team has active members logging progress.', 'team', 'team_active'],
+        ['first_log', 'user', 'first_log', [
+            'en' => ['First Log', 'Saved the first daily log.', ''],
+            'es' => ['Primer registro', 'Guardaste el primer registro diario.', ''],
+            'it' => ['Primo log', 'Hai salvato il primo log giornaliero.', ''],
+        ]],
+        ['first_photo', 'user', 'first_photo', [
+            'en' => ['Proof Shot', 'Uploaded the first proof photo.', ''],
+            'es' => ['Primera prueba', 'Subiste la primera foto de prueba.', ''],
+            'it' => ['Prima prova', 'Hai caricato la prima foto di prova.', ''],
+        ]],
+        ['three_workouts_week', 'user', 'three_workouts_week', [
+            'en' => ['Triple Training', 'Completed 3 workouts in one week.', ''],
+            'es' => ['Triple entreno', 'Completaste 3 entrenos en una semana.', ''],
+            'it' => ['Triplo allenamento', 'Hai completato 3 workout in una settimana.', ''],
+        ]],
+        ['perfect_week', 'user', 'perfect_week', [
+            'en' => ['Perfect Week', 'Completed a week with no failures.', ''],
+            'es' => ['Semana perfecta', 'Completaste una semana sin fallos.', ''],
+            'it' => ['Settimana perfetta', 'Hai completato una settimana senza errori.', ''],
+        ]],
+        ['step_streak', 'user', 'step_streak', [
+            'en' => ['Step Streak', 'Hit step goal for 5 tracked days.', ''],
+            'es' => ['Racha de pasos', 'Cumpliste el objetivo de pasos durante 5 dias registrados.', ''],
+            'it' => ['Serie di passi', 'Hai raggiunto l obiettivo passi per 5 giorni registrati.', ''],
+        ]],
+        ['no_strike_week', 'user', 'no_strike_week', [
+            'en' => ['Clean Sheet', 'Closed a week with no penalty.', ''],
+            'es' => ['Marcador limpio', 'Cerraste una semana sin penalizacion.', ''],
+            'it' => ['Settimana pulita', 'Hai chiuso una settimana senza penalita.', ''],
+        ]],
+        ['seven_day_step_streak', 'user', 'seven_day_step_streak', [
+            'en' => ['Seven-Day Step Streak', 'Hit the step goal for 7 tracked days.', ''],
+            'es' => ['Racha de 7 dias', 'Cumpliste el objetivo de pasos durante 7 dias registrados.', ''],
+            'it' => ['Serie di 7 giorni', 'Hai raggiunto l obiettivo passi per 7 giorni registrati.', ''],
+        ]],
+        ['ten_workouts_total', 'user', 'ten_workouts_total', [
+            'en' => ['Ten Workout Club', 'Completed 10 workouts in total.', ''],
+            'es' => ['Club de 10 entrenos', 'Completaste 10 entrenos en total.', ''],
+            'it' => ['Club dei 10 workout', 'Hai completato 10 workout totali.', ''],
+        ]],
+        ['distance_50k_total', 'user', 'distance_50k_total', [
+            'en' => ['50K Distance', 'Logged 50 km in total.', ''],
+            'es' => ['50K de distancia', 'Registraste 50 km en total.', ''],
+            'it' => ['50K di distanza', 'Hai registrato 50 km totali.', ''],
+        ]],
+        ['distance_100k_total', 'user', 'distance_100k_total', [
+            'en' => ['100K Distance', 'Logged 100 km in total.', ''],
+            'es' => ['100K de distancia', 'Registraste 100 km en total.', ''],
+            'it' => ['100K di distanza', 'Hai registrato 100 km totali.', ''],
+        ]],
+        ['early_logger', 'user', 'early_logger', [
+            'en' => ['Early Logger', 'Saved a daily log before 09:00.', ''],
+            'es' => ['Registro temprano', 'Guardaste un registro diario antes de las 09:00.', ''],
+            'it' => ['Log mattutino', 'Hai salvato un log giornaliero prima delle 09:00.', ''],
+        ]],
+        ['habit_reader_streak', 'user', 'habit_reader_streak', [
+            'en' => ['Reader Rhythm', 'Completed the reading habit 5 times.', ''],
+            'es' => ['Ritmo lector', 'Completaste el habito de lectura 5 veces.', ''],
+            'it' => ['Ritmo lettura', 'Hai completato l abitudine lettura 5 volte.', ''],
+        ]],
+        ['weight_logged', 'user', 'weight_logged', [
+            'en' => ['Weight Check-In', 'Logged body weight for the first time.', ''],
+            'es' => ['Control de peso', 'Registraste tu peso por primera vez.', ''],
+            'it' => ['Controllo peso', 'Hai registrato il peso per la prima volta.', ''],
+        ]],
+        ['calorie_tracker', 'user', 'calorie_tracker', [
+            'en' => ['Calorie Tracker', 'Logged calories burned or consumed.', ''],
+            'es' => ['Seguimiento de calorias', 'Registraste calorias quemadas o consumidas.', ''],
+            'it' => ['Tracker calorie', 'Hai registrato calorie bruciate o assunte.', ''],
+        ]],
+        ['team_active', 'team', 'team_active', [
+            'en' => ['Team Pulse', 'The team has active members logging progress.', ''],
+            'es' => ['Pulso del equipo', 'El equipo tiene miembros activos registrando progreso.', ''],
+            'it' => ['Battito del team', 'Il team ha membri attivi che registrano progressi.', ''],
+        ]],
+        ['team_first_challenge', 'team', 'team_first_challenge', [
+            'en' => ['First Team Challenge', 'The team created its first challenge.', ''],
+            'es' => ['Primer reto de equipo', 'El equipo creo su primer reto.', ''],
+            'it' => ['Prima sfida team', 'Il team ha creato la prima sfida.', ''],
+        ]],
+        ['team_challenge_complete', 'team', 'team_challenge_complete', [
+            'en' => ['Challenge Finishers', 'The team completed a challenge.', ''],
+            'es' => ['Reto completado', 'El equipo completo un reto.', ''],
+            'it' => ['Sfida completata', 'Il team ha completato una sfida.', ''],
+        ]],
+        ['team_100k_steps_week', 'team', 'team_100k_steps_week', [
+            'en' => ['100K Step Week', 'The team logged 100,000 steps in a week.', ''],
+            'es' => ['Semana de 100K pasos', 'El equipo registro 100.000 pasos en una semana.', ''],
+            'it' => ['Settimana da 100K passi', 'Il team ha registrato 100.000 passi in una settimana.', ''],
+        ]],
+        ['team_250km_total', 'team', 'team_250km_total', [
+            'en' => ['250 km Team', 'The team logged 250 km in total.', ''],
+            'es' => ['Equipo 250 km', 'El equipo registro 250 km en total.', ''],
+            'it' => ['Team 250 km', 'Il team ha registrato 250 km totali.', ''],
+        ]],
+        ['team_clean_week', 'team', 'team_clean_week', [
+            'en' => ['Clean Team Week', 'The team closed a week with no penalty.', ''],
+            'es' => ['Semana limpia de equipo', 'El equipo cerro una semana sin penalizacion.', ''],
+            'it' => ['Settimana pulita team', 'Il team ha chiuso una settimana senza penalita.', ''],
+        ]],
+        ['team_training_mix', 'team', 'team_training_mix', [
+            'en' => ['Training Mix', 'The team completed 5 workouts in total.', ''],
+            'es' => ['Mezcla de entrenos', 'El equipo completo 5 entrenos en total.', ''],
+            'it' => ['Mix allenamenti', 'Il team ha completato 5 workout totali.', ''],
+        ]],
     ];
 
-    foreach ($achievements as [$code, $name, $description, $scope, $trigger]) {
+    foreach ($achievements as [$code, $scope, $trigger, $translations]) {
+        $english = $translations['en'] ?? ['', '', ''];
+        $name = (string) ($english[0] ?? $code);
+        $description = (string) ($english[1] ?? '');
+        $rewardText = (string) ($english[2] ?? '');
         $existing = db_fetch_one($pdo, 'SELECT id FROM achievements WHERE code = :code', [':code' => $code]);
-        if ($existing !== null) {
+        $achievementId = (int) ($existing['id'] ?? 0);
+
+        if ($achievementId <= 0) {
+            db_execute(
+                $pdo,
+                'INSERT INTO achievements (code, name, description, scope, trigger_key, reward_text, active, created_by, created_at, updated_at)
+                 VALUES (:code, :name, :description, :scope, :trigger_key, :reward_text, 1, NULL, :created_at, :updated_at)',
+                [
+                    ':code' => $code,
+                    ':name' => $name,
+                    ':description' => $description,
+                    ':scope' => $scope,
+                    ':trigger_key' => $trigger,
+                    ':reward_text' => $rewardText !== '' ? $rewardText : null,
+                    ':created_at' => $now,
+                    ':updated_at' => $now,
+                ]
+            );
+            $created = db_fetch_one($pdo, 'SELECT id FROM achievements WHERE code = :code', [':code' => $code]);
+            $achievementId = (int) ($created['id'] ?? 0);
+        }
+
+        if ($achievementId <= 0) {
             continue;
         }
 
-        db_execute(
-            $pdo,
-            'INSERT INTO achievements (code, name, description, scope, trigger_key, active, created_by, created_at, updated_at)
-             VALUES (:code, :name, :description, :scope, :trigger_key, 1, NULL, :created_at, :updated_at)',
-            [
-                ':code' => $code,
-                ':name' => $name,
-                ':description' => $description,
-                ':scope' => $scope,
-                ':trigger_key' => $trigger,
-                ':created_at' => $now,
-                ':updated_at' => $now,
-            ]
-        );
+        foreach ($translations as $locale => $translation) {
+            db_execute(
+                $pdo,
+                'INSERT OR IGNORE INTO achievement_translations (achievement_id, locale, name, description, reward_text, created_at, updated_at)
+                 VALUES (:achievement_id, :locale, :name, :description, :reward_text, :created_at, :updated_at)',
+                [
+                    ':achievement_id' => $achievementId,
+                    ':locale' => (string) $locale,
+                    ':name' => (string) ($translation[0] ?? $name),
+                    ':description' => (string) ($translation[1] ?? ''),
+                    ':reward_text' => (string) ($translation[2] ?? ''),
+                    ':created_at' => $now,
+                    ':updated_at' => $now,
+                ]
+            );
+        }
     }
 }
 

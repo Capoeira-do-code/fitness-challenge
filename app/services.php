@@ -3983,16 +3983,209 @@ function archive_challenge(PDO $pdo, int $actorUserId): void
     audit_log($pdo, $actorUserId, 'challenge_archived', 'challenge_settings', '1', 'Challenge archived.', audit_snapshot($before), audit_snapshot($after));
 }
 
+function achievement_supported_locales(): array
+{
+    if (defined('SUPPORTED_LOCALES')) {
+        $locales = constant('SUPPORTED_LOCALES');
+        if (is_array($locales) && $locales !== []) {
+            return array_values(array_filter(array_map('strval', $locales)));
+        }
+    }
+
+    return ['en', 'es', 'it'];
+}
+
+function normalize_achievement_translations_input(mixed $rawTranslations, string $fallbackName, string $fallbackDescription = '', string $fallbackRewardText = ''): array
+{
+    $incoming = is_array($rawTranslations) ? $rawTranslations : [];
+    $fallbackName = trim($fallbackName);
+    $fallbackDescription = trim($fallbackDescription);
+    $fallbackRewardText = trim($fallbackRewardText);
+    $translations = [];
+
+    foreach (achievement_supported_locales() as $locale) {
+        $submittedLocale = array_key_exists($locale, $incoming);
+        $row = is_array($incoming[$locale] ?? null) ? (array) $incoming[$locale] : [];
+        $name = trim((string) ($row['name'] ?? ''));
+        $description = trim((string) ($row['description'] ?? ''));
+        $rewardText = trim((string) ($row['reward_text'] ?? ''));
+
+        if ($locale === 'en') {
+            $name = $name !== '' ? $name : $fallbackName;
+            $description = $description !== '' ? $description : $fallbackDescription;
+            $rewardText = $rewardText !== '' ? $rewardText : $fallbackRewardText;
+        }
+
+        if ($name === '' && $description === '' && $rewardText === '') {
+            if (!$submittedLocale) {
+                continue;
+            }
+        }
+
+        $translations[$locale] = [
+            'name' => $name,
+            'description' => $description,
+            'reward_text' => $rewardText,
+        ];
+    }
+
+    if (!isset($translations['en']) || trim((string) ($translations['en']['name'] ?? '')) === '') {
+        if ($fallbackName === '') {
+            throw new InvalidArgumentException('Achievement name is required.');
+        }
+        $translations['en'] = [
+            'name' => $fallbackName,
+            'description' => $fallbackDescription,
+            'reward_text' => $fallbackRewardText,
+        ];
+    }
+
+    return $translations;
+}
+
+function save_achievement_translations(PDO $pdo, int $achievementId, array $translations): void
+{
+    if ($achievementId <= 0) {
+        return;
+    }
+
+    $now = now_iso();
+    foreach ($translations as $locale => $translation) {
+        $locale = normalize_locale((string) $locale, 'en');
+        $name = trim((string) ($translation['name'] ?? ''));
+        $description = trim((string) ($translation['description'] ?? ''));
+        $rewardText = trim((string) ($translation['reward_text'] ?? ''));
+        if ($name === '' && $description === '' && $rewardText === '') {
+            db_execute(
+                $pdo,
+                'DELETE FROM achievement_translations WHERE achievement_id = :achievement_id AND locale = :locale AND locale != "en"',
+                [':achievement_id' => $achievementId, ':locale' => $locale]
+            );
+            continue;
+        }
+        if ($name === '') {
+            continue;
+        }
+
+        db_execute(
+            $pdo,
+            'INSERT INTO achievement_translations (achievement_id, locale, name, description, reward_text, created_at, updated_at)
+             VALUES (:achievement_id, :locale, :name, :description, :reward_text, :created_at, :updated_at)
+             ON CONFLICT(achievement_id, locale) DO UPDATE SET
+                name = excluded.name,
+                description = excluded.description,
+                reward_text = excluded.reward_text,
+                updated_at = excluded.updated_at',
+            [
+                ':achievement_id' => $achievementId,
+                ':locale' => $locale,
+                ':name' => $name,
+                ':description' => $description,
+                ':reward_text' => $rewardText,
+                ':created_at' => $now,
+                ':updated_at' => $now,
+            ]
+        );
+    }
+}
+
+function fetch_achievement_translations(PDO $pdo, array $achievementIds): array
+{
+    $ids = array_values(array_unique(array_filter(array_map('intval', $achievementIds), static fn(int $id): bool => $id > 0)));
+    if ($ids === []) {
+        return [];
+    }
+
+    $params = [];
+    $placeholders = [];
+    foreach ($ids as $index => $id) {
+        $key = ':achievement_id_' . $index;
+        $placeholders[] = $key;
+        $params[$key] = $id;
+    }
+
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT achievement_id, locale, name, description, reward_text
+         FROM achievement_translations
+         WHERE achievement_id IN (' . implode(',', $placeholders) . ')',
+        $params
+    );
+
+    $grouped = [];
+    foreach ($rows as $row) {
+        $achievementId = (int) ($row['achievement_id'] ?? 0);
+        $locale = normalize_locale((string) ($row['locale'] ?? 'en'), 'en');
+        if ($achievementId <= 0) {
+            continue;
+        }
+        if (!isset($grouped[$achievementId])) {
+            $grouped[$achievementId] = [];
+        }
+        $grouped[$achievementId][$locale] = [
+            'name' => (string) ($row['name'] ?? ''),
+            'description' => (string) ($row['description'] ?? ''),
+            'reward_text' => (string) ($row['reward_text'] ?? ''),
+        ];
+    }
+
+    return $grouped;
+}
+
+function localize_achievement_rows(PDO $pdo, array $rows, ?string $locale = null): array
+{
+    if ($rows === []) {
+        return [];
+    }
+
+    $locale = normalize_locale($locale ?? current_locale(), 'en');
+    $ids = [];
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $achievementId = (int) ($row['achievement_id'] ?? $row['id'] ?? 0);
+        if ($achievementId > 0) {
+            $ids[] = $achievementId;
+        }
+    }
+    $translations = fetch_achievement_translations($pdo, $ids);
+
+    foreach ($rows as &$row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $achievementId = (int) ($row['achievement_id'] ?? $row['id'] ?? 0);
+        $byLocale = (array) ($translations[$achievementId] ?? []);
+        $row['translations_by_locale'] = $byLocale;
+        foreach (['name', 'description', 'reward_text'] as $field) {
+            $base = (string) ($row[$field] ?? '');
+            $localized = trim((string) ($byLocale[$locale][$field] ?? ''));
+            if ($localized === '') {
+                $localized = trim((string) ($byLocale['en'][$field] ?? ''));
+            }
+            if ($localized !== '') {
+                $row[$field] = $localized;
+            } else {
+                $row[$field] = $base;
+            }
+        }
+    }
+    unset($row);
+
+    return $rows;
+}
+
 function list_achievements(PDO $pdo, bool $activeOnly = true): array
 {
     $where = $activeOnly ? 'WHERE active = 1' : '';
 
-    return db_fetch_all($pdo, 'SELECT * FROM achievements ' . $where . ' ORDER BY scope ASC, name ASC');
+    return localize_achievement_rows($pdo, db_fetch_all($pdo, 'SELECT * FROM achievements ' . $where . ' ORDER BY scope ASC, name ASC'));
 }
 
 function list_achievements_for_admin(PDO $pdo): array
 {
-    return db_fetch_all(
+    return localize_achievement_rows($pdo, db_fetch_all(
         $pdo,
         'SELECT a.*,
                 ar.id AS rule_id,
@@ -4011,7 +4204,7 @@ function list_achievements_for_admin(PDO $pdo): array
           )
           WHERE a.active = 1
           ORDER BY a.created_at DESC, a.name ASC'
-    );
+    ));
 }
 
 function resolve_unique_achievement_code(PDO $pdo, string $seed, ?int $excludeId = null): string
@@ -4053,7 +4246,8 @@ function create_manual_achievement(
     string $rewardText = '',
     ?string $code = null,
     bool $active = true,
-    ?string $triggerKey = null
+    ?string $triggerKey = null,
+    array $translations = []
 ): int
 {
     $name = trim($name);
@@ -4089,9 +4283,13 @@ function create_manual_achievement(
         ]
     );
     $achievement = db_fetch_one($pdo, 'SELECT * FROM achievements WHERE code = :code', [':code' => $rawCode]);
+    $achievementId = (int) ($achievement['id'] ?? 0);
+    if ($achievementId > 0 && $translations !== []) {
+        save_achievement_translations($pdo, $achievementId, $translations);
+    }
     audit_log($pdo, $actorUserId, 'achievement_created', 'achievement', (string) ($achievement['id'] ?? ''), 'Achievement created.', null, audit_snapshot($achievement));
 
-    return (int) ($achievement['id'] ?? 0);
+    return $achievementId;
 }
 
 function create_conditional_achievement(PDO $pdo, array $payload, int $actorUserId): void
@@ -4117,7 +4315,8 @@ function create_conditional_achievement(PDO $pdo, array $payload, int $actorUser
         trim((string) ($payload['reward_text'] ?? '')),
         (string) ($payload['code'] ?? ''),
         (int) (($payload['active'] ?? 1) ? 1 : 0) === 1,
-        $metricKey
+        $metricKey,
+        is_array($payload['translations'] ?? null) ? (array) $payload['translations'] : []
     );
     if ($achievementId <= 0) {
         return;
@@ -4153,10 +4352,19 @@ function update_achievement(PDO $pdo, int $achievementId, array $payload, int $a
         [':achievement_id' => $achievementId]
     );
 
-    $name = trim((string) ($payload['name'] ?? ''));
+    $translations = normalize_achievement_translations_input(
+        is_array($payload['translations'] ?? null) ? (array) $payload['translations'] : [],
+        (string) ($payload['name'] ?? ''),
+        (string) ($payload['description'] ?? ''),
+        (string) ($payload['reward_text'] ?? '')
+    );
+    $english = $translations['en'] ?? [];
+    $name = trim((string) ($english['name'] ?? $payload['name'] ?? ''));
     if ($name === '') {
         throw new InvalidArgumentException('Achievement name is required.');
     }
+    $description = trim((string) ($english['description'] ?? $payload['description'] ?? ''));
+    $rewardText = trim((string) ($english['reward_text'] ?? $payload['reward_text'] ?? ''));
     $scope = in_array(($payload['scope'] ?? 'user'), ['user', 'team'], true) ? (string) $payload['scope'] : 'user';
     $desiredCode = trim((string) ($payload['code'] ?? ''));
     if ($desiredCode === '') {
@@ -4197,16 +4405,17 @@ function update_achievement(PDO $pdo, int $achievementId, array $payload, int $a
         [
             ':code' => $code,
             ':name' => $name,
-            ':description' => trim((string) ($payload['description'] ?? '')),
+            ':description' => $description,
             ':scope' => $scope,
             ':trigger_key' => $triggerKey,
             ':image_path' => $payload['image_path'] ?? null,
-            ':reward_text' => trim((string) ($payload['reward_text'] ?? '')),
+            ':reward_text' => $rewardText,
             ':active' => $active ? 1 : 0,
             ':updated_at' => now_iso(),
             ':id' => $achievementId,
         ]
     );
+    save_achievement_translations($pdo, $achievementId, $translations);
 
     if ($conditionalEnabled) {
         db_execute(
@@ -4529,7 +4738,7 @@ function list_awarded_achievements(PDO $pdo, ?int $userId = null, ?int $teamId =
         $conditions[] = '1 = 0';
     }
 
-    return db_fetch_all(
+    return localize_achievement_rows($pdo, db_fetch_all(
         $pdo,
         'SELECT aa.*, aa.id AS award_id, a.name, a.description, a.scope, a.code, a.image_path, a.reward_text, u.display_name AS awarded_by_name
          FROM achievement_awards aa
@@ -4538,14 +4747,14 @@ function list_awarded_achievements(PDO $pdo, ?int $userId = null, ?int $teamId =
          WHERE a.active = 1 AND ' . implode(' AND ', $conditions) . '
          ORDER BY aa.awarded_at DESC',
         $params
-    );
+    ));
 }
 
 function list_recent_achievement_awards(PDO $pdo, int $limit = 200): array
 {
     $safeLimit = max(1, min(1000, $limit));
 
-    return db_fetch_all(
+    return localize_achievement_rows($pdo, db_fetch_all(
         $pdo,
         'SELECT aa.*, a.name, a.description, a.scope, a.code, a.image_path, a.reward_text,
                 u.display_name AS awarded_by_name,
@@ -4559,7 +4768,7 @@ function list_recent_achievement_awards(PDO $pdo, int $limit = 200): array
          WHERE a.active = 1
          ORDER BY aa.awarded_at DESC
          LIMIT ' . $safeLimit
-    );
+    ));
 }
 
 function delete_achievement_award(PDO $pdo, int $awardId, int $actorUserId): void
@@ -4590,6 +4799,99 @@ function delete_achievement_award(PDO $pdo, int $awardId, int $actorUserId): voi
         'Deleted achievement award.'
     );
     audit_log($pdo, $actorUserId, 'achievement_award_deleted', 'achievement', (string) ($before['achievement_id'] ?? ''), 'Achievement award deleted.', audit_snapshot($before), null);
+}
+
+function user_has_early_daily_log(PDO $pdo, int $userId): bool
+{
+    return db_fetch_one(
+        $pdo,
+        'SELECT id FROM daily_logs
+         WHERE user_id = :user_id
+           AND log_time IS NOT NULL
+           AND log_time != ""
+           AND substr(log_time, 1, 5) <= "09:00"
+         LIMIT 1',
+        [':user_id' => $userId]
+    ) !== null;
+}
+
+function user_has_calorie_tracking(PDO $pdo, int $userId): bool
+{
+    if (db_fetch_one($pdo, 'SELECT id FROM daily_logs WHERE user_id = :user_id AND COALESCE(training_calories_burned, 0) > 0 LIMIT 1', [':user_id' => $userId]) !== null) {
+        return true;
+    }
+
+    return db_fetch_one($pdo, 'SELECT id FROM photo_entries WHERE user_id = :user_id AND COALESCE(calories, 0) > 0 LIMIT 1', [':user_id' => $userId]) !== null;
+}
+
+function user_habit_completion_count(PDO $pdo, int $userId, string $habitCode): int
+{
+    $row = db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS total
+         FROM daily_log_habits dlh
+         JOIN daily_logs dl ON dl.id = dlh.log_id
+         JOIN habit_definitions hd ON hd.id = dlh.habit_id
+         WHERE dl.user_id = :user_id
+           AND hd.code = :code
+           AND dlh.value = 1',
+        [':user_id' => $userId, ':code' => $habitCode]
+    );
+
+    return (int) ($row['total'] ?? 0);
+}
+
+function team_has_weekly_steps_total(array $metricsByUser, int $targetSteps): bool
+{
+    $byWeek = [];
+    foreach ($metricsByUser as $metric) {
+        foreach ((array) ($metric['weekly'] ?? []) as $week) {
+            $weekStart = (string) ($week['week_start'] ?? '');
+            if ($weekStart === '') {
+                continue;
+            }
+            $byWeek[$weekStart] = ($byWeek[$weekStart] ?? 0) + (int) ($week['steps'] ?? 0);
+            if ($byWeek[$weekStart] >= $targetSteps) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+function team_has_clean_complete_week(array $metricsByUser): bool
+{
+    $memberCount = count($metricsByUser);
+    if ($memberCount <= 0) {
+        return false;
+    }
+
+    $weeks = [];
+    foreach ($metricsByUser as $metric) {
+        foreach ((array) ($metric['weekly'] ?? []) as $week) {
+            $weekStart = (string) ($week['week_start'] ?? '');
+            if ($weekStart === '') {
+                continue;
+            }
+            if (!isset($weeks[$weekStart])) {
+                $weeks[$weekStart] = ['members' => 0, 'complete' => 0, 'penalty' => 0.0];
+            }
+            $weeks[$weekStart]['members']++;
+            if ((string) ($week['status'] ?? '') === 'complete') {
+                $weeks[$weekStart]['complete']++;
+            }
+            $weeks[$weekStart]['penalty'] += (float) ($week['penalty'] ?? 0);
+        }
+    }
+
+    foreach ($weeks as $week) {
+        if ((int) $week['members'] >= $memberCount && (int) $week['complete'] >= $memberCount && (float) $week['penalty'] <= 0.0) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $teamId = null): void
@@ -4628,15 +4930,65 @@ function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $t
         if (isset($byTrigger['step_streak']) && (int) ($metric['steps_success'] ?? 0) >= 5) {
             award_achievement($pdo, (int) $byTrigger['step_streak']['id'], $userId, null, null, 'Automatic unlock.');
         }
+        if (isset($byTrigger['seven_day_step_streak']) && (int) ($metric['steps_success'] ?? 0) >= 7) {
+            award_achievement($pdo, (int) $byTrigger['seven_day_step_streak']['id'], $userId, null, null, 'Automatic unlock.');
+        }
         if (isset($byTrigger['three_workouts_week']) && has_three_workouts_in_week($pdo, $userId)) {
             award_achievement($pdo, (int) $byTrigger['three_workouts_week']['id'], $userId, null, null, 'Automatic unlock.');
         }
+        $workoutTotal = max((int) ($metric['workout_count'] ?? 0), (int) ($metric['workout_success'] ?? 0));
+        if (isset($byTrigger['ten_workouts_total']) && $workoutTotal >= 10) {
+            award_achievement($pdo, (int) $byTrigger['ten_workouts_total']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['distance_50k_total']) && (float) ($metric['total_km'] ?? 0) >= 50.0) {
+            award_achievement($pdo, (int) $byTrigger['distance_50k_total']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['distance_100k_total']) && (float) ($metric['total_km'] ?? 0) >= 100.0) {
+            award_achievement($pdo, (int) $byTrigger['distance_100k_total']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['early_logger']) && user_has_early_daily_log($pdo, $userId)) {
+            award_achievement($pdo, (int) $byTrigger['early_logger']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['habit_reader_streak'])) {
+            $readingCount = (int) (($metric['habit_counts']['reading'] ?? 0));
+            if ($readingCount >= 5 || user_habit_completion_count($pdo, $userId, 'reading') >= 5) {
+                award_achievement($pdo, (int) $byTrigger['habit_reader_streak']['id'], $userId, null, null, 'Automatic unlock.');
+            }
+        }
+        if (isset($byTrigger['weight_logged']) && ((float) ($metric['latest_weight'] ?? 0) > 0 || db_fetch_one($pdo, 'SELECT id FROM daily_logs WHERE user_id = :user_id AND COALESCE(weight, 0) > 0 LIMIT 1', [':user_id' => $userId]) !== null)) {
+            award_achievement($pdo, (int) $byTrigger['weight_logged']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['calorie_tracker']) && user_has_calorie_tracking($pdo, $userId)) {
+            award_achievement($pdo, (int) $byTrigger['calorie_tracker']['id'], $userId, null, null, 'Automatic unlock.');
+        }
     }
 
-    if ($teamId !== null && isset($byTrigger['team_active'])) {
-        $activeMembers = db_fetch_one($pdo, 'SELECT COUNT(*) AS total FROM team_memberships WHERE team_id = :team_id AND active = 1', [':team_id' => $teamId]);
-        if ((int) ($activeMembers['total'] ?? 0) > 0) {
-            award_achievement($pdo, (int) $byTrigger['team_active']['id'], null, $teamId, null, 'Automatic unlock.');
+    if ($teamId !== null) {
+        if (isset($byTrigger['team_active'])) {
+            $activeMembers = db_fetch_one($pdo, 'SELECT COUNT(*) AS total FROM team_memberships WHERE team_id = :team_id AND active = 1', [':team_id' => $teamId]);
+            if ((int) ($activeMembers['total'] ?? 0) > 0) {
+                award_achievement($pdo, (int) $byTrigger['team_active']['id'], null, $teamId, null, 'Automatic unlock.');
+            }
+        }
+        if (isset($byTrigger['team_first_challenge']) && db_fetch_one($pdo, 'SELECT id FROM goals WHERE scope = "team" AND team_id = :team_id LIMIT 1', [':team_id' => $teamId]) !== null) {
+            award_achievement($pdo, (int) $byTrigger['team_first_challenge']['id'], null, $teamId, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['team_challenge_complete']) && db_fetch_one($pdo, 'SELECT id FROM goals WHERE scope = "team" AND team_id = :team_id AND status = "complete" LIMIT 1', [':team_id' => $teamId]) !== null) {
+            award_achievement($pdo, (int) $byTrigger['team_challenge_complete']['id'], null, $teamId, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['team_100k_steps_week']) && team_has_weekly_steps_total($metricsByUser, 100000)) {
+            award_achievement($pdo, (int) $byTrigger['team_100k_steps_week']['id'], null, $teamId, null, 'Automatic unlock.');
+        }
+        $teamSummary = team_summary_from_metrics($metricsByUser);
+        if (isset($byTrigger['team_250km_total']) && (float) ($teamSummary['total_km'] ?? 0) >= 250.0) {
+            award_achievement($pdo, (int) $byTrigger['team_250km_total']['id'], null, $teamId, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['team_clean_week']) && team_has_clean_complete_week($metricsByUser)) {
+            award_achievement($pdo, (int) $byTrigger['team_clean_week']['id'], null, $teamId, null, 'Automatic unlock.');
+        }
+        $teamWorkoutTotal = max((int) ($teamSummary['workout_success'] ?? 0), (int) ($teamSummary['workout_count'] ?? 0));
+        if (isset($byTrigger['team_training_mix']) && $teamWorkoutTotal >= 5) {
+            award_achievement($pdo, (int) $byTrigger['team_training_mix']['id'], null, $teamId, null, 'Automatic unlock.');
         }
     }
 

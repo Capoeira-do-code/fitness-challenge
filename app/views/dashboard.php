@@ -401,8 +401,8 @@ $topbarControls = ob_get_clean();
                 <h2><?= e(t('dashboard.weekly_history')) ?></h2>
                 <a class="btn btn-ghost small dashboard-panel-action" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week=<?= e(date_to_iso_week((string) $selectedWeekStart)) ?>"><?= e(t('table.open_editor')) ?></a>
             </div>
-            <div class="table-wrap">
-                <table class="table compact responsive-card-table dashboard-weekly-table">
+            <div class="table-wrap dashboard-desktop-table-wrap">
+                <table class="table compact dashboard-weekly-table">
                     <thead>
                     <tr>
                         <th><?= e(t('common.week')) ?></th>
@@ -450,6 +450,42 @@ $topbarControls = ob_get_clean();
                     <?php endforeach; ?>
                     </tbody>
                 </table>
+            </div>
+            <div class="dashboard-mobile-card-list dashboard-weekly-mobile-list" aria-label="<?= e(t('dashboard.weekly_history')) ?>">
+                <?php foreach ($selectedMetric['weekly'] as $week): ?>
+                    <?php
+                    $weekStartDate = (string) ($week['week_start'] ?? $selectedWeekStart ?? '');
+                    $weekStrikesHref = '/?' . http_build_query([
+                        'page' => 'strikes_detail',
+                        'user_id' => (int) ($selectedUser['id'] ?? 0),
+                        'view' => $weekStartDate,
+                    ]);
+                    $weekEditorHref = '/?' . http_build_query([
+                        'page' => 'week_editor',
+                        'user_id' => (int) ($selectedUser['id'] ?? 0),
+                        'week' => date_to_iso_week($weekStartDate !== '' ? $weekStartDate : (string) $selectedWeekStart),
+                    ]);
+                    $weeklyPenalty = (float) ($week['penalty'] ?? 0);
+                    ?>
+                    <article class="dashboard-mobile-card dashboard-week-card">
+                        <div class="dashboard-mobile-card-head">
+                            <strong><?= e(format_date_eu((string) $week['week_start'])) ?> -> <?= e(format_date_eu((string) $week['week_end'])) ?></strong>
+                            <span class="badge"><?= e(label_for_status((string) $week['status'])) ?></span>
+                        </div>
+                        <div class="dashboard-mobile-metrics">
+                            <span><small><?= e(t('metric.step_failures')) ?></small><strong><?= e((string) $week['step_failures']) ?></strong></span>
+                            <span><small><?= e(t('metric.workout_failures')) ?></small><strong><?= e((string) $week['workout_failures']) ?></strong></span>
+                            <span><small><?= e(t('metric.warnings')) ?></small><strong><?= e((string) ($week['skip_warnings'] ?? 0)) ?></strong></span>
+                            <span><small><?= e(t('dashboard.strikes_after_week')) ?></small><strong><?= e((string) $week['strikes_after_week']) ?></strong></span>
+                            <span><small><?= e(t('dashboard.strike_reduction')) ?></small><strong><?= (int) $week['strike_reduction'] > 0 ? '-1' : '-' ?></strong></span>
+                            <span><small><?= e(t('strikes.economic_impact')) ?></small><strong class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) $weeklyPenalty)) ?>">&euro;<?= e(number_format($weeklyPenalty, 2, '.', '')) ?></strong></span>
+                        </div>
+                        <div class="dashboard-week-actions dashboard-mobile-actions">
+                            <a class="btn btn-ghost small" href="<?= e($weekEditorHref) ?>"><?= e(t('dashboard.edit_week')) ?></a>
+                            <a class="btn btn-ghost small" href="<?= e($weekStrikesHref) ?>"><?= e(t('dashboard.penalty_history')) ?></a>
+                        </div>
+                    </article>
+                <?php endforeach; ?>
             </div>
         </article>
         <?php endif; ?>
@@ -712,8 +748,8 @@ $topbarControls = ob_get_clean();
                 <?php endif; ?>
             </p>
 
-            <div class="table-wrap compact-wrap">
-                <table class="table compact responsive-card-table dashboard-settlement-table">
+            <div class="table-wrap compact-wrap dashboard-desktop-table-wrap">
+                <table class="table compact dashboard-settlement-table">
                     <?php if ($isTotalMoneyView): ?>
                     <thead>
                     <tr>
@@ -776,6 +812,54 @@ $topbarControls = ob_get_clean();
                     </tbody>
                     <?php endif; ?>
                 </table>
+            </div>
+            <div class="dashboard-mobile-card-list dashboard-settlement-mobile-list" aria-label="<?= e(t('dashboard.strikes_summary_title')) ?>">
+                <?php if ($isTotalMoneyView): ?>
+                    <?php foreach ($metricsOrdered as $metric): ?>
+                        <?php
+                        $penaltyValue = (int) ($metric['total_penalty'] ?? 0);
+                        $metricStrikesHref = '/?' . http_build_query([
+                            'page' => 'strikes_detail',
+                            'user_id' => (int) ($metric['user']['id'] ?? 0),
+                            'view' => (string) ($dashboardView ?? 'current_week'),
+                        ]);
+                        ?>
+                        <a class="dashboard-mobile-card dashboard-strike-card" href="<?= e($metricStrikesHref) ?>">
+                            <div class="dashboard-mobile-card-head">
+                                <strong><?= e((string) $metric['user']['display_name']) ?></strong>
+                                <span class="badge"><?= e(t('metric.score')) ?> <?= e((string) $metric['score']) ?></span>
+                            </div>
+                            <div class="dashboard-mobile-metrics">
+                                <span><small><?= e(t('metric.strikes')) ?></small><strong><?= e((string) $metric['current_strikes']) ?></strong></span>
+                                <span><small><?= e(t('metric.skip_warnings')) ?></small><strong><?= e((string) ($metric['skip_warning_events'] ?? 0)) ?></strong></span>
+                                <span class="dashboard-mobile-metric-wide"><small><?= e(t('strikes.economic_impact')) ?></small><strong class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">&euro;<?= e(number_format((float) $penaltyValue, 2, '.', '')) ?></strong></span>
+                            </div>
+                        </a>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <?php foreach (($settlementSummary['entries'] ?? []) as $entry): ?>
+                        <?php
+                        $penaltyValue = (int) ($entry['penalty'] ?? 0);
+                        $entryStrikesHref = '/?' . http_build_query([
+                            'page' => 'strikes_detail',
+                            'user_id' => (int) ($entry['user_id'] ?? 0),
+                            'view' => (string) ($selectedWeekStart ?? 'current_week'),
+                        ]);
+                        ?>
+                        <a class="dashboard-mobile-card dashboard-strike-card" href="<?= e($entryStrikesHref) ?>">
+                            <div class="dashboard-mobile-card-head">
+                                <strong><?= e((string) $entry['display_name']) ?></strong>
+                                <span class="badge"><?= e(label_for_status((string) $entry['status'])) ?></span>
+                            </div>
+                            <div class="dashboard-mobile-metrics">
+                                <span><small><?= e(t('metric.step_failures')) ?></small><strong><?= e((string) $entry['step_failures']) ?></strong></span>
+                                <span><small><?= e(t('metric.workout_failures')) ?></small><strong><?= e((string) $entry['workout_failures']) ?></strong></span>
+                                <span><small><?= e(t('metric.skip_warnings')) ?></small><strong><?= e((string) $entry['skip_warnings']) ?></strong></span>
+                                <span><small><?= e(t('strikes.economic_impact')) ?></small><strong class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">&euro;<?= e(number_format((float) $penaltyValue, 2, '.', '')) ?></strong></span>
+                            </div>
+                        </a>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </div>
         </article>
     </div>

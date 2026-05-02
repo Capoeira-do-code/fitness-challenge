@@ -453,7 +453,7 @@ $profileExportPayload = [
         <?php endforeach; ?>
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'achievements' ? ' active' : '' ?>" data-spa-section="achievements" <?= $activeSection === 'achievements' ? '' : 'hidden' ?>>
+    <article class="panel settings-panel profile-achievements-panel<?= $activeSection === 'achievements' ? ' active' : '' ?>" data-spa-section="achievements" <?= $activeSection === 'achievements' ? '' : 'hidden' ?>>
         <div class="panel-head">
             <h2><?= e(t('profile.achievements')) ?></h2>
             <a class="btn btn-ghost" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
@@ -481,12 +481,14 @@ $profileExportPayload = [
                         <div class="profile-achievement-content">
                             <strong><?= e((string) $achievement['name']) ?></strong>
                             <p><?= e((string) $achievement['description']) ?></p>
-                            <?php if (!empty($achievement['reward_text'])): ?>
-                                <small><?= e(t('achievements.reward')) ?>: <?= e((string) $achievement['reward_text']) ?></small>
-                            <?php endif; ?>
-                            <?php if (!empty($achievement['awarded_at'])): ?>
-                                <small class="achievement-unlocked-date"><?= e(t('profile.unlocked_on')) ?> <?= e(format_date_eu((string) $achievement['awarded_at'])) ?></small>
-                            <?php endif; ?>
+                            <div class="achievement-card-meta">
+                                <?php if (!empty($achievement['reward_text'])): ?>
+                                    <span class="achievement-chip"><?= e(t('achievements.reward')) ?>: <?= e((string) $achievement['reward_text']) ?></span>
+                                <?php endif; ?>
+                                <?php if (!empty($achievement['awarded_at'])): ?>
+                                    <span class="achievement-chip achievement-unlocked-date"><?= e(t('profile.unlocked_on')) ?> <?= e(format_date_eu((string) $achievement['awarded_at'])) ?></span>
+                                <?php endif; ?>
+                            </div>
                         </div>
                         <?php if (!empty($canDeleteAchievements)): ?>
                             <form method="post" action="<?= e($profileUrl('achievements')) ?>" class="achievement-remove" id="<?= e($deleteFormId) ?>">
@@ -501,7 +503,9 @@ $profileExportPayload = [
             <?php endif; ?>
         </div>
         <?php if (count($userAchievements ?? []) > 4): ?>
-            <button class="btn btn-ghost btn-block js-toggle-achievements" type="button" data-expand-label="<?= e(t('common.view_all')) ?>" data-collapse-label="<?= e(t('common.view_less')) ?>"><?= e(t('common.view_all')) ?></button>
+            <div class="achievement-toggle-wrap">
+                <button class="btn btn-ghost small achievement-toggle-btn js-toggle-achievements" type="button" data-expand-label="<?= e(t('common.view_all')) ?>" data-collapse-label="<?= e(t('common.view_less')) ?>"><?= e(t('common.view_all')) ?></button>
+            </div>
         <?php endif; ?>
     </article>
 

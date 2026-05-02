@@ -17,6 +17,7 @@ $createUserMode = (string) ($_GET['create_user'] ?? '') === '1';
 $selectedHabitId = (string) ($_GET['habit_id'] ?? '');
 $selectedTypeId = (string) ($_GET['type_id'] ?? '');
 $selectedAchievementId = (string) ($_GET['achievement_id'] ?? '');
+$achievementLocales = locale_options();
 $sectionRows = [
     'users' => 'Users',
     'challenge' => 'Challenge',
@@ -692,13 +693,20 @@ $workoutFieldDataKeyLabels = [
                 <input type="hidden" name="action" value="create_achievement">
                 <div class="grid-inline">
                     <label>Code <input type="text" name="code" placeholder="my_achievement_code"></label>
-                    <label><?= e(t('achievements.name')) ?><input type="text" name="name" required></label>
                     <label><?= e(t('achievements.scope')) ?><select name="scope"><option value="user"><?= e(t('common.user')) ?></option><option value="team"><?= e(t('nav.team')) ?></option></select></label>
-                    <label><?= e(t('achievements.description')) ?><input type="text" name="description"></label>
+                    <label><?= e(t('common.photo')) ?><input type="file" name="image" accept="image/*"></label>
+                </div>
+                <div class="achievement-translation-fields">
+                    <?php foreach ($achievementLocales as $localeCode => $localeLabel): ?>
+                        <fieldset class="achievement-translation-card">
+                            <legend><?= e((string) $localeLabel) ?><?php if ($localeCode === 'en'): ?> <span class="badge">Base</span><?php endif; ?></legend>
+                            <label><?= e(t('achievements.name')) ?><input type="text" name="translations[<?= e((string) $localeCode) ?>][name]" <?= $localeCode === 'en' ? 'required' : '' ?>></label>
+                            <label><?= e(t('achievements.description')) ?><input type="text" name="translations[<?= e((string) $localeCode) ?>][description]"></label>
+                            <label><?= e(t('achievements.reward')) ?><input type="text" name="translations[<?= e((string) $localeCode) ?>][reward_text]"></label>
+                        </fieldset>
+                    <?php endforeach; ?>
                 </div>
                 <div class="grid-inline">
-                    <label><?= e(t('achievements.reward')) ?><input type="text" name="reward_text"></label>
-                    <label><?= e(t('common.photo')) ?><input type="file" name="image" accept="image/*"></label>
                     <label class="check"><input type="checkbox" name="active" value="1" checked><?= e(t('common.active')) ?></label>
                     <label class="check"><input type="checkbox" name="conditional_enabled" value="1" data-achievement-conditional-toggle><?= e(t('achievements.conditional')) ?></label>
                 </div>
@@ -763,6 +771,7 @@ $workoutFieldDataKeyLabels = [
             if ($achievementWindow === 'week') {
                 $achievementWindow = 'current_week';
             }
+            $achievementTranslations = is_array($achievement['translations_by_locale'] ?? null) ? (array) $achievement['translations_by_locale'] : [];
             ?>
             <div class="stack admin-detail-view" data-spa-param-show="achievement_id" data-spa-value="<?= (int) $achievement['id'] ?>" <?= $selectedAchievementId === (string) ((int) $achievement['id']) ? '' : 'hidden' ?>>
                 <div class="panel-head">
@@ -775,13 +784,30 @@ $workoutFieldDataKeyLabels = [
                     <input type="hidden" name="achievement_id" value="<?= (int) $achievement['id'] ?>">
                     <div class="grid-inline">
                         <label>Code <input type="text" name="code" value="<?= e((string) $achievement['code']) ?>"></label>
-                        <label><?= e(t('achievements.name')) ?><input type="text" name="name" value="<?= e((string) $achievement['name']) ?>" required></label>
                         <label><?= e(t('achievements.scope')) ?><select name="scope"><option value="user" <?= (string) $achievement['scope'] === 'user' ? 'selected' : '' ?>><?= e(t('common.user')) ?></option><option value="team" <?= (string) $achievement['scope'] === 'team' ? 'selected' : '' ?>><?= e(t('nav.team')) ?></option></select></label>
-                        <label><?= e(t('achievements.description')) ?><input type="text" name="description" value="<?= e((string) $achievement['description']) ?>"></label>
+                        <label><?= e(t('common.photo')) ?><input type="file" name="image" accept="image/*"></label>
+                    </div>
+                    <div class="achievement-translation-fields">
+                        <?php foreach ($achievementLocales as $localeCode => $localeLabel): ?>
+                            <?php
+                            $translation = is_array($achievementTranslations[$localeCode] ?? null) ? (array) $achievementTranslations[$localeCode] : [];
+                            if ($localeCode === 'en') {
+                                $translation = [
+                                    'name' => (string) ($translation['name'] ?? $achievement['name'] ?? ''),
+                                    'description' => (string) ($translation['description'] ?? $achievement['description'] ?? ''),
+                                    'reward_text' => (string) ($translation['reward_text'] ?? $achievement['reward_text'] ?? ''),
+                                ];
+                            }
+                            ?>
+                            <fieldset class="achievement-translation-card">
+                                <legend><?= e((string) $localeLabel) ?><?php if ($localeCode === 'en'): ?> <span class="badge">Base</span><?php endif; ?></legend>
+                                <label><?= e(t('achievements.name')) ?><input type="text" name="translations[<?= e((string) $localeCode) ?>][name]" value="<?= e((string) ($translation['name'] ?? '')) ?>" <?= $localeCode === 'en' ? 'required' : '' ?>></label>
+                                <label><?= e(t('achievements.description')) ?><input type="text" name="translations[<?= e((string) $localeCode) ?>][description]" value="<?= e((string) ($translation['description'] ?? '')) ?>"></label>
+                                <label><?= e(t('achievements.reward')) ?><input type="text" name="translations[<?= e((string) $localeCode) ?>][reward_text]" value="<?= e((string) ($translation['reward_text'] ?? '')) ?>"></label>
+                            </fieldset>
+                        <?php endforeach; ?>
                     </div>
                     <div class="grid-inline">
-                        <label><?= e(t('achievements.reward')) ?><input type="text" name="reward_text" value="<?= e((string) ($achievement['reward_text'] ?? '')) ?>"></label>
-                        <label><?= e(t('common.photo')) ?><input type="file" name="image" accept="image/*"></label>
                         <label class="check"><input type="checkbox" name="active" value="1" <?= (int) ($achievement['active'] ?? 1) === 1 ? 'checked' : '' ?>><?= e(t('common.active')) ?></label>
                         <label class="check"><input type="checkbox" name="conditional_enabled" value="1" data-achievement-conditional-toggle <?= $achievementConditional ? 'checked' : '' ?>><?= e(t('achievements.conditional')) ?></label>
                     </div>

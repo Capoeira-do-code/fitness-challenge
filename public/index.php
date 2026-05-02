@@ -1900,7 +1900,16 @@ if ($page === 'admin') {
 
         if ($action === 'create_achievement') {
             try {
-                $name = trim((string) ($_POST['name'] ?? ''));
+                $translations = normalize_achievement_translations_input(
+                    $_POST['translations'] ?? [],
+                    (string) ($_POST['name'] ?? ''),
+                    (string) ($_POST['description'] ?? ''),
+                    (string) ($_POST['reward_text'] ?? '')
+                );
+                $englishTranslation = $translations['en'] ?? [];
+                $name = trim((string) ($englishTranslation['name'] ?? ''));
+                $description = trim((string) ($englishTranslation['description'] ?? ''));
+                $rewardText = trim((string) ($englishTranslation['reward_text'] ?? ''));
                 $code = trim((string) ($_POST['code'] ?? ''));
                 $scope = (string) ($_POST['scope'] ?? 'user');
                 $active = bool_from_form('active') === 1;
@@ -1918,11 +1927,12 @@ if ($page === 'admin') {
                     create_conditional_achievement($pdo, [
                         'code' => $code,
                         'name' => $name,
-                        'description' => trim((string) ($_POST['description'] ?? '')),
+                        'description' => $description,
                         'scope' => $scope,
                         'active' => $active ? 1 : 0,
                         'image_path' => $imagePath,
-                        'reward_text' => trim((string) ($_POST['reward_text'] ?? '')),
+                        'reward_text' => $rewardText,
+                        'translations' => $translations,
                         'metric_key' => (string) ($_POST['metric'] ?? ($_POST['metric_key'] ?? 'steps')),
                         'habit_code' => (string) ($_POST['habit_code'] ?? ''),
                         'operator' => (string) ($_POST['operator'] ?? '>='),
@@ -1937,10 +1947,11 @@ if ($page === 'admin') {
                         $scope,
                         (int) $currentUser['id'],
                         $imagePath,
-                        trim((string) ($_POST['reward_text'] ?? '')),
+                        $rewardText,
                         $code,
                         $active,
-                        null
+                        null,
+                        $translations
                     );
                 }
                 flash_set('success', t('flash.achievement_created'));
@@ -1966,13 +1977,21 @@ if ($page === 'admin') {
                 if (!empty($_FILES['image']['name'])) {
                     $imagePath = save_uploaded_image($config, $_FILES['image'], 'achievements', 'achievement');
                 }
+                $translations = normalize_achievement_translations_input(
+                    $_POST['translations'] ?? [],
+                    (string) ($_POST['name'] ?? ($existing['name'] ?? '')),
+                    (string) ($_POST['description'] ?? ($existing['description'] ?? '')),
+                    (string) ($_POST['reward_text'] ?? ($existing['reward_text'] ?? ''))
+                );
+                $englishTranslation = $translations['en'] ?? [];
 
                 update_achievement($pdo, $achievementId, [
                     'code' => trim((string) ($_POST['code'] ?? '')),
-                    'name' => trim((string) ($_POST['name'] ?? '')),
+                    'name' => trim((string) ($englishTranslation['name'] ?? '')),
                     'scope' => (string) ($_POST['scope'] ?? 'user'),
-                    'description' => trim((string) ($_POST['description'] ?? '')),
-                    'reward_text' => trim((string) ($_POST['reward_text'] ?? '')),
+                    'description' => trim((string) ($englishTranslation['description'] ?? '')),
+                    'reward_text' => trim((string) ($englishTranslation['reward_text'] ?? '')),
+                    'translations' => $translations,
                     'image_path' => $imagePath !== '' ? $imagePath : null,
                     'active' => bool_from_form('active') === 1,
                     'conditional_enabled' => bool_from_form('conditional_enabled') === 1,

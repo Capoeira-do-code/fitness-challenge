@@ -714,8 +714,10 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                             <div class="team-achievement-body">
                                 <strong><?= e((string) $achievement['name']) ?></strong>
                                 <p><?= e((string) $achievement['description']) ?></p>
-                                <?php if (!empty($achievement['reward_text'])): ?><small><?= e(t('achievements.reward')) ?>: <?= e((string) $achievement['reward_text']) ?></small><?php endif; ?>
-                                <small class="team-achievement-date"><?= e(format_date_eu((string) $achievement['awarded_at'])) ?></small>
+                                <div class="achievement-card-meta">
+                                    <?php if (!empty($achievement['reward_text'])): ?><span class="achievement-chip"><?= e(t('achievements.reward')) ?>: <?= e((string) $achievement['reward_text']) ?></span><?php endif; ?>
+                                    <span class="achievement-chip team-achievement-date"><?= e(format_date_eu((string) $achievement['awarded_at'])) ?></span>
+                                </div>
                             </div>
                             <?php if (!empty($canDeleteAchievements)): ?>
                                 <form method="post" action="/?page=team" class="achievement-remove" id="<?= e($deleteFormId) ?>">
@@ -730,8 +732,10 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     <?php endforeach; ?>
                 <?php endif; ?>
             </div>
-            <?php if (count($teamAchievements ?? []) > 4): ?>
-                <button class="btn btn-ghost btn-block js-toggle-achievements" type="button" data-expand-label="<?= e(t('common.view_all')) ?>" data-collapse-label="<?= e(t('common.view_less')) ?>"><?= e(t('common.view_all')) ?></button>
+            <?php if (count($teamAchievements ?? []) > 3): ?>
+                <div class="achievement-toggle-wrap">
+                    <button class="btn btn-ghost small achievement-toggle-btn js-toggle-achievements" type="button" data-expand-label="<?= e(t('common.view_all')) ?>" data-collapse-label="<?= e(t('common.view_less')) ?>"><?= e(t('common.view_all')) ?></button>
+                </div>
             <?php endif; ?>
         </article>
         </div>

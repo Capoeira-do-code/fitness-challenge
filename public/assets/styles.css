@@ -1038,6 +1038,73 @@ img.settings-avatar-preview {
     background: transparent;
 }
 
+.dashboard-mobile-card-list {
+    display: none;
+}
+
+.dashboard-mobile-card {
+    display: grid;
+    gap: 0.68rem;
+    padding: 0.78rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fff;
+    color: inherit;
+    text-decoration: none;
+    box-shadow: 0 8px 22px rgba(22, 35, 43, 0.07);
+}
+
+.dashboard-mobile-card-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.dashboard-mobile-card-head strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.dashboard-mobile-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.42rem;
+}
+
+.dashboard-mobile-metrics > span {
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+    padding: 0.48rem 0.52rem;
+    border: 1px solid rgba(217, 226, 221, 0.82);
+    border-radius: 8px;
+    background: #fbfdfc;
+}
+
+.dashboard-mobile-metrics small {
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.dashboard-mobile-metrics strong {
+    font-size: 0.9rem;
+    line-height: 1.2;
+}
+
+.dashboard-mobile-metric-wide {
+    grid-column: 1 / -1;
+}
+
+.dashboard-mobile-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.36rem;
+    flex-wrap: wrap;
+}
+
 .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -2928,6 +2995,32 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
+.achievement-translation-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.7rem;
+}
+
+.achievement-translation-card {
+    display: grid;
+    gap: 0.52rem;
+    min-width: 0;
+    margin: 0;
+    padding: 0.72rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fbfdfc;
+}
+
+.achievement-translation-card legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0 0.2rem;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+
 .admin-danger-zone {
     display: flex;
     justify-content: flex-end;
@@ -3220,6 +3313,12 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     background: var(--primary);
     color: #fff;
     font-weight: 900;
+    font-size: 0;
+}
+
+.profile-achievement-media span::before {
+    content: "\2605";
+    font-size: 1rem;
 }
 
 .profile-achievement-content {
@@ -3240,6 +3339,50 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 .achievement-unlocked-date {
     color: var(--muted);
     font-size: 0.76rem;
+}
+
+.profile-achievement-card,
+.team-achievement-card {
+    border-color: rgba(20, 163, 139, 0.18);
+    background:
+        linear-gradient(135deg, rgba(20, 163, 139, 0.09), transparent 58%),
+        #fff;
+    box-shadow: 0 8px 22px rgba(22, 35, 43, 0.06);
+}
+
+.achievement-card-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.28rem;
+    margin-top: 0.12rem;
+}
+
+.achievement-chip {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    max-width: 100%;
+    min-height: 24px;
+    padding: 0.16rem 0.46rem;
+    border: 1px solid rgba(217, 226, 221, 0.9);
+    border-radius: 999px;
+    background: #fbfdfc;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.achievement-toggle-wrap {
+    display: flex;
+    justify-content: center;
+    padding-top: 0.1rem;
+}
+
+.achievement-toggle-btn {
+    border-radius: 999px;
+    min-width: 118px;
 }
 
 .achievement-card:hover .achievement-remove,
@@ -4053,8 +4196,11 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     width: 64px;
     height: 64px;
     border-radius: 14px;
+    border: 1px solid rgba(20, 163, 139, 0.18);
     overflow: hidden;
-    background: rgba(20, 163, 139, 0.12);
+    background:
+        linear-gradient(135deg, rgba(20, 163, 139, 0.18), rgba(255, 255, 255, 0.86)),
+        #f0f8f4;
 }
 
 .team-achievement-media > span {
@@ -4066,6 +4212,12 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     background: var(--primary);
     color: #fff;
     font-weight: 900;
+    font-size: 0;
+}
+
+.team-achievement-media > span::before {
+    content: "\2605";
+    font-size: 1rem;
 }
 
 .team-achievement-media img {
@@ -4663,6 +4815,55 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 }
 
 @media (max-width: 700px) {
+    .dashboard-desktop-table-wrap {
+        display: none;
+    }
+
+    .dashboard-mobile-card-list {
+        display: grid;
+        gap: 0.62rem;
+    }
+
+    .dashboard-weekly-history .panel-head,
+    .dashboard-settlement .panel-head {
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .dashboard-weekly-history .panel-head h2,
+    .dashboard-settlement .panel-head h2 {
+        margin-bottom: 0;
+    }
+
+    .dashboard-mobile-card {
+        padding: 0.68rem;
+        gap: 0.56rem;
+    }
+
+    .dashboard-mobile-card-head {
+        gap: 0.38rem;
+    }
+
+    .dashboard-mobile-card-head .badge {
+        padding: 0.14rem 0.44rem;
+        font-size: 0.68rem;
+        white-space: nowrap;
+    }
+
+    .dashboard-mobile-metrics {
+        gap: 0.34rem;
+    }
+
+    .dashboard-mobile-metrics > span {
+        padding: 0.4rem 0.42rem;
+    }
+
+    .dashboard-mobile-actions .btn {
+        min-height: 32px;
+        padding: 0.28rem 0.5rem;
+        font-size: 0.72rem;
+    }
+
     .dashboard-weekly-history .table-wrap,
     .dashboard-settlement .table-wrap {
         overflow: visible;
@@ -4768,6 +4969,28 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     .dashboard-calories-title-row .badge {
         font-size: 0.68rem;
         padding: 0.14rem 0.42rem;
+    }
+
+    .team-leaderboard-panel .panel-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.45rem;
+        margin-bottom: 0.52rem;
+    }
+
+    .team-leaderboard-panel .panel-head > div {
+        min-width: 0;
+    }
+
+    .team-leaderboard-panel .panel-head h2 {
+        margin-bottom: 0;
+        line-height: 1.1;
+    }
+
+    .team-leaderboard-panel .metric-help-popover {
+        flex: 0 0 auto;
+        align-self: center;
     }
 
     .team-leaderboard-card {
@@ -4891,6 +5114,7 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
         grid-template-columns: auto minmax(0, 1fr);
         gap: 0.48rem;
         padding: 0.58rem;
+        align-items: center;
     }
 
     .team-achievement-media {
@@ -4908,5 +5132,44 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
         overflow: hidden;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
+    }
+
+    .profile-achievement-card {
+        grid-template-columns: 52px minmax(0, 1fr);
+        gap: 0.58rem;
+        padding: 0.62rem;
+        align-items: center;
+    }
+
+    .profile-achievement-media {
+        width: 52px;
+        height: 52px;
+        min-height: 52px;
+        border-radius: 12px;
+    }
+
+    .profile-achievement-card .profile-achievement-media img {
+        min-height: 52px;
+    }
+
+    .achievement-card-meta {
+        gap: 0.22rem;
+    }
+
+    .achievement-chip {
+        min-height: 22px;
+        padding: 0.12rem 0.38rem;
+        font-size: 0.66rem;
+    }
+
+    .achievement-remove {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .achievement-delete-btn {
+        width: 22px;
+        height: 22px;
+        font-size: 0.92rem;
     }
 }
