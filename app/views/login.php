@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 $loginIconUrl = trim((string) ($loginAppIconUrl ?? ''));
 $appName = (string) (app_setting($GLOBALS['pdo'], 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge Tracker')) ?? 'Fitness Challenge Tracker');
+$loginRememberDefault = !empty($loginRememberDefault);
 ?>
 <section class="auth-wrap auth-wrap-login">
     <div class="auth-shell auth-shell-login">
@@ -30,6 +31,11 @@ $appName = (string) (app_setting($GLOBALS['pdo'], 'app_name', (string) ($config[
                 <label>
                     <span><?= e(t('common.password')) ?></span>
                     <input type="password" name="password" autocomplete="current-password" required>
+                </label>
+
+                <label class="check remember-me-check">
+                    <input type="checkbox" name="remember_me" value="1" <?= $loginRememberDefault ? 'checked' : '' ?>>
+                    <span><?= e(t('login.remember_me')) ?></span>
                 </label>
 
                 <button class="btn btn-primary btn-block" type="submit"><?= e(t('login.submit')) ?></button>

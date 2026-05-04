@@ -1133,6 +1133,39 @@ function fetch_logs_for_user_between(PDO $pdo, int $userId, string $startDate, s
     return $logs;
 }
 
+function fetch_distance_totals_by_date_for_user_between(PDO $pdo, int $userId, string $startDate, string $endDate): array
+{
+    if ($userId <= 0) {
+        return [];
+    }
+
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT log_date, SUM(COALESCE(distance_km, 0)) AS total_distance
+         FROM daily_logs
+         WHERE user_id = :user_id
+           AND log_date BETWEEN :start AND :end
+         GROUP BY log_date
+         ORDER BY log_date ASC',
+        [
+            ':user_id' => $userId,
+            ':start' => $startDate,
+            ':end' => $endDate,
+        ]
+    );
+
+    $distanceByDate = [];
+    foreach ($rows as $row) {
+        $dateKey = trim((string) ($row['log_date'] ?? ''));
+        if ($dateKey === '') {
+            continue;
+        }
+        $distanceByDate[$dateKey] = round(max(0.0, (float) ($row['total_distance'] ?? 0.0)), 2);
+    }
+
+    return $distanceByDate;
+}
+
 function fetch_log(PDO $pdo, int $userId, string $date): ?array
 {
     $log = db_fetch_one(
@@ -3001,12 +3034,16 @@ function create_goal(PDO $pdo, array $payload, int $actorUserId): void
         $pdo,
         'INSERT INTO goals (
             scope, team_id, user_id, title, target_type, target_value,
-            baseline_value, current_value, unit_label, reward_text, start_date, start_time, due_date, due_time,
+            baseline_value, current_value,
+            secondary_enabled, secondary_target_type, secondary_target_value, secondary_baseline_value, secondary_current_value, secondary_unit_label,
+            unit_label, reward_text, start_date, start_time, due_date, due_time,
             status, completed_at, created_by, created_at, updated_at
         )
          VALUES (
             :scope, :team_id, :user_id, :title, :target_type, :target_value,
-            :baseline_value, :current_value, :unit_label, :reward_text, :start_date, :start_time, :due_date, :due_time,
+            :baseline_value, :current_value,
+            :secondary_enabled, :secondary_target_type, :secondary_target_value, :secondary_baseline_value, :secondary_current_value, :secondary_unit_label,
+            :unit_label, :reward_text, :start_date, :start_time, :due_date, :due_time,
             "active", NULL, :created_by, :created_at, :updated_at
         )',
         [
@@ -3018,6 +3055,12 @@ function create_goal(PDO $pdo, array $payload, int $actorUserId): void
             ':target_value' => $payload['target_value'],
             ':baseline_value' => $payload['baseline_value'] ?? null,
             ':current_value' => $payload['current_value'] ?? 0,
+            ':secondary_enabled' => !empty($payload['secondary_enabled']) ? 1 : 0,
+            ':secondary_target_type' => $payload['secondary_target_type'] ?? null,
+            ':secondary_target_value' => $payload['secondary_target_value'] ?? null,
+            ':secondary_baseline_value' => $payload['secondary_baseline_value'] ?? null,
+            ':secondary_current_value' => $payload['secondary_current_value'] ?? 0,
+            ':secondary_unit_label' => $payload['secondary_unit_label'] ?? null,
             ':unit_label' => $payload['unit_label'] ?? null,
             ':reward_text' => $payload['reward_text'] ?? null,
             ':start_date' => $payload['start_date'] ?? null,
@@ -3071,6 +3114,8 @@ function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): v
 
     $setBaselineValue = array_key_exists('baseline_value', $payload);
     $setCurrentValue = array_key_exists('current_value', $payload);
+    $setSecondaryBaselineValue = array_key_exists('secondary_baseline_value', $payload);
+    $setSecondaryCurrentValue = array_key_exists('secondary_current_value', $payload);
 
     db_execute(
         $pdo,
@@ -3080,6 +3125,12 @@ function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): v
              target_value = :target_value,
              baseline_value = CASE WHEN :set_baseline_value = 1 THEN :baseline_value ELSE baseline_value END,
              current_value = CASE WHEN :set_current_value = 1 THEN :current_value ELSE current_value END,
+             secondary_enabled = :secondary_enabled,
+             secondary_target_type = :secondary_target_type,
+             secondary_target_value = :secondary_target_value,
+             secondary_baseline_value = CASE WHEN :set_secondary_baseline_value = 1 THEN :secondary_baseline_value ELSE secondary_baseline_value END,
+             secondary_current_value = CASE WHEN :set_secondary_current_value = 1 THEN :secondary_current_value ELSE secondary_current_value END,
+             secondary_unit_label = :secondary_unit_label,
              unit_label = :unit_label,
              reward_text = :reward_text,
              start_date = :start_date,
@@ -3096,6 +3147,14 @@ function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): v
             ':baseline_value' => $setBaselineValue ? $payload['baseline_value'] : null,
             ':set_current_value' => $setCurrentValue ? 1 : 0,
             ':current_value' => $setCurrentValue ? $payload['current_value'] : null,
+            ':secondary_enabled' => !empty($payload['secondary_enabled']) ? 1 : 0,
+            ':secondary_target_type' => $payload['secondary_target_type'] ?? null,
+            ':secondary_target_value' => $payload['secondary_target_value'] ?? null,
+            ':set_secondary_baseline_value' => $setSecondaryBaselineValue ? 1 : 0,
+            ':secondary_baseline_value' => $setSecondaryBaselineValue ? $payload['secondary_baseline_value'] : null,
+            ':set_secondary_current_value' => $setSecondaryCurrentValue ? 1 : 0,
+            ':secondary_current_value' => $setSecondaryCurrentValue ? $payload['secondary_current_value'] : null,
+            ':secondary_unit_label' => $payload['secondary_unit_label'] ?? null,
             ':unit_label' => $payload['unit_label'] ?? null,
             ':reward_text' => $payload['reward_text'] ?? null,
             ':start_date' => $payload['start_date'] ?? null,
@@ -3196,6 +3255,38 @@ function goal_target_type_uses_dynamic_window_progress(string $targetType): bool
 {
     $type = normalize_goal_target_type($targetType);
     return in_array($type, ['steps', 'km', 'workouts', 'calories_burned'], true);
+}
+
+function goal_secondary_target_type(array $goal): string
+{
+    return normalize_goal_target_type((string) ($goal['secondary_target_type'] ?? 'custom'));
+}
+
+function goal_secondary_target_value(array $goal): float
+{
+    return max(0.0, (float) ($goal['secondary_target_value'] ?? 0));
+}
+
+function goal_has_secondary_target(array $goal): bool
+{
+    return (int) ($goal['secondary_enabled'] ?? 0) === 1 && goal_secondary_target_value($goal) > 0;
+}
+
+function goal_team_metric_value_for_type(string $targetType, array $teamSummary, ?float $fallback = null): float
+{
+    $type = normalize_goal_target_type($targetType);
+    return match ($type) {
+        'steps' => (float) ($teamSummary['total_steps'] ?? 0),
+        'km' => (float) ($teamSummary['total_km'] ?? 0),
+        'workouts' => (float) ($teamSummary['workout_success'] ?? 0),
+        'score' => (float) ($teamSummary['score_avg'] ?? 0),
+        'strikes' => (float) ($teamSummary['strikes'] ?? 0),
+        'penalties' => (float) ($teamSummary['penalty'] ?? 0),
+        'calories_burned' => (float) ($teamSummary['calories_burned'] ?? 0),
+        'calories_consumed' => (float) ($teamSummary['calories_consumed'] ?? 0),
+        'weight' => (float) ($teamSummary['weight_progress'] ?? 0),
+        default => (float) ($fallback ?? 0),
+    };
 }
 
 function goal_time_window_bounds(array $goal, ?DateTimeImmutable $now = null): array
@@ -3383,19 +3474,20 @@ function goal_team_progress_value(PDO $pdo, array $goal, array $teamSummary, arr
 
 function goal_team_metric_value(array $goal, array $teamSummary): float
 {
-    $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
-    return match ($type) {
-        'steps' => (float) ($teamSummary['total_steps'] ?? 0),
-        'km' => (float) ($teamSummary['total_km'] ?? 0),
-        'workouts' => (float) ($teamSummary['workout_success'] ?? 0),
-        'score' => (float) ($teamSummary['score_avg'] ?? 0),
-        'strikes' => (float) ($teamSummary['strikes'] ?? 0),
-        'penalties' => (float) ($teamSummary['penalty'] ?? 0),
-        'calories_burned' => (float) ($teamSummary['calories_burned'] ?? 0),
-        'calories_consumed' => (float) ($teamSummary['calories_consumed'] ?? 0),
-        'weight' => (float) ($teamSummary['weight_progress'] ?? 0),
-        default => (float) ($goal['current_value'] ?? 0),
-    };
+    return goal_team_metric_value_for_type(
+        (string) ($goal['target_type'] ?? 'custom'),
+        $teamSummary,
+        (float) ($goal['current_value'] ?? 0)
+    );
+}
+
+function goal_progress_from_baseline_for_type(string $targetType, float $baseline, float $currentMetricValue): float
+{
+    if (goal_target_type_is_lower_better($targetType)) {
+        return max(0.0, $baseline - $currentMetricValue);
+    }
+
+    return max(0.0, $currentMetricValue - $baseline);
 }
 
 function goal_progress_from_baseline(array $goal, float $currentMetricValue): float
@@ -3404,11 +3496,11 @@ function goal_progress_from_baseline(array $goal, float $currentMetricValue): fl
         ? (float) $goal['baseline_value']
         : $currentMetricValue;
 
-    if (goal_target_type_is_lower_better((string) ($goal['target_type'] ?? 'custom'))) {
-        return max(0.0, $baseline - $currentMetricValue);
-    }
-
-    return max(0.0, $currentMetricValue - $baseline);
+    return goal_progress_from_baseline_for_type(
+        (string) ($goal['target_type'] ?? 'custom'),
+        $baseline,
+        $currentMetricValue
+    );
 }
 
 function goal_team_progress_state(PDO $pdo, array $goal, array $teamSummary, ?DateTimeImmutable $now = null): array
@@ -3416,84 +3508,160 @@ function goal_team_progress_state(PDO $pdo, array $goal, array $teamSummary, ?Da
     $nowDateTime = $now ?? new DateTimeImmutable('now');
     $startAt = goal_start_datetime($goal);
     $hasStarted = !($startAt instanceof DateTimeImmutable) || $nowDateTime >= $startAt;
-    $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
-    $useDynamicWindowProgress = goal_target_type_uses_dynamic_window_progress($type);
-    $teamUsers = [];
-    if ($useDynamicWindowProgress) {
-        $teamId = (int) ($goal['team_id'] ?? 0);
-        if ($teamId > 0) {
-            $teamUsers = list_active_team_users($pdo, $teamId);
+    $goalId = (int) ($goal['id'] ?? 0);
+    $teamId = (int) ($goal['team_id'] ?? 0);
+    $teamUsers = null;
+    $resolveTeamUsers = static function () use (&$teamUsers, $pdo, $teamId): array {
+        if (is_array($teamUsers)) {
+            return $teamUsers;
         }
-    }
-    $currentMetricValue = $useDynamicWindowProgress
-        ? goal_window_metric_value_for_team($pdo, $goal, $teamUsers)
-        : goal_team_metric_value($goal, $teamSummary);
+        if ($teamId <= 0) {
+            $teamUsers = [];
+            return $teamUsers;
+        }
+        $teamUsers = list_active_team_users($pdo, $teamId);
+        return $teamUsers;
+    };
 
-    if (!$hasStarted) {
-        return [
-            'goal' => $goal,
-            'has_started' => false,
-            'start_at' => $startAt,
-            'current_metric_value' => $currentMetricValue,
-            'progress_value' => 0.0,
-        ];
-    }
+    $resolveObjective = static function (
+        string $targetTypeField,
+        string $targetValueField,
+        string $baselineField,
+        string $currentField
+    ) use (
+        $pdo,
+        &$goal,
+        $teamSummary,
+        $nowDateTime,
+        $hasStarted,
+        $goalId,
+        $resolveTeamUsers
+    ): array {
+        $targetType = normalize_goal_target_type((string) ($goal[$targetTypeField] ?? 'custom'));
+        $targetValue = max(0.0, (float) ($goal[$targetValueField] ?? 0));
+        $useDynamicWindowProgress = goal_target_type_uses_dynamic_window_progress($targetType);
 
-    if ($useDynamicWindowProgress) {
-        $baselineRaw = $goal['baseline_value'] ?? null;
-        if (!is_numeric($baselineRaw) || abs((float) $baselineRaw) > 0.00001) {
-            $goalId = (int) ($goal['id'] ?? 0);
+        $currentMetricValue = $useDynamicWindowProgress
+            ? goal_window_metric_value_for_team(
+                $pdo,
+                array_merge($goal, ['target_type' => $targetType]),
+                $resolveTeamUsers()
+            )
+            : goal_team_metric_value_for_type(
+                $targetType,
+                $teamSummary,
+                (float) ($goal[$currentField] ?? 0)
+            );
+
+        if (!$hasStarted) {
+            return [
+                'target_type' => $targetType,
+                'target_value' => $targetValue,
+                'current_metric_value' => $currentMetricValue,
+                'baseline_value' => is_numeric($goal[$baselineField] ?? null) ? (float) $goal[$baselineField] : null,
+                'progress_value' => 0.0,
+                'progress_pct_raw' => 0.0,
+                'target_reached' => false,
+            ];
+        }
+
+        if ($useDynamicWindowProgress) {
+            $baselineRaw = $goal[$baselineField] ?? null;
+            if (!is_numeric($baselineRaw) || abs((float) $baselineRaw) > 0.00001) {
+                if ($goalId > 0) {
+                    db_execute(
+                        $pdo,
+                        'UPDATE goals
+                         SET ' . $baselineField . ' = 0,
+                             updated_at = :updated_at
+                         WHERE id = :id',
+                        [
+                            ':updated_at' => now_iso(),
+                            ':id' => $goalId,
+                        ]
+                    );
+                }
+            }
+            $goal[$baselineField] = 0.0;
+        }
+
+        if (!is_numeric($goal[$baselineField] ?? null)) {
+            $baselineValue = $currentMetricValue;
+            if (!$useDynamicWindowProgress) {
+                $baselineValue = goal_team_baseline_from_start(
+                    $pdo,
+                    [
+                        'target_type' => $targetType,
+                        'start_date' => $goal['start_date'] ?? null,
+                        'start_time' => $goal['start_time'] ?? null,
+                    ],
+                    $resolveTeamUsers(),
+                    $currentMetricValue,
+                    $nowDateTime
+                );
+            }
+
             if ($goalId > 0) {
                 db_execute(
                     $pdo,
                     'UPDATE goals
-                     SET baseline_value = 0,
+                     SET ' . $baselineField . ' = :baseline_value,
+                         ' . $currentField . ' = 0,
                          updated_at = :updated_at
-                     WHERE id = :id',
+                     WHERE id = :id AND ' . $baselineField . ' IS NULL',
                     [
+                        ':baseline_value' => $baselineValue,
                         ':updated_at' => now_iso(),
                         ':id' => $goalId,
                     ]
                 );
             }
+            $goal[$baselineField] = $baselineValue;
         }
-        $goal['baseline_value'] = 0.0;
-    }
 
-    if (!is_numeric($goal['baseline_value'] ?? null)) {
-        $goalId = (int) ($goal['id'] ?? 0);
-        $baselineValue = $currentMetricValue;
-        if (!$useDynamicWindowProgress) {
-            $teamId = (int) ($goal['team_id'] ?? 0);
-            if ($teamId > 0) {
-                $teamUsersForBaseline = list_active_team_users($pdo, $teamId);
-                $baselineValue = goal_team_baseline_from_start($pdo, $goal, $teamUsersForBaseline, $currentMetricValue, $nowDateTime);
-            }
-        }
-        if ($goalId > 0) {
-            db_execute(
-                $pdo,
-                'UPDATE goals
-                 SET baseline_value = :baseline_value,
-                     current_value = 0,
-                     updated_at = :updated_at
-                 WHERE id = :id AND baseline_value IS NULL',
-                [
-                    ':baseline_value' => $baselineValue,
-                    ':updated_at' => now_iso(),
-                    ':id' => $goalId,
-                ]
-            );
-        }
-        $goal['baseline_value'] = $baselineValue;
+        $baselineValue = is_numeric($goal[$baselineField] ?? null)
+            ? (float) $goal[$baselineField]
+            : $currentMetricValue;
+        $progressValue = goal_progress_from_baseline_for_type($targetType, $baselineValue, $currentMetricValue);
+        $progressPctRaw = $targetValue > 0 ? round(($progressValue / $targetValue) * 100, 1) : 0.0;
+
+        return [
+            'target_type' => $targetType,
+            'target_value' => $targetValue,
+            'current_metric_value' => $currentMetricValue,
+            'baseline_value' => $baselineValue,
+            'progress_value' => $progressValue,
+            'progress_pct_raw' => $progressPctRaw,
+            'target_reached' => $targetValue > 0 && $progressValue >= $targetValue,
+        ];
+    };
+
+    $primaryState = $resolveObjective('target_type', 'target_value', 'baseline_value', 'current_value');
+    $secondaryState = goal_has_secondary_target($goal)
+        ? $resolveObjective('secondary_target_type', 'secondary_target_value', 'secondary_baseline_value', 'secondary_current_value')
+        : null;
+
+    $combinedProgressPctRaw = (float) ($primaryState['progress_pct_raw'] ?? 0.0);
+    $targetReached = !empty($primaryState['target_reached']);
+    if (is_array($secondaryState)) {
+        $combinedProgressPctRaw = min(
+            $combinedProgressPctRaw,
+            (float) ($secondaryState['progress_pct_raw'] ?? 0.0)
+        );
+        $targetReached = $targetReached && !empty($secondaryState['target_reached']);
     }
 
     return [
         'goal' => $goal,
-        'has_started' => true,
+        'has_started' => $hasStarted,
         'start_at' => $startAt,
-        'current_metric_value' => $currentMetricValue,
-        'progress_value' => goal_progress_from_baseline($goal, $currentMetricValue),
+        'current_metric_value' => (float) ($primaryState['current_metric_value'] ?? 0.0),
+        'progress_value' => (float) ($primaryState['progress_value'] ?? 0.0),
+        'progress_pct_raw' => $combinedProgressPctRaw,
+        'progress_pct_visual' => max(0.0, min(100.0, $combinedProgressPctRaw)),
+        'target_reached' => $targetReached,
+        'primary' => $primaryState,
+        'secondary' => $secondaryState,
     ];
 }
 
@@ -6667,20 +6835,67 @@ function vote_strike_review_request(PDO $pdo, int $requestId, int $voterUserId, 
     ];
 }
 
-function apply_strike_review_overrides_to_metric(PDO $pdo, array $metric): array
+function accepted_strike_review_rows_by_user(PDO $pdo, array $userIds): array
+{
+    $normalizedIds = [];
+    foreach ($userIds as $userId) {
+        $value = (int) $userId;
+        if ($value > 0) {
+            $normalizedIds[$value] = true;
+        }
+    }
+    if ($normalizedIds === []) {
+        return [];
+    }
+
+    $params = [];
+    $placeholders = [];
+    foreach (array_keys($normalizedIds) as $index => $userId) {
+        $key = ':accepted_uid_' . $index;
+        $placeholders[] = $key;
+        $params[$key] = $userId;
+    }
+
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT target_user_id, week_start, event_date, reason
+         FROM strike_review_requests
+         WHERE status = "accepted"
+           AND target_user_id IN (' . implode(',', $placeholders) . ')',
+        $params
+    );
+
+    $grouped = [];
+    foreach ($rows as $row) {
+        $targetUserId = (int) ($row['target_user_id'] ?? 0);
+        if ($targetUserId <= 0) {
+            continue;
+        }
+        if (!isset($grouped[$targetUserId])) {
+            $grouped[$targetUserId] = [];
+        }
+        $grouped[$targetUserId][] = $row;
+    }
+
+    return $grouped;
+}
+
+function apply_strike_review_overrides_to_metric(PDO $pdo, array $metric, ?array $acceptedRows = null): array
 {
     $userId = (int) ($metric['user']['id'] ?? 0);
     if ($userId <= 0) {
         return $metric;
     }
 
-    $acceptedRows = db_fetch_all(
-        $pdo,
-        'SELECT week_start, event_date, reason
-         FROM strike_review_requests
-         WHERE target_user_id = :target_user_id AND status = "accepted"',
-        [':target_user_id' => $userId]
-    );
+    if ($acceptedRows === null) {
+        $acceptedRows = db_fetch_all(
+            $pdo,
+            'SELECT week_start, event_date, reason
+             FROM strike_review_requests
+             WHERE target_user_id = :target_user_id AND status = "accepted"',
+            [':target_user_id' => $userId]
+        );
+    }
     if ($acceptedRows === []) {
         return $metric;
     }
@@ -6865,9 +7080,26 @@ function apply_strike_review_overrides_to_metric(PDO $pdo, array $metric): array
 
 function apply_strike_review_overrides_to_metrics(PDO $pdo, array $metricsByUser): array
 {
+    $userIds = [];
+    foreach ($metricsByUser as $metric) {
+        if (!is_array($metric)) {
+            continue;
+        }
+        $userId = (int) ($metric['user']['id'] ?? 0);
+        if ($userId > 0) {
+            $userIds[$userId] = true;
+        }
+    }
+    $acceptedRowsByUser = accepted_strike_review_rows_by_user($pdo, array_keys($userIds));
+
     $adjusted = [];
     foreach ($metricsByUser as $userId => $metric) {
-        $adjusted[$userId] = apply_strike_review_overrides_to_metric($pdo, is_array($metric) ? $metric : []);
+        $normalizedMetric = is_array($metric) ? $metric : [];
+        $metricUserId = (int) ($normalizedMetric['user']['id'] ?? 0);
+        $rowsForUser = $metricUserId > 0
+            ? (array) ($acceptedRowsByUser[$metricUserId] ?? [])
+            : [];
+        $adjusted[$userId] = apply_strike_review_overrides_to_metric($pdo, $normalizedMetric, $rowsForUser);
     }
 
     uasort(
@@ -7539,18 +7771,30 @@ function auto_complete_team_goals(PDO $pdo, int $teamId, array $teamSummary, ?in
     foreach ($activeGoals as $goal) {
         $progressState = goal_team_progress_state($pdo, $goal, $teamSummary);
         $goal = is_array($progressState['goal'] ?? null) ? (array) $progressState['goal'] : $goal;
-        $progressValue = (float) ($progressState['progress_value'] ?? 0.0);
+        $primaryState = is_array($progressState['primary'] ?? null) ? (array) $progressState['primary'] : [];
+        $secondaryState = is_array($progressState['secondary'] ?? null) ? (array) $progressState['secondary'] : [];
+        $progressValue = (float) ($primaryState['progress_value'] ?? ($progressState['progress_value'] ?? 0.0));
+        $secondaryProgressValue = $secondaryState !== []
+            ? (float) ($secondaryState['progress_value'] ?? 0.0)
+            : 0.0;
         $hasStarted = !empty($progressState['has_started']);
+        $targetReached = !empty($progressState['target_reached']);
         $goalId = (int) ($goal['id'] ?? 0);
         if ($goalId <= 0) {
             continue;
         }
 
         if (!$hasStarted) {
-            if (abs((float) ($goal['current_value'] ?? 0)) > 0.00001) {
+            $currentValueNeedsReset = abs((float) ($goal['current_value'] ?? 0)) > 0.00001;
+            $secondaryCurrentNeedsReset = abs((float) ($goal['secondary_current_value'] ?? 0)) > 0.00001;
+            if ($currentValueNeedsReset || $secondaryCurrentNeedsReset) {
                 db_execute(
                     $pdo,
-                    'UPDATE goals SET current_value = 0, updated_at = :updated_at WHERE id = :id AND status = "active"',
+                    'UPDATE goals
+                     SET current_value = 0,
+                         secondary_current_value = 0,
+                         updated_at = :updated_at
+                     WHERE id = :id AND status = "active"',
                     [
                         ':updated_at' => now_iso(),
                         ':id' => $goalId,
@@ -7560,17 +7804,19 @@ function auto_complete_team_goals(PDO $pdo, int $teamId, array $teamSummary, ?in
             continue;
         }
 
-        if (goal_target_reached_from_progress($goal, $progressValue)) {
+        if ($targetReached) {
             db_execute(
                 $pdo,
                 'UPDATE goals
                  SET status = "complete",
                      current_value = :current_value,
+                     secondary_current_value = :secondary_current_value,
                      completed_at = COALESCE(completed_at, :completed_at),
                      updated_at = :updated_at
                  WHERE id = :id AND status = "active"',
                 [
                     ':current_value' => round($progressValue, 2),
+                    ':secondary_current_value' => round($secondaryProgressValue, 2),
                     ':completed_at' => now_iso(),
                     ':updated_at' => now_iso(),
                     ':id' => $goalId,
@@ -7622,9 +7868,14 @@ function auto_complete_team_goals(PDO $pdo, int $teamId, array $teamSummary, ?in
         } else {
             db_execute(
                 $pdo,
-                'UPDATE goals SET current_value = :current_value, updated_at = :updated_at WHERE id = :id AND status = "active"',
+                'UPDATE goals
+                 SET current_value = :current_value,
+                     secondary_current_value = :secondary_current_value,
+                     updated_at = :updated_at
+                 WHERE id = :id AND status = "active"',
                 [
                     ':current_value' => round($progressValue, 2),
+                    ':secondary_current_value' => round($secondaryProgressValue, 2),
                     ':updated_at' => now_iso(),
                     ':id' => $goalId,
                 ]

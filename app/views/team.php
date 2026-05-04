@@ -503,6 +503,13 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                             }
                             $goalTargetType = (string) ($goal['target_type_normalized'] ?? normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom')));
                             $goalCustomUnit = $goalTargetType === 'custom' ? trim((string) ($goal['unit_label'] ?? '')) : '';
+                            $goalSecondaryEnabled = !empty($goal['secondary_enabled']);
+                            $goalSecondaryType = $goalSecondaryEnabled
+                                ? (string) ($goal['secondary_target_type_normalized'] ?? normalize_goal_target_type((string) ($goal['secondary_target_type'] ?? 'custom')))
+                                : 'custom';
+                            $goalSecondaryCustomUnit = $goalSecondaryEnabled && $goalSecondaryType === 'custom'
+                                ? trim((string) ($goal['secondary_unit_label_resolved'] ?? $goal['secondary_unit_label'] ?? ''))
+                                : '';
                             $progressDebug = is_array($goal['progress_debug'] ?? null) ? (array) $goal['progress_debug'] : [];
                             ?>
                             <article class="mini-card team-goal-card">
@@ -516,6 +523,12 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                             <small><?= e(t('goals.target')) ?></small>
                                             <strong><?= e((string) ($goal['target_type_label'] ?? t('common.other'))) ?> · <?= e((string) ($goal['target_display'] ?? '-')) ?></strong>
                                         </span>
+                                        <?php if ($goalSecondaryEnabled): ?>
+                                            <span>
+                                                <small><?= e(t('goals.second_objective')) ?></small>
+                                                <strong><?= e((string) ($goal['secondary_target_type_label'] ?? t('common.other'))) ?> · <?= e((string) ($goal['secondary_target_display'] ?? '-')) ?></strong>
+                                            </span>
+                                        <?php endif; ?>
                                         <?php if ($startDate !== ''): ?>
                                             <span>
                                                 <small><?= e(t('goals.start_date')) ?></small>
@@ -549,6 +562,9 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                         </small>
                                     <?php endif; ?>
                                     <span class="team-goal-progress-text"><?= e((string) ($goal['progress_display'] ?? '0')) ?> / <?= e((string) ($goal['target_display'] ?? '-')) ?></span>
+                                    <?php if ($goalSecondaryEnabled): ?>
+                                        <span class="team-goal-progress-text team-goal-progress-secondary"><?= e((string) ($goal['secondary_progress_display'] ?? '0')) ?> / <?= e((string) ($goal['secondary_target_display'] ?? '-')) ?></span>
+                                    <?php endif; ?>
                                     <?php if ($teamGoalDebugEnabled): ?>
                                         <small class="team-goal-debug" data-goal-debug>
                                             cur <?= e((string) ($progressDebug['current_metric'] ?? '-')) ?>
@@ -579,6 +595,10 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                                 data-goal-target-type="<?= e($goalTargetType) ?>"
                                                 data-goal-target-value="<?= e((string) ($goal['target_value'] ?? '')) ?>"
                                                 data-goal-custom-unit="<?= e($goalCustomUnit) ?>"
+                                                data-goal-secondary-enabled="<?= $goalSecondaryEnabled ? '1' : '0' ?>"
+                                                data-goal-secondary-target-type="<?= e($goalSecondaryType) ?>"
+                                                data-goal-secondary-target-value="<?= e((string) ($goal['secondary_target_value'] ?? '')) ?>"
+                                                data-goal-secondary-custom-unit="<?= e($goalSecondaryCustomUnit) ?>"
                                                 data-goal-reward-text="<?= e($rewardText) ?>"
                                                 data-goal-start-date="<?= e($startDate) ?>"
                                                 data-goal-start-time="<?= e($startTime) ?>"
@@ -727,13 +747,13 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             <div class="confirm-modal-backdrop" data-team-goal-close></div>
             <div class="confirm-modal-card team-goal-modal-card" role="dialog" aria-modal="true" aria-labelledby="team-goal-title">
                 <h3 id="team-goal-title" data-team-goal-modal-title data-title-create="<?= e(t('goals.create_team_challenge')) ?>" data-title-edit="<?= e(t('goals.edit_team_challenge')) ?>"><?= e(t('goals.create_team_challenge')) ?></h3>
-                <form method="post" action="/?page=team" class="stack compact-form" data-team-goal-form>
+                <form method="post" action="/?page=team" class="stack compact-form team-goal-form" data-team-goal-form>
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
                     <input type="hidden" name="redirect_view" value="<?= e($teamView) ?>">
                     <input type="hidden" name="action" value="create_goal" data-team-goal-action>
                     <input type="hidden" name="goal_id" value="" data-team-goal-id>
-                    <label>
+                    <label class="team-goal-form-full">
                         <?= e(t('goals.goal_name')) ?>
                         <input type="text" name="title" placeholder="<?= e(t('goals.team_placeholder')) ?>" required data-goal-title-input>
                     </label>
@@ -756,16 +776,43 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                         <?= e(t('goals.target')) ?>
                         <input type="number" step="0.1" name="target_value" value="" required data-goal-target-input>
                     </label>
-                    <p class="muted small team-goal-form-helper"><?= e(t('goals.progress_starts_zero')) ?></p>
+                    <p class="muted small team-goal-form-helper team-goal-form-full"><?= e(t('goals.progress_starts_zero')) ?></p>
                     <label data-goal-custom-unit-wrap hidden>
                         <?= e(t('goals.custom_unit')) ?>
                         <input type="text" name="custom_unit" maxlength="24" placeholder="<?= e(t('goals.custom_unit_placeholder')) ?>">
                     </label>
-                    <label class="check team-goal-reward-toggle">
+                    <label class="check team-goal-secondary-toggle team-goal-form-full">
+                        <input type="checkbox" name="secondary_enabled" value="1" data-goal-secondary-toggle>
+                        <?= e(t('goals.add_second_objective')) ?>
+                    </label>
+                    <label data-goal-secondary-wrap hidden>
+                        <?= e(t('goals.type')) ?> (<?= e(t('goals.second_objective')) ?>)
+                        <select name="secondary_target_type" data-goal-secondary-type-select>
+                            <option value="steps" data-goal-placeholder="200000" data-goal-lower-better="0"><?= e(t('metric.steps')) ?></option>
+                            <option value="km" data-goal-placeholder="50 km" data-goal-lower-better="0"><?= e(t('metric.distance_km')) ?></option>
+                            <option value="workouts" data-goal-placeholder="12 workouts" data-goal-lower-better="0"><?= e(t('metric.workouts')) ?></option>
+                            <option value="score" data-goal-placeholder="40 pts" data-goal-lower-better="0"><?= e(t('metric.score')) ?></option>
+                            <option value="calories_burned" data-goal-placeholder="12000 kcal" data-goal-lower-better="0"><?= e(t('dashboard.calories_burned')) ?></option>
+                            <option value="calories_consumed" data-goal-placeholder="12000 kcal" data-goal-lower-better="1"><?= e(t('dashboard.calories_consumed')) ?></option>
+                            <option value="penalties" data-goal-placeholder="30 €" data-goal-lower-better="1"><?= e(t('metric.penalty')) ?></option>
+                            <option value="strikes" data-goal-placeholder="3 strikes" data-goal-lower-better="1"><?= e(t('metric.strikes')) ?></option>
+                            <option value="weight" data-goal-placeholder="4 %" data-goal-lower-better="0"><?= e(t('metric.weight')) ?></option>
+                            <option value="custom"><?= e(t('common.other')) ?></option>
+                        </select>
+                    </label>
+                    <label data-goal-secondary-wrap hidden>
+                        <?= e(t('goals.target')) ?> (<?= e(t('goals.second_objective')) ?>)
+                        <input type="number" step="0.1" name="secondary_target_value" value="" data-goal-secondary-target-input>
+                    </label>
+                    <label data-goal-secondary-custom-unit-wrap hidden>
+                        <?= e(t('goals.custom_unit')) ?> (<?= e(t('goals.second_objective')) ?>)
+                        <input type="text" name="secondary_custom_unit" maxlength="24" placeholder="<?= e(t('goals.custom_unit_placeholder')) ?>">
+                    </label>
+                    <label class="check team-goal-reward-toggle team-goal-form-full">
                         <input type="checkbox" name="reward_enabled" value="1" data-goal-reward-toggle>
                         <?= e(t('goals.add_reward')) ?>
                     </label>
-                    <label data-goal-reward-wrap hidden>
+                    <label data-goal-reward-wrap hidden class="team-goal-form-full">
                         <?= e(t('achievements.reward')) ?>
                         <input type="text" name="reward_text" maxlength="120" placeholder="<?= e(t('goals.reward_placeholder')) ?>">
                     </label>
@@ -785,7 +832,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                         <?= e(t('goals.due_time')) ?>
                         <input type="time" name="due_time" data-goal-due-time-input>
                     </label>
-                    <div class="confirm-modal-actions">
+                    <div class="confirm-modal-actions team-goal-form-full">
                         <button class="btn btn-ghost" type="button" data-team-goal-close><?= e(t('common.cancel')) ?></button>
                         <button class="btn btn-primary" type="submit" data-team-goal-submit data-label-create="<?= e(t('common.create')) ?>" data-label-save="<?= e(t('common.save')) ?>"><?= e(t('common.create')) ?></button>
                     </div>
@@ -1231,32 +1278,65 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         const dueTimeInput = goalModal.querySelector('[data-goal-due-time-input]');
         const customUnitWrap = goalModal.querySelector('[data-goal-custom-unit-wrap]');
         const customUnitInput = goalModal.querySelector('input[name="custom_unit"]');
+        const secondaryToggle = goalModal.querySelector('[data-goal-secondary-toggle]');
+        const secondaryWrapNodes = goalModal.querySelectorAll('[data-goal-secondary-wrap]');
+        const secondaryTypeSelect = goalModal.querySelector('[data-goal-secondary-type-select]');
+        const secondaryTargetInput = goalModal.querySelector('[data-goal-secondary-target-input]');
+        const secondaryCustomUnitWrap = goalModal.querySelector('[data-goal-secondary-custom-unit-wrap]');
+        const secondaryCustomUnitInput = goalModal.querySelector('input[name="secondary_custom_unit"]');
         const rewardToggle = goalModal.querySelector('[data-goal-reward-toggle]');
         const rewardWrap = goalModal.querySelector('[data-goal-reward-wrap]');
         const rewardInput = goalModal.querySelector('input[name="reward_text"]');
         const submitButton = goalModal.querySelector('[data-team-goal-submit]');
-        const modalCard = goalModal.querySelector('.confirm-modal-card');
         const defaultPlaceholder = '100';
         let opener = null;
 
-        const updateGoalFormByType = () => {
-            if (!(goalTypeSelect instanceof HTMLSelectElement)) {
+        const updateObjectiveInputs = (typeSelect, targetField, unitWrap, unitInput) => {
+            if (!(typeSelect instanceof HTMLSelectElement)) {
                 return;
             }
-            const selected = goalTypeSelect.selectedOptions.length > 0 ? goalTypeSelect.selectedOptions[0] : null;
-            const isCustom = goalTypeSelect.value === 'custom';
-            if (customUnitWrap instanceof HTMLElement) {
-                customUnitWrap.hidden = !isCustom;
+            const selected = typeSelect.selectedOptions.length > 0 ? typeSelect.selectedOptions[0] : null;
+            const isCustom = typeSelect.value === 'custom';
+            if (unitWrap instanceof HTMLElement) {
+                unitWrap.hidden = !isCustom;
             }
-            if (!isCustom && customUnitInput instanceof HTMLInputElement) {
-                customUnitInput.value = '';
+            if (!isCustom && unitInput instanceof HTMLInputElement) {
+                unitInput.value = '';
             }
-
-            if (targetInput instanceof HTMLInputElement) {
+            if (targetField instanceof HTMLInputElement) {
                 const placeholder = selected instanceof HTMLOptionElement
                     ? String(selected.dataset.goalPlaceholder || '').trim()
                     : '';
-                targetInput.placeholder = placeholder !== '' ? placeholder : defaultPlaceholder;
+                targetField.placeholder = placeholder !== '' ? placeholder : defaultPlaceholder;
+            }
+        };
+
+        const updateGoalFormByType = () => {
+            updateObjectiveInputs(goalTypeSelect, targetInput, customUnitWrap, customUnitInput);
+            updateObjectiveInputs(secondaryTypeSelect, secondaryTargetInput, secondaryCustomUnitWrap, secondaryCustomUnitInput);
+            const secondaryEnabled = secondaryToggle instanceof HTMLInputElement && secondaryToggle.checked;
+            if (!secondaryEnabled && secondaryCustomUnitWrap instanceof HTMLElement) {
+                secondaryCustomUnitWrap.hidden = true;
+            }
+        };
+
+        const updateSecondaryVisibility = () => {
+            const enabled = secondaryToggle instanceof HTMLInputElement && secondaryToggle.checked;
+            secondaryWrapNodes.forEach((node) => {
+                if (node instanceof HTMLElement) {
+                    node.hidden = !enabled;
+                }
+            });
+            if (!enabled) {
+                if (secondaryTargetInput instanceof HTMLInputElement) {
+                    secondaryTargetInput.value = '';
+                }
+                if (secondaryCustomUnitInput instanceof HTMLInputElement) {
+                    secondaryCustomUnitInput.value = '';
+                }
+            }
+            if (secondaryCustomUnitWrap instanceof HTMLElement && !enabled) {
+                secondaryCustomUnitWrap.hidden = true;
             }
         };
 
@@ -1270,43 +1350,10 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             }
         };
 
-        const resetAnchoredPosition = () => {
-            goalModal.classList.remove('team-goal-modal-anchored');
-            if (modalCard instanceof HTMLElement) {
-                modalCard.style.top = '';
-                modalCard.style.left = '';
-            }
-        };
-
-        const applyAnchoredPosition = (trigger) => {
-            resetAnchoredPosition();
-            if (!(trigger instanceof HTMLElement) || !(modalCard instanceof HTMLElement)) {
-                return;
-            }
-            if (!window.matchMedia('(max-width: 768px)').matches) {
-                return;
-            }
-            const triggerRect = trigger.getBoundingClientRect();
-            goalModal.classList.add('team-goal-modal-anchored');
-            window.requestAnimationFrame(() => {
-                const padding = 10;
-                const cardRect = modalCard.getBoundingClientRect();
-                const baseTop = triggerRect.bottom + 8;
-                const baseLeft = triggerRect.left;
-                const maxTop = Math.max(padding, window.innerHeight - padding - cardRect.height);
-                const maxLeft = Math.max(padding, window.innerWidth - padding - cardRect.width);
-                const top = Math.max(padding, Math.min(baseTop, maxTop));
-                const left = Math.max(padding, Math.min(baseLeft, maxLeft));
-                modalCard.style.top = `${top}px`;
-                modalCard.style.left = `${left}px`;
-            });
-        };
-
         const closeModal = () => {
             goalModal.hidden = true;
             goalModal.setAttribute('aria-hidden', 'true');
             goalModal.classList.remove('is-open');
-            resetAnchoredPosition();
             if (opener instanceof HTMLElement) {
                 opener.focus();
             }
@@ -1350,6 +1397,24 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             if (customUnitInput instanceof HTMLInputElement) {
                 customUnitInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalCustomUnit || '').trim() : '';
             }
+            if (secondaryTypeSelect instanceof HTMLSelectElement) {
+                const nextSecondaryType = isEdit && trigger instanceof HTMLElement
+                    ? String(trigger.dataset.goalSecondaryTargetType || '').trim()
+                    : 'steps';
+                const hasSecondaryOption = [...secondaryTypeSelect.options].some((option) => option.value === nextSecondaryType);
+                secondaryTypeSelect.value = hasSecondaryOption ? nextSecondaryType : 'custom';
+            }
+            if (secondaryTargetInput instanceof HTMLInputElement) {
+                secondaryTargetInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalSecondaryTargetValue || '').trim() : '';
+            }
+            if (secondaryCustomUnitInput instanceof HTMLInputElement) {
+                secondaryCustomUnitInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalSecondaryCustomUnit || '').trim() : '';
+            }
+            if (secondaryToggle instanceof HTMLInputElement) {
+                secondaryToggle.checked = isEdit && trigger instanceof HTMLElement
+                    ? String(trigger.dataset.goalSecondaryEnabled || '').trim() === '1'
+                    : false;
+            }
             if (startDateInput instanceof HTMLInputElement) {
                 startDateInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalStartDate || '').trim() : '';
             }
@@ -1381,9 +1446,9 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             goalModal.hidden = false;
             goalModal.setAttribute('aria-hidden', 'false');
             goalModal.classList.add('is-open');
+            updateSecondaryVisibility();
             updateGoalFormByType();
             updateRewardVisibility();
-            applyAnchoredPosition(trigger);
             if (firstInput instanceof HTMLElement) {
                 window.setTimeout(() => firstInput.focus(), 0);
             }
@@ -1399,6 +1464,16 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             goalTypeSelect.addEventListener('change', updateGoalFormByType);
             updateGoalFormByType();
         }
+        if (secondaryTypeSelect instanceof HTMLSelectElement) {
+            secondaryTypeSelect.addEventListener('change', updateGoalFormByType);
+        }
+        if (secondaryToggle instanceof HTMLInputElement) {
+            secondaryToggle.addEventListener('change', () => {
+                updateSecondaryVisibility();
+                updateGoalFormByType();
+            });
+            updateSecondaryVisibility();
+        }
         if (rewardToggle instanceof HTMLInputElement) {
             rewardToggle.addEventListener('change', updateRewardVisibility);
             updateRewardVisibility();
@@ -1407,12 +1482,6 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         window.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && !goalModal.hidden) {
                 closeModal();
-            }
-        });
-
-        window.addEventListener('resize', () => {
-            if (!goalModal.hidden && opener instanceof HTMLElement) {
-                applyAnchoredPosition(opener);
             }
         });
     }

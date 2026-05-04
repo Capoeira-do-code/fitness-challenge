@@ -2,6 +2,70 @@
 
 declare(strict_types=1);
 
+function auth_cookie_secure_flag(): bool
+{
+    return !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+}
+
+function remember_me_cookie_name(array $config): string
+{
+    $cookieName = trim((string) ($config['remember_me_cookie'] ?? 'fitness_challenge_remember'));
+    return $cookieName !== '' ? $cookieName : 'fitness_challenge_remember';
+}
+
+function remember_me_lifetime(array $config): int
+{
+    return max(1, (int) ($config['remember_me_lifetime'] ?? (60 * 60 * 24 * 30)));
+}
+
+function remember_me_cookie_is_enabled(array $config): bool
+{
+    $cookieName = remember_me_cookie_name($config);
+    $cookieValue = strtolower(trim((string) ($_COOKIE[$cookieName] ?? '')));
+    return in_array($cookieValue, ['1', 'true', 'yes', 'on'], true);
+}
+
+function set_remember_me_cookie(array $config, bool $enabled): void
+{
+    $cookieName = remember_me_cookie_name($config);
+    $options = [
+        'path' => '/',
+        'secure' => auth_cookie_secure_flag(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ];
+
+    if ($enabled) {
+        $options['expires'] = time() + remember_me_lifetime($config);
+        setcookie($cookieName, '1', $options);
+        return;
+    }
+
+    $options['expires'] = time() - 42000;
+    setcookie($cookieName, '', $options);
+}
+
+function sync_session_cookie_lifetime(array $config, bool $rememberMe): void
+{
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        return;
+    }
+
+    $options = [
+        'path' => '/',
+        'secure' => auth_cookie_secure_flag(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ];
+    if ($rememberMe) {
+        $options['expires'] = time() + remember_me_lifetime($config);
+    } else {
+        $options['expires'] = 0;
+    }
+
+    setcookie(session_name(), session_id(), $options);
+}
+
 function current_user(PDO $pdo): ?array
 {
     $userId = $_SESSION['user_id'] ?? null;

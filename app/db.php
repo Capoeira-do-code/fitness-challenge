@@ -253,6 +253,12 @@ function initialize_database(PDO $pdo, array $config): void
             target_value REAL,
             baseline_value REAL,
             current_value REAL NOT NULL DEFAULT 0,
+            secondary_enabled INTEGER NOT NULL DEFAULT 0,
+            secondary_target_type TEXT,
+            secondary_target_value REAL,
+            secondary_baseline_value REAL,
+            secondary_current_value REAL NOT NULL DEFAULT 0,
+            secondary_unit_label TEXT,
             unit_label TEXT,
             reward_text TEXT,
             start_date TEXT,
@@ -674,6 +680,12 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'goals', 'start_date', 'TEXT');
     ensure_column($pdo, 'goals', 'start_time', 'TEXT');
     ensure_column($pdo, 'goals', 'due_time', 'TEXT');
+    ensure_column($pdo, 'goals', 'secondary_enabled', 'INTEGER NOT NULL DEFAULT 0');
+    ensure_column($pdo, 'goals', 'secondary_target_type', 'TEXT');
+    ensure_column($pdo, 'goals', 'secondary_target_value', 'REAL');
+    ensure_column($pdo, 'goals', 'secondary_baseline_value', 'REAL');
+    ensure_column($pdo, 'goals', 'secondary_current_value', 'REAL NOT NULL DEFAULT 0');
+    ensure_column($pdo, 'goals', 'secondary_unit_label', 'TEXT');
 
     ensure_column($pdo, 'photo_entries', 'calories', 'REAL');
     ensure_column($pdo, 'photo_entries', 'protein_g', 'REAL');
@@ -788,6 +800,7 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_system_backups_status ON system_backups(status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_challenge_archives_archived_at ON challenge_archives(archived_at DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_requests_target ON strike_review_requests(target_user_id, week_start, event_date)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_requests_target_status ON strike_review_requests(target_user_id, status, week_start, event_date)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_requests_status ON strike_review_requests(status)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_strike_review_requests_event_unique ON strike_review_requests(target_user_id, week_start, event_date, reason)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_votes_request ON strike_review_votes(request_id)');

@@ -18,6 +18,8 @@ return [
     'app_name' => env_value('APP_NAME', 'Fitness Challenge Tracker'),
     'timezone' => env_value('APP_TIMEZONE', 'Europe/Madrid'),
     'session_name' => env_value('SESSION_NAME', 'fitness_challenge_session'),
+    'remember_me_cookie' => env_value('REMEMBER_ME_COOKIE', 'fitness_challenge_remember'),
+    'remember_me_lifetime' => (int) env_value('REMEMBER_ME_LIFETIME', (string) (60 * 60 * 24 * 30)),
     'default_locale' => env_value('APP_DEFAULT_LOCALE', 'en'),
     'db_path' => env_value('DB_PATH', $basePath . '/storage/fitness.sqlite'),
     'upload_dir' => env_value('UPLOAD_DIR', $basePath . '/storage/uploads'),
