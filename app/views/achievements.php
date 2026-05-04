@@ -13,6 +13,11 @@ $ownerName = $achievementScope === 'team'
 $achievementsUrl = (string) ($achievementsUrl ?? '/?page=achievements');
 $backHref = (string) ($backHref ?? '/?page=profile');
 $canDeleteAchievements = !empty($canDeleteAchievements);
+$achievementTotalCount = count($achievementsAll);
+$achievementUnlockedCount = count($unlockedAchievements);
+$achievementLockedCount = count($lockedAchievements);
+$achievementCompletionPct = $achievementTotalCount > 0 ? round(($achievementUnlockedCount / $achievementTotalCount) * 100) : 0.0;
+$achievementCompletionText = number_format($achievementCompletionPct, 0);
 
 $renderAchievementCard = static function (array $achievement) use ($achievementsUrl, $canDeleteAchievements): void {
     $isUnlocked = !empty($achievement['is_unlocked']);
@@ -58,18 +63,22 @@ $renderAchievementCard = static function (array $achievement) use ($achievements
 };
 ?>
 
-<section class="page-hero achievements-page-hero">
+<section class="page-hero achievements-page-hero<?= $achievementScope === 'team' ? ' achievements-page-hero-team' : '' ?>">
     <div>
         <p class="eyebrow"><?= e($achievementScope === 'team' ? t('nav.team') : t('common.user')) ?></p>
         <h1><?= e(t('achievements.all_title')) ?></h1>
-        <p class="muted"><?= e($ownerName) ?></p>
+        <p class="muted"><?= e($ownerName) ?> <span aria-hidden="true">&middot;</span> <?= e($achievementCompletionText) ?>% <?= e(t('achievements.completion')) ?></p>
+        <div class="achievements-page-meter" aria-hidden="true">
+            <span style="width: <?= e((string) max(0, min(100, $achievementCompletionPct))) ?>%"></span>
+        </div>
     </div>
     <a class="btn btn-ghost achievements-back-btn" href="<?= e($backHref) ?>"><?= e(t('common.back')) ?></a>
 </section>
 
 <section class="achievement-summary-strip">
-    <span class="badge"><?= count($unlockedAchievements) ?> <?= e(t('achievements.unlocked')) ?></span>
-    <span class="badge"><?= count($lockedAchievements) ?> <?= e(t('achievements.locked')) ?></span>
+    <span class="achievement-summary-card"><strong><?= $achievementUnlockedCount ?></strong><small><?= e(t('achievements.unlocked')) ?></small></span>
+    <span class="achievement-summary-card"><strong><?= $achievementLockedCount ?></strong><small><?= e(t('achievements.locked')) ?></small></span>
+    <span class="achievement-summary-card"><strong><?= e($achievementCompletionText) ?>%</strong><small><?= e(t('achievements.completion')) ?></small></span>
 </section>
 
 <article class="panel achievements-page-panel">
@@ -78,7 +87,7 @@ $renderAchievementCard = static function (array $achievement) use ($achievements
             <p class="eyebrow"><?= e(t('achievements.title')) ?></p>
             <h2><?= e(t('achievements.unlocked_title')) ?></h2>
         </div>
-        <span class="badge"><?= count($unlockedAchievements) ?></span>
+        <span class="badge"><?= $achievementUnlockedCount ?></span>
     </div>
     <div class="achievement-page-grid">
         <?php foreach ($unlockedAchievements as $achievement): ?>
@@ -96,7 +105,7 @@ $renderAchievementCard = static function (array $achievement) use ($achievements
             <p class="eyebrow"><?= e(t('achievements.progress')) ?></p>
             <h2><?= e(t('achievements.locked_title')) ?></h2>
         </div>
-        <span class="badge"><?= count($lockedAchievements) ?></span>
+        <span class="badge"><?= $achievementLockedCount ?></span>
     </div>
     <div class="achievement-page-grid">
         <?php foreach ($lockedAchievements as $achievement): ?>

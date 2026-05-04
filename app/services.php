@@ -3644,9 +3644,9 @@ function goal_team_progress_state(PDO $pdo, array $goal, array $teamSummary, ?Da
     $combinedProgressPctRaw = (float) ($primaryState['progress_pct_raw'] ?? 0.0);
     $targetReached = !empty($primaryState['target_reached']);
     if (is_array($secondaryState)) {
-        $combinedProgressPctRaw = min(
-            $combinedProgressPctRaw,
-            (float) ($secondaryState['progress_pct_raw'] ?? 0.0)
+        $combinedProgressPctRaw = round(
+            ($combinedProgressPctRaw + (float) ($secondaryState['progress_pct_raw'] ?? 0.0)) / 2,
+            1
         );
         $targetReached = $targetReached && !empty($secondaryState['target_reached']);
     }

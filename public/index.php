@@ -3711,7 +3711,7 @@ if ($page === 'team') {
             ? round(($secondaryProgressValue / $secondaryTargetValue) * 100, 1)
             : 0.0;
         if ($secondaryEnabled) {
-            $progressPctRaw = min($primaryProgressPctRaw, $secondaryProgressPctRaw);
+            $progressPctRaw = round(($primaryProgressPctRaw + $secondaryProgressPctRaw) / 2, 1);
         }
         if ((string) ($goal['status'] ?? '') === 'complete') {
             $progressPctRaw = max(100.0, $progressPctRaw);
@@ -3757,6 +3757,7 @@ if ($page === 'team') {
             'primary_progress_display' => $formatGoalValue($progressValue, $type, $unitLabel),
             'primary_target_display' => $formatGoalValue($targetValue, $type, $unitLabel),
             'primary_progress_pct_raw' => $primaryProgressPctRaw,
+            'primary_progress_pct_visual' => max(0.0, min(100.0, $primaryProgressPctRaw)),
             'secondary_enabled' => $secondaryEnabled,
             'secondary_target_value' => $secondaryTargetValue,
             'secondary_target_type_normalized' => $secondaryType,
@@ -3767,6 +3768,7 @@ if ($page === 'team') {
             'secondary_target_display' => $secondaryEnabled ? $formatGoalValue($secondaryTargetValue, $secondaryType, $secondaryUnitLabel) : null,
             'secondary_baseline_display' => $secondaryBaselineDisplay,
             'secondary_progress_pct_raw' => $secondaryProgressPctRaw,
+            'secondary_progress_pct_visual' => max(0.0, min(100.0, $secondaryProgressPctRaw)),
             'current_metric_value' => $currentMetricValue,
             'baseline_value_numeric' => is_numeric($goalForProgress['baseline_value'] ?? null) ? (float) $goalForProgress['baseline_value'] : null,
             'progress_debug' => [

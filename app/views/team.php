@@ -133,6 +133,24 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         $activeRewardText = trim((string) ($activeChallenge['reward_text'] ?? ''));
         $activeProgressRaw = (float) ($activeChallenge['progress_pct_raw'] ?? 0);
         $activeProgressVisual = (float) ($activeChallenge['progress_pct_visual'] ?? max(0, min(100, $activeProgressRaw)));
+        $activePrimaryProgressRaw = (float) ($activeChallenge['primary_progress_pct_raw'] ?? $activeProgressRaw);
+        $activePrimaryProgressVisual = (float) ($activeChallenge['primary_progress_pct_visual'] ?? max(0, min(100, $activePrimaryProgressRaw)));
+        $activeSecondaryEnabled = !empty($activeChallenge['secondary_enabled']);
+        $activeSecondaryProgressRaw = $activeSecondaryEnabled ? (float) ($activeChallenge['secondary_progress_pct_raw'] ?? 0) : 0.0;
+        $activeSecondaryProgressVisual = $activeSecondaryEnabled
+            ? (float) ($activeChallenge['secondary_progress_pct_visual'] ?? max(0, min(100, $activeSecondaryProgressRaw)))
+            : 0.0;
+        $activePrimaryObjectiveLabel = (string) ($activeChallenge['target_type_label'] ?? t('common.other'));
+        $activeSecondaryObjectiveLabel = $activeSecondaryEnabled
+            ? (string) ($activeChallenge['secondary_target_type_label'] ?? t('common.other'))
+            : '';
+        $activePrimaryObjectiveText = (string) ($activeChallenge['primary_progress_display'] ?? $activeChallenge['progress_display'] ?? '0')
+            . ' / '
+            . (string) ($activeChallenge['primary_target_display'] ?? $activeChallenge['target_display'] ?? '-');
+        $activeSecondaryObjectiveText = $activeSecondaryEnabled
+            ? (string) ($activeChallenge['secondary_progress_display'] ?? '0') . ' / ' . (string) ($activeChallenge['secondary_target_display'] ?? '-')
+            : '';
+        $activeDetailTitleId = 'active-challenge-detail-title-' . (int) ($activeChallenge['id'] ?? 0);
         $activeIsPreStart = !empty($activeChallenge['is_pre_start']);
         $activeIsExpired = (bool) ($activeChallenge['is_expired'] ?? false);
         $activeStatusText = $activeIsExpired
@@ -143,6 +161,8 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             : ($activeIsPreStart ? 'status-pending' : 'status-active');
         $activeStartDate = trim((string) ($activeChallenge['start_date_resolved'] ?? ''));
         $activeStartTime = trim((string) ($activeChallenge['start_time_resolved'] ?? ''));
+        $activeDueDate = trim((string) ($activeChallenge['due_date'] ?? ''));
+        $activeDueTime = trim((string) ($activeChallenge['due_time_resolved'] ?? $activeChallenge['due_time'] ?? ''));
         $activeCountdownLabel = trim((string) ($activeChallenge['countdown_label'] ?? t('team.active_challenge_time_left')));
         $activeCountdownMode = trim((string) ($activeChallenge['countdown_mode'] ?? ($activeIsPreStart ? 'start' : 'end')));
         $countdownDeadlineIso = trim((string) ($activeChallenge['countdown_deadline_iso'] ?? ''));
@@ -165,7 +185,10 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     <p class="eyebrow"><?= e(t('team.active_challenge_title')) ?></p>
                     <h2><?= e((string) ($activeChallenge['title'] ?? t('team.challenges'))) ?></h2>
                 </div>
-                <span class="team-active-challenge-status <?= e($activeStatusClass) ?>" data-active-challenge-status><?= e((string) $activeStatusText) ?></span>
+                <div class="team-active-challenge-head-actions">
+                    <span class="team-active-challenge-status <?= e($activeStatusClass) ?>" data-active-challenge-status><?= e((string) $activeStatusText) ?></span>
+                    <button class="btn btn-ghost small team-active-challenge-detail-btn" type="button" data-team-challenge-detail-open><?= e(t('team.challenge_view_detail')) ?></button>
+                </div>
             </div>
             <div class="team-active-challenge-grid">
                 <div class="team-active-challenge-main">
@@ -176,6 +199,32 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     <div class="goal-progress-wrap team-active-challenge-progress">
                         <div class="goal-progress"><span style="width: <?= e((string) $activeProgressVisual) ?>%"></span></div>
                         <small><?= e($formatPercent($activeProgressRaw)) ?>%</small>
+                    </div>
+                    <div class="team-active-challenge-objectives<?= $activeSecondaryEnabled ? ' has-two' : '' ?>">
+                        <div class="team-active-objective-card">
+                            <div class="team-active-objective-card-head">
+                                <span><?= e(t('team.challenge_primary_objective')) ?></span>
+                                <strong><?= e($activePrimaryObjectiveLabel) ?></strong>
+                            </div>
+                            <small><?= e($activePrimaryObjectiveText) ?></small>
+                            <div class="goal-progress mini-progress">
+                                <span style="width: <?= e((string) $activePrimaryProgressVisual) ?>%"></span>
+                            </div>
+                            <small><?= e($formatPercent($activePrimaryProgressRaw)) ?>%</small>
+                        </div>
+                        <?php if ($activeSecondaryEnabled): ?>
+                            <div class="team-active-objective-card">
+                                <div class="team-active-objective-card-head">
+                                    <span><?= e(t('goals.second_objective')) ?></span>
+                                    <strong><?= e($activeSecondaryObjectiveLabel) ?></strong>
+                                </div>
+                                <small><?= e($activeSecondaryObjectiveText) ?></small>
+                                <div class="goal-progress mini-progress">
+                                    <span style="width: <?= e((string) $activeSecondaryProgressVisual) ?>%"></span>
+                                </div>
+                                <small><?= e($formatPercent($activeSecondaryProgressRaw)) ?>%</small>
+                            </div>
+                        <?php endif; ?>
                     </div>
                     <?php if ($teamGoalDebugEnabled): ?>
                         <small class="team-goal-debug" data-goal-debug>
@@ -196,6 +245,61 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 </div>
             </div>
         </article>
+        <div class="confirm-modal team-challenge-detail-modal" hidden aria-hidden="true" data-team-challenge-detail-modal>
+            <div class="confirm-modal-backdrop" data-team-challenge-detail-close></div>
+            <div class="confirm-modal-card team-challenge-detail-card" role="dialog" aria-modal="true" aria-labelledby="<?= e($activeDetailTitleId) ?>">
+                <button class="achievement-info-close" type="button" aria-label="<?= e(t('common.close_action')) ?>" data-team-challenge-detail-close>&times;</button>
+                <div class="team-challenge-detail-head">
+                    <div>
+                        <p class="eyebrow"><?= e(t('team.challenge_detail')) ?></p>
+                        <h3 id="<?= e($activeDetailTitleId) ?>"><?= e((string) ($activeChallenge['title'] ?? t('team.challenges'))) ?></h3>
+                    </div>
+                    <span class="team-active-challenge-status <?= e($activeStatusClass) ?>" data-active-challenge-status><?= e((string) $activeStatusText) ?></span>
+                </div>
+                <div class="team-challenge-detail-average">
+                    <div>
+                        <strong><?= e(t('team.challenge_average_progress')) ?></strong>
+                        <small><?= e($formatPercent($activeProgressRaw)) ?>%</small>
+                    </div>
+                    <div class="goal-progress-wrap team-active-challenge-progress">
+                        <div class="goal-progress"><span style="width: <?= e((string) $activeProgressVisual) ?>%"></span></div>
+                    </div>
+                </div>
+                <div class="team-challenge-detail-objectives<?= $activeSecondaryEnabled ? ' has-two' : '' ?>">
+                    <article class="team-challenge-detail-objective">
+                        <div class="team-active-objective-card-head">
+                            <span><?= e(t('team.challenge_primary_objective')) ?></span>
+                            <strong><?= e($activePrimaryObjectiveLabel) ?></strong>
+                        </div>
+                        <p><?= e($activePrimaryObjectiveText) ?></p>
+                        <div class="goal-progress-wrap">
+                            <div class="goal-progress"><span style="width: <?= e((string) $activePrimaryProgressVisual) ?>%"></span></div>
+                            <small><?= e($formatPercent($activePrimaryProgressRaw)) ?>%</small>
+                        </div>
+                    </article>
+                    <?php if ($activeSecondaryEnabled): ?>
+                        <article class="team-challenge-detail-objective">
+                            <div class="team-active-objective-card-head">
+                                <span><?= e(t('goals.second_objective')) ?></span>
+                                <strong><?= e($activeSecondaryObjectiveLabel) ?></strong>
+                            </div>
+                            <p><?= e($activeSecondaryObjectiveText) ?></p>
+                            <div class="goal-progress-wrap">
+                                <div class="goal-progress"><span style="width: <?= e((string) $activeSecondaryProgressVisual) ?>%"></span></div>
+                                <small><?= e($formatPercent($activeSecondaryProgressRaw)) ?>%</small>
+                            </div>
+                        </article>
+                    <?php endif; ?>
+                </div>
+                <div class="team-active-challenge-meta team-challenge-detail-meta">
+                    <span><strong><?= e(t('goals.start_date')) ?></strong><small><?= $activeStartDate !== '' ? e(format_date_eu($activeStartDate)) . ($activeStartTime !== '' ? ' ' . e($activeStartTime) : '') : '-' ?></small></span>
+                    <span><strong><?= e(t('goals.due_date')) ?></strong><small><?= $activeDueDate !== '' ? e(format_date_eu($activeDueDate)) . ($activeDueTime !== '' ? ' ' . e($activeDueTime) : '') : '-' ?></small></span>
+                    <span><strong><?= e(t('team.active_challenge_reward')) ?></strong><small><?= e($activeRewardText !== '' ? $activeRewardText : t('team.active_challenge_reward_none')) ?></small></span>
+                    <span><strong><?= e(t('team.active_challenge_status')) ?></strong><small data-active-challenge-status-text><?= e((string) $activeStatusText) ?></small></span>
+                    <span><strong data-active-challenge-countdown-label><?= e($activeCountdownLabel) ?></strong><small data-active-challenge-countdown data-challenge-countdown data-countdown-mode="<?= e($activeCountdownMode) ?>" data-countdown-pending-label="<?= e(t('team.active_challenge_starts_in')) ?>" data-countdown-active-label="<?= e(t('team.active_challenge_started')) ?>" data-countdown-expired-label="<?= e(t('goals.expired')) ?>"<?= $countdownNextDeadlineIso !== '' ? ' data-countdown-next-deadline="' . e($countdownNextDeadlineIso) . '"' : '' ?><?= $countdownDeadlineIso !== '' ? ' data-deadline="' . e($countdownDeadlineIso) . '"' : '' ?>><?= e($countdownText) ?></small></span>
+                </div>
+            </div>
+        </div>
         <?php
         $activeChallengeHero = (string) ob_get_clean();
         ?>
@@ -518,17 +622,19 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                         <strong><?= e((string) $goal['title']) ?></strong>
                                         <span class="team-goal-status status-<?= e($statusBadgeClass) ?>"><?= e($statusBadgeText) ?></span>
                                     </div>
-                                    <div class="team-goal-meta-grid">
-                                        <span>
+                                    <div class="team-goal-objective-grid<?= $goalSecondaryEnabled ? ' has-two' : '' ?>">
+                                        <span class="team-goal-objective-pill">
                                             <small><?= e(t('goals.target')) ?></small>
                                             <strong><?= e((string) ($goal['target_type_label'] ?? t('common.other'))) ?> · <?= e((string) ($goal['target_display'] ?? '-')) ?></strong>
                                         </span>
                                         <?php if ($goalSecondaryEnabled): ?>
-                                            <span>
+                                            <span class="team-goal-objective-pill">
                                                 <small><?= e(t('goals.second_objective')) ?></small>
                                                 <strong><?= e((string) ($goal['secondary_target_type_label'] ?? t('common.other'))) ?> · <?= e((string) ($goal['secondary_target_display'] ?? '-')) ?></strong>
                                             </span>
                                         <?php endif; ?>
+                                    </div>
+                                    <div class="team-goal-meta-grid">
                                         <?php if ($startDate !== ''): ?>
                                             <span>
                                                 <small><?= e(t('goals.start_date')) ?></small>
@@ -1158,9 +1264,9 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
     const countdownNodes = document.querySelectorAll('[data-challenge-countdown][data-deadline]');
     if (countdownNodes.length > 0) {
         const panelNode = document.querySelector('[data-active-challenge-panel]');
-        const statusNode = document.querySelector('[data-active-challenge-status]');
-        const statusTextNode = document.querySelector('[data-active-challenge-status-text]');
-        const countdownLabelNode = document.querySelector('[data-active-challenge-countdown-label]');
+        const statusNodes = document.querySelectorAll('[data-active-challenge-status]');
+        const statusTextNodes = document.querySelectorAll('[data-active-challenge-status-text]');
+        const countdownLabelNodes = document.querySelectorAll('[data-active-challenge-countdown-label]');
         const activeCountdownNode = document.querySelector('[data-active-challenge-countdown][data-deadline]');
         const zeroText = '0d 00h 00m 00s';
         const countdownPendingTitle = <?= json_encode(t('team.active_challenge_starts_in')) ?>;
@@ -1206,19 +1312,30 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 panelNode.classList.toggle('is-expired', isExpired);
                 panelNode.classList.toggle('is-pending', isPending);
             }
-            if (statusNode instanceof HTMLElement) {
+            statusNodes.forEach((statusNode) => {
+                if (!(statusNode instanceof HTMLElement)) {
+                    return;
+                }
                 statusNode.classList.toggle('status-expired', isExpired);
                 statusNode.classList.toggle('status-pending', isPending);
                 statusNode.classList.toggle('status-active', !isExpired && !isPending);
                 if (label) {
                     statusNode.textContent = label;
                 }
+            });
+            if (label) {
+                statusTextNodes.forEach((statusTextNode) => {
+                    if (statusTextNode instanceof HTMLElement) {
+                        statusTextNode.textContent = label;
+                    }
+                });
             }
-            if (statusTextNode instanceof HTMLElement && label) {
-                statusTextNode.textContent = label;
-            }
-            if (countdownLabelNode instanceof HTMLElement && activeCountdownNode instanceof HTMLElement) {
-                countdownLabelNode.textContent = isPending ? countdownPendingTitle : countdownActiveTitle;
+            if (activeCountdownNode instanceof HTMLElement) {
+                countdownLabelNodes.forEach((countdownLabelNode) => {
+                    if (countdownLabelNode instanceof HTMLElement) {
+                        countdownLabelNode.textContent = isPending ? countdownPendingTitle : countdownActiveTitle;
+                    }
+                });
             }
         };
         const tickCountdown = () => {
@@ -1261,8 +1378,52 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         window.setInterval(tickCountdown, 1000);
     }
 
+    const challengeDetailModal = document.querySelector('[data-team-challenge-detail-modal]');
+    if (challengeDetailModal instanceof HTMLElement) {
+        if (challengeDetailModal.parentElement !== document.body) {
+            document.body.appendChild(challengeDetailModal);
+        }
+        const detailOpenButtons = document.querySelectorAll('[data-team-challenge-detail-open]');
+        const detailCloseButtons = challengeDetailModal.querySelectorAll('[data-team-challenge-detail-close]');
+        let detailOpener = null;
+        const closeChallengeDetail = () => {
+            challengeDetailModal.hidden = true;
+            challengeDetailModal.setAttribute('aria-hidden', 'true');
+            challengeDetailModal.classList.remove('is-open');
+            if (detailOpener instanceof HTMLElement) {
+                detailOpener.focus();
+            }
+            detailOpener = null;
+        };
+        const openChallengeDetail = (trigger) => {
+            detailOpener = trigger instanceof HTMLElement ? trigger : null;
+            challengeDetailModal.hidden = false;
+            challengeDetailModal.setAttribute('aria-hidden', 'false');
+            window.requestAnimationFrame(() => challengeDetailModal.classList.add('is-open'));
+        };
+        detailOpenButtons.forEach((button) => {
+            button.addEventListener('click', () => openChallengeDetail(button));
+        });
+        detailCloseButtons.forEach((button) => {
+            button.addEventListener('click', closeChallengeDetail);
+        });
+        challengeDetailModal.addEventListener('click', (event) => {
+            if (event.target === challengeDetailModal) {
+                closeChallengeDetail();
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !challengeDetailModal.hidden) {
+                closeChallengeDetail();
+            }
+        });
+    }
+
     const goalModal = document.querySelector('[data-team-goal-modal]');
     if (goalModal instanceof HTMLElement) {
+        if (goalModal.parentElement !== document.body) {
+            document.body.appendChild(goalModal);
+        }
         const openButtons = document.querySelectorAll('[data-team-goal-open]');
         const closeButtons = goalModal.querySelectorAll('[data-team-goal-close]');
         const goalForm = goalModal.querySelector('[data-team-goal-form]');

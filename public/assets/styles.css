@@ -13,6 +13,10 @@
     --good: #19a974;
     --bad: #df4c43;
     --shadow: 0 16px 38px rgba(23, 33, 43, 0.08);
+    --glass: rgba(255, 255, 255, 0.72);
+    --glass-strong: rgba(255, 255, 255, 0.88);
+    --glass-border: rgba(255, 255, 255, 0.58);
+    --glass-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
     --radius: 8px;
     --mobile-bottom-nav-height: 0px;
     --mobile-fab-size: 56px;
@@ -260,13 +264,15 @@ img.settings-avatar-preview {
     top: calc(100% + 0.55rem);
     z-index: 180;
     display: grid;
-    gap: 0.7rem;
+    gap: 0.75rem;
     width: min(420px, calc(100vw - 1.5rem));
     padding: 0.9rem;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    background: rgba(255, 255, 255, 0.98);
-    box-shadow: var(--shadow);
+    border: 1px solid var(--glass-border);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 20px 48px rgba(15, 23, 42, 0.14);
+    backdrop-filter: blur(18px) saturate(145%);
+    -webkit-backdrop-filter: blur(18px) saturate(145%);
 }
 
 .team-layout-editor {
@@ -1307,19 +1313,21 @@ textarea {
     align-items: center;
     justify-content: center;
     gap: 0.45rem;
-    border: 0;
-    border-radius: var(--radius);
+    border: 1px solid transparent;
+    border-radius: 12px;
     padding: 0.72rem 0.95rem;
-    background: #e5eeeb;
+    background: rgba(229, 238, 235, 0.82);
     color: var(--ink);
     cursor: pointer;
     font-weight: 800;
     text-decoration: none;
-    transition: transform 0.15s ease, background 0.2s ease, opacity 0.2s ease;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
+    transition: transform 0.15s ease, background 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .btn:hover {
     transform: translateY(-1px);
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
 }
 
 .btn:disabled {
@@ -1329,7 +1337,9 @@ textarea {
 }
 
 .btn.btn-primary {
-    background: var(--primary);
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent),
+        var(--primary);
     color: #fff;
 }
 
@@ -1343,8 +1353,10 @@ textarea {
 }
 
 .btn.btn-ghost {
-    background: #fff;
-    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.74);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 
 .btn.small {
@@ -2404,8 +2416,12 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 
 .team-active-challenge-panel {
     background:
-        linear-gradient(120deg, rgba(20, 163, 139, 0.14), rgba(59, 130, 246, 0.08)),
-        #fff;
+        linear-gradient(120deg, rgba(20, 163, 139, 0.16), rgba(59, 130, 246, 0.08)),
+        var(--glass-strong);
+    border-color: rgba(255, 255, 255, 0.7);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(18px) saturate(145%);
+    -webkit-backdrop-filter: blur(18px) saturate(145%);
 }
 
 .team-active-challenge-panel.is-expired {
@@ -2422,6 +2438,20 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 
 .team-active-challenge-head {
     align-items: center;
+}
+
+.team-active-challenge-head-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.team-active-challenge-detail-btn {
+    background: rgba(255, 255, 255, 0.62);
+    border-color: rgba(15, 23, 42, 0.08);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
 }
 
 .team-active-challenge-status {
@@ -2457,7 +2487,7 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 
 .team-active-challenge-main {
     display: grid;
-    gap: 0.5rem;
+    gap: 0.65rem;
 }
 
 .team-active-challenge-values {
@@ -2482,6 +2512,64 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     gap: 0.35rem;
 }
 
+.team-active-challenge-objectives,
+.team-challenge-detail-objectives {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+}
+
+.team-active-challenge-objectives.has-two,
+.team-challenge-detail-objectives.has-two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.team-active-objective-card,
+.team-challenge-detail-objective {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 0;
+    padding: 0.62rem 0.7rem;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.66);
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+}
+
+.team-active-objective-card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.team-active-objective-card-head span {
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.team-active-objective-card-head strong {
+    min-width: 0;
+    color: #0f172a;
+    font-size: 0.88rem;
+    overflow-wrap: anywhere;
+}
+
+.team-active-objective-card small,
+.team-challenge-detail-objective p {
+    margin: 0;
+    color: #334155;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.mini-progress {
+    height: 7px;
+}
+
 .team-active-challenge-meta {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2491,10 +2579,10 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 .team-active-challenge-meta > span {
     display: grid;
     gap: 0.15rem;
-    border: 1px solid var(--line);
-    border-radius: 10px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 12px;
     padding: 0.45rem 0.55rem;
-    background: rgba(255, 255, 255, 0.86);
+    background: rgba(255, 255, 255, 0.68);
 }
 
 .team-active-challenge-meta strong {
@@ -2509,6 +2597,55 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     font-size: 0.88rem;
     color: #0f172a;
     line-height: 1.25;
+}
+
+.confirm-modal-card.team-challenge-detail-card {
+    width: min(94vw, 760px);
+    gap: 0.9rem;
+    padding: 1.15rem;
+}
+
+.team-challenge-detail-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: start;
+    padding-right: 2rem;
+}
+
+.team-challenge-detail-head h3 {
+    margin: 0;
+}
+
+.team-challenge-detail-average {
+    display: grid;
+    gap: 0.45rem;
+    padding: 0.85rem;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 16px;
+    background:
+        linear-gradient(135deg, rgba(20, 163, 139, 0.16), rgba(255, 255, 255, 0.58)),
+        rgba(255, 255, 255, 0.62);
+}
+
+.team-challenge-detail-average > div:first-child {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    align-items: baseline;
+}
+
+.team-challenge-detail-average strong {
+    color: #0f172a;
+}
+
+.team-challenge-detail-average small {
+    color: var(--muted);
+    font-weight: 800;
+}
+
+.team-challenge-detail-meta {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .team-goals-list {
@@ -2654,20 +2791,47 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.75rem;
-    border: 1px solid var(--line);
-    background: #fbfdfc;
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(247, 253, 250, 0.72)),
+        rgba(255, 255, 255, 0.74);
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+    backdrop-filter: blur(14px) saturate(135%);
+    -webkit-backdrop-filter: blur(14px) saturate(135%);
     align-items: start;
 }
 
 .team-goal-main {
     display: grid;
-    gap: 0.25rem;
+    gap: 0.35rem;
 }
 
+.team-goal-objective-grid,
 .team-goal-meta-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.42rem;
+}
+
+.team-goal-objective-grid {
+    grid-template-columns: 1fr;
+}
+
+.team-goal-objective-grid.has-two,
+.team-goal-meta-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.team-goal-objective-pill {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+    padding: 0.68rem 0.78rem;
+    border: 1px solid rgba(20, 163, 139, 0.18);
+    border-radius: 14px;
+    background:
+        linear-gradient(135deg, rgba(20, 163, 139, 0.12), rgba(255, 255, 255, 0.7)),
+        rgba(255, 255, 255, 0.76);
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.04);
 }
 
 .team-goal-meta-grid > span {
@@ -2675,11 +2839,12 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     gap: 0.08rem;
     min-width: 0;
     padding: 0.38rem 0.46rem;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: #fff;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.72);
 }
 
+.team-goal-objective-pill small,
 .team-goal-meta-grid small {
     color: var(--muted);
     font-size: 0.68rem;
@@ -2687,6 +2852,7 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     text-transform: uppercase;
 }
 
+.team-goal-objective-pill strong,
 .team-goal-meta-grid strong,
 .team-goal-progress-text {
     min-width: 0;
@@ -2828,9 +2994,9 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     margin-top: -0.15rem;
 }
 
-.team-goal-modal-card {
+.confirm-modal-card.team-goal-modal-card {
     width: min(94vw, 860px);
-    max-height: calc(100vh - 2rem);
+    max-height: calc(100dvh - 2rem);
     overflow: auto;
     padding: 1.1rem 1.1rem 1rem;
 }
@@ -3490,8 +3656,9 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     z-index: 320;
     display: none;
     place-items: center;
-    padding: 0.8rem;
+    padding: clamp(0.85rem, 2.2vw, 1.4rem);
     overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .confirm-modal:not([hidden]) {
@@ -3503,20 +3670,28 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 }
 
 .confirm-modal-backdrop {
-    position: absolute;
+    position: fixed;
     inset: 0;
-    background: rgba(15, 23, 42, 0.45);
+    background: rgba(15, 23, 42, 0.28);
+    backdrop-filter: blur(13px) saturate(145%);
+    -webkit-backdrop-filter: blur(13px) saturate(145%);
 }
 
 .confirm-modal-card {
     position: relative;
     z-index: 1;
     width: min(92vw, 340px);
+    max-height: calc(100dvh - 2rem);
+    overflow: auto;
     padding: 1rem;
     border-radius: var(--radius);
-    border: 1px solid var(--line);
-    background: #fff;
-    box-shadow: var(--shadow);
+    border: 1px solid var(--glass-border);
+    background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.72)),
+        var(--glass);
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+    backdrop-filter: blur(22px) saturate(150%);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
     display: grid;
     gap: 0.9rem;
 }
@@ -3748,19 +3923,22 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     right: 0;
     top: calc(100% + 0.35rem);
     z-index: 8;
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 0.35rem;
-    box-shadow: 0 10px 22px rgba(20, 30, 40, 0.16);
+    background: rgba(255, 255, 255, 0.86);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 14px;
+    padding: 0.42rem;
+    box-shadow: 0 16px 34px rgba(15, 23, 42, 0.14);
+    backdrop-filter: blur(16px) saturate(145%);
+    -webkit-backdrop-filter: blur(16px) saturate(145%);
     min-width: 170px;
     display: grid;
-    gap: 0.2rem;
+    gap: 0.32rem;
 }
 
 .photo-post-menu-panel .btn {
     justify-content: flex-start;
     width: 100%;
+    min-height: 34px;
 }
 
 .photo-post-menu-panel form {
@@ -4727,6 +4905,9 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     .workout-row,
     .team-metric-detail-grid,
     .team-active-challenge-meta,
+    .team-active-challenge-objectives.has-two,
+    .team-challenge-detail-objectives.has-two,
+    .team-challenge-detail-meta,
     .team-member-summary,
     .team-member-stat-grid,
     .week-day-primary,
@@ -5236,19 +5417,29 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
         padding: 0.1rem 0.42rem;
     }
 
+    .team-goal-objective-grid,
+    .team-goal-objective-grid.has-two,
     .team-goal-meta-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0.36rem;
     }
 
+    .team-goal-objective-grid,
+    .team-goal-objective-grid.has-two {
+        grid-template-columns: 1fr;
+    }
+
+    .team-goal-objective-pill,
     .team-goal-meta-grid > span {
         padding: 0.34rem 0.4rem;
     }
 
+    .team-goal-objective-pill small,
     .team-goal-meta-grid small {
         font-size: 0.62rem;
     }
 
+    .team-goal-objective-pill strong,
     .team-goal-meta-grid strong,
     .team-goal-progress-text {
         font-size: 0.78rem;
@@ -5266,9 +5457,9 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
         grid-column: auto;
     }
 
-    .team-goal-modal-card {
+    .confirm-modal-card.team-goal-modal-card {
         width: min(96vw, 560px);
-        max-height: calc(100vh - 1rem);
+        max-height: calc(100dvh - 1rem);
         padding: 0.9rem;
     }
 
@@ -5418,6 +5609,29 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     min-height: 188px;
     height: 188px;
     padding-right: 2.5rem;
+    border-color: rgba(255, 255, 255, 0.68);
+    background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(247, 253, 250, 0.7)),
+        rgba(255, 255, 255, 0.72);
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.07);
+    backdrop-filter: blur(12px) saturate(135%);
+    -webkit-backdrop-filter: blur(12px) saturate(135%);
+}
+
+.achievement-list-card.is-locked {
+    background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(241, 245, 249, 0.7)),
+        rgba(255, 255, 255, 0.66);
+}
+
+.team-achievements-panel .achievement-grid-collapsible {
+    --achievement-panel-card-height: 150px;
+    --achievement-panel-grid-gap: 0.7rem;
+    max-height: calc((var(--achievement-panel-card-height) * 2) + var(--achievement-panel-grid-gap));
+}
+
+.team-achievements-panel .achievement-grid-collapsible.expanded {
+    max-height: none;
 }
 
 .achievement-card .achievement-visual {
@@ -5525,29 +5739,102 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     justify-content: space-between;
     gap: 1rem;
     margin-bottom: 1rem;
+    padding: 1rem;
+    border: 1px solid var(--glass-border);
+    border-radius: 22px;
+    background:
+        radial-gradient(circle at top left, rgba(20, 163, 139, 0.18), transparent 42%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.68));
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.1);
+    backdrop-filter: blur(18px) saturate(145%);
+    -webkit-backdrop-filter: blur(18px) saturate(145%);
 }
 
 .achievements-back-btn {
     align-self: flex-start;
 }
 
+.achievements-page-meter {
+    width: min(360px, 100%);
+    height: 9px;
+    margin-top: 0.75rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.08);
+}
+
+.achievements-page-meter span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--primary), var(--coral));
+}
+
 .achievement-summary-strip {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.7rem;
     margin-bottom: 1rem;
+}
+
+.achievement-summary-card {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+    padding: 0.85rem 0.95rem;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.74);
+    box-shadow: 0 12px 26px rgba(15, 23, 42, 0.06);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+.achievement-summary-card strong {
+    color: #0f172a;
+    font-size: 1.35rem;
+    line-height: 1;
+}
+
+.achievement-summary-card small {
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
 
 .achievement-page-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 0.75rem;
+    gap: 0.85rem;
 }
 
 .achievement-toggle-wrap {
     display: flex;
     justify-content: flex-end;
     margin-top: 0.75rem;
+}
+
+@media (max-width: 700px) {
+    .achievement-page-hero {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .achievement-summary-strip {
+        grid-template-columns: 1fr;
+    }
+
+    .team-active-challenge-head,
+    .team-challenge-detail-head {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .team-active-challenge-head-actions {
+        justify-content: flex-start;
+    }
 }
 
 .achievement-info-modal-card {
