@@ -4575,6 +4575,7 @@ if ($page === 'penalties') {
         $rangeSummary['total_failures'] += $totalFailures;
         $rangeSummary['net_strikes'] += $netStrikes;
         $penaltyRows[] = [
+            'user_id' => (int) ($selectedMetric['user']['id'] ?? 0),
             'week_start' => (string) ($weekRow['week_start'] ?? ''),
             'week_end' => (string) ($weekRow['week_end'] ?? ''),
             'status' => (string) ($weekRow['status'] ?? ''),
@@ -4755,6 +4756,145 @@ if ($page === 'dashboard') {
         $selectedWeekStart = $defaultWeekStart;
     }
     $dashboardMetricView = $dashboardView === 'total' ? 'total' : $selectedWeekStart;
+    $challengeStartObj = new DateTimeImmutable((string) $settings['challenge_start']);
+    $challengeConfiguredEnd = new DateTimeImmutable((string) $settings['challenge_end']);
+    $todayObj = new DateTimeImmutable('today');
+    $challengeEndObj = $challengeConfiguredEnd > $todayObj ? $todayObj : $challengeConfiguredEnd;
+    if ($challengeEndObj < $challengeStartObj) {
+        $challengeEndObj = $challengeStartObj;
+    }
+
+    $analyticsPeriod = (string) ($_GET['analytics_period'] ?? 'current_week');
+    if (!in_array($analyticsPeriod, ['current_week', 'week', 'month', 'total'], true)) {
+        $analyticsPeriod = 'current_week';
+    }
+    $analyticsWeek = $normalizeDashboardWeekView((string) ($_GET['analytics_week'] ?? $selectedWeekStart), $selectedWeekStart);
+    if (!in_array($analyticsWeek, $weekOptions, true) && $weekOptions !== []) {
+        $analyticsWeek = $selectedWeekStart;
+    }
+    $analyticsMonth = (string) ($_GET['analytics_month'] ?? substr($selectedWeekStart, 0, 7));
+    if (!preg_match('/^\d{4}-\d{2}$/', $analyticsMonth)) {
+        $analyticsMonth = substr($selectedWeekStart, 0, 7);
+    }
+    try {
+        if ($analyticsPeriod === 'total') {
+            $analyticsStartObj = $challengeStartObj;
+            $analyticsEndObj = $challengeEndObj;
+        } elseif ($analyticsPeriod === 'month') {
+            $analyticsStartObj = new DateTimeImmutable($analyticsMonth . '-01');
+            $analyticsEndObj = $analyticsStartObj->modify('last day of this month');
+        } else {
+            $analyticsBaseWeek = $analyticsPeriod === 'week' ? $analyticsWeek : $selectedWeekStart;
+            $analyticsStartObj = new DateTimeImmutable($analyticsBaseWeek);
+            $analyticsEndObj = $analyticsStartObj->modify('+6 days');
+        }
+    } catch (Throwable) {
+        $analyticsStartObj = new DateTimeImmutable($selectedWeekStart);
+        $analyticsEndObj = $analyticsStartObj->modify('+6 days');
+        $analyticsPeriod = 'current_week';
+    }
+    if ($analyticsStartObj < $challengeStartObj) {
+        $analyticsStartObj = $challengeStartObj;
+    }
+    if ($analyticsEndObj > $challengeEndObj) {
+        $analyticsEndObj = $challengeEndObj;
+    }
+    if ($analyticsEndObj < $analyticsStartObj) {
+        $analyticsEndObj = $analyticsStartObj;
+    }
+    $analyticsStartDate = $analyticsStartObj->format('Y-m-d');
+    $analyticsEndDate = $analyticsEndObj->format('Y-m-d');
+    $analyticsSlide = (string) ($_GET['analytics_slide'] ?? 'activity');
+    if (!in_array($analyticsSlide, ['activity', 'calories_body', 'comparison'], true)) {
+        $analyticsSlide = 'activity';
+    }
+
+    $analyticsSnapshotForRange = static function (array $metric, string $startDate, string $endDate): array {
+        $weeklyRows = array_values((array) ($metric['weekly'] ?? []));
+        $weightProgress = null;
+        if (array_key_exists('weight_progress_pct', $metric) && $metric['weight_progress_pct'] !== null && is_numeric($metric['weight_progress_pct'])) {
+            $weightProgress = (float) $metric['weight_progress_pct'];
+        }
+        $rangeRows = array_values(array_filter(
+            $weeklyRows,
+            static function (array $row) use ($startDate, $endDate): bool {
+                $weekStart = (string) ($row['week_start'] ?? '');
+                $weekEnd = (string) ($row['week_end'] ?? $weekStart);
+
+                return $weekStart !== '' && $weekStart <= $endDate && $weekEnd >= $startDate;
+            }
+        ));
+        if ($rangeRows === []) {
+            return [
+                'steps' => 0,
+                'distance_km' => 0.0,
+                'workouts' => 0,
+                'workout_target' => 0,
+                'score' => 0.0,
+                'strikes' => 0,
+                'penalty' => 0.0,
+                'weight_progress' => $weightProgress,
+                'step_completion_pct' => 0.0,
+                'workout_completion_pct' => 0.0,
+                'discipline_score' => 100.0,
+                'score_components' => score_components_from_progress(0.0, 0.0, 100.0, $weightProgress),
+            ];
+        }
+
+        $steps = 0;
+        $distance = 0.0;
+        $workouts = 0;
+        $workoutTarget = 0;
+        $stepRequired = 0;
+        $stepSuccess = 0;
+        $strikes = 0;
+        $warnings = 0;
+        $penalty = 0.0;
+        foreach ($rangeRows as $row) {
+            $steps += (int) ($row['steps'] ?? 0);
+            $distance += (float) ($row['km'] ?? 0);
+            $workoutTarget += max(0, (int) ($row['workout_target_week'] ?? 0));
+            $workouts += array_key_exists('workout_success_week', $row)
+                ? max(0, (int) ($row['workout_success_week'] ?? 0))
+                : max(0, (int) ($row['workout_target_week'] ?? 0) - (int) ($row['workout_failures'] ?? 0));
+            $weekStepRequired = max(
+                0,
+                (int) ($row['step_days_required_week'] ?? ((int) ($row['step_days_success_week'] ?? 0) + (int) ($row['step_failures'] ?? 0)))
+            );
+            $stepRequired += $weekStepRequired;
+            $stepSuccess += max(
+                0,
+                min($weekStepRequired, (int) ($row['step_days_success_week'] ?? ($weekStepRequired - (int) ($row['step_failures'] ?? 0))))
+            );
+            $strikes += max(
+                0,
+                (int) ($row['total_failures'] ?? ((int) ($row['step_failures'] ?? 0) + (int) ($row['workout_failures'] ?? 0)))
+                - (int) ($row['strike_reduction'] ?? 0)
+            );
+            $warnings += max(0, (int) ($row['skip_warnings'] ?? 0));
+            $penalty += max(0.0, (float) ($row['penalty'] ?? 0));
+        }
+
+        $stepCompletionPct = $stepRequired > 0 ? round(($stepSuccess / $stepRequired) * 100, 1) : 0.0;
+        $workoutCompletionPct = $workoutTarget > 0 ? round(($workouts / $workoutTarget) * 100, 1) : 0.0;
+        $disciplineScore = max(0.0, 100.0 - min(100.0, ($strikes * 10) + ($warnings * 3)));
+        $scoreComponents = score_components_from_progress($stepCompletionPct, $workoutCompletionPct, $disciplineScore, $weightProgress);
+
+        return [
+            'steps' => $steps,
+            'distance_km' => round($distance, 2),
+            'workouts' => $workouts,
+            'workout_target' => $workoutTarget,
+            'score' => score_value_from_components($scoreComponents),
+            'strikes' => $strikes,
+            'penalty' => round($penalty, 2),
+            'weight_progress' => $weightProgress,
+            'step_completion_pct' => $stepCompletionPct,
+            'workout_completion_pct' => $workoutCompletionPct,
+            'discipline_score' => round($disciplineScore, 1),
+            'score_components' => $scoreComponents,
+        ];
+    };
     $selectedMetricSnapshot = metric_snapshot_for_view($selectedMetric, $dashboardMetricView);
     $snapshotWorkoutTarget = max(0, (int) ($selectedMetricSnapshot['workout_target'] ?? 0));
     $snapshotWorkoutSuccess = max(0, (int) ($selectedMetricSnapshot['workouts'] ?? 0));
@@ -4770,6 +4910,14 @@ if ($page === 'dashboard') {
         }
     }
     $compareMetricSnapshot = $compareMetric !== null ? metric_snapshot_for_view($compareMetric, $dashboardMetricView) : null;
+    $dashboardAnalyticsSelectedSnapshot = $analyticsPeriod === 'total'
+        ? metric_snapshot_for_view($selectedMetric, 'total')
+        : $analyticsSnapshotForRange($selectedMetric, $analyticsStartDate, $analyticsEndDate);
+    $dashboardAnalyticsCompareSnapshot = $compareMetric !== null
+        ? ($analyticsPeriod === 'total'
+            ? metric_snapshot_for_view($compareMetric, 'total')
+            : $analyticsSnapshotForRange($compareMetric, $analyticsStartDate, $analyticsEndDate))
+        : null;
 
     $dashboardOverviewStartedAt = microtime(true);
     $settlementSummary = weekly_settlement_summary(array_values($metricsByUser), $selectedWeekStart);
@@ -4782,31 +4930,8 @@ if ($page === 'dashboard') {
     );
     $captureDashboardTiming('overview', $dashboardOverviewStartedAt);
 
-    $challengeStartObj = new DateTimeImmutable((string) $settings['challenge_start']);
-    $challengeConfiguredEnd = new DateTimeImmutable((string) $settings['challenge_end']);
-    $todayObj = new DateTimeImmutable('today');
-    $challengeEndObj = $challengeConfiguredEnd > $todayObj ? $todayObj : $challengeConfiguredEnd;
-    if ($challengeEndObj < $challengeStartObj) {
-        $challengeEndObj = $challengeStartObj;
-    }
-    if ($dashboardView === 'total') {
-        $calorieStartDate = $challengeStartObj->format('Y-m-d');
-        $calorieEndDate = $challengeEndObj->format('Y-m-d');
-    } else {
-        $weekStartObj = new DateTimeImmutable($selectedWeekStart);
-        $weekEndObj = $weekStartObj->modify('+6 days');
-        if ($weekStartObj < $challengeStartObj) {
-            $weekStartObj = $challengeStartObj;
-        }
-        if ($weekEndObj > $challengeEndObj) {
-            $weekEndObj = $challengeEndObj;
-        }
-        if ($weekEndObj < $weekStartObj) {
-            $weekEndObj = $weekStartObj;
-        }
-        $calorieStartDate = $weekStartObj->format('Y-m-d');
-        $calorieEndDate = $weekEndObj->format('Y-m-d');
-    }
+    $calorieStartDate = $analyticsStartDate;
+    $calorieEndDate = $analyticsEndDate;
     $dashboardDetailsStartedAt = microtime(true);
     $maintenanceCalories = ($selectedMetric['user']['maintenance_calories'] ?? null) !== null
         ? (float) $selectedMetric['user']['maintenance_calories']
@@ -4856,10 +4981,18 @@ if ($page === 'dashboard') {
         'selectedMetricSnapshot' => $selectedMetricSnapshot,
         'compareMetric' => $compareMetric,
         'compareMetricSnapshot' => $compareMetricSnapshot,
+        'dashboardAnalyticsSelectedSnapshot' => $dashboardAnalyticsSelectedSnapshot,
+        'dashboardAnalyticsCompareSnapshot' => $dashboardAnalyticsCompareSnapshot,
         'metricsOrdered' => array_values($metricsByUser),
         'selectedWeekStart' => $selectedWeekStart,
         'dashboardView' => $dashboardView,
         'weekOptions' => $weekOptions,
+        'dashboardAnalyticsPeriod' => $analyticsPeriod,
+        'dashboardAnalyticsWeek' => $analyticsWeek,
+        'dashboardAnalyticsMonth' => $analyticsMonth,
+        'dashboardAnalyticsSlide' => $analyticsSlide,
+        'dashboardAnalyticsRangeStart' => $analyticsStartDate,
+        'dashboardAnalyticsRangeEnd' => $analyticsEndDate,
         'settlementSummary' => $settlementSummary,
         'pendingApprovals' => $pendingApprovals,
         'dashboardDistanceByDate' => $distanceByDate,

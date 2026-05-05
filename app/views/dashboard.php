@@ -10,14 +10,8 @@ usort(
 );
 $rangeStartDate = null;
 $rangeEndDate = null;
-if (($dashboardView ?? '') !== 'total') {
-    $rangeStartDate = to_date((string) ($selectedWeekStart ?? null), to_date(null));
-    try {
-        $rangeEndDate = (new DateTimeImmutable($rangeStartDate))->modify('+6 days')->format('Y-m-d');
-    } catch (Throwable) {
-        $rangeEndDate = $rangeStartDate;
-    }
-}
+$rangeStartDate = to_date((string) ($dashboardAnalyticsRangeStart ?? $selectedWeekStart ?? null), to_date(null));
+$rangeEndDate = to_date((string) ($dashboardAnalyticsRangeEnd ?? $rangeStartDate), $rangeStartDate);
 $stepsTail = [];
 foreach ($stepsSeries as $row) {
     $rowDate = (string) ($row['date'] ?? '');
@@ -33,8 +27,16 @@ $stepsLabels = array_map(static fn(array $row): string => format_date_eu((string
 $stepsValues = array_map(static fn(array $row): int => (int) ($row['steps'] ?? 0), $stepsTail);
 $stepsGoals = array_map(static fn(array $row): int => (int) ($row['goal'] ?? 0), $stepsTail);
 
-$weightLabels = array_map(static fn(array $row): string => format_date_eu((string) $row['date']), $selectedMetric['weight_series']);
-$weightValues = array_map(static fn(array $row): float => (float) $row['weight'], $selectedMetric['weight_series']);
+$weightSeries = array_values(array_filter(
+    (array) ($selectedMetric['weight_series'] ?? []),
+    static function (array $row) use ($rangeStartDate, $rangeEndDate): bool {
+        $rowDate = (string) ($row['date'] ?? '');
+
+        return $rowDate !== '' && $rowDate >= $rangeStartDate && $rowDate <= $rangeEndDate;
+    }
+));
+$weightLabels = array_map(static fn(array $row): string => format_date_eu((string) $row['date']), $weightSeries);
+$weightValues = array_map(static fn(array $row): float => (float) $row['weight'], $weightSeries);
 
 $dashboardLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
 $visibleWidgets = [];
@@ -51,15 +53,6 @@ if (is_array($dashboardLayout) && $dashboardLayout !== []) {
 }
 if ($visibleWidgets === []) {
     $visibleWidgets = ['kpis', 'achievements', 'distance_walked', 'calories', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
-}
-if (!in_array('meals', $visibleWidgets, true)) {
-    $visibleWidgets[] = 'meals';
-}
-if (!in_array('steps_cumulative', $visibleWidgets, true)) {
-    $visibleWidgets[] = 'steps_cumulative';
-}
-if (!in_array('distance_cumulative', $visibleWidgets, true)) {
-    $visibleWidgets[] = 'distance_cumulative';
 }
 $showWidget = static fn(string $widget): bool => in_array($widget, $visibleWidgets, true);
 $dashboardWidgets = ['kpis', 'achievements', 'distance_walked', 'calories', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
@@ -139,6 +132,8 @@ $comparisonHelpLabel = t('dashboard.comparison_help_label');
 $comparisonHelpText = t('dashboard.comparison_help_text');
 $viewSnapshot = is_array($selectedMetricSnapshot ?? null) ? (array) $selectedMetricSnapshot : [];
 $compareSnapshot = is_array($compareMetricSnapshot ?? null) ? (array) $compareMetricSnapshot : [];
+$analyticsViewSnapshot = is_array($dashboardAnalyticsSelectedSnapshot ?? null) ? (array) $dashboardAnalyticsSelectedSnapshot : $viewSnapshot;
+$analyticsCompareSnapshot = is_array($dashboardAnalyticsCompareSnapshot ?? null) ? (array) $dashboardAnalyticsCompareSnapshot : $compareSnapshot;
 
 $compareBar = [
     'labels' => [t('metric.steps') . ' %', t('metric.workouts') . ' %', t('metric.score')],
@@ -146,9 +141,9 @@ $compareBar = [
         [
             'label' => (string) $selectedUser['display_name'],
             'data' => [
-                (float) ($viewSnapshot['step_completion_pct'] ?? $selectedMetric['step_completion_pct'] ?? 0),
-                (float) ($viewSnapshot['workout_completion_pct'] ?? $selectedMetric['workout_completion_pct'] ?? 0),
-                (float) ($viewSnapshot['score'] ?? $selectedMetric['score'] ?? 0),
+                (float) ($analyticsViewSnapshot['step_completion_pct'] ?? $viewSnapshot['step_completion_pct'] ?? $selectedMetric['step_completion_pct'] ?? 0),
+                (float) ($analyticsViewSnapshot['workout_completion_pct'] ?? $viewSnapshot['workout_completion_pct'] ?? $selectedMetric['workout_completion_pct'] ?? 0),
+                (float) ($analyticsViewSnapshot['score'] ?? $viewSnapshot['score'] ?? $selectedMetric['score'] ?? 0),
             ],
         ],
     ],
@@ -157,9 +152,9 @@ if ($compareMetric !== null) {
     $compareBar['datasets'][] = [
         'label' => (string) $compareMetric['user']['display_name'],
         'data' => [
-            (float) ($compareSnapshot['step_completion_pct'] ?? $compareMetric['step_completion_pct'] ?? 0),
-            (float) ($compareSnapshot['workout_completion_pct'] ?? $compareMetric['workout_completion_pct'] ?? 0),
-            (float) ($compareSnapshot['score'] ?? $compareMetric['score'] ?? 0),
+            (float) ($analyticsCompareSnapshot['step_completion_pct'] ?? $compareSnapshot['step_completion_pct'] ?? $compareMetric['step_completion_pct'] ?? 0),
+            (float) ($analyticsCompareSnapshot['workout_completion_pct'] ?? $compareSnapshot['workout_completion_pct'] ?? $compareMetric['workout_completion_pct'] ?? 0),
+            (float) ($analyticsCompareSnapshot['score'] ?? $compareSnapshot['score'] ?? $compareMetric['score'] ?? 0),
         ],
     ];
 }
@@ -228,7 +223,7 @@ $viewWorkoutCompletionPct = $viewWorkoutTarget > 0
     : (float) ($selectedMetric['workout_completion_pct'] ?? 0);
 $viewStrikes = max(0, (int) ($viewSnapshot['strikes'] ?? ($selectedMetric['current_strikes'] ?? 0)));
 $viewPenalty = max(0.0, (float) ($viewSnapshot['penalty'] ?? ($selectedMetric['total_penalty'] ?? 0)));
-$viewPenaltyLabel = '€' . number_format($viewPenalty, 2, '.', '');
+$viewPenaltyLabel = "\u{20AC}" . number_format($viewPenalty, 2, '.', '');
 $comparisonDetailHref = '/?' . http_build_query([
     'page' => 'comparison_detail',
     'user_id' => (int) ($selectedUser['id'] ?? 0),
@@ -280,6 +275,61 @@ $strikesQueryBase = [
     'view' => (string) ($dashboardView ?? 'current_week'),
 ];
 $strikesHref = '/?' . http_build_query($strikesQueryBase);
+$penaltiesHref = '/?' . http_build_query([
+    'page' => 'penalties',
+    'user_id' => (int) ($selectedUser['id'] ?? 0),
+    'view' => (string) ($dashboardView ?? 'current_week'),
+]);
+$selectedWeekPenalty = 0.0;
+foreach ((array) ($selectedMetric['weekly'] ?? []) as $weekRow) {
+    if ((string) ($weekRow['week_start'] ?? '') === (string) ($selectedWeekStart ?? '')) {
+        $selectedWeekPenalty = max(0.0, (float) ($weekRow['penalty'] ?? 0));
+        break;
+    }
+}
+$analyticsPeriod = (string) ($dashboardAnalyticsPeriod ?? 'current_week');
+$analyticsWeek = (string) ($dashboardAnalyticsWeek ?? $selectedWeekStart ?? to_date(null));
+$analyticsMonth = (string) ($dashboardAnalyticsMonth ?? substr((string) ($selectedWeekStart ?? to_date(null)), 0, 7));
+$analyticsSlide = (string) ($dashboardAnalyticsSlide ?? 'activity');
+$analyticsRangeText = t('common.from_to', ['start' => format_date_eu($rangeStartDate), 'end' => format_date_eu($rangeEndDate)]);
+$analyticsBaseQuery = [
+    'page' => 'dashboard',
+    'user_id' => (int) ($selectedUser['id'] ?? 0),
+    'view' => (string) ($dashboardView ?? 'current_week'),
+    'analytics_period' => $analyticsPeriod,
+    'analytics_week' => $analyticsWeek,
+    'analytics_month' => $analyticsMonth,
+    'analytics_slide' => $analyticsSlide,
+];
+$analyticsWeekPrev = $analyticsWeek;
+$analyticsWeekNext = $analyticsWeek;
+try {
+    $analyticsWeekPrev = week_start_for((new DateTimeImmutable($analyticsWeek))->modify('-7 days'))->format('Y-m-d');
+    $analyticsWeekNext = week_start_for((new DateTimeImmutable($analyticsWeek))->modify('+7 days'))->format('Y-m-d');
+} catch (Throwable) {
+    $analyticsWeekPrev = $analyticsWeek;
+    $analyticsWeekNext = $analyticsWeek;
+}
+$analyticsMonthPrev = $analyticsMonth;
+$analyticsMonthNext = $analyticsMonth;
+try {
+    $analyticsMonthPrev = (new DateTimeImmutable($analyticsMonth . '-01'))->modify('-1 month')->format('Y-m');
+    $analyticsMonthNext = (new DateTimeImmutable($analyticsMonth . '-01'))->modify('+1 month')->format('Y-m');
+} catch (Throwable) {
+    $analyticsMonthPrev = $analyticsMonth;
+    $analyticsMonthNext = $analyticsMonth;
+}
+$analyticsChartWidgets = ['distance_walked', 'calories', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison'];
+$showAnalyticsPanel = false;
+foreach ($analyticsChartWidgets as $chartWidget) {
+    if ($showWidget($chartWidget)) {
+        $showAnalyticsPanel = true;
+        break;
+    }
+}
+$showActivityAnalytics = $showWidget('distance_walked') || $showWidget('steps') || $showWidget('steps_cumulative') || $showWidget('distance_cumulative');
+$showCaloriesBodyAnalytics = $showWidget('calories') || $showWidget('weight');
+$showComparisonAnalytics = $showWidget('comparison');
 
 ob_start();
 ?>
@@ -406,6 +456,27 @@ $topbarControls = ob_get_clean();
             </div>
         </article>
 
+        <article class="panel dashboard-panel dashboard-penalty-compact" style="order: -15">
+            <div class="panel-head">
+                <div>
+                    <p class="eyebrow"><?= e(t('metric.penalty')) ?></p>
+                    <h2><?= e(t('dashboard.penalty_compact_title')) ?></h2>
+                </div>
+                <span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($selectedWeekPenalty)) ?>">&euro;<?= e(number_format($selectedWeekPenalty, 2, '.', '')) ?></span>
+            </div>
+            <div class="dashboard-penalty-compact-grid">
+                <span>
+                    <small><?= e(t('metric.strikes')) ?></small>
+                    <strong><?= e((string) $viewStrikes) ?></strong>
+                </span>
+                <span>
+                    <small><?= e(t('metric.week_penalty')) ?></small>
+                    <strong>&euro;<?= e(number_format($selectedWeekPenalty, 2, '.', '')) ?></strong>
+                </span>
+            </div>
+            <a class="btn btn-ghost small btn-block" href="<?= e($penaltiesHref) ?>"><?= e(t('dashboard.penalty_details')) ?></a>
+        </article>
+
         <?php if ($showWidget('achievements')): ?>
         <article class="panel dashboard-panel dashboard-achievements-panel dashboard-span-full" style="order: <?= $contentWidgetOrder('achievements') ?>">
             <div class="panel-head">
@@ -491,7 +562,7 @@ $topbarControls = ob_get_clean();
                             <td data-label="<?= e(t('metric.step_failures')) ?>"><?= e((string) $week['step_failures']) ?></td>
                             <td data-label="<?= e(t('metric.workout_failures')) ?>"><?= e((string) $week['workout_failures']) ?></td>
                             <td data-label="<?= e(t('metric.warnings')) ?>"><?= e((string) ($week['skip_warnings'] ?? 0)) ?></td>
-                            <td data-label="<?= e(t('strikes.economic_impact')) ?>"><span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) ($week['penalty'] ?? 0))) ?>">€<?= e(number_format((float) ($week['penalty'] ?? 0), 2, '.', '')) ?></span></td>
+                            <td data-label="<?= e(t('strikes.economic_impact')) ?>"><span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) ($week['penalty'] ?? 0))) ?>">&euro;<?= e(number_format((float) ($week['penalty'] ?? 0), 2, '.', '')) ?></span></td>
                             <td data-label="<?= e(t('dashboard.strike_reduction')) ?>"><?= (int) $week['strike_reduction'] > 0 ? '-1' : '-' ?></td>
                             <td data-label="<?= e(t('dashboard.strikes_after_week')) ?>"><?= e((string) $week['strikes_after_week']) ?></td>
                             <td data-label="<?= e(t('common.actions')) ?>">
@@ -544,47 +615,184 @@ $topbarControls = ob_get_clean();
         </article>
         <?php endif; ?>
 
-        <?php if ($showWidget('distance_walked')): ?>
-        <article class="panel chart-card dashboard-panel" style="order: <?= $contentWidgetOrder('distance_walked') ?>">
-            <h2>Distance walked</h2>
-            <canvas id="distanceWalkedChart" height="150"></canvas>
-            <p class="muted small"><?= e(t('metric.distance_km')) ?> · <?= e((string) $distanceRangeTotal) ?> km</p>
-        </article>
-        <?php endif; ?>
-
-        <?php if ($showWidget('calories')): ?>
-        <article class="panel chart-card dashboard-panel dashboard-calories" style="order: <?= $contentWidgetOrder('calories') ?>">
-            <div class="panel-head dashboard-calories-head">
-                <div class="dashboard-calories-title">
-                    <div class="dashboard-calories-title-row">
-                        <h2><?= e(t('dashboard.calories_title')) ?></h2>
+        <?php if ($showAnalyticsPanel): ?>
+        <article class="panel dashboard-panel dashboard-analytics-panel dashboard-span-full" data-dashboard-analytics-slider style="order: <?= $contentWidgetOrder('distance_walked', 'calories', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison') ?>">
+            <div class="panel-head dashboard-analytics-head">
+                <div>
+                    <p class="eyebrow"><?= e(t('dashboard.analytics_eyebrow')) ?></p>
+                    <h2><?= e(t('dashboard.analytics_title')) ?></h2>
+                    <p class="muted small"><?= e($analyticsRangeText) ?></p>
+                </div>
+                <a class="btn btn-ghost small dashboard-panel-action" href="<?= e($comparisonDetailHref) ?>"><?= e(t('dashboard.view_full_breakdown')) ?></a>
+            </div>
+            <form method="get" action="/" class="dashboard-analytics-controls">
+                <input type="hidden" name="page" value="dashboard">
+                <input type="hidden" name="user_id" value="<?= (int) ($selectedUser['id'] ?? 0) ?>">
+                <input type="hidden" name="view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
+                <input type="hidden" name="analytics_slide" value="<?= e($analyticsSlide) ?>" data-dashboard-analytics-slide-input>
+                <label>
+                    <?= e(t('dashboard.analytics_period')) ?>
+                    <select name="analytics_period" onchange="this.form.submit()">
+                        <option value="current_week" <?= $analyticsPeriod === 'current_week' ? 'selected' : '' ?>><?= e(t('dashboard.analytics_current_week')) ?></option>
+                        <option value="week" <?= $analyticsPeriod === 'week' ? 'selected' : '' ?>><?= e(t('dashboard.analytics_specific_week')) ?></option>
+                        <option value="month" <?= $analyticsPeriod === 'month' ? 'selected' : '' ?>><?= e(t('dashboard.analytics_month')) ?></option>
+                        <option value="total" <?= $analyticsPeriod === 'total' ? 'selected' : '' ?>><?= e(t('metric.total')) ?></option>
+                    </select>
+                </label>
+                <label>
+                    <?= e(t('common.week')) ?>
+                    <input type="date" name="analytics_week" value="<?= e($analyticsWeek) ?>" onchange="this.form.submit()">
+                </label>
+                <label>
+                    <?= e(t('dashboard.analytics_month')) ?>
+                    <input type="month" name="analytics_month" value="<?= e($analyticsMonth) ?>" onchange="this.form.submit()">
+                </label>
+                <div class="dashboard-analytics-nav-links">
+                    <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'week', 'analytics_week' => $analyticsWeekPrev]))) ?>"><?= e(t('common.previous')) ?></a>
+                    <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'week', 'analytics_week' => $analyticsWeekNext]))) ?>"><?= e(t('common.next')) ?></a>
+                    <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'month', 'analytics_month' => $analyticsMonthPrev]))) ?>"><?= e(t('dashboard.analytics_prev_month')) ?></a>
+                    <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'month', 'analytics_month' => $analyticsMonthNext]))) ?>"><?= e(t('dashboard.analytics_next_month')) ?></a>
+                </div>
+            </form>
+            <div class="dashboard-analytics-slider" data-dashboard-analytics-track>
+                <?php if ($showActivityAnalytics): ?>
+                <section class="dashboard-analytics-slide" data-dashboard-analytics-slide="activity" aria-label="<?= e(t('dashboard.analytics_activity')) ?>">
+                    <div class="dashboard-analytics-section-title">
+                        <h3><?= e(t('dashboard.analytics_activity')) ?></h3>
+                        <span class="badge"><?= e(t('metric.steps')) ?> / <?= e(t('metric.distance_km')) ?></span>
+                    </div>
+                    <div class="dashboard-analytics-grid">
+                        <?php if ($showWidget('distance_walked')): ?>
+                        <article class="chart-card dashboard-analytics-chart">
+                            <h4><?= e(t('dashboard.distance_walked_chart')) ?></h4>
+                            <canvas id="distanceWalkedChart" height="150"></canvas>
+                            <p class="muted small"><?= e(t('metric.distance_km')) ?> · <?= e((string) $distanceRangeTotal) ?> km</p>
+                        </article>
+                        <?php endif; ?>
+                        <?php if ($showWidget('steps')): ?>
+                        <article class="chart-card dashboard-analytics-chart">
+                            <h4><?= e(t('dashboard.steps_chart')) ?></h4>
+                            <canvas id="stepsChart" height="150"></canvas>
+                        </article>
+                        <?php endif; ?>
+                        <?php if ($showWidget('steps_cumulative')): ?>
+                        <article class="chart-card dashboard-analytics-chart">
+                            <h4><?= e(t('dashboard.steps_cumulative_chart')) ?></h4>
+                            <?php if ($stepsCumulativeValues === []): ?>
+                                <p class="muted"><?= e(t('common.none')) ?></p>
+                            <?php else: ?>
+                                <canvas id="stepsCumulativeChart" height="150"></canvas>
+                                <p class="muted small"><?= e(t('metric.current_value')) ?>: <?= e((string) $stepsCumulativeTotal) ?></p>
+                            <?php endif; ?>
+                        </article>
+                        <?php endif; ?>
+                        <?php if ($showWidget('distance_cumulative')): ?>
+                        <article class="chart-card dashboard-analytics-chart">
+                            <h4><?= e(t('dashboard.distance_cumulative_chart')) ?></h4>
+                            <?php if ($distanceCumulativeValues === []): ?>
+                                <p class="muted"><?= e(t('common.none')) ?></p>
+                            <?php else: ?>
+                                <canvas id="distanceCumulativeChart" height="150"></canvas>
+                                <p class="muted small"><?= e(t('metric.current_value')) ?>: <?= e(number_format((float) $distanceCumulativeTotal, 2, '.', '')) ?> km</p>
+                            <?php endif; ?>
+                        </article>
+                        <?php endif; ?>
+                    </div>
+                </section>
+                <?php endif; ?>
+                <?php if ($showCaloriesBodyAnalytics): ?>
+                <section class="dashboard-analytics-slide" data-dashboard-analytics-slide="calories_body" aria-label="<?= e(t('dashboard.analytics_calories_body')) ?>">
+                    <div class="dashboard-analytics-section-title">
+                        <h3><?= e(t('dashboard.analytics_calories_body')) ?></h3>
                         <span class="badge"><?= e((string) ($calorieStats['tracked_days'] ?? 0)) ?> <?= e(t('dashboard.calories_tracked_days')) ?></span>
                     </div>
-                    <p class="muted small"><?= e($calorieRangeText) ?></p>
-                </div>
-                <details class="metric-help-popover">
-                    <summary aria-label="<?= e(t('dashboard.calories_hint_label')) ?>" title="<?= e(t('dashboard.calories_hint_label')) ?>">?</summary>
-                    <div class="metric-help-popover-content"><?= e(t('dashboard.calories_hint')) ?></div>
-                </details>
+                    <div class="dashboard-analytics-grid">
+                        <?php if ($showWidget('calories')): ?>
+                        <article class="chart-card dashboard-analytics-chart dashboard-calories">
+                            <div class="panel-head dashboard-calories-head">
+                                <div class="dashboard-calories-title">
+                                    <div class="dashboard-calories-title-row">
+                                        <h4><?= e(t('dashboard.calories_title')) ?></h4>
+                                    </div>
+                                    <p class="muted small"><?= e($calorieRangeText) ?></p>
+                                </div>
+                                <details class="metric-help-popover">
+                                    <summary aria-label="<?= e(t('dashboard.calories_hint_label')) ?>" title="<?= e(t('dashboard.calories_hint_label')) ?>">?</summary>
+                                    <div class="metric-help-popover-content"><?= e(t('dashboard.calories_hint')) ?></div>
+                                </details>
+                            </div>
+                            <div class="calories-overview">
+                                <div class="metric-box">
+                                    <span class="metric-title"><?= e(t('dashboard.calories_maintenance')) ?></span>
+                                    <strong class="metric-value"><?= e($formatCalories($calorieMaintenanceTotal)) ?> kcal</strong>
+                                </div>
+                                <div class="metric-box">
+                                    <span class="metric-title"><?= e(t('dashboard.calories_deficit')) ?></span>
+                                    <strong class="metric-value"><?= e($formatCalories($calorieDeficitTotal)) ?> kcal</strong>
+                                </div>
+                            </div>
+                            <?php if ($calorieSeries === []): ?>
+                                <p class="muted"><?= e(t('dashboard.no_calorie_data')) ?></p>
+                            <?php else: ?>
+                                <canvas id="calorieChart" height="150"></canvas>
+                            <?php endif; ?>
+                        </article>
+                        <?php endif; ?>
+                        <?php if ($showWidget('weight')): ?>
+                        <article class="chart-card dashboard-analytics-chart">
+                            <h4><?= e(t('dashboard.weight_chart')) ?></h4>
+                            <?php if ($weightValues === []): ?>
+                                <p class="muted"><?= e(t('dashboard.no_weight')) ?></p>
+                            <?php else: ?>
+                                <canvas id="weightChart" height="150"></canvas>
+                                <?php if ($selectedMetric['ideal_weight'] !== null): ?>
+                                    <p class="muted">
+                                        <?= e(t('metric.goal')) ?>: <?= e((string) $selectedMetric['ideal_weight']) ?> kg ·
+                                        <?= e(t('metric.progress')) ?>: <?= e((string) ($selectedMetric['weight_progress_pct'] ?? 0)) ?>%
+                                    </p>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                        </article>
+                        <?php endif; ?>
+                    </div>
+                </section>
+                <?php endif; ?>
+                <?php if ($showComparisonAnalytics): ?>
+                <section class="dashboard-analytics-slide" data-dashboard-analytics-slide="comparison" aria-label="<?= e(t('dashboard.analytics_comparison')) ?>">
+                    <div class="dashboard-analytics-section-title">
+                        <h3><?= e(t('dashboard.analytics_comparison')) ?></h3>
+                        <span class="badge"><?= e(t('metric.score')) ?></span>
+                    </div>
+                    <article class="chart-card dashboard-analytics-chart dashboard-analytics-chart-full">
+                        <div class="panel-head panel-head-help">
+                            <h4><?= e(trim($compareTitle)) ?></h4>
+                            <details class="metric-help-popover">
+                                <summary aria-label="<?= e($comparisonHelpLabel) ?>" title="<?= e($comparisonHelpLabel) ?>">?</summary>
+                                <div class="metric-help-popover-content">
+                                    <p><?= e($comparisonHelpText) ?></p>
+                                    <p class="small">
+                                        Score = (steps_weight x steps_progress) + (workouts_weight x workouts_progress) + (discipline_weight x discipline_score) + (weight_weight x weight_progress_if_available)
+                                    </p>
+                                    <a class="btn btn-ghost small btn-block" href="<?= e($comparisonDetailHref) ?>"><?= e(t('dashboard.view_full_breakdown')) ?></a>
+                                </div>
+                            </details>
+                        </div>
+                        <canvas id="compareChart" height="170"></canvas>
+                    </article>
+                </section>
+                <?php endif; ?>
             </div>
-            <div class="calories-overview">
-                <div class="metric-box">
-                    <span class="metric-title"><?= e(t('dashboard.calories_maintenance')) ?></span>
-                    <strong class="metric-value"><?= e($formatCalories($calorieMaintenanceTotal)) ?> kcal</strong>
-                </div>
-                <div class="metric-box">
-                    <span class="metric-title"><?= e(t('dashboard.calories_deficit')) ?></span>
-                    <strong class="metric-value"><?= e($formatCalories($calorieDeficitTotal)) ?> kcal</strong>
-                </div>
+            <div class="dashboard-analytics-dots" aria-label="<?= e(t('dashboard.analytics_sections')) ?>">
+                <?php if ($showActivityAnalytics): ?><button class="dashboard-analytics-dot" type="button" data-dashboard-analytics-target="activity"><?= e(t('dashboard.analytics_activity')) ?></button><?php endif; ?>
+                <?php if ($showCaloriesBodyAnalytics): ?><button class="dashboard-analytics-dot" type="button" data-dashboard-analytics-target="calories_body"><?= e(t('dashboard.analytics_calories_body')) ?></button><?php endif; ?>
+                <?php if ($showComparisonAnalytics): ?><button class="dashboard-analytics-dot" type="button" data-dashboard-analytics-target="comparison"><?= e(t('dashboard.analytics_comparison')) ?></button><?php endif; ?>
             </div>
-            <?php if ($calorieSeries === []): ?>
-                <p class="muted"><?= e(t('dashboard.no_calorie_data')) ?></p>
-            <?php else: ?>
-                <canvas id="calorieChart" height="150"></canvas>
-            <?php endif; ?>
+            <div class="dashboard-analytics-buttons">
+                <button class="btn btn-ghost small" type="button" data-dashboard-analytics-prev><?= e(t('common.previous')) ?></button>
+                <button class="btn btn-ghost small" type="button" data-dashboard-analytics-next><?= e(t('common.next')) ?></button>
+            </div>
         </article>
         <?php endif; ?>
-
         <?php if ($showWidget('approvals')): ?>
         <article class="panel dashboard-panel dashboard-approvals" data-testid="pending-approvals" style="order: <?= $contentWidgetOrder('approvals') ?>">
             <div class="panel-head">
@@ -629,72 +837,6 @@ $topbarControls = ob_get_clean();
         </article>
         <?php endif; ?>
 
-        <?php if ($showWidget('steps')): ?>
-        <article class="panel chart-card dashboard-panel" style="order: <?= $contentWidgetOrder('steps') ?>">
-            <h2><?= e(t('dashboard.steps_chart')) ?></h2>
-            <canvas id="stepsChart" height="150"></canvas>
-        </article>
-        <?php endif; ?>
-
-        <?php if ($showWidget('steps_cumulative')): ?>
-        <article class="panel chart-card dashboard-panel" style="order: <?= $contentWidgetOrder('steps_cumulative') ?>">
-            <h2><?= e(t('dashboard.steps_cumulative_chart')) ?></h2>
-            <?php if ($stepsCumulativeValues === []): ?>
-                <p class="muted"><?= e(t('common.none')) ?></p>
-            <?php else: ?>
-                <canvas id="stepsCumulativeChart" height="150"></canvas>
-                <p class="muted small"><?= e(t('metric.current_value')) ?>: <?= e((string) $stepsCumulativeTotal) ?></p>
-            <?php endif; ?>
-        </article>
-        <?php endif; ?>
-
-        <?php if ($showWidget('distance_cumulative')): ?>
-        <article class="panel chart-card dashboard-panel" style="order: <?= $contentWidgetOrder('distance_cumulative') ?>">
-            <h2><?= e(t('dashboard.distance_cumulative_chart')) ?></h2>
-            <?php if ($distanceCumulativeValues === []): ?>
-                <p class="muted"><?= e(t('common.none')) ?></p>
-            <?php else: ?>
-                <canvas id="distanceCumulativeChart" height="150"></canvas>
-                <p class="muted small"><?= e(t('metric.current_value')) ?>: <?= e(number_format((float) $distanceCumulativeTotal, 2, '.', '')) ?> km</p>
-            <?php endif; ?>
-        </article>
-        <?php endif; ?>
-
-        <?php if ($showWidget('weight')): ?>
-        <article class="panel chart-card dashboard-panel" style="order: <?= $contentWidgetOrder('weight') ?>">
-            <h2><?= e(t('dashboard.weight_chart')) ?></h2>
-            <?php if ($weightValues === []): ?>
-                <p class="muted"><?= e(t('dashboard.no_weight')) ?></p>
-            <?php else: ?>
-                <canvas id="weightChart" height="150"></canvas>
-                <?php if ($selectedMetric['ideal_weight'] !== null): ?>
-                    <p class="muted">
-                        <?= e(t('metric.goal')) ?>: <?= e((string) $selectedMetric['ideal_weight']) ?> kg ·
-                        <?= e(t('metric.progress')) ?>: <?= e((string) ($selectedMetric['weight_progress_pct'] ?? 0)) ?>%
-                    </p>
-                <?php endif; ?>
-            <?php endif; ?>
-        </article>
-        <?php endif; ?>
-
-        <?php if ($showWidget('comparison')): ?>
-        <article class="panel chart-card dashboard-panel" style="order: <?= $contentWidgetOrder('comparison') ?>">
-            <div class="panel-head panel-head-help">
-                <h2><?= e(trim($compareTitle)) ?></h2>
-                <details class="metric-help-popover">
-                    <summary aria-label="<?= e($comparisonHelpLabel) ?>" title="<?= e($comparisonHelpLabel) ?>">?</summary>
-                    <div class="metric-help-popover-content">
-                        <p><?= e($comparisonHelpText) ?></p>
-                        <p class="small">
-                            Score = (steps_weight x steps_progress) + (workouts_weight x workouts_progress) + (discipline_weight x discipline_score) + (weight_weight x weight_progress_if_available)
-                        </p>
-                        <a class="btn btn-ghost small btn-block" href="<?= e($comparisonDetailHref) ?>"><?= e(t('dashboard.view_full_breakdown')) ?></a>
-                    </div>
-                </details>
-            </div>
-            <canvas id="compareChart" height="170"></canvas>
-        </article>
-        <?php endif; ?>
 
         <?php if ($showWidget('ranking')): ?>
         <article class="panel dashboard-panel" style="order: <?= $contentWidgetOrder('ranking') ?>">
@@ -705,11 +847,6 @@ $topbarControls = ob_get_clean();
                     $leaderboardUser = is_array($metric['user'] ?? null) ? (array) $metric['user'] : [];
                     $leaderboardName = (string) ($leaderboardUser['display_name'] ?? t('common.user'));
                     $leaderboardAvatarUrl = avatar_url($leaderboardUser);
-                    $rankingStrikesHref = '/?' . http_build_query([
-                        'page' => 'strikes_detail',
-                        'user_id' => (int) ($leaderboardUser['id'] ?? 0),
-                        'view' => (string) ($dashboardView ?? 'current_week'),
-                    ]);
                     ?>
                     <article class="leaderboard-row">
                         <div class="leaderboard-name">
@@ -725,9 +862,7 @@ $topbarControls = ob_get_clean();
                         </div>
                         <div class="leaderboard-stats">
                             <span class="badge"><?= e(t('metric.score')) ?> <?= e((string) $metric['score']) ?></span>
-                            <a class="badge" href="<?= e($rankingStrikesHref) ?>">
-                                <?= e(t('metric.strikes')) ?> <?= e((string) $metric['current_strikes']) ?> · €<?= e(number_format((float) ($metric['total_penalty'] ?? 0), 2, '.', '')) ?>
-                            </a>
+                            <span class="badge"><?= e(t('metric.steps')) ?> <?= e((string) ($metric['total_steps'] ?? 0)) ?></span>
                         </div>
                     </article>
                 <?php endforeach; ?>
@@ -789,149 +924,103 @@ $topbarControls = ob_get_clean();
         </article>
         <?php endif; ?>
 
-        <article class="panel dashboard-panel dashboard-settlement dashboard-span-full" data-testid="settlement-panel" style="order: 9999">
-            <div class="panel-head">
-                <div>
-                    <p class="eyebrow"><?= e(t('metric.strikes')) ?></p>
-                    <h2><?= e(t('dashboard.strikes_summary_title')) ?></h2>
-                    <p class="muted small"><?= e(t('strikes.lower_better_hint')) ?></p>
-                </div>
-                <?php if ($isTotalMoneyView): ?>
-                    <span class="badge"><?= e(t('metric.total')) ?></span>
-                <?php elseif (!empty($settlementSummary['is_provisional'])): ?>
-                    <span class="badge badge-warn"><?= e(t('common.provisional_week')) ?></span>
-                <?php else: ?>
-                    <span class="badge badge-ok"><?= e(t('common.closed_week')) ?></span>
-                <?php endif; ?>
-            </div>
-            <p class="muted">
-                <?php if ($isTotalMoneyView): ?>
-                    <a href="<?= e($strikesHref) ?>" class="penalty-link-inline"><?= e(t('dashboard.accumulated_penalty', ['amount' => '€' . number_format((float) ($selectedMetric['total_penalty'] ?? 0), 2, '.', '')])) ?></a>
-                <?php else: ?>
-                    <a href="<?= e($strikesHref) ?>" class="penalty-link-inline"><?= e(t('dashboard.settlement_hint', ['week' => format_date_eu((string) $selectedWeekStart), 'amount' => '€' . number_format((float) ($settlementSummary['total_penalty'] ?? 0), 2, '.', '')])) ?></a>
-                <?php endif; ?>
-            </p>
-
-            <div class="table-wrap compact-wrap dashboard-desktop-table-wrap">
-                <table class="table compact dashboard-settlement-table">
-                    <?php if ($isTotalMoneyView): ?>
-                    <thead>
-                    <tr>
-                        <th><?= e(t('common.user')) ?></th>
-                        <th><?= e(t('metric.strikes')) ?></th>
-                        <th><?= e(t('metric.skip_warnings')) ?></th>
-                        <th><?= e(t('strikes.economic_impact')) ?></th>
-                        <th><?= e(t('metric.score')) ?></th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($metricsOrdered as $metric): ?>
-                        <?php
-                        $penaltyValue = (int) ($metric['total_penalty'] ?? 0);
-                        $metricStrikesHref = '/?' . http_build_query([
-                            'page' => 'strikes_detail',
-                            'user_id' => (int) ($metric['user']['id'] ?? 0),
-                            'view' => (string) ($dashboardView ?? 'current_week'),
-                        ]);
-                        ?>
-                        <tr onclick="window.location='<?= e($metricStrikesHref) ?>'" style="cursor:pointer;">
-                            <td data-label="<?= e(t('common.user')) ?>"><?= e((string) $metric['user']['display_name']) ?></td>
-                            <td data-label="<?= e(t('metric.strikes')) ?>"><?= e((string) $metric['current_strikes']) ?></td>
-                            <td data-label="<?= e(t('metric.skip_warnings')) ?>"><?= e((string) ($metric['skip_warning_events'] ?? 0)) ?></td>
-                            <td data-label="<?= e(t('strikes.economic_impact')) ?>"><a href="<?= e($metricStrikesHref) ?>" class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">€<?= e(number_format((float) $penaltyValue, 2, '.', '')) ?></a></td>
-                            <td data-label="<?= e(t('metric.score')) ?>"><?= e((string) $metric['score']) ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                    <?php else: ?>
-                    <thead>
-                    <tr>
-                        <th><?= e(t('common.user')) ?></th>
-                        <th><?= e(t('metric.step_failures')) ?></th>
-                        <th><?= e(t('metric.workout_failures')) ?></th>
-                        <th><?= e(t('metric.skip_warnings')) ?></th>
-                        <th><?= e(t('strikes.economic_impact')) ?></th>
-                        <th><?= e(t('common.status')) ?></th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach (($settlementSummary['entries'] ?? []) as $entry): ?>
-                        <?php
-                        $penaltyValue = (int) ($entry['penalty'] ?? 0);
-                        $entryStrikesHref = '/?' . http_build_query([
-                            'page' => 'strikes_detail',
-                            'user_id' => (int) ($entry['user_id'] ?? 0),
-                            'view' => (string) ($selectedWeekStart ?? 'current_week'),
-                        ]);
-                        ?>
-                        <tr onclick="window.location='<?= e($entryStrikesHref) ?>'" style="cursor:pointer;">
-                            <td data-label="<?= e(t('common.user')) ?>"><?= e((string) $entry['display_name']) ?></td>
-                            <td data-label="<?= e(t('metric.step_failures')) ?>"><?= e((string) $entry['step_failures']) ?></td>
-                            <td data-label="<?= e(t('metric.workout_failures')) ?>"><?= e((string) $entry['workout_failures']) ?></td>
-                            <td data-label="<?= e(t('metric.skip_warnings')) ?>"><?= e((string) $entry['skip_warnings']) ?></td>
-                            <td data-label="<?= e(t('strikes.economic_impact')) ?>"><a href="<?= e($entryStrikesHref) ?>" class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">€<?= e(number_format((float) $penaltyValue, 2, '.', '')) ?></a></td>
-                            <td data-label="<?= e(t('common.status')) ?>"><?= e(label_for_status((string) $entry['status'])) ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                    <?php endif; ?>
-                </table>
-            </div>
-            <div class="dashboard-mobile-card-list dashboard-settlement-mobile-list" aria-label="<?= e(t('dashboard.strikes_summary_title')) ?>">
-                <?php if ($isTotalMoneyView): ?>
-                    <?php foreach ($metricsOrdered as $metric): ?>
-                        <?php
-                        $penaltyValue = (int) ($metric['total_penalty'] ?? 0);
-                        $metricStrikesHref = '/?' . http_build_query([
-                            'page' => 'strikes_detail',
-                            'user_id' => (int) ($metric['user']['id'] ?? 0),
-                            'view' => (string) ($dashboardView ?? 'current_week'),
-                        ]);
-                        ?>
-                        <a class="dashboard-mobile-card dashboard-strike-card" href="<?= e($metricStrikesHref) ?>">
-                            <div class="dashboard-mobile-card-head">
-                                <strong><?= e((string) $metric['user']['display_name']) ?></strong>
-                                <span class="badge"><?= e(t('metric.score')) ?> <?= e((string) $metric['score']) ?></span>
-                            </div>
-                            <div class="dashboard-mobile-metrics">
-                                <span><small><?= e(t('metric.strikes')) ?></small><strong><?= e((string) $metric['current_strikes']) ?></strong></span>
-                                <span><small><?= e(t('metric.skip_warnings')) ?></small><strong><?= e((string) ($metric['skip_warning_events'] ?? 0)) ?></strong></span>
-                                <span class="dashboard-mobile-metric-wide"><small><?= e(t('strikes.economic_impact')) ?></small><strong class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">&euro;<?= e(number_format((float) $penaltyValue, 2, '.', '')) ?></strong></span>
-                            </div>
-                        </a>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <?php foreach (($settlementSummary['entries'] ?? []) as $entry): ?>
-                        <?php
-                        $penaltyValue = (int) ($entry['penalty'] ?? 0);
-                        $entryStrikesHref = '/?' . http_build_query([
-                            'page' => 'strikes_detail',
-                            'user_id' => (int) ($entry['user_id'] ?? 0),
-                            'view' => (string) ($selectedWeekStart ?? 'current_week'),
-                        ]);
-                        ?>
-                        <a class="dashboard-mobile-card dashboard-strike-card" href="<?= e($entryStrikesHref) ?>">
-                            <div class="dashboard-mobile-card-head">
-                                <strong><?= e((string) $entry['display_name']) ?></strong>
-                                <span class="badge"><?= e(label_for_status((string) $entry['status'])) ?></span>
-                            </div>
-                            <div class="dashboard-mobile-metrics">
-                                <span><small><?= e(t('metric.step_failures')) ?></small><strong><?= e((string) $entry['step_failures']) ?></strong></span>
-                                <span><small><?= e(t('metric.workout_failures')) ?></small><strong><?= e((string) $entry['workout_failures']) ?></strong></span>
-                                <span><small><?= e(t('metric.skip_warnings')) ?></small><strong><?= e((string) $entry['skip_warnings']) ?></strong></span>
-                                <span><small><?= e(t('strikes.economic_impact')) ?></small><strong class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($penaltyValue)) ?>">&euro;<?= e(number_format((float) $penaltyValue, 2, '.', '')) ?></strong></span>
-                            </div>
-                        </a>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </div>
-        </article>
     </div>
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
 (function () {
+    function formatDayMonth(dateString) {
+        const parts = String(dateString || '').split('/');
+        return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : String(dateString || '');
+    }
+
+    const dateChartOptions = () => ({
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { position: 'bottom' },
+            tooltip: {
+                callbacks: {
+                    title: (items) => (items && items[0] ? items[0].label : ''),
+                },
+            },
+        },
+        scales: {
+            x: {
+                ticks: {
+                    callback: function (value) {
+                        return formatDayMonth(this.getLabelForValue(value));
+                    },
+                },
+            },
+        },
+    });
+
+    const initAnalyticsSlider = () => {
+        const root = document.querySelector('[data-dashboard-analytics-slider]');
+        if (!(root instanceof HTMLElement)) {
+            return;
+        }
+        const track = root.querySelector('[data-dashboard-analytics-track]');
+        const slides = [...root.querySelectorAll('[data-dashboard-analytics-slide]')].filter((slide) => slide instanceof HTMLElement);
+        const dots = [...root.querySelectorAll('[data-dashboard-analytics-target]')].filter((dot) => dot instanceof HTMLButtonElement);
+        const input = root.querySelector('[data-dashboard-analytics-slide-input]');
+        if (!(track instanceof HTMLElement) || slides.length === 0) {
+            return;
+        }
+
+        let activeIndex = Math.max(0, slides.findIndex((slide) => slide.dataset.dashboardAnalyticsSlide === <?= json_encode($analyticsSlide) ?>));
+        if (activeIndex < 0) {
+            activeIndex = 0;
+        }
+
+        const activate = (index, shouldScroll = true) => {
+            activeIndex = (index + slides.length) % slides.length;
+            const activeSlide = slides[activeIndex];
+            const activeKey = activeSlide.dataset.dashboardAnalyticsSlide || '';
+            slides.forEach((slide, slideIndex) => {
+                slide.classList.toggle('is-active', slideIndex === activeIndex);
+            });
+            dots.forEach((dot) => {
+                dot.classList.toggle('is-active', dot.dataset.dashboardAnalyticsTarget === activeKey);
+                dot.setAttribute('aria-current', dot.dataset.dashboardAnalyticsTarget === activeKey ? 'true' : 'false');
+            });
+            if (input instanceof HTMLInputElement && activeKey !== '') {
+                input.value = activeKey;
+            }
+            if (shouldScroll) {
+                activeSlide.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+            }
+        };
+
+        dots.forEach((dot) => {
+            dot.addEventListener('click', () => {
+                const targetIndex = slides.findIndex((slide) => slide.dataset.dashboardAnalyticsSlide === dot.dataset.dashboardAnalyticsTarget);
+                if (targetIndex >= 0) {
+                    activate(targetIndex);
+                }
+            });
+        });
+        root.querySelector('[data-dashboard-analytics-prev]')?.addEventListener('click', () => activate(activeIndex - 1));
+        root.querySelector('[data-dashboard-analytics-next]')?.addEventListener('click', () => activate(activeIndex + 1));
+        track.addEventListener('scroll', () => {
+            const trackBox = track.getBoundingClientRect();
+            const closest = slides.reduce((best, slide, index) => {
+                const box = slide.getBoundingClientRect();
+                const distance = Math.abs(box.left - trackBox.left);
+                return distance < best.distance ? { distance, index } : best;
+            }, { distance: Number.POSITIVE_INFINITY, index: activeIndex });
+            if (closest.index !== activeIndex) {
+                activate(closest.index, false);
+            }
+        }, { passive: true });
+
+        activate(activeIndex, false);
+    };
+
+    initAnalyticsSlider();
+
     const stepsCtx = document.getElementById('stepsChart');
     if (stepsCtx) {
         new Chart(stepsCtx, {
@@ -956,11 +1045,7 @@ $topbarControls = ob_get_clean();
                     }
                 ]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } }
-            }
+            options: dateChartOptions()
         });
     }
 
@@ -981,11 +1066,7 @@ $topbarControls = ob_get_clean();
                     }
                 ]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } }
-            }
+            options: dateChartOptions()
         });
     }
 
@@ -1006,11 +1087,7 @@ $topbarControls = ob_get_clean();
                     }
                 ]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } }
-            }
+            options: dateChartOptions()
         });
     }
 
@@ -1031,11 +1108,7 @@ $topbarControls = ob_get_clean();
                     }
                 ]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } }
-            }
+            options: dateChartOptions()
         });
     }
 
@@ -1072,11 +1145,7 @@ $topbarControls = ob_get_clean();
                     },
                 ]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } }
-            }
+            options: dateChartOptions()
         });
     }
 
@@ -1095,11 +1164,7 @@ $topbarControls = ob_get_clean();
                     fill: true,
                 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } }
-            }
+            options: dateChartOptions()
         });
     }
 
