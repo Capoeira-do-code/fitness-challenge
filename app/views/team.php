@@ -103,7 +103,24 @@ $teamMetricTitle = is_array($teamMetricDetail) ? (string) ($teamMetricDetail['ti
 $isTeamOverview = $teamSection === '' && $teamMetricDetail === null;
 $teamLayoutWidgets = normalize_team_layout_widgets((string) ($currentUser['team_layout_json'] ?? ''));
 $teamLayoutIndex = array_flip($teamLayoutWidgets);
+$teamLayoutEditMode = !empty($teamLayoutEditMode) && $isTeamOverview;
+$teamLayoutEditorWidgets = team_layout_widgets_default();
+$teamLayoutLabels = is_array($teamLayoutLabels ?? null) ? (array) $teamLayoutLabels : [
+    'metrics' => t('team.widget_metrics'),
+    'active_challenge' => t('team.widget_active_challenge'),
+    'leaderboard' => t('team.widget_leaderboard'),
+    'challenges' => t('team.widget_challenges'),
+    'members' => t('team.widget_members'),
+    'daily_charts' => t('team.widget_daily_charts'),
+    'cumulative_steps' => t('team.widget_cumulative_steps'),
+    'cumulative_distance' => t('team.widget_cumulative_distance'),
+    'weekly_charts' => t('team.widget_weekly_charts'),
+    'achievements' => t('team.widget_achievements'),
+];
 $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($teamLayoutIndex): string {
+    if (!isset($teamLayoutIndex[$widget])) {
+        return 'display:none; --team-order:999; --team-mobile-order:999;';
+    }
     $desktopOrder = (int) (($teamLayoutIndex[$widget] ?? 0) + 1) * 10;
 
     return '--team-order:' . $desktopOrder . '; --team-mobile-order:' . $mobileOrder . ';';
@@ -124,6 +141,40 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             <a class="btn btn-secondary icon-btn team-settings-top" href="/?page=team_settings&team_id=<?= (int) $team['id'] ?>" aria-label="<?= e(t('team.settings')) ?>"><?= e(t('team.settings_short')) ?></a>
         <?php endif; ?>
     </div>
+
+    <?php if ($teamLayoutEditMode): ?>
+        <article class="panel team-layout-edit-mode-panel">
+            <form id="team-layout-edit-form" method="post" action="/?page=team" class="team-layout-editor team-layout-editor-mobile" data-team-layout-editor>
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="save_team_layout">
+                <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
+                <input type="hidden" name="team_view" value="<?= e($teamView) ?>">
+                <div class="team-layout-editor-head">
+                    <strong><?= e(t('team.edit_layout')) ?></strong>
+                    <small><?= e(t('team.layout_hint')) ?></small>
+                </div>
+                <div class="team-layout-editor-list" data-team-layout-list>
+                    <?php foreach ($teamLayoutEditorWidgets as $widget): ?>
+                        <div class="team-layout-editor-item team-layout-edit-card" data-team-layout-item>
+                            <div class="dashboard-layout-mobile-actions team-layout-mobile-actions">
+                                <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="<?= e(t('common.previous')) ?>">&uarr;</button>
+                                <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="<?= e(t('common.next')) ?>">&darr;</button>
+                            </div>
+                            <label class="dashboard-layout-toggle">
+                                <input type="checkbox" name="team_widgets[]" value="<?= e($widget) ?>" <?= in_array($widget, $teamLayoutWidgets, true) ? 'checked' : '' ?>>
+                                <span><?= e((string) ($teamLayoutLabels[$widget] ?? $widget)) ?></span>
+                            </label>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <div class="team-layout-editor-actions">
+                    <a class="btn btn-ghost small" href="<?= e($teamBaseUrl) ?>"><?= e(t('common.back')) ?></a>
+                    <button class="btn btn-ghost small" type="submit" name="reset_team_layout" value="1"><?= e(t('team.reset_layout')) ?></button>
+                    <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
+                </div>
+            </form>
+        </article>
+    <?php endif; ?>
 
     <?php
     $activeChallengeHero = '';

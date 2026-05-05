@@ -2366,6 +2366,77 @@ function detect_media_mime_type(string $filePath): string
     return $mime;
 }
 
+function media_thumbnail_cache_dir(array $config): string
+{
+    $dir = rtrim((string) ($config['upload_dir'] ?? ''), '/\\') . '/_thumbs';
+    if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
+        throw new RuntimeException('Could not create thumbnail cache directory.');
+    }
+
+    return $dir;
+}
+
+function generate_media_thumbnail(array $config, string $mediaPath, int $width = 360): ?array
+{
+    $width = max(80, min(1200, $width));
+    $normalized = normalize_media_reference($mediaPath);
+    if (($normalized['kind'] ?? '') !== 'media') {
+        return null;
+    }
+
+    $sourcePath = resolve_media_storage_path($config, (string) ($normalized['normalized'] ?? ''));
+    if ($sourcePath === null || !is_file($sourcePath)) {
+        return null;
+    }
+
+    $mime = detect_media_mime_type($sourcePath);
+    $loaders = [
+        'image/jpeg' => 'imagecreatefromjpeg',
+        'image/png' => 'imagecreatefrompng',
+        'image/webp' => 'imagecreatefromwebp',
+        'image/gif' => 'imagecreatefromgif',
+    ];
+    if (!isset($loaders[$mime]) || !function_exists($loaders[$mime]) || !function_exists('imagecreatetruecolor') || !function_exists('imagejpeg')) {
+        return null;
+    }
+
+    $sourceMtime = @filemtime($sourcePath) ?: time();
+    $cacheKey = sha1((string) ($normalized['normalized'] ?? '') . '|' . (string) $sourceMtime . '|' . (string) $width);
+    $cachePath = media_thumbnail_cache_dir($config) . '/' . $cacheKey . '.jpg';
+    if (is_file($cachePath)) {
+        return ['path' => $cachePath, 'mime' => 'image/jpeg'];
+    }
+
+    $size = @getimagesize($sourcePath);
+    if (!is_array($size) || (int) ($size[0] ?? 0) <= 0 || (int) ($size[1] ?? 0) <= 0) {
+        return null;
+    }
+
+    $sourceWidth = (int) $size[0];
+    $sourceHeight = (int) $size[1];
+    $targetWidth = min($width, $sourceWidth);
+    $targetHeight = max(1, (int) round(($sourceHeight / max(1, $sourceWidth)) * $targetWidth));
+
+    $loader = $loaders[$mime];
+    $sourceImage = @$loader($sourcePath);
+    if (!$sourceImage instanceof GdImage) {
+        return null;
+    }
+
+    $targetImage = imagecreatetruecolor($targetWidth, $targetHeight);
+    if (!$targetImage instanceof GdImage) {
+        imagedestroy($sourceImage);
+        return null;
+    }
+
+    imagecopyresampled($targetImage, $sourceImage, 0, 0, 0, 0, $targetWidth, $targetHeight, $sourceWidth, $sourceHeight);
+    $written = imagejpeg($targetImage, $cachePath, 78);
+    imagedestroy($sourceImage);
+    imagedestroy($targetImage);
+
+    return $written && is_file($cachePath) ? ['path' => $cachePath, 'mime' => 'image/jpeg'] : null;
+}
+
 function create_user(PDO $pdo, array $payload): void
 {
     $now = now_iso();
@@ -2523,12 +2594,23 @@ function normalize_team_layout_widgets(mixed $rawLayout): array
 {
     $allowed = team_layout_widgets_default();
     $posted = [];
+    $hasExplicitLayout = false;
 
     if (is_string($rawLayout)) {
-        $decoded = json_decode($rawLayout, true);
-        $posted = is_array($decoded) ? $decoded : [];
+        if (trim($rawLayout) !== '') {
+            $decoded = json_decode($rawLayout, true);
+            if (is_array($decoded)) {
+                $posted = $decoded;
+                $hasExplicitLayout = true;
+            }
+        }
     } elseif (is_array($rawLayout)) {
         $posted = $rawLayout;
+        $hasExplicitLayout = true;
+    }
+
+    if (!$hasExplicitLayout) {
+        return $allowed;
     }
 
     $normalized = [];
@@ -2536,12 +2618,6 @@ function normalize_team_layout_widgets(mixed $rawLayout): array
         $widgetKey = trim((string) $widget);
         if ($widgetKey !== '' && in_array($widgetKey, $allowed, true) && !in_array($widgetKey, $normalized, true)) {
             $normalized[] = $widgetKey;
-        }
-    }
-
-    foreach ($allowed as $widget) {
-        if (!in_array($widget, $normalized, true)) {
-            $normalized[] = $widget;
         }
     }
 

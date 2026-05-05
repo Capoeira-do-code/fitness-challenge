@@ -53,6 +53,25 @@ function week_to_monday(?string $week, ?string $fallback = null): string
     return to_date(null, $fallback);
 }
 
+function calendar_date_from_request(array $source, string $calendarView, ?string $fallback = null): string
+{
+    if ($calendarView === 'month') {
+        $month = trim((string) ($source['calendar_month'] ?? ''));
+        if (preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
+            return to_date($month . '-01', $fallback);
+        }
+    }
+
+    if ($calendarView === 'week') {
+        $week = trim((string) ($source['calendar_week'] ?? ''));
+        if (preg_match('/^\d{4}-W\d{2}$/', $week) === 1) {
+            return week_to_monday($week, $fallback);
+        }
+    }
+
+    return to_date(isset($source['date']) ? (string) $source['date'] : null, $fallback);
+}
+
 function date_to_iso_week(string $date): string
 {
     try {
@@ -437,6 +456,33 @@ function media_url(?string $path, mixed $version = null): string
     ]);
 
     return $url;
+}
+
+function media_thumbnail_url(?string $path, int $width = 360): string
+{
+    $normalized = normalize_media_reference($path);
+    if (($normalized['kind'] ?? '') !== 'media') {
+        return media_url($path);
+    }
+
+    $version = null;
+    if (
+        function_exists('resolve_media_storage_path')
+        && isset($GLOBALS['config'])
+        && is_array($GLOBALS['config'])
+    ) {
+        $resolvedPath = resolve_media_storage_path((array) $GLOBALS['config'], (string) ($normalized['normalized'] ?? ''));
+        if ($resolvedPath !== null && is_file($resolvedPath)) {
+            $mtime = @filemtime($resolvedPath);
+            if ($mtime !== false) {
+                $version = (string) $mtime;
+            }
+        }
+    }
+
+    $url = '/?page=media_thumb&path=' . rawurlencode((string) ($normalized['normalized'] ?? '')) . '&w=' . max(80, min(1200, $width));
+
+    return with_cache_buster($url, $version);
 }
 
 function avatar_url(array $user): string

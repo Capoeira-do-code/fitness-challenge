@@ -135,6 +135,7 @@ if ($entryMode === 'calendar') {
             'caption' => (string) ($photo['caption'] ?? ''),
             'nutrition' => $nutritionSummary($photo),
             'photo_url' => media_url((string) ($photo['file_path'] ?? '')),
+            'thumb_url' => media_thumbnail_url((string) ($photo['file_path'] ?? ''), 360),
             'photo_href' => '/?page=photo&photo_id=' . $photoId,
         ];
     }
@@ -148,9 +149,7 @@ if ($entryMode === 'calendar') {
             <p class="muted"><?= e($entryMode === 'calendar' ? t('entries.calendar_subtitle') : t('entries.subtitle')) ?></p>
         </div>
         <?php if ($entryMode === 'calendar'): ?>
-        <div class="chip-group">
-            <a class="btn btn-primary" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
-        </div>
+        <span class="hero-spacer" aria-hidden="true"></span>
         <?php else: ?>
         <div class="chip-group">
             <a class="btn <?= $entryMode === 'data' ? 'btn-primary' : 'btn-ghost' ?>" href="/?page=entries&mode=data&date=<?= e($selectedDate) ?>"><?= e(t('entries.quick_data')) ?></a>
@@ -506,10 +505,23 @@ if ($entryMode === 'calendar') {
             <form method="get" action="/" class="control-strip entries-calendar-controls" data-meal-calendar-form>
                 <input type="hidden" name="page" value="entries">
                 <input type="hidden" name="mode" value="calendar">
-                <label class="entry-date-inline">
-                    <?= e(t('common.date')) ?>
-                    <input type="date" name="date" value="<?= e($selectedDate) ?>" onchange="this.form.submit()" data-meal-calendar-date>
-                </label>
+                <input type="hidden" value="<?= e($selectedDate) ?>" data-meal-calendar-date>
+                <?php if ($calendarView === 'month'): ?>
+                    <label class="entry-date-inline">
+                        <span data-meal-calendar-period-label><?= e(t('dashboard.month')) ?></span>
+                        <input type="month" name="calendar_month" value="<?= e(substr($selectedDate, 0, 7)) ?>" onchange="this.form.submit()" data-meal-calendar-period data-label-month="<?= e(t('dashboard.month')) ?>" data-label-week="<?= e(t('common.week')) ?>" data-label-date="<?= e(t('common.date')) ?>">
+                    </label>
+                <?php elseif ($calendarView === 'week'): ?>
+                    <label class="entry-date-inline">
+                        <span data-meal-calendar-period-label><?= e(t('common.week')) ?></span>
+                        <input type="week" name="calendar_week" value="<?= e(date_to_iso_week($selectedDate)) ?>" onchange="this.form.submit()" data-meal-calendar-period data-label-month="<?= e(t('dashboard.month')) ?>" data-label-week="<?= e(t('common.week')) ?>" data-label-date="<?= e(t('common.date')) ?>">
+                    </label>
+                <?php else: ?>
+                    <label class="entry-date-inline">
+                        <span data-meal-calendar-period-label><?= e(t('common.date')) ?></span>
+                        <input type="date" name="date" value="<?= e($selectedDate) ?>" onchange="this.form.submit()" data-meal-calendar-period data-label-month="<?= e(t('dashboard.month')) ?>" data-label-week="<?= e(t('common.week')) ?>" data-label-date="<?= e(t('common.date')) ?>">
+                    </label>
+                <?php endif; ?>
                 <input type="hidden" name="calendar_view" value="<?= e($calendarView) ?>" data-meal-calendar-view>
                 <div class="calendar-view-segments" role="group" aria-label="<?= e(t('calendar.view_mode')) ?>">
                     <?php foreach (['month' => t('calendar.view_month'), 'week' => t('calendar.view_week'), 'day' => t('calendar.view_day')] as $viewKey => $viewLabel): ?>
@@ -523,7 +535,7 @@ if ($entryMode === 'calendar') {
                     $photoCount = (int) ($day['count'] ?? 0);
                     $hasLog = $photoCount > 0;
                     $preview = $day['preview'] ?? null;
-                    $previewUrl = is_array($preview) ? media_url((string) ($preview['file_path'] ?? '')) : '';
+                    $previewUrl = is_array($preview) ? media_thumbnail_url((string) ($preview['file_path'] ?? ''), 360) : '';
                     $previewPhotoId = (int) (($preview['id'] ?? 0));
                     $calendarDayUrl = $previewPhotoId > 0
                         ? '/?page=photo&photo_id=' . $previewPhotoId
@@ -533,7 +545,7 @@ if ($entryMode === 'calendar') {
                         <article>
                             <strong><?= e(format_date_eu((string) $dateKey)) ?></strong>
                             <?php if ($previewUrl !== ''): ?>
-                                <img src="<?= e($previewUrl) ?>" alt="<?= e(t('common.photo')) ?>">
+                                <img src="<?= e($previewUrl) ?>" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
                             <?php else: ?>
                                 <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
                             <?php endif; ?>
@@ -560,7 +572,7 @@ if ($entryMode === 'calendar') {
                         <?php foreach ($calendarPeriodPhotos as $photo): ?>
                             <a class="entries-calendar-mobile-tile" href="<?= e((string) ($photo['photo_href'] ?? '#')) ?>">
                                 <?php if ((string) ($photo['photo_url'] ?? '') !== ''): ?>
-                                    <img src="<?= e((string) $photo['photo_url']) ?>" alt="<?= e(t('common.photo')) ?>">
+                                    <img src="<?= e((string) ($photo['thumb_url'] ?? $photo['photo_url'])) ?>" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
                                 <?php else: ?>
                                     <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
                                 <?php endif; ?>
@@ -594,7 +606,7 @@ if ($entryMode === 'calendar') {
                         <figure class="photo-card">
                             <a class="photo-card-media" href="/?page=photo&photo_id=<?= $photoId ?>">
                                 <?php if ($calendarPhotoUrl !== ''): ?>
-                                    <img src="<?= e($calendarPhotoUrl) ?>" alt="<?= e(t('common.photo')) ?>">
+                                    <img src="<?= e($calendarPhotoUrl) ?>" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
                                 <?php else: ?>
                                     <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
                                 <?php endif; ?>

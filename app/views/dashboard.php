@@ -22,6 +22,7 @@ if ($visibleWidgets === []) {
 }
 $showWidget = static fn(string $widget): bool => in_array($widget, $visibleWidgets, true);
 $dashboardEditorWidgets = $dashboardWidgets;
+$dashboardLayoutEditMode = (string) ($_GET['layout_edit'] ?? '') === '1';
 $widgetOrder = static function (string ...$widgets) use ($visibleWidgets): int {
     $orders = [];
     foreach ($widgets as $widget) {
@@ -170,6 +171,14 @@ $penaltiesHref = '/?' . http_build_query([
     'user_id' => (int) ($selectedUser['id'] ?? 0),
     'view' => (string) ($dashboardView ?? 'current_week'),
 ]);
+$dashboardViewParam = (string) ($dashboardView ?? 'current_week');
+$dashboardTopbarQuery = [
+    'page' => 'dashboard',
+    'user_id' => (int) ($selectedUser['id'] ?? 0),
+    'view' => $dashboardViewParam,
+];
+$dashboardEditLayoutUrl = '/?' . http_build_query($dashboardTopbarQuery + ['layout_edit' => '1']);
+$dashboardCancelEditLayoutUrl = '/?' . http_build_query($dashboardTopbarQuery);
 $selectedWeekPenalty = 0.0;
 foreach ((array) ($selectedMetric['weekly'] ?? []) as $weekRow) {
     if ((string) ($weekRow['week_start'] ?? '') === (string) ($selectedWeekStart ?? '')) {
@@ -179,6 +188,9 @@ foreach ((array) ($selectedMetric['weekly'] ?? []) as $weekRow) {
 }
 ob_start();
 ?>
+<?php if ($dashboardLayoutEditMode): ?>
+<button class="btn btn-primary btn-topbar" type="submit" form="dashboard-layout-edit-form"><?= e(t('common.save')) ?></button>
+<?php else: ?>
 <details class="topbar-context">
     <summary class="btn btn-ghost btn-topbar"><?= e(t('dashboard.view_mode')) ?></summary>
     <div class="topbar-context-panel">
@@ -205,12 +217,14 @@ ob_start();
             </select>
         </label>
         </form>
+        <a class="btn btn-primary btn-block dashboard-mobile-edit-entry" href="<?= e($dashboardEditLayoutUrl) ?>"><?= e(t('dashboard.edit_layout')) ?></a>
         <details class="inline-context-sub dashboard-layout-context">
             <summary class="btn btn-ghost btn-block dashboard-edit-layout-trigger"><?= e(t('dashboard.edit_layout')) ?></summary>
             <form method="post" action="/?page=dashboard" class="team-layout-editor dashboard-layout-editor" data-dashboard-layout-editor>
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="save_dashboard_layout">
                 <input type="hidden" name="dashboard_view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
+                <input type="hidden" name="redirect_user_id" value="<?= (int) ($selectedUser['id'] ?? 0) ?>">
                 <div class="team-layout-editor-head">
                     <strong><?= e(t('dashboard.edit_layout')) ?></strong>
                     <small><?= e(t('dashboard.layout_hint')) ?></small>
@@ -239,6 +253,7 @@ ob_start();
         </details>
     </div>
 </details>
+<?php endif; ?>
 <?php
 $topbarControls = ob_get_clean();
 ?>
@@ -248,38 +263,40 @@ $topbarControls = ob_get_clean();
         <strong>"<?= e((string) ($motivationQuote ?? t('dashboard.default_quote'))) ?>"</strong>
     </div>
 
-    <details class="panel dashboard-mobile-layout-context">
-        <summary class="btn btn-ghost btn-block dashboard-edit-layout-trigger"><?= e(t('dashboard.edit_layout')) ?></summary>
-        <form method="post" action="/?page=dashboard" class="dashboard-layout-editor dashboard-layout-editor-mobile" data-dashboard-layout-editor>
+    <?php if ($dashboardLayoutEditMode): ?>
+    <article class="panel dashboard-layout-edit-mode-panel">
+        <form id="dashboard-layout-edit-form" method="post" action="/?page=dashboard" class="dashboard-layout-editor dashboard-layout-editor-mobile" data-dashboard-layout-editor>
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="save_dashboard_layout">
             <input type="hidden" name="dashboard_view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
+            <input type="hidden" name="redirect_user_id" value="<?= (int) ($selectedUser['id'] ?? 0) ?>">
             <div class="team-layout-editor-head">
                 <strong><?= e(t('dashboard.edit_layout')) ?></strong>
                 <small><?= e(t('dashboard.layout_hint')) ?></small>
             </div>
             <div class="team-layout-editor-list dashboard-layout-editor-list" data-dashboard-layout-list>
                 <?php foreach ($dashboardEditorWidgets as $idx => $widget): ?>
-                    <div class="team-layout-editor-item dashboard-layout-editor-item" data-dashboard-layout-item>
-                        <span class="team-layout-drag-handle" aria-hidden="true">::</span>
-                        <label class="dashboard-layout-toggle">
-                            <input type="checkbox" name="dashboard_widgets[]" value="<?= e($widget) ?>" <?= in_array($widget, $visibleWidgets, true) ? 'checked' : '' ?>>
-                            <span><?= e(t('dashboard.widget_' . $widget)) ?></span>
-                        </label>
+                    <div class="team-layout-editor-item dashboard-layout-editor-item dashboard-layout-edit-card" data-dashboard-layout-item>
                         <div class="dashboard-layout-mobile-actions">
                             <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="<?= e(t('common.previous')) ?>">&uarr;</button>
                             <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="<?= e(t('common.next')) ?>">&darr;</button>
                         </div>
+                        <label class="dashboard-layout-toggle">
+                            <input type="checkbox" name="dashboard_widgets[]" value="<?= e($widget) ?>" <?= in_array($widget, $visibleWidgets, true) ? 'checked' : '' ?>>
+                            <span><?= e(t('dashboard.widget_' . $widget)) ?></span>
+                        </label>
                         <input type="hidden" name="dashboard_order[<?= e($widget) ?>]" value="<?= e((string) ($idx + 1)) ?>" data-dashboard-order-input>
                     </div>
                 <?php endforeach; ?>
             </div>
             <div class="team-layout-editor-actions">
+                <a class="btn btn-ghost small" href="<?= e($dashboardCancelEditLayoutUrl) ?>"><?= e(t('common.back')) ?></a>
                 <button class="btn btn-ghost small" type="submit" name="reset_dashboard_layout" value="1"><?= e(t('dashboard.reset_layout')) ?></button>
                 <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
             </div>
         </form>
-    </details>
+    </article>
+    <?php endif; ?>
 
     <div class="dashboard-layout">
         <?php if ($showWidget('kpis')): ?>

@@ -445,14 +445,54 @@ if ($page === 'media') {
     exit;
 }
 
+if ($page === 'media_thumb') {
+    $mediaPath = trim((string) ($_GET['path'] ?? ''));
+    $mediaUser = current_user($pdo);
+    if ($mediaUser === null) {
+        flash_set('error', t('auth.login_required'));
+        redirect('/?page=login');
+    }
+
+    $normalizedMedia = normalize_media_reference($mediaPath);
+    if (($normalizedMedia['kind'] ?? '') !== 'media') {
+        http_response_code(404);
+        echo e(t('flash.not_found'));
+        exit;
+    }
+
+    $width = max(80, min(1200, (int) ($_GET['w'] ?? 360)));
+    $thumb = null;
+    try {
+        $thumb = generate_media_thumbnail($config, (string) ($normalizedMedia['normalized'] ?? ''), $width);
+    } catch (Throwable) {
+        $thumb = null;
+    }
+
+    if (!is_array($thumb) || !is_file((string) ($thumb['path'] ?? ''))) {
+        redirect('/?page=media&path=' . rawurlencode((string) ($normalizedMedia['normalized'] ?? '')));
+    }
+
+    $thumbPath = (string) $thumb['path'];
+    $mime = (string) ($thumb['mime'] ?? 'image/jpeg');
+    $filesize = filesize($thumbPath);
+    header('Content-Type: ' . $mime);
+    if ($filesize !== false) {
+        header('Content-Length: ' . (string) $filesize);
+    }
+    header('Cache-Control: private, max-age=604800');
+    header('X-Content-Type-Options: nosniff');
+    readfile($thumbPath);
+    exit;
+}
+
 $currentUser = require_login($pdo);
 
 if ($page === 'api_meal_calendar') {
-    $selectedDate = to_date($_GET['date'] ?? null);
     $calendarView = (string) ($_GET['calendar_view'] ?? ($currentUser['meal_calendar_view'] ?? 'week'));
     if (!in_array($calendarView, ['month', 'week', 'day'], true)) {
         $calendarView = 'week';
     }
+    $selectedDate = calendar_date_from_request($_GET, $calendarView);
 
     $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
     if (!is_admin($currentUser) && $selectedUserId !== (int) $currentUser['id']) {
@@ -513,6 +553,7 @@ if ($page === 'api_meal_calendar') {
                 ? '/?page=photo&photo_id=' . $previewPhotoId
                 : '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey),
             'preview_url' => $preview !== null ? media_url((string) ($preview['file_path'] ?? '')) : '',
+            'thumb_url' => $preview !== null ? media_thumbnail_url((string) ($preview['file_path'] ?? ''), 360) : '',
         ];
     }
 
@@ -551,6 +592,7 @@ if ($page === 'api_meal_calendar') {
             'caption' => (string) ($photo['caption'] ?? ''),
             'nutrition' => $nutritionSummary($photo),
             'photo_url' => media_url((string) ($photo['file_path'] ?? '')),
+            'thumb_url' => media_thumbnail_url((string) ($photo['file_path'] ?? ''), 360),
             'photo_href' => '/?page=photo&photo_id=' . $photoId,
         ];
     };
@@ -567,6 +609,8 @@ if ($page === 'api_meal_calendar') {
     json_response([
         'ok' => true,
         'date' => $selectedDate,
+        'calendar_month' => substr($selectedDate, 0, 7),
+        'calendar_week' => date_to_iso_week($selectedDate),
         'calendar_view' => $calendarView,
         'user_id' => $selectedUserId,
         'days' => $days,
@@ -832,11 +876,11 @@ if ($page === 'entries') {
     $users = [$currentUser];
     $selectedUserId = (int) $currentUser['id'];
 
-    $selectedDate = to_date($_GET['date'] ?? null);
     $calendarView = (string) ($_GET['calendar_view'] ?? ($currentUser['meal_calendar_view'] ?? 'month'));
     if (!in_array($calendarView, ['month', 'week', 'day'], true)) {
         $calendarView = 'month';
     }
+    $selectedDate = calendar_date_from_request($_GET, $calendarView);
     $currentLog = fetch_log($pdo, $selectedUserId, $selectedDate);
     $recentPhotos = fetch_recent_photos($pdo, 20, $selectedUserId);
     $workoutTypes = list_workout_types($pdo, true);
@@ -3926,9 +3970,22 @@ if ($page === 'team') {
         'weekly_charts' => t('team.widget_weekly_charts'),
         'achievements' => t('team.widget_achievements'),
     ];
+    $teamLayoutEditMode = (string) ($_GET['layout_edit'] ?? '') === '1' && $teamSection === '' && $teamMetricDetail === null;
+    $teamTopbarQuery = [
+        'page' => 'team',
+        'team_id' => (int) ($team['id'] ?? 0),
+        'view' => $teamView,
+    ];
+    if ($teamGoalDebugEnabled) {
+        $teamTopbarQuery['debug_goal'] = '1';
+    }
+    $teamEditLayoutUrl = '/?' . http_build_query($teamTopbarQuery + ['layout_edit' => '1']);
 
     ob_start();
     ?>
+    <?php if ($teamLayoutEditMode): ?>
+    <button class="btn btn-primary btn-topbar" type="submit" form="team-layout-edit-form"><?= e(t('common.save')) ?></button>
+    <?php else: ?>
     <details class="topbar-context">
         <summary class="btn btn-ghost btn-topbar"><?= e(t('dashboard.view_mode')) ?></summary>
         <div class="topbar-context-panel">
@@ -3957,32 +4014,11 @@ if ($page === 'team') {
                 </label>
             </form>
             <?php if ($teamSection === '' && $teamMetricDetail === null): ?>
-                <form method="post" action="/?page=team" class="team-layout-editor" data-team-layout-editor>
-                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                    <input type="hidden" name="action" value="save_team_layout">
-                    <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
-                    <input type="hidden" name="team_view" value="<?= e($teamView) ?>">
-                    <div class="team-layout-editor-head">
-                        <strong><?= e(t('team.edit_layout')) ?></strong>
-                        <small><?= e(t('team.layout_hint')) ?></small>
-                    </div>
-                    <div class="team-layout-editor-list" data-team-layout-list>
-                        <?php foreach ($teamLayoutWidgets as $widget): ?>
-                            <div class="team-layout-editor-item" draggable="true" data-team-layout-item>
-                                <span class="team-layout-drag-handle" aria-hidden="true">::</span>
-                                <input type="hidden" name="team_widgets[]" value="<?= e((string) $widget) ?>">
-                                <span><?= e((string) ($teamLayoutLabels[$widget] ?? $widget)) ?></span>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                    <div class="team-layout-editor-actions">
-                        <button class="btn btn-ghost small" type="submit" name="reset_team_layout" value="1"><?= e(t('team.reset_layout')) ?></button>
-                        <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
-                    </div>
-                </form>
+                <a class="btn btn-primary btn-block" href="<?= e($teamEditLayoutUrl) ?>"><?= e(t('team.edit_layout')) ?></a>
             <?php endif; ?>
         </div>
     </details>
+    <?php endif; ?>
     <?php
     $teamTopbarControls = ob_get_clean();
 
@@ -3996,6 +4032,8 @@ if ($page === 'team') {
         'metricsOrdered' => $metricsOrdered,
         'teamSummary' => $teamSummary,
         'teamView' => $teamView,
+        'teamLayoutEditMode' => $teamLayoutEditMode,
+        'teamLayoutLabels' => $teamLayoutLabels,
         'teamWeekOptions' => $weekOptions,
         'teamSelectedWeekStart' => $selectedWeekStart,
         'teamDailyLabels' => $teamDailyLabels,
@@ -5002,7 +5040,14 @@ if ($page === 'dashboard') {
             );
             audit_log($pdo, (int) $currentUser['id'], 'dashboard_preferences_updated', 'user', (string) $currentUser['id'], 'Dashboard preferences updated.', null, ['dashboard_view' => $_POST['dashboard_view'] ?? 'current_week', 'widgets' => $widgets, 'reset' => $resetLayout]);
             flash_set('success', t('flash.preferences_updated'));
-            redirect('/?page=dashboard&view=' . rawurlencode((string) ($_POST['dashboard_view'] ?? 'current_week')));
+            $dashboardRedirectParams = [
+                'page' => 'dashboard',
+                'view' => (string) ($_POST['dashboard_view'] ?? 'current_week'),
+            ];
+            if (!empty($_POST['redirect_user_id'])) {
+                $dashboardRedirectParams['user_id'] = (int) $_POST['redirect_user_id'];
+            }
+            redirect('/?' . http_build_query($dashboardRedirectParams));
         }
     }
 

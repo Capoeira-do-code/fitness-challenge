@@ -1287,6 +1287,8 @@
         }
         const form = root.querySelector('[data-meal-calendar-form]');
         const dateInput = root.querySelector('[data-meal-calendar-date]');
+        const periodInput = root.querySelector('[data-meal-calendar-period]');
+        const periodLabel = root.querySelector('[data-meal-calendar-period-label]');
         const viewSelect = root.querySelector('[data-meal-calendar-view]');
         const viewOptions = root.querySelectorAll('[data-calendar-view-option]');
         const daysGrid = root.querySelector('[data-meal-calendar-days]');
@@ -1305,6 +1307,10 @@
         root.dataset.mealCalendarReady = '1';
         dateInput.onchange = null;
         dateInput.removeAttribute('onchange');
+        if (periodInput instanceof HTMLInputElement) {
+            periodInput.onchange = null;
+            periodInput.removeAttribute('onchange');
+        }
 
         const submitFallback = () => {
             HTMLFormElement.prototype.submit.call(form);
@@ -1312,8 +1318,15 @@
         const endpointUrl = () => {
             const url = new URL('/', window.location.origin);
             url.searchParams.set('page', 'api_meal_calendar');
-            url.searchParams.set('date', dateInput.value || '');
             url.searchParams.set('calendar_view', viewSelect.value || 'week');
+            const periodValue = periodInput instanceof HTMLInputElement ? periodInput.value : '';
+            if (viewSelect.value === 'month' && /^\d{4}-\d{2}$/.test(periodValue)) {
+                url.searchParams.set('calendar_month', periodValue);
+            } else if (viewSelect.value === 'week' && /^\d{4}-W\d{2}$/.test(periodValue)) {
+                url.searchParams.set('calendar_week', periodValue);
+            } else {
+                url.searchParams.set('date', periodValue || dateInput.value || '');
+            }
             const userId = String(root.dataset.userId || '').trim();
             if (userId !== '') {
                 url.searchParams.set('user_id', userId);
@@ -1325,8 +1338,84 @@
             url.searchParams.set('page', 'entries');
             url.searchParams.set('mode', 'calendar');
             url.searchParams.set('calendar_view', view || 'week');
-            url.searchParams.set('date', date || '');
+            const targetView = view || 'week';
+            if (targetView === 'month') {
+                url.searchParams.set('calendar_month', String(date || '').slice(0, 7));
+            } else if (targetView === 'week') {
+                url.searchParams.set('calendar_week', isoWeekValue(date || ''));
+            } else {
+                url.searchParams.set('date', date || '');
+            }
             return url;
+        };
+        const isoWeekValue = (date) => {
+            const parsed = new Date(`${date || ''}T00:00:00`);
+            if (Number.isNaN(parsed.getTime())) {
+                return '';
+            }
+            const day = parsed.getDay() || 7;
+            parsed.setDate(parsed.getDate() + 4 - day);
+            const yearStart = new Date(parsed.getFullYear(), 0, 1);
+            const week = Math.ceil((((parsed - yearStart) / 86400000) + 1) / 7);
+            return `${parsed.getFullYear()}-W${String(week).padStart(2, '0')}`;
+        };
+        const configurePeriodInput = (view) => {
+            if (!(periodInput instanceof HTMLInputElement)) {
+                return;
+            }
+            if (view === 'month') {
+                periodInput.type = 'month';
+                periodInput.name = 'calendar_month';
+                if (periodLabel instanceof HTMLElement) {
+                    periodLabel.textContent = periodInput.dataset.labelMonth || 'Month';
+                }
+                return;
+            }
+            if (view === 'week') {
+                periodInput.type = 'week';
+                periodInput.name = 'calendar_week';
+                if (periodLabel instanceof HTMLElement) {
+                    periodLabel.textContent = periodInput.dataset.labelWeek || 'Week';
+                }
+                return;
+            }
+            periodInput.type = 'date';
+            periodInput.name = 'date';
+            if (periodLabel instanceof HTMLElement) {
+                periodLabel.textContent = periodInput.dataset.labelDate || 'Date';
+            }
+        };
+        const setPeriodInputForView = (view, date) => {
+            if (!(periodInput instanceof HTMLInputElement)) {
+                return;
+            }
+            configurePeriodInput(view);
+            const normalizedDate = String(date || dateInput.value || '');
+            if (view === 'month') {
+                periodInput.value = normalizedDate.slice(0, 7);
+                return;
+            }
+            if (view === 'week') {
+                periodInput.value = isoWeekValue(normalizedDate);
+                return;
+            }
+            periodInput.value = normalizedDate;
+        };
+        const updatePeriodInput = (payload) => {
+            if (!(periodInput instanceof HTMLInputElement)) {
+                return;
+            }
+            const view = String(payload.calendar_view || viewSelect.value || 'week');
+            configurePeriodInput(view);
+            if (view === 'month') {
+                periodInput.value = String(payload.calendar_month || String(payload.date || '').slice(0, 7));
+                return;
+            }
+            if (view === 'week') {
+                periodInput.value = String(payload.calendar_week || isoWeekValue(payload.date || dateInput.value));
+                return;
+            }
+            periodInput.value = String(payload.date || dateInput.value || '');
         };
         const appendText = (parent, tagName, text, className = '') => {
             const node = document.createElement(tagName);
@@ -1351,10 +1440,12 @@
 
                 const article = document.createElement('article');
                 appendText(article, 'strong', day.date_label || day.date || '');
-                if (day.preview_url) {
+                if (day.thumb_url || day.preview_url) {
                     const image = document.createElement('img');
-                    image.src = String(day.preview_url || '');
+                    image.src = String(day.thumb_url || day.preview_url || '');
                     image.alt = String(labels.photo || 'Photo');
+                    image.loading = 'lazy';
+                    image.decoding = 'async';
                     article.appendChild(image);
                 } else {
                     appendText(article, 'div', labels.no_photo || 'No photo', 'entries-calendar-empty');
@@ -1394,6 +1485,8 @@
                     const image = document.createElement('img');
                     image.src = String(photo.photo_url || '');
                     image.alt = String(labels.photo || 'Photo');
+                    image.loading = 'lazy';
+                    image.decoding = 'async';
                     media.appendChild(image);
                 } else {
                     appendText(media, 'div', labels.no_photo || 'No photo', 'entries-calendar-empty');
@@ -1436,10 +1529,12 @@
                 link.className = 'entries-calendar-mobile-tile';
                 link.href = String(photo.photo_href || '#');
 
-                if (photo.photo_url) {
+                if (photo.thumb_url || photo.photo_url) {
                     const image = document.createElement('img');
-                    image.src = String(photo.photo_url || '');
+                    image.src = String(photo.thumb_url || photo.photo_url || '');
                     image.alt = String(labels.photo || 'Photo');
+                    image.loading = 'lazy';
+                    image.decoding = 'async';
                     link.appendChild(image);
                 } else {
                     appendText(link, 'div', labels.no_photo || 'No photo', 'entries-calendar-empty');
@@ -1455,6 +1550,7 @@
             }
             dateInput.value = String(payload.date || dateInput.value || '');
             viewSelect.value = String(payload.calendar_view || viewSelect.value || 'week');
+            updatePeriodInput(payload);
             viewOptions.forEach((option) => {
                 if (!(option instanceof HTMLElement)) {
                     return;
@@ -1498,7 +1594,7 @@
             loadCalendar(true);
         });
         form.addEventListener('change', (event) => {
-            if (event.target === dateInput || event.target === viewSelect) {
+            if (event.target === dateInput || event.target === periodInput || event.target === viewSelect) {
                 loadCalendar(true);
             }
         });
@@ -1508,7 +1604,9 @@
             }
             option.addEventListener('click', (event) => {
                 event.preventDefault();
-                viewSelect.value = option.dataset.calendarViewOption || viewSelect.value || 'month';
+                const nextView = option.dataset.calendarViewOption || viewSelect.value || 'month';
+                viewSelect.value = nextView;
+                setPeriodInputForView(nextView, dateInput.value);
                 loadCalendar(true);
             });
         });
@@ -1519,6 +1617,16 @@
             }
             dateInput.value = url.searchParams.get('date') || dateInput.value;
             viewSelect.value = url.searchParams.get('calendar_view') || viewSelect.value;
+            if (periodInput instanceof HTMLInputElement) {
+                configurePeriodInput(viewSelect.value);
+                if (viewSelect.value === 'month') {
+                    periodInput.value = url.searchParams.get('calendar_month') || periodInput.value;
+                } else if (viewSelect.value === 'week') {
+                    periodInput.value = url.searchParams.get('calendar_week') || periodInput.value;
+                } else {
+                    periodInput.value = url.searchParams.get('date') || periodInput.value;
+                }
+            }
             loadCalendar(false);
         });
     };

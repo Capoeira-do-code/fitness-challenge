@@ -6481,6 +6481,10 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     display: none;
 }
 
+.dashboard-mobile-edit-entry {
+    display: none;
+}
+
 .dashboard-layout-editor-item {
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 0.38rem;
@@ -6523,10 +6527,35 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 
 .dashboard-penalty-amount {
     margin-left: auto;
-    border-color: rgba(217, 168, 20, 0.4);
-    background: linear-gradient(135deg, #fff7cc, #ffe08a);
-    color: #7a4b00;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.64);
+}
+
+.dashboard-layout-edit-mode-panel,
+.team-layout-edit-mode-panel {
+    border-style: solid;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 252, 249, 0.9)),
+        rgba(255, 255, 255, 0.82);
+}
+
+.dashboard-layout-edit-mode-panel .dashboard-layout-editor,
+.team-layout-edit-mode-panel .team-layout-editor {
+    display: grid;
+    border-top: 0;
+    padding-top: 0;
+}
+
+.dashboard-layout-edit-card,
+.team-layout-edit-card {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 0.42rem;
+    cursor: default;
+}
+
+.dashboard-layout-edit-card .dashboard-layout-mobile-actions,
+.team-layout-edit-card .team-layout-mobile-actions {
+    justify-content: flex-end;
+    order: -1;
 }
 
 .dashboard-achievements-summary {
@@ -6660,6 +6689,38 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
         --mobile-fab-size: 54px;
     }
 
+    .dashboard-layout-edit-mode-panel,
+    .team-layout-edit-mode-panel,
+    .entries-calendar-panel,
+    .entries-calendar-mobile-gallery-panel,
+    .team-layout-item {
+        padding: 0.72rem;
+    }
+
+    .dashboard-layout-edit-mode-panel,
+    .team-layout-edit-mode-panel {
+        position: sticky;
+        top: 4.45rem;
+        z-index: 30;
+        border-radius: 22px;
+        box-shadow: 0 18px 46px rgba(22, 35, 43, 0.16);
+    }
+
+    .dashboard-layout-edit-mode-panel .team-layout-editor-actions,
+    .team-layout-edit-mode-panel .team-layout-editor-actions {
+        position: sticky;
+        bottom: 0;
+        z-index: 2;
+        padding-top: 0.48rem;
+        background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.96) 35%);
+    }
+
+    .dashboard-layout-edit-card,
+    .team-layout-edit-card {
+        padding: 0.48rem;
+        border-radius: 14px;
+    }
+
     .dashboard-mobile-layout-context {
         display: grid;
         gap: 0.58rem;
@@ -6689,6 +6750,10 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
         background: rgba(237, 248, 244, 0.88);
     }
 
+    .dashboard-mobile-edit-entry {
+        display: inline-flex;
+    }
+
     .dashboard-layout-context {
         display: none;
     }
@@ -6699,9 +6764,19 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     }
 
     .dashboard-panel-head-compact {
+        display: flex !important;
         align-items: center;
         flex-direction: row !important;
         gap: 0.48rem;
+    }
+
+    .dashboard-panel-head-compact > div {
+        min-width: 0;
+    }
+
+    .dashboard-panel-head-compact > .badge {
+        flex: 0 0 auto;
+        margin-left: auto;
     }
 
     .dashboard-panel-head-compact h2 {
@@ -6762,10 +6837,38 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 
 @media (max-width: 700px) {
     .entries-calendar-hero,
-    .entries-calendar-head,
     .entries-calendar-controls {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .entries-calendar-head {
+        display: flex;
+        align-items: center;
+        flex-direction: row;
+        gap: 0.55rem;
+    }
+
+    .entries-calendar-head > div {
+        min-width: 0;
+    }
+
+    .entries-calendar-head h2 {
+        font-size: 1.05rem;
+        line-height: 1.08;
+    }
+
+    .entries-calendar-create {
+        flex: 0 0 auto;
+        min-height: 42px;
+        padding-inline: 0.82rem;
+        border-radius: 999px;
+        box-shadow: 0 10px 24px rgba(20, 163, 139, 0.16);
+        white-space: nowrap;
+    }
+
+    .entries-calendar-controls {
+        gap: 0.48rem;
     }
 
     .calendar-view-segments,
@@ -7111,11 +7214,21 @@ body[data-theme="dark"] .bottom-nav-plus-menu {
         rgba(15, 23, 31, 0.78);
 }
 
+body[data-theme="dark"] .dashboard-layout-edit-mode-panel .team-layout-editor-actions,
+body[data-theme="dark"] .team-layout-edit-mode-panel .team-layout-editor-actions {
+    background: linear-gradient(180deg, transparent, rgba(18, 27, 36, 0.96) 35%);
+}
+
 @media (prefers-color-scheme: dark) {
     body[data-theme="auto"] .bottom-nav-plus-menu {
         background:
             linear-gradient(135deg, rgba(27, 39, 52, 0.88), rgba(12, 18, 25, 0.72)),
             rgba(15, 23, 31, 0.78);
+    }
+
+    body[data-theme="auto"] .dashboard-layout-edit-mode-panel .team-layout-editor-actions,
+    body[data-theme="auto"] .team-layout-edit-mode-panel .team-layout-editor-actions {
+        background: linear-gradient(180deg, transparent, rgba(18, 27, 36, 0.96) 35%);
     }
 }
 
@@ -7134,6 +7247,7 @@ body[data-theme="dark"] .bottom-nav-plus-menu {
     }
 
     .entries-calendar-mobile-gallery-panel .panel-head {
+        display: flex;
         align-items: center;
         flex-direction: row;
     }
