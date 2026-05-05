@@ -1288,21 +1288,20 @@
         const form = root.querySelector('[data-meal-calendar-form]');
         const dateInput = root.querySelector('[data-meal-calendar-date]');
         const viewSelect = root.querySelector('[data-meal-calendar-view]');
+        const viewOptions = root.querySelectorAll('[data-calendar-view-option]');
         const daysGrid = root.querySelector('[data-meal-calendar-days]');
         const backLink = root.querySelector('[data-meal-calendar-back]');
         const photosPanel = document.querySelector('[data-meal-calendar-photos-panel]');
         const photosTarget = photosPanel?.querySelector('[data-meal-calendar-selected-photos]');
         const selectedDateLabel = photosPanel?.querySelector('.eyebrow');
 
-        if (!(form instanceof HTMLFormElement) || !(dateInput instanceof HTMLInputElement) || !(viewSelect instanceof HTMLSelectElement) || !(daysGrid instanceof HTMLElement)) {
+        if (!(form instanceof HTMLFormElement) || !(dateInput instanceof HTMLInputElement) || !(viewSelect instanceof HTMLInputElement) || !(daysGrid instanceof HTMLElement)) {
             return;
         }
 
         root.dataset.mealCalendarReady = '1';
         dateInput.onchange = null;
-        viewSelect.onchange = null;
         dateInput.removeAttribute('onchange');
-        viewSelect.removeAttribute('onchange');
 
         const submitFallback = () => {
             HTMLFormElement.prototype.submit.call(form);
@@ -1339,6 +1338,8 @@
             const labels = payload.labels || {};
             const selectedDate = String(payload.date || '');
             daysGrid.classList.toggle('meal-calendar-month', payload.calendar_view === 'month');
+            daysGrid.classList.toggle('meal-calendar-week', payload.calendar_view === 'week');
+            daysGrid.classList.toggle('meal-calendar-day', payload.calendar_view === 'day');
             daysGrid.innerHTML = '';
             (Array.isArray(payload.days) ? payload.days : []).forEach((day) => {
                 const link = document.createElement('a');
@@ -1416,6 +1417,17 @@
             }
             dateInput.value = String(payload.date || dateInput.value || '');
             viewSelect.value = String(payload.calendar_view || viewSelect.value || 'week');
+            viewOptions.forEach((option) => {
+                if (!(option instanceof HTMLElement)) {
+                    return;
+                }
+                const isActive = option.dataset.calendarViewOption === viewSelect.value;
+                option.classList.toggle('active', isActive);
+                option.setAttribute('aria-current', isActive ? 'true' : 'false');
+                if (option instanceof HTMLAnchorElement) {
+                    option.href = pageUrl(dateInput.value, option.dataset.calendarViewOption || viewSelect.value).toString();
+                }
+            });
             if (backLink instanceof HTMLAnchorElement) {
                 backLink.href = `/?page=entries&mode=meal&date=${encodeURIComponent(dateInput.value)}`;
             }
@@ -1450,6 +1462,16 @@
             if (event.target === dateInput || event.target === viewSelect) {
                 loadCalendar(true);
             }
+        });
+        viewOptions.forEach((option) => {
+            if (!(option instanceof HTMLAnchorElement)) {
+                return;
+            }
+            option.addEventListener('click', (event) => {
+                event.preventDefault();
+                viewSelect.value = option.dataset.calendarViewOption || viewSelect.value || 'month';
+                loadCalendar(true);
+            });
         });
         window.addEventListener('popstate', () => {
             const url = new URL(window.location.href);
@@ -2211,6 +2233,18 @@
                     });
                 });
             };
+            const moveItem = (item, direction) => {
+                if (!(item instanceof HTMLElement)) {
+                    return;
+                }
+                if (direction === 'up' && item.previousElementSibling) {
+                    list.insertBefore(item, item.previousElementSibling);
+                }
+                if (direction === 'down' && item.nextElementSibling) {
+                    list.insertBefore(item.nextElementSibling, item);
+                }
+                refreshOrderInputs();
+            };
 
             const getAfterElement = (container, y) => {
                 const items = [...container.querySelectorAll(`${itemSelector}:not(.is-dragging)`)];
@@ -2239,6 +2273,14 @@
                     item.classList.remove('is-dragging');
                     dragged = null;
                     refreshOrderInputs();
+                });
+                item.querySelectorAll('[data-layout-move]').forEach((button) => {
+                    if (!(button instanceof HTMLButtonElement)) {
+                        return;
+                    }
+                    button.addEventListener('click', () => {
+                        moveItem(item, button.dataset.layoutMove || '');
+                    });
                 });
             });
 

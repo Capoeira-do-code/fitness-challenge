@@ -118,6 +118,12 @@ $analyticsBaseQuery = [
     'analytics_week' => $analyticsWeek,
     'analytics_month' => $analyticsMonth,
 ];
+$analyticsPeriodLabels = [
+    'current_week' => t('dashboard.analytics_current_week'),
+    'week' => t('dashboard.analytics_specific_week'),
+    'month' => t('dashboard.analytics_month'),
+    'total' => t('metric.total'),
+];
 $analyticsWeekPrev = $analyticsWeek;
 $analyticsWeekNext = $analyticsWeek;
 try {
@@ -179,9 +185,15 @@ $topbarControls = ob_get_clean();
         <a class="btn btn-ghost" href="/?page=dashboard&user_id=<?= (int) ($selectedUser['id'] ?? 0) ?>"><?= e(t('nav.dashboard')) ?></a>
     </div>
 
-    <form method="get" action="/" class="panel analytics-controls">
+    <form method="get" action="/" class="panel analytics-controls analytics-filter-panel">
         <input type="hidden" name="page" value="analytics">
-        <label>
+        <input type="hidden" name="analytics_period" value="<?= e($analyticsPeriod) ?>">
+        <div class="analytics-viewing-summary">
+            <span class="eyebrow"><?= e(t('dashboard.viewing')) ?></span>
+            <strong><?= e((string) ($selectedUser['display_name'] ?? t('common.user'))) ?></strong>
+            <small><?= e((string) ($analyticsPeriodLabels[$analyticsPeriod] ?? $analyticsPeriod)) ?> - <?= e($analyticsRangeText) ?></small>
+        </div>
+        <label class="analytics-user-filter">
             <?= e(t('dashboard.viewing')) ?>
             <select name="user_id" onchange="this.form.submit()">
                 <?php foreach ($users as $user): ?>
@@ -189,17 +201,21 @@ $topbarControls = ob_get_clean();
                 <?php endforeach; ?>
             </select>
         </label>
-        <label>
-            <?= e(t('dashboard.analytics_period')) ?>
-            <select name="analytics_period" onchange="this.form.submit()">
-                <option value="current_week" <?= $analyticsPeriod === 'current_week' ? 'selected' : '' ?>><?= e(t('dashboard.analytics_current_week')) ?></option>
-                <option value="week" <?= $analyticsPeriod === 'week' ? 'selected' : '' ?>><?= e(t('dashboard.analytics_specific_week')) ?></option>
-                <option value="month" <?= $analyticsPeriod === 'month' ? 'selected' : '' ?>><?= e(t('dashboard.analytics_month')) ?></option>
-                <option value="total" <?= $analyticsPeriod === 'total' ? 'selected' : '' ?>><?= e(t('metric.total')) ?></option>
-            </select>
-        </label>
-        <label><?= e(t('common.week')) ?><input type="date" name="analytics_week" value="<?= e($analyticsWeek) ?>" onchange="this.form.submit()"></label>
-        <label><?= e(t('dashboard.analytics_month')) ?><input type="month" name="analytics_month" value="<?= e($analyticsMonth) ?>" onchange="this.form.submit()"></label>
+        <div class="analytics-period-segments" role="group" aria-label="<?= e(t('dashboard.analytics_period')) ?>">
+            <?php foreach ($analyticsPeriodLabels as $periodKey => $periodLabel): ?>
+                <a class="<?= $analyticsPeriod === $periodKey ? 'active' : '' ?>" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => $periodKey]))) ?>"><?= e((string) $periodLabel) ?></a>
+            <?php endforeach; ?>
+        </div>
+        <?php if ($analyticsPeriod === 'week'): ?>
+            <label class="analytics-date-filter"><?= e(t('common.week')) ?><input type="date" name="analytics_week" value="<?= e($analyticsWeek) ?>" onchange="this.form.submit()"></label>
+        <?php else: ?>
+            <input type="hidden" name="analytics_week" value="<?= e($analyticsWeek) ?>">
+        <?php endif; ?>
+        <?php if ($analyticsPeriod === 'month'): ?>
+            <label class="analytics-date-filter"><?= e(t('dashboard.analytics_month')) ?><input type="month" name="analytics_month" value="<?= e($analyticsMonth) ?>" onchange="this.form.submit()"></label>
+        <?php else: ?>
+            <input type="hidden" name="analytics_month" value="<?= e($analyticsMonth) ?>">
+        <?php endif; ?>
         <div class="analytics-nav-links">
             <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'week', 'analytics_week' => $analyticsWeekPrev]))) ?>"><?= e(t('common.previous')) ?></a>
             <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'week', 'analytics_week' => $analyticsWeekNext]))) ?>"><?= e(t('common.next')) ?></a>

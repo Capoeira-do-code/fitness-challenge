@@ -18,6 +18,8 @@ $goalDetailId = isset($_GET['goal_id']) ? (int) $_GET['goal_id'] : 0;
 $configEditMode = $canEditProfile && (string) ($_GET['edit'] ?? '') === '1';
 $profileMetric = is_array($profileMetric ?? null) ? (array) $profileMetric : [];
 $primaryGoalsSpec = trim((string) ($profileUser['primary_goals_spec'] ?? ''));
+$profileTagline = trim((string) ($profileUser['profile_tagline'] ?? ''));
+$profileHeroMessage = $profileTagline !== '' ? $profileTagline : (string) t('profile.subtitle');
 
 $profileQueryBase = ['page' => 'profile'];
 if (!$isOwnProfile) {
@@ -276,9 +278,27 @@ if ($calorieConfigParts !== []) {
             <div>
                 <p class="eyebrow"><?= e(t('nav.profile')) ?></p>
                 <h1><?= e((string) $profileUser['display_name']) ?></h1>
-                <p class="muted">@<?= e((string) $profileUser['username']) ?> · <?= e(t('profile.subtitle')) ?><?= !$isOwnProfile ? ' · Solo lectura' : '' ?></p>
+                <p class="muted">@<?= e((string) $profileUser['username']) ?> &middot; <?= e($profileHeroMessage) ?><?php if (!$isOwnProfile): ?> &middot; <?= e(t('profile.read_only')) ?><?php endif; ?></p>
             </div>
         </div>
+        <?php if ($isOwnProfile): ?>
+            <details class="profile-tagline-editor">
+                <summary class="btn btn-ghost icon-btn profile-tagline-edit" aria-label="<?= e(t('profile.edit_tagline')) ?>">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.7-1.2L19 8.5 15.5 5 5.2 15.3 4 20Z"/><path d="m14 6 4 4"/></svg>
+                </summary>
+                <form method="post" action="<?= e($profileUrl()) ?>" class="profile-tagline-form">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="update_profile_tagline">
+                    <label>
+                        <?= e(t('profile.custom_message')) ?>
+                        <input type="text" name="profile_tagline" maxlength="160" value="<?= e($profileTagline) ?>" placeholder="<?= e(t('profile.subtitle')) ?>">
+                    </label>
+                    <div class="profile-tagline-actions">
+                        <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
+                    </div>
+                </form>
+            </details>
+        <?php endif; ?>
     </div>
 
     <?php if ($isOwnProfile): ?>

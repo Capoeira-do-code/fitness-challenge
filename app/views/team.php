@@ -473,14 +473,24 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         ?>
         <div class="team-layout-grid">
         <div class="metric-grid team-layout-item team-widget-metrics" style="<?= e($teamWidgetStyle('metrics', 10)) ?>">
-            <a class="metric-card metric-card-link" href="<?= e($teamMetricUrl('steps')) ?>">
+            <a class="metric-card metric-card-link team-metric-steps" href="<?= e($teamMetricUrl('steps')) ?>">
                 <div class="progress-ring" style="--value: 100;"><span><?= e($formatInt($summarySteps)) ?></span></div>
                 <div><span><?= e(t('metric.total_steps')) ?></span><strong><?= e($formatInt($summarySteps)) ?></strong><p><?= e(t('team.all_members')) ?></p></div>
             </a>
-            <a class="metric-card metric-card-link" href="<?= e($teamMetricUrl('distance')) ?>">
+            <a class="metric-card metric-card-link team-metric-distance" href="<?= e($teamMetricUrl('distance')) ?>">
                 <div class="progress-ring" style="--value: <?= e((string) min(100, $summaryDistance)) ?>;"><span><?= e($formatKm($summaryDistance)) ?></span></div>
                 <div><span><?= e(t('metric.total_km')) ?></span><strong><?= e($formatKm($summaryDistance)) ?> km</strong><p><?= e(t('team.all_members')) ?></p></div>
             </a>
+            <article class="metric-card team-mobile-combo-card">
+                <a href="<?= e($teamMetricUrl('steps')) ?>">
+                    <span><?= e(t('metric.total_steps')) ?></span>
+                    <strong><?= e($formatInt($summarySteps)) ?></strong>
+                </a>
+                <a href="<?= e($teamMetricUrl('distance')) ?>">
+                    <span><?= e(t('metric.total_km')) ?></span>
+                    <strong><?= e($formatKm($summaryDistance)) ?> km</strong>
+                </a>
+            </article>
             <a class="metric-card metric-card-link" href="<?= e($teamMetricUrl('workouts')) ?>">
                 <div class="progress-ring" style="--value: <?= e((string) $workoutProgress) ?>;"><span><?= e($formatInt($summaryWorkouts)) ?></span></div>
                 <div>

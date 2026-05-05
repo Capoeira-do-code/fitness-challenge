@@ -46,6 +46,7 @@ function initialize_database(PDO $pdo, array $config): void
             calorie_burn_goal REAL,
             calorie_consumed_max REAL,
             motivation_quote TEXT DEFAULT "",
+            profile_tagline TEXT,
             locale TEXT NOT NULL DEFAULT "en",
             avatar_path TEXT,
             primary_goal_type TEXT NOT NULL DEFAULT "steps",
@@ -652,6 +653,7 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'primary_goal_type', 'TEXT NOT NULL DEFAULT "steps"');
     ensure_column($pdo, 'users', 'primary_goal_value', 'REAL');
     ensure_column($pdo, 'users', 'primary_goals_spec', 'TEXT');
+    ensure_column($pdo, 'users', 'profile_tagline', 'TEXT');
     ensure_column($pdo, 'users', 'dashboard_view', 'TEXT NOT NULL DEFAULT "current_week"');
     ensure_column($pdo, 'users', 'dashboard_layout_json', 'TEXT');
     ensure_column($pdo, 'users', 'team_layout_json', 'TEXT');

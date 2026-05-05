@@ -104,17 +104,23 @@ $nutritionSummary = static function (array $photo): string {
     return implode(' · ', $parts);
 };
 ?>
-<section class="screen stack-lg">
-    <div class="hero-panel">
+<section class="screen stack-lg<?= $entryMode === 'calendar' ? ' entries-calendar-screen' : '' ?>">
+    <div class="hero-panel<?= $entryMode === 'calendar' ? ' entries-calendar-hero' : '' ?>">
         <div>
-            <p class="eyebrow"><?= e(t('nav.entries')) ?></p>
-            <h1><?= e(t('entries.title')) ?></h1>
-            <p class="muted"><?= e(t('entries.subtitle')) ?></p>
+            <p class="eyebrow"><?= e($entryMode === 'calendar' ? t('nav.calendar') : t('nav.entries')) ?></p>
+            <h1><?= e($entryMode === 'calendar' ? t('entries.calendar_title') : t('entries.title')) ?></h1>
+            <p class="muted"><?= e($entryMode === 'calendar' ? t('entries.calendar_subtitle') : t('entries.subtitle')) ?></p>
         </div>
+        <?php if ($entryMode === 'calendar'): ?>
+        <div class="chip-group">
+            <a class="btn btn-primary" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
+        </div>
+        <?php else: ?>
         <div class="chip-group">
             <a class="btn <?= $entryMode === 'data' ? 'btn-primary' : 'btn-ghost' ?>" href="/?page=entries&mode=data&date=<?= e($selectedDate) ?>"><?= e(t('entries.quick_data')) ?></a>
             <a class="btn <?= $entryMode === 'meal' ? 'btn-primary' : 'btn-ghost' ?>" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"><?= e(t('entries.quick_meal')) ?></a>
         </div>
+        <?php endif; ?>
     </div>
 
     <?php if ($entryMode === 'data'): ?>
@@ -456,14 +462,10 @@ $nutritionSummary = static function (array $photo): string {
         <article class="panel entries-calendar-panel" data-meal-calendar-root data-user-id="<?= (int) ($selectedUserId ?? $currentUser['id'] ?? 0) ?>">
             <div class="panel-head entries-calendar-head">
                 <div>
-                    <p class="eyebrow"><?= e(t('nav.entries')) ?></p>
+                    <p class="eyebrow"><?= e(t('common.date')) ?> &middot; <?= e(format_date_eu((string) $selectedDate)) ?></p>
                     <h2><?= e(t('entries.calendar_title')) ?></h2>
                 </div>
-                <a
-                    class="btn btn-ghost entries-calendar-back"
-                    href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"
-                    data-meal-calendar-back
-                >← <?= e(t('common.back')) ?></a>
+                <a class="btn btn-primary entries-calendar-create" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>" data-meal-calendar-back><?= e(t('entries.create_entry')) ?></a>
             </div>
             <form method="get" action="/" class="control-strip entries-calendar-controls" data-meal-calendar-form>
                 <input type="hidden" name="page" value="entries">
@@ -472,16 +474,14 @@ $nutritionSummary = static function (array $photo): string {
                     <?= e(t('common.date')) ?>
                     <input type="date" name="date" value="<?= e($selectedDate) ?>" onchange="this.form.submit()" data-meal-calendar-date>
                 </label>
-                <label>
-                    <?= e(t('calendar.view_mode')) ?>
-                    <select name="calendar_view" onchange="this.form.submit()" data-meal-calendar-view>
-                        <option value="month" <?= $calendarView === 'month' ? 'selected' : '' ?>><?= e(t('calendar.view_month')) ?></option>
-                        <option value="week" <?= $calendarView === 'week' ? 'selected' : '' ?>><?= e(t('calendar.view_week')) ?></option>
-                        <option value="day" <?= $calendarView === 'day' ? 'selected' : '' ?>><?= e(t('calendar.view_day')) ?></option>
-                    </select>
-                </label>
+                <input type="hidden" name="calendar_view" value="<?= e($calendarView) ?>" data-meal-calendar-view>
+                <div class="calendar-view-segments" role="group" aria-label="<?= e(t('calendar.view_mode')) ?>">
+                    <?php foreach (['month' => t('calendar.view_month'), 'week' => t('calendar.view_week'), 'day' => t('calendar.view_day')] as $viewKey => $viewLabel): ?>
+                        <a class="<?= $calendarView === $viewKey ? 'active' : '' ?>" href="/?page=entries&mode=calendar&calendar_view=<?= e($viewKey) ?>&date=<?= e($selectedDate) ?>" data-calendar-view-option="<?= e($viewKey) ?>"><?= e($viewLabel) ?></a>
+                    <?php endforeach; ?>
+                </div>
             </form>
-            <div class="meal-calendar<?= $calendarView === 'month' ? ' meal-calendar-month' : '' ?> entries-calendar" data-meal-calendar-days>
+            <div class="meal-calendar meal-calendar-<?= e($calendarView) ?><?= $calendarView === 'month' ? ' meal-calendar-month' : '' ?> entries-calendar" data-meal-calendar-days>
                 <?php foreach (($mealCalendar ?? []) as $dateKey => $day): ?>
                     <?php
                     $photoCount = (int) ($day['count'] ?? 0);

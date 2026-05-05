@@ -36,8 +36,11 @@ $widgetOrder = static function (string ...$widgets) use ($visibleWidgets): int {
 $contentWidgetOrder = static fn(string ...$widgets): int => 100 + $widgetOrder(...$widgets);
 $dashboardAchievementsAll = array_values((array) ($dashboardAchievements ?? []));
 $dashboardUnlockedAchievements = array_values(array_filter($dashboardAchievementsAll, static fn(array $achievement): bool => !empty($achievement['is_unlocked'])));
-$dashboardLockedAchievements = array_values(array_filter($dashboardAchievementsAll, static fn(array $achievement): bool => empty($achievement['is_unlocked'])));
-$dashboardAchievementPreview = array_slice($dashboardAchievementsAll, 0, 4);
+usort(
+    $dashboardUnlockedAchievements,
+    static fn(array $left, array $right): int => strcmp((string) ($right['awarded_at'] ?? ''), (string) ($left['awarded_at'] ?? ''))
+);
+$dashboardAchievementPreview = array_slice($dashboardUnlockedAchievements, 0, 4);
 $dashboardAchievementsUrl = '/?' . http_build_query([
     'page' => 'achievements',
     'scope' => 'user',
@@ -220,6 +223,10 @@ ob_start();
                                 <input type="checkbox" name="dashboard_widgets[]" value="<?= e($widget) ?>" <?= in_array($widget, $visibleWidgets, true) ? 'checked' : '' ?>>
                                 <span><?= e(t('dashboard.widget_' . $widget)) ?></span>
                             </label>
+                            <div class="dashboard-layout-mobile-actions">
+                                <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="<?= e(t('common.previous')) ?>">&uarr;</button>
+                                <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="<?= e(t('common.next')) ?>">&darr;</button>
+                            </div>
                             <input type="hidden" name="dashboard_order[<?= e($widget) ?>]" value="<?= e((string) ($idx + 1)) ?>" data-dashboard-order-input>
                         </div>
                     <?php endforeach; ?>
@@ -240,6 +247,39 @@ $topbarControls = ob_get_clean();
         <span><?= e(t('dashboard.motivation')) ?></span>
         <strong>"<?= e((string) ($motivationQuote ?? t('dashboard.default_quote'))) ?>"</strong>
     </div>
+
+    <details class="panel dashboard-mobile-layout-context">
+        <summary class="btn btn-ghost btn-block dashboard-edit-layout-trigger"><?= e(t('dashboard.edit_layout')) ?></summary>
+        <form method="post" action="/?page=dashboard" class="dashboard-layout-editor dashboard-layout-editor-mobile" data-dashboard-layout-editor>
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="save_dashboard_layout">
+            <input type="hidden" name="dashboard_view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
+            <div class="team-layout-editor-head">
+                <strong><?= e(t('dashboard.edit_layout')) ?></strong>
+                <small><?= e(t('dashboard.layout_hint')) ?></small>
+            </div>
+            <div class="team-layout-editor-list dashboard-layout-editor-list" data-dashboard-layout-list>
+                <?php foreach ($dashboardEditorWidgets as $idx => $widget): ?>
+                    <div class="team-layout-editor-item dashboard-layout-editor-item" data-dashboard-layout-item>
+                        <span class="team-layout-drag-handle" aria-hidden="true">::</span>
+                        <label class="dashboard-layout-toggle">
+                            <input type="checkbox" name="dashboard_widgets[]" value="<?= e($widget) ?>" <?= in_array($widget, $visibleWidgets, true) ? 'checked' : '' ?>>
+                            <span><?= e(t('dashboard.widget_' . $widget)) ?></span>
+                        </label>
+                        <div class="dashboard-layout-mobile-actions">
+                            <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="<?= e(t('common.previous')) ?>">&uarr;</button>
+                            <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="<?= e(t('common.next')) ?>">&darr;</button>
+                        </div>
+                        <input type="hidden" name="dashboard_order[<?= e($widget) ?>]" value="<?= e((string) ($idx + 1)) ?>" data-dashboard-order-input>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <div class="team-layout-editor-actions">
+                <button class="btn btn-ghost small" type="submit" name="reset_dashboard_layout" value="1"><?= e(t('dashboard.reset_layout')) ?></button>
+                <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
+            </div>
+        </form>
+    </details>
 
     <div class="dashboard-layout">
         <?php if ($showWidget('kpis')): ?>
@@ -300,12 +340,12 @@ $topbarControls = ob_get_clean();
         </article>
 
         <article class="panel dashboard-panel dashboard-penalty-compact" style="order: -15">
-            <div class="panel-head">
+            <div class="panel-head dashboard-panel-head-compact dashboard-penalty-head">
                 <div>
                     <p class="eyebrow"><?= e(t('metric.penalty')) ?></p>
                     <h2><?= e(t('dashboard.penalty_compact_title')) ?></h2>
                 </div>
-                <span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass($selectedWeekPenalty)) ?>">&euro;<?= e(number_format($selectedWeekPenalty, 2, '.', '')) ?></span>
+                <span class="penalty-chip dashboard-penalty-amount penalty-chip-<?= e($penaltySeverityClass($selectedWeekPenalty)) ?>">&euro;<?= e(number_format($selectedWeekPenalty, 2, '.', '')) ?></span>
             </div>
             <div class="dashboard-penalty-compact-grid">
                 <span>
@@ -331,29 +371,26 @@ $topbarControls = ob_get_clean();
 
         <?php if ($showWidget('achievements')): ?>
         <article class="panel dashboard-panel dashboard-achievements-panel dashboard-span-full" style="order: <?= $contentWidgetOrder('achievements') ?>">
-            <div class="panel-head">
+            <div class="panel-head dashboard-panel-head-compact">
                 <div>
                     <p class="eyebrow"><?= e(t('achievements.title')) ?></p>
                     <h2><?= e(t('dashboard.personal_achievements')) ?></h2>
+                    <p class="muted small"><?= e(t('dashboard.latest_unlocked_achievements')) ?></p>
                 </div>
                 <div class="dashboard-achievements-summary">
-                    <span class="badge"><?= count($dashboardUnlockedAchievements) ?> <?= e(t('achievements.unlocked')) ?></span>
-                    <span class="badge"><?= count($dashboardLockedAchievements) ?> <?= e(t('achievements.locked')) ?></span>
                     <a class="btn btn-ghost small dashboard-panel-action" href="<?= e($dashboardAchievementsUrl) ?>"><?= e(t('common.view_all')) ?></a>
                 </div>
             </div>
             <div class="dashboard-achievements-grid">
                 <?php foreach ($dashboardAchievementPreview as $achievement): ?>
                     <?php
-                    $isUnlocked = !empty($achievement['is_unlocked']);
                     $progressPct = is_numeric($achievement['progress_pct'] ?? null) ? max(0.0, min(100.0, (float) $achievement['progress_pct'])) : null;
                     ?>
-                    <article class="achievement-card dashboard-achievement-card <?= $isUnlocked ? 'is-unlocked' : 'is-locked' ?>" <?= achievement_modal_attrs($achievement) ?>>
+                    <article class="achievement-card dashboard-achievement-card is-unlocked" <?= achievement_modal_attrs($achievement) ?>>
                         <?= achievement_visual_html($achievement, 'achievement-visual') ?>
                         <div class="dashboard-achievement-content">
                             <div class="dashboard-achievement-title-row">
                                 <strong><?= e((string) ($achievement['name'] ?? '')) ?></strong>
-                                <span class="achievement-chip <?= $isUnlocked ? 'achievement-chip-ok' : 'achievement-chip-muted' ?>"><?= e($isUnlocked ? t('achievements.unlocked') : t('achievements.locked')) ?></span>
                             </div>
                             <p><?= e((string) ($achievement['description'] ?? '')) ?></p>
                             <?php if ($progressPct !== null): ?>
@@ -428,15 +465,10 @@ $topbarControls = ob_get_clean();
                     </tbody>
                 </table>
             </div>
-            <div class="dashboard-mobile-card-list dashboard-weekly-mobile-list" aria-label="<?= e(t('dashboard.weekly_history')) ?>">
+            <div class="dashboard-mobile-card-list dashboard-weekly-mobile-list dashboard-weekly-compact-list" aria-label="<?= e(t('dashboard.weekly_history')) ?>">
                 <?php foreach ($selectedMetric['weekly'] as $week): ?>
                     <?php
                     $weekStartDate = (string) ($week['week_start'] ?? $selectedWeekStart ?? '');
-                    $weekStrikesHref = '/?' . http_build_query([
-                        'page' => 'strikes_detail',
-                        'user_id' => (int) ($selectedUser['id'] ?? 0),
-                        'view' => $weekStartDate,
-                    ]);
                     $weekEditorHref = '/?' . http_build_query([
                         'page' => 'week_editor',
                         'user_id' => (int) ($selectedUser['id'] ?? 0),
@@ -444,24 +476,17 @@ $topbarControls = ob_get_clean();
                     ]);
                     $weeklyPenalty = (float) ($week['penalty'] ?? 0);
                     ?>
-                    <article class="dashboard-mobile-card dashboard-week-card">
-                        <div class="dashboard-mobile-card-head">
-                            <strong><?= e(format_date_eu((string) $week['week_start'])) ?> -> <?= e(format_date_eu((string) $week['week_end'])) ?></strong>
-                            <span class="badge"><?= e(label_for_status((string) $week['status'])) ?></span>
-                        </div>
-                        <div class="dashboard-mobile-metrics">
-                            <span><small><?= e(t('metric.step_failures')) ?></small><strong><?= e((string) $week['step_failures']) ?></strong></span>
-                            <span><small><?= e(t('metric.workout_failures')) ?></small><strong><?= e((string) $week['workout_failures']) ?></strong></span>
-                            <span><small><?= e(t('metric.warnings')) ?></small><strong><?= e((string) ($week['skip_warnings'] ?? 0)) ?></strong></span>
-                            <span><small><?= e(t('dashboard.strikes_after_week')) ?></small><strong><?= e((string) $week['strikes_after_week']) ?></strong></span>
-                            <span><small><?= e(t('dashboard.strike_reduction')) ?></small><strong><?= (int) $week['strike_reduction'] > 0 ? '-1' : '-' ?></strong></span>
-                            <span><small><?= e(t('strikes.economic_impact')) ?></small><strong class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) $weeklyPenalty)) ?>">&euro;<?= e(number_format($weeklyPenalty, 2, '.', '')) ?></strong></span>
-                        </div>
-                        <div class="dashboard-week-actions dashboard-mobile-actions">
-                            <a class="btn btn-ghost small" href="<?= e($weekEditorHref) ?>"><?= e(t('dashboard.edit_week')) ?></a>
-                            <a class="btn btn-ghost small" href="<?= e($weekStrikesHref) ?>"><?= e(t('dashboard.penalty_history')) ?></a>
-                        </div>
-                    </article>
+                    <a class="dashboard-week-row" href="<?= e($weekEditorHref) ?>">
+                        <span class="dashboard-week-row-main">
+                            <strong><?= e(format_date_eu((string) $week['week_start'])) ?></strong>
+                            <small><?= e(label_for_status((string) $week['status'])) ?></small>
+                        </span>
+                        <span class="dashboard-week-row-meta">
+                            <span><?= e(t('metric.warnings')) ?> <?= e((string) ($week['skip_warnings'] ?? 0)) ?></span>
+                            <span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) $weeklyPenalty)) ?>">&euro;<?= e(number_format($weeklyPenalty, 2, '.', '')) ?></span>
+                        </span>
+                        <span class="settings-chevron" aria-hidden="true">&gt;</span>
+                    </a>
                 <?php endforeach; ?>
             </div>
         </article>
@@ -469,7 +494,7 @@ $topbarControls = ob_get_clean();
 
         <?php if ($showWidget('approvals')): ?>
         <article class="panel dashboard-panel dashboard-approvals" data-testid="pending-approvals" style="order: <?= $contentWidgetOrder('approvals') ?>">
-            <div class="panel-head">
+            <div class="panel-head dashboard-panel-head-compact">
                 <div>
                     <p class="eyebrow"><?= e(t('common.pending')) ?></p>
                     <h2><?= e(t('dashboard.approvals_title')) ?></h2>

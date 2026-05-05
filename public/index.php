@@ -1391,6 +1391,42 @@ if ($page === 'profile') {
             redirect($profileUrl());
         }
 
+        if ($action === 'update_profile_tagline') {
+            if (!$canEditProfile || !$isOwnProfile) {
+                flash_set('error', t('flash.no_permission'));
+                redirect($profileUrl());
+            }
+            $before = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $profileUser['id']]);
+            $tagline = trim((string) ($_POST['profile_tagline'] ?? ''));
+            if (function_exists('mb_substr')) {
+                $tagline = mb_substr($tagline, 0, 160);
+            } else {
+                $tagline = substr($tagline, 0, 160);
+            }
+            db_execute(
+                $pdo,
+                'UPDATE users SET profile_tagline = :profile_tagline, updated_at = :updated_at WHERE id = :id',
+                [
+                    ':profile_tagline' => $tagline !== '' ? $tagline : null,
+                    ':updated_at' => now_iso(),
+                    ':id' => (int) $profileUser['id'],
+                ]
+            );
+            $after = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $profileUser['id']]);
+            audit_log(
+                $pdo,
+                (int) $currentUser['id'],
+                'profile_tagline_updated',
+                'user',
+                (string) $profileUser['id'],
+                'Profile tagline updated.',
+                audit_snapshot($before, ['password_hash']),
+                audit_snapshot($after, ['password_hash'])
+            );
+            flash_set('success', t('flash.preferences_updated'));
+            redirect($profileUrl());
+        }
+
         if ($action === 'create_goal') {
             if (!$canEditProfile) {
                 flash_set('error', t('flash.no_permission'));
