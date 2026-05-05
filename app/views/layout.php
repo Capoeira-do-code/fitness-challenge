@@ -25,16 +25,27 @@ if ($appIconPath !== '' && resolve_media_storage_path($config, $appIconPath) !==
 }
 $desktopNavItems = [
     'dashboard' => ['label' => t('nav.dashboard'), 'href' => '/?page=dashboard', 'icon' => 'home'],
+    'calendar' => ['label' => t('nav.calendar'), 'href' => '/?page=entries&mode=calendar&calendar_view=month', 'icon' => 'calendar'],
+    'analytics' => ['label' => t('nav.analytics'), 'href' => '/?page=analytics', 'icon' => 'analytics'],
     'team' => ['label' => t('nav.team'), 'href' => '/?page=team', 'icon' => 'users'],
     'profile' => ['label' => t('nav.profile'), 'href' => '/?page=profile', 'icon' => 'user'],
 ];
-$mobileNavItems = array_intersect_key($desktopNavItems, array_flip(['dashboard', 'team', 'profile']));
+$mobileNavItems = array_intersect_key($desktopNavItems, array_flip(['dashboard', 'calendar', 'analytics', 'team', 'profile']));
 $topbarControls = $topbarControls ?? '';
 $unreadNotificationsCount = $loggedIn ? user_unread_notifications_count($GLOBALS['pdo'], (int) ($currentUser['id'] ?? 0)) : 0;
+$isNavActive = static function (string $pageKey) use ($currentPage): bool {
+    if ($pageKey === 'calendar') {
+        return $currentPage === 'entries' && (string) ($_GET['mode'] ?? '') === 'calendar';
+    }
+
+    return $currentPage === $pageKey;
+};
 
 $renderMobileIcon = static function (string $icon): string {
     return match ($icon) {
         'home' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h5v-5h4v5h5v-9.5"/></svg>',
+        'calendar' => '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>',
+        'analytics' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h17"/><rect x="7" y="11" width="3" height="5" rx="1"/><rect x="12" y="7" width="3" height="9" rx="1"/><rect x="17" y="9" width="3" height="7" rx="1"/></svg>',
         'users' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
         default => '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>',
     };
@@ -85,7 +96,8 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
 
         <nav class="nav-links nav-desktop" aria-label="Primary">
             <?php foreach ($desktopNavItems as $pageKey => $item): ?>
-                <a class="<?= $currentPage === $pageKey ? 'active' : '' ?>" href="<?= e($item['href']) ?>">
+                <?php $navActive = $isNavActive((string) $pageKey); ?>
+                <a class="<?= $navActive ? 'active' : '' ?>" href="<?= e($item['href']) ?>" <?= $navActive ? 'aria-current="page"' : '' ?>>
                     <span><?= e($item['label']) ?></span>
                 </a>
             <?php endforeach; ?>
@@ -160,7 +172,8 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     </details>
     <nav class="bottom-nav" aria-label="Primary mobile">
         <?php foreach ($mobileNavItems as $pageKey => $item): ?>
-            <a class="<?= $currentPage === $pageKey ? 'active' : '' ?>" href="<?= e($item['href']) ?>" <?= $currentPage === $pageKey ? 'aria-current="page"' : '' ?>>
+            <?php $navActive = $isNavActive((string) $pageKey); ?>
+            <a class="<?= $navActive ? 'active' : '' ?>" href="<?= e($item['href']) ?>" <?= $navActive ? 'aria-current="page"' : '' ?>>
                 <span class="nav-icon"><?= $renderMobileIcon((string) $item['icon']) ?></span>
                 <span><?= e($item['label']) ?></span>
             </a>

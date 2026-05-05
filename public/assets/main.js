@@ -1029,6 +1029,10 @@
                 main.hidden = activeSection !== '';
                 main.classList.toggle('hidden', activeSection !== '');
             }
+            root.querySelectorAll('[data-spa-home-extra]').forEach((node) => {
+                node.hidden = activeSection !== '';
+                node.classList.toggle('hidden', activeSection !== '');
+            });
             root.querySelectorAll('[data-spa-section]').forEach((panel) => {
                 const isActive = panel.getAttribute('data-spa-section') === activeSection;
                 panel.hidden = !isActive;

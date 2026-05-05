@@ -3,42 +3,8 @@
 declare(strict_types=1);
 
 $selectedUser = $selectedMetric['user'];
-$stepsSeries = array_values((array) ($selectedMetric['steps_series'] ?? []));
-usort(
-    $stepsSeries,
-    static fn(array $left, array $right): int => strcmp((string) ($left['date'] ?? ''), (string) ($right['date'] ?? ''))
-);
-$rangeStartDate = null;
-$rangeEndDate = null;
-$rangeStartDate = to_date((string) ($dashboardAnalyticsRangeStart ?? $selectedWeekStart ?? null), to_date(null));
-$rangeEndDate = to_date((string) ($dashboardAnalyticsRangeEnd ?? $rangeStartDate), $rangeStartDate);
-$stepsTail = [];
-foreach ($stepsSeries as $row) {
-    $rowDate = (string) ($row['date'] ?? '');
-    if ($rowDate === '') {
-        continue;
-    }
-    if ($rangeStartDate !== null && $rangeEndDate !== null && ($rowDate < $rangeStartDate || $rowDate > $rangeEndDate)) {
-        continue;
-    }
-    $stepsTail[] = $row;
-}
-$stepsLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['date'] ?? '')), $stepsTail);
-$stepsValues = array_map(static fn(array $row): int => (int) ($row['steps'] ?? 0), $stepsTail);
-$stepsGoals = array_map(static fn(array $row): int => (int) ($row['goal'] ?? 0), $stepsTail);
-
-$weightSeries = array_values(array_filter(
-    (array) ($selectedMetric['weight_series'] ?? []),
-    static function (array $row) use ($rangeStartDate, $rangeEndDate): bool {
-        $rowDate = (string) ($row['date'] ?? '');
-
-        return $rowDate !== '' && $rowDate >= $rangeStartDate && $rowDate <= $rangeEndDate;
-    }
-));
-$weightLabels = array_map(static fn(array $row): string => format_date_eu((string) $row['date']), $weightSeries);
-$weightValues = array_map(static fn(array $row): float => (float) $row['weight'], $weightSeries);
-
 $dashboardLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
+$dashboardWidgets = ['kpis', 'achievements', 'approvals', 'ranking', 'weekly'];
 $visibleWidgets = [];
 if (is_array($dashboardLayout) && $dashboardLayout !== []) {
     foreach ($dashboardLayout as $widget) {
@@ -46,18 +12,16 @@ if (is_array($dashboardLayout) && $dashboardLayout !== []) {
             continue;
         }
         $normalizedWidget = $widget === 'money' ? 'distance_walked' : $widget;
-        if (!in_array($normalizedWidget, $visibleWidgets, true)) {
+        if (in_array($normalizedWidget, $dashboardWidgets, true) && !in_array($normalizedWidget, $visibleWidgets, true)) {
             $visibleWidgets[] = $normalizedWidget;
         }
     }
 }
 if ($visibleWidgets === []) {
-    $visibleWidgets = ['kpis', 'achievements', 'distance_walked', 'calories', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
+    $visibleWidgets = $dashboardWidgets;
 }
 $showWidget = static fn(string $widget): bool => in_array($widget, $visibleWidgets, true);
-$dashboardWidgets = ['kpis', 'achievements', 'distance_walked', 'calories', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly'];
-$dashboardEditorWidgets = array_values(array_unique(array_merge($visibleWidgets, $dashboardWidgets)));
-$layoutOrder = array_flip($visibleWidgets);
+$dashboardEditorWidgets = $dashboardWidgets;
 $widgetOrder = static function (string ...$widgets) use ($visibleWidgets): int {
     $orders = [];
     foreach ($widgets as $widget) {
@@ -81,7 +45,6 @@ $dashboardAchievementsUrl = '/?' . http_build_query([
     'back' => 'dashboard',
     'view' => (string) ($dashboardView ?? 'current_week'),
 ]);
-$isTotalMoneyView = ($dashboardView ?? '') === 'total';
 $penaltySeverityClass = static function (int|float $penalty): string {
     $value = (float) $penalty;
     if ($value <= 0) {
@@ -94,86 +57,14 @@ $penaltySeverityClass = static function (int|float $penalty): string {
     return 'bad';
 };
 
-$distanceByDate = is_array($dashboardDistanceByDate ?? null) ? $dashboardDistanceByDate : [];
-$distanceLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['date'] ?? '')), $stepsTail);
-$distanceValues = array_map(
-    static function (array $row) use ($distanceByDate): float {
-        $date = (string) ($row['date'] ?? '');
-        if ($date !== '' && isset($distanceByDate[$date])) {
-            return round((float) $distanceByDate[$date], 2);
-        }
-
-        return round((float) ($row['km'] ?? 0), 2);
-    },
-    $stepsTail
-);
-$distanceRangeTotal = round(array_sum($distanceValues), 2);
-$stepsCumulativeValues = [];
-$distanceCumulativeValues = [];
-$runningSteps = 0;
-$runningDistance = 0.0;
-foreach ($stepsTail as $row) {
-    $date = (string) ($row['date'] ?? '');
-    $stepValue = (int) ($row['steps'] ?? 0);
-    $distanceValue = $date !== '' && isset($distanceByDate[$date])
-        ? round((float) $distanceByDate[$date], 2)
-        : round((float) ($row['km'] ?? 0), 2);
-    $runningSteps += $stepValue;
-    $runningDistance += $distanceValue;
-    $stepsCumulativeValues[] = $runningSteps;
-    $distanceCumulativeValues[] = round($runningDistance, 2);
-}
-$stepsCumulativeTotal = $stepsCumulativeValues !== [] ? $stepsCumulativeValues[count($stepsCumulativeValues) - 1] : 0;
-$distanceCumulativeTotal = $distanceCumulativeValues !== [] ? $distanceCumulativeValues[count($distanceCumulativeValues) - 1] : 0.0;
-
-$compareName = $compareMetric !== null ? (string) $compareMetric['user']['display_name'] : null;
-$compareTitle = t('dashboard.compare', ['name' => $compareName !== null ? 'vs ' . $compareName : '']);
-$comparisonHelpLabel = t('dashboard.comparison_help_label');
-$comparisonHelpText = t('dashboard.comparison_help_text');
-$viewSnapshot = is_array($selectedMetricSnapshot ?? null) ? (array) $selectedMetricSnapshot : [];
-$compareSnapshot = is_array($compareMetricSnapshot ?? null) ? (array) $compareMetricSnapshot : [];
-$analyticsViewSnapshot = is_array($dashboardAnalyticsSelectedSnapshot ?? null) ? (array) $dashboardAnalyticsSelectedSnapshot : $viewSnapshot;
-$analyticsCompareSnapshot = is_array($dashboardAnalyticsCompareSnapshot ?? null) ? (array) $dashboardAnalyticsCompareSnapshot : $compareSnapshot;
-
-$compareBar = [
-    'labels' => [t('metric.steps') . ' %', t('metric.workouts') . ' %', t('metric.score')],
-    'datasets' => [
-        [
-            'label' => (string) $selectedUser['display_name'],
-            'data' => [
-                (float) ($analyticsViewSnapshot['step_completion_pct'] ?? $viewSnapshot['step_completion_pct'] ?? $selectedMetric['step_completion_pct'] ?? 0),
-                (float) ($analyticsViewSnapshot['workout_completion_pct'] ?? $viewSnapshot['workout_completion_pct'] ?? $selectedMetric['workout_completion_pct'] ?? 0),
-                (float) ($analyticsViewSnapshot['score'] ?? $viewSnapshot['score'] ?? $selectedMetric['score'] ?? 0),
-            ],
-        ],
-    ],
-];
-if ($compareMetric !== null) {
-    $compareBar['datasets'][] = [
-        'label' => (string) $compareMetric['user']['display_name'],
-        'data' => [
-            (float) ($analyticsCompareSnapshot['step_completion_pct'] ?? $compareSnapshot['step_completion_pct'] ?? $compareMetric['step_completion_pct'] ?? 0),
-            (float) ($analyticsCompareSnapshot['workout_completion_pct'] ?? $compareSnapshot['workout_completion_pct'] ?? $compareMetric['workout_completion_pct'] ?? 0),
-            (float) ($analyticsCompareSnapshot['score'] ?? $compareSnapshot['score'] ?? $compareMetric['score'] ?? 0),
-        ],
-    ];
-}
 $calorieStats = is_array($dashboardCalorieStats ?? null) ? (array) $dashboardCalorieStats : [];
-$calorieSeries = array_values((array) ($calorieStats['series'] ?? []));
-$calorieLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['date'] ?? '')), $calorieSeries);
-$calorieConsumedValues = array_map(static fn(array $row): float => (float) ($row['consumed'] ?? 0), $calorieSeries);
-$calorieBurnedValues = array_map(static fn(array $row): float => (float) ($row['burned'] ?? 0), $calorieSeries);
-$calorieDeficitValues = array_map(static fn(array $row): float => (float) ($row['deficit'] ?? 0), $calorieSeries);
 $formatCalories = static function (float $value): string {
     return number_format($value, 0, '.', '');
 };
 $calorieRangeStart = (string) ($dashboardCalorieRangeStart ?? to_date(null));
 $calorieRangeEnd = (string) ($dashboardCalorieRangeEnd ?? $calorieRangeStart);
-$calorieRangeText = t('common.from_to', ['start' => format_date_eu($calorieRangeStart), 'end' => format_date_eu($calorieRangeEnd)]);
 $calorieConsumedTotal = (float) ($calorieStats['total_consumed'] ?? 0);
 $calorieBurnedTotal = (float) ($calorieStats['total_burned'] ?? 0);
-$calorieMaintenanceTotal = (float) ($calorieStats['maintenance_total'] ?? 0);
-$calorieDeficitTotal = (float) ($calorieStats['deficit'] ?? 0);
 $calorieRangeDays = 1;
 try {
     $calorieRangeDays = max(
@@ -213,6 +104,7 @@ $calorieBurnMeta = $calorieBurnGoalTotal > 0
 $calorieConsumedMeta = $calorieConsumedMaxTotal > 0
     ? t('dashboard.calories_max') . ': ' . $formatCalories($calorieConsumedMaxTotal) . ' kcal'
     : t('dashboard.calories_goal_not_set');
+$viewSnapshot = is_array($selectedMetricSnapshot ?? null) ? (array) $selectedMetricSnapshot : [];
 $viewSteps = max(0, (int) ($viewSnapshot['steps'] ?? ($selectedMetric['total_steps'] ?? 0)));
 $viewDistance = round((float) ($viewSnapshot['distance_km'] ?? ($selectedMetric['total_km'] ?? 0)), 2);
 $viewWorkoutSuccess = max(0, (int) ($viewSnapshot['workouts'] ?? ($selectedMetric['workout_success'] ?? 0)));
@@ -224,11 +116,6 @@ $viewWorkoutCompletionPct = $viewWorkoutTarget > 0
 $viewStrikes = max(0, (int) ($viewSnapshot['strikes'] ?? ($selectedMetric['current_strikes'] ?? 0)));
 $viewPenalty = max(0.0, (float) ($viewSnapshot['penalty'] ?? ($selectedMetric['total_penalty'] ?? 0)));
 $viewPenaltyLabel = "\u{20AC}" . number_format($viewPenalty, 2, '.', '');
-$comparisonDetailHref = '/?' . http_build_query([
-    'page' => 'comparison_detail',
-    'user_id' => (int) ($selectedUser['id'] ?? 0),
-    'view' => (string) ($dashboardView ?? 'current_week'),
-]);
 
 $kpis = [
     [
@@ -287,50 +174,6 @@ foreach ((array) ($selectedMetric['weekly'] ?? []) as $weekRow) {
         break;
     }
 }
-$analyticsPeriod = (string) ($dashboardAnalyticsPeriod ?? 'current_week');
-$analyticsWeek = (string) ($dashboardAnalyticsWeek ?? $selectedWeekStart ?? to_date(null));
-$analyticsMonth = (string) ($dashboardAnalyticsMonth ?? substr((string) ($selectedWeekStart ?? to_date(null)), 0, 7));
-$analyticsSlide = (string) ($dashboardAnalyticsSlide ?? 'activity');
-$analyticsRangeText = t('common.from_to', ['start' => format_date_eu($rangeStartDate), 'end' => format_date_eu($rangeEndDate)]);
-$analyticsBaseQuery = [
-    'page' => 'dashboard',
-    'user_id' => (int) ($selectedUser['id'] ?? 0),
-    'view' => (string) ($dashboardView ?? 'current_week'),
-    'analytics_period' => $analyticsPeriod,
-    'analytics_week' => $analyticsWeek,
-    'analytics_month' => $analyticsMonth,
-    'analytics_slide' => $analyticsSlide,
-];
-$analyticsWeekPrev = $analyticsWeek;
-$analyticsWeekNext = $analyticsWeek;
-try {
-    $analyticsWeekPrev = week_start_for((new DateTimeImmutable($analyticsWeek))->modify('-7 days'))->format('Y-m-d');
-    $analyticsWeekNext = week_start_for((new DateTimeImmutable($analyticsWeek))->modify('+7 days'))->format('Y-m-d');
-} catch (Throwable) {
-    $analyticsWeekPrev = $analyticsWeek;
-    $analyticsWeekNext = $analyticsWeek;
-}
-$analyticsMonthPrev = $analyticsMonth;
-$analyticsMonthNext = $analyticsMonth;
-try {
-    $analyticsMonthPrev = (new DateTimeImmutable($analyticsMonth . '-01'))->modify('-1 month')->format('Y-m');
-    $analyticsMonthNext = (new DateTimeImmutable($analyticsMonth . '-01'))->modify('+1 month')->format('Y-m');
-} catch (Throwable) {
-    $analyticsMonthPrev = $analyticsMonth;
-    $analyticsMonthNext = $analyticsMonth;
-}
-$analyticsChartWidgets = ['distance_walked', 'calories', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison'];
-$showAnalyticsPanel = false;
-foreach ($analyticsChartWidgets as $chartWidget) {
-    if ($showWidget($chartWidget)) {
-        $showAnalyticsPanel = true;
-        break;
-    }
-}
-$showActivityAnalytics = $showWidget('distance_walked') || $showWidget('steps') || $showWidget('steps_cumulative') || $showWidget('distance_cumulative');
-$showCaloriesBodyAnalytics = $showWidget('calories') || $showWidget('weight');
-$showComparisonAnalytics = $showWidget('comparison');
-
 ob_start();
 ?>
 <details class="topbar-context">
@@ -477,6 +320,15 @@ $topbarControls = ob_get_clean();
             <a class="btn btn-ghost small btn-block" href="<?= e($penaltiesHref) ?>"><?= e(t('dashboard.penalty_details')) ?></a>
         </article>
 
+        <article class="panel dashboard-panel dashboard-analytics-cta" style="order: -14">
+            <div>
+                <p class="eyebrow"><?= e(t('dashboard.analytics_eyebrow')) ?></p>
+                <h2><?= e(t('nav.analytics')) ?></h2>
+                <p class="muted small"><?= e(t('dashboard.analytics_dashboard_hint')) ?></p>
+            </div>
+            <a class="btn btn-primary small btn-block" href="/?<?= e(http_build_query(['page' => 'analytics', 'user_id' => (int) ($selectedUser['id'] ?? 0), 'analytics_period' => 'week', 'analytics_week' => (string) ($selectedWeekStart ?? to_date(null))])) ?>"><?= e(t('dashboard.open_analytics')) ?></a>
+        </article>
+
         <?php if ($showWidget('achievements')): ?>
         <article class="panel dashboard-panel dashboard-achievements-panel dashboard-span-full" style="order: <?= $contentWidgetOrder('achievements') ?>">
             <div class="panel-head">
@@ -615,184 +467,6 @@ $topbarControls = ob_get_clean();
         </article>
         <?php endif; ?>
 
-        <?php if ($showAnalyticsPanel): ?>
-        <article class="panel dashboard-panel dashboard-analytics-panel dashboard-span-full" data-dashboard-analytics-slider style="order: <?= $contentWidgetOrder('distance_walked', 'calories', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison') ?>">
-            <div class="panel-head dashboard-analytics-head">
-                <div>
-                    <p class="eyebrow"><?= e(t('dashboard.analytics_eyebrow')) ?></p>
-                    <h2><?= e(t('dashboard.analytics_title')) ?></h2>
-                    <p class="muted small"><?= e($analyticsRangeText) ?></p>
-                </div>
-                <a class="btn btn-ghost small dashboard-panel-action" href="<?= e($comparisonDetailHref) ?>"><?= e(t('dashboard.view_full_breakdown')) ?></a>
-            </div>
-            <form method="get" action="/" class="dashboard-analytics-controls">
-                <input type="hidden" name="page" value="dashboard">
-                <input type="hidden" name="user_id" value="<?= (int) ($selectedUser['id'] ?? 0) ?>">
-                <input type="hidden" name="view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
-                <input type="hidden" name="analytics_slide" value="<?= e($analyticsSlide) ?>" data-dashboard-analytics-slide-input>
-                <label>
-                    <?= e(t('dashboard.analytics_period')) ?>
-                    <select name="analytics_period" onchange="this.form.submit()">
-                        <option value="current_week" <?= $analyticsPeriod === 'current_week' ? 'selected' : '' ?>><?= e(t('dashboard.analytics_current_week')) ?></option>
-                        <option value="week" <?= $analyticsPeriod === 'week' ? 'selected' : '' ?>><?= e(t('dashboard.analytics_specific_week')) ?></option>
-                        <option value="month" <?= $analyticsPeriod === 'month' ? 'selected' : '' ?>><?= e(t('dashboard.analytics_month')) ?></option>
-                        <option value="total" <?= $analyticsPeriod === 'total' ? 'selected' : '' ?>><?= e(t('metric.total')) ?></option>
-                    </select>
-                </label>
-                <label>
-                    <?= e(t('common.week')) ?>
-                    <input type="date" name="analytics_week" value="<?= e($analyticsWeek) ?>" onchange="this.form.submit()">
-                </label>
-                <label>
-                    <?= e(t('dashboard.analytics_month')) ?>
-                    <input type="month" name="analytics_month" value="<?= e($analyticsMonth) ?>" onchange="this.form.submit()">
-                </label>
-                <div class="dashboard-analytics-nav-links">
-                    <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'week', 'analytics_week' => $analyticsWeekPrev]))) ?>"><?= e(t('common.previous')) ?></a>
-                    <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'week', 'analytics_week' => $analyticsWeekNext]))) ?>"><?= e(t('common.next')) ?></a>
-                    <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'month', 'analytics_month' => $analyticsMonthPrev]))) ?>"><?= e(t('dashboard.analytics_prev_month')) ?></a>
-                    <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'month', 'analytics_month' => $analyticsMonthNext]))) ?>"><?= e(t('dashboard.analytics_next_month')) ?></a>
-                </div>
-            </form>
-            <div class="dashboard-analytics-slider" data-dashboard-analytics-track>
-                <?php if ($showActivityAnalytics): ?>
-                <section class="dashboard-analytics-slide" data-dashboard-analytics-slide="activity" aria-label="<?= e(t('dashboard.analytics_activity')) ?>">
-                    <div class="dashboard-analytics-section-title">
-                        <h3><?= e(t('dashboard.analytics_activity')) ?></h3>
-                        <span class="badge"><?= e(t('metric.steps')) ?> / <?= e(t('metric.distance_km')) ?></span>
-                    </div>
-                    <div class="dashboard-analytics-grid">
-                        <?php if ($showWidget('distance_walked')): ?>
-                        <article class="chart-card dashboard-analytics-chart">
-                            <h4><?= e(t('dashboard.distance_walked_chart')) ?></h4>
-                            <canvas id="distanceWalkedChart" height="150"></canvas>
-                            <p class="muted small"><?= e(t('metric.distance_km')) ?> · <?= e((string) $distanceRangeTotal) ?> km</p>
-                        </article>
-                        <?php endif; ?>
-                        <?php if ($showWidget('steps')): ?>
-                        <article class="chart-card dashboard-analytics-chart">
-                            <h4><?= e(t('dashboard.steps_chart')) ?></h4>
-                            <canvas id="stepsChart" height="150"></canvas>
-                        </article>
-                        <?php endif; ?>
-                        <?php if ($showWidget('steps_cumulative')): ?>
-                        <article class="chart-card dashboard-analytics-chart">
-                            <h4><?= e(t('dashboard.steps_cumulative_chart')) ?></h4>
-                            <?php if ($stepsCumulativeValues === []): ?>
-                                <p class="muted"><?= e(t('common.none')) ?></p>
-                            <?php else: ?>
-                                <canvas id="stepsCumulativeChart" height="150"></canvas>
-                                <p class="muted small"><?= e(t('metric.current_value')) ?>: <?= e((string) $stepsCumulativeTotal) ?></p>
-                            <?php endif; ?>
-                        </article>
-                        <?php endif; ?>
-                        <?php if ($showWidget('distance_cumulative')): ?>
-                        <article class="chart-card dashboard-analytics-chart">
-                            <h4><?= e(t('dashboard.distance_cumulative_chart')) ?></h4>
-                            <?php if ($distanceCumulativeValues === []): ?>
-                                <p class="muted"><?= e(t('common.none')) ?></p>
-                            <?php else: ?>
-                                <canvas id="distanceCumulativeChart" height="150"></canvas>
-                                <p class="muted small"><?= e(t('metric.current_value')) ?>: <?= e(number_format((float) $distanceCumulativeTotal, 2, '.', '')) ?> km</p>
-                            <?php endif; ?>
-                        </article>
-                        <?php endif; ?>
-                    </div>
-                </section>
-                <?php endif; ?>
-                <?php if ($showCaloriesBodyAnalytics): ?>
-                <section class="dashboard-analytics-slide" data-dashboard-analytics-slide="calories_body" aria-label="<?= e(t('dashboard.analytics_calories_body')) ?>">
-                    <div class="dashboard-analytics-section-title">
-                        <h3><?= e(t('dashboard.analytics_calories_body')) ?></h3>
-                        <span class="badge"><?= e((string) ($calorieStats['tracked_days'] ?? 0)) ?> <?= e(t('dashboard.calories_tracked_days')) ?></span>
-                    </div>
-                    <div class="dashboard-analytics-grid">
-                        <?php if ($showWidget('calories')): ?>
-                        <article class="chart-card dashboard-analytics-chart dashboard-calories">
-                            <div class="panel-head dashboard-calories-head">
-                                <div class="dashboard-calories-title">
-                                    <div class="dashboard-calories-title-row">
-                                        <h4><?= e(t('dashboard.calories_title')) ?></h4>
-                                    </div>
-                                    <p class="muted small"><?= e($calorieRangeText) ?></p>
-                                </div>
-                                <details class="metric-help-popover">
-                                    <summary aria-label="<?= e(t('dashboard.calories_hint_label')) ?>" title="<?= e(t('dashboard.calories_hint_label')) ?>">?</summary>
-                                    <div class="metric-help-popover-content"><?= e(t('dashboard.calories_hint')) ?></div>
-                                </details>
-                            </div>
-                            <div class="calories-overview">
-                                <div class="metric-box">
-                                    <span class="metric-title"><?= e(t('dashboard.calories_maintenance')) ?></span>
-                                    <strong class="metric-value"><?= e($formatCalories($calorieMaintenanceTotal)) ?> kcal</strong>
-                                </div>
-                                <div class="metric-box">
-                                    <span class="metric-title"><?= e(t('dashboard.calories_deficit')) ?></span>
-                                    <strong class="metric-value"><?= e($formatCalories($calorieDeficitTotal)) ?> kcal</strong>
-                                </div>
-                            </div>
-                            <?php if ($calorieSeries === []): ?>
-                                <p class="muted"><?= e(t('dashboard.no_calorie_data')) ?></p>
-                            <?php else: ?>
-                                <canvas id="calorieChart" height="150"></canvas>
-                            <?php endif; ?>
-                        </article>
-                        <?php endif; ?>
-                        <?php if ($showWidget('weight')): ?>
-                        <article class="chart-card dashboard-analytics-chart">
-                            <h4><?= e(t('dashboard.weight_chart')) ?></h4>
-                            <?php if ($weightValues === []): ?>
-                                <p class="muted"><?= e(t('dashboard.no_weight')) ?></p>
-                            <?php else: ?>
-                                <canvas id="weightChart" height="150"></canvas>
-                                <?php if ($selectedMetric['ideal_weight'] !== null): ?>
-                                    <p class="muted">
-                                        <?= e(t('metric.goal')) ?>: <?= e((string) $selectedMetric['ideal_weight']) ?> kg ·
-                                        <?= e(t('metric.progress')) ?>: <?= e((string) ($selectedMetric['weight_progress_pct'] ?? 0)) ?>%
-                                    </p>
-                                <?php endif; ?>
-                            <?php endif; ?>
-                        </article>
-                        <?php endif; ?>
-                    </div>
-                </section>
-                <?php endif; ?>
-                <?php if ($showComparisonAnalytics): ?>
-                <section class="dashboard-analytics-slide" data-dashboard-analytics-slide="comparison" aria-label="<?= e(t('dashboard.analytics_comparison')) ?>">
-                    <div class="dashboard-analytics-section-title">
-                        <h3><?= e(t('dashboard.analytics_comparison')) ?></h3>
-                        <span class="badge"><?= e(t('metric.score')) ?></span>
-                    </div>
-                    <article class="chart-card dashboard-analytics-chart dashboard-analytics-chart-full">
-                        <div class="panel-head panel-head-help">
-                            <h4><?= e(trim($compareTitle)) ?></h4>
-                            <details class="metric-help-popover">
-                                <summary aria-label="<?= e($comparisonHelpLabel) ?>" title="<?= e($comparisonHelpLabel) ?>">?</summary>
-                                <div class="metric-help-popover-content">
-                                    <p><?= e($comparisonHelpText) ?></p>
-                                    <p class="small">
-                                        Score = (steps_weight x steps_progress) + (workouts_weight x workouts_progress) + (discipline_weight x discipline_score) + (weight_weight x weight_progress_if_available)
-                                    </p>
-                                    <a class="btn btn-ghost small btn-block" href="<?= e($comparisonDetailHref) ?>"><?= e(t('dashboard.view_full_breakdown')) ?></a>
-                                </div>
-                            </details>
-                        </div>
-                        <canvas id="compareChart" height="170"></canvas>
-                    </article>
-                </section>
-                <?php endif; ?>
-            </div>
-            <div class="dashboard-analytics-dots" aria-label="<?= e(t('dashboard.analytics_sections')) ?>">
-                <?php if ($showActivityAnalytics): ?><button class="dashboard-analytics-dot" type="button" data-dashboard-analytics-target="activity"><?= e(t('dashboard.analytics_activity')) ?></button><?php endif; ?>
-                <?php if ($showCaloriesBodyAnalytics): ?><button class="dashboard-analytics-dot" type="button" data-dashboard-analytics-target="calories_body"><?= e(t('dashboard.analytics_calories_body')) ?></button><?php endif; ?>
-                <?php if ($showComparisonAnalytics): ?><button class="dashboard-analytics-dot" type="button" data-dashboard-analytics-target="comparison"><?= e(t('dashboard.analytics_comparison')) ?></button><?php endif; ?>
-            </div>
-            <div class="dashboard-analytics-buttons">
-                <button class="btn btn-ghost small" type="button" data-dashboard-analytics-prev><?= e(t('common.previous')) ?></button>
-                <button class="btn btn-ghost small" type="button" data-dashboard-analytics-next><?= e(t('common.next')) ?></button>
-            </div>
-        </article>
-        <?php endif; ?>
         <?php if ($showWidget('approvals')): ?>
         <article class="panel dashboard-panel dashboard-approvals" data-testid="pending-approvals" style="order: <?= $contentWidgetOrder('approvals') ?>">
             <div class="panel-head">
@@ -870,319 +544,7 @@ $topbarControls = ob_get_clean();
         </article>
         <?php endif; ?>
 
-        <?php if ($showWidget('meals')): ?>
-        <article class="panel dashboard-panel dashboard-meal-calendar-panel" style="order: <?= $contentWidgetOrder('meals') ?>">
-            <div class="panel-head">
-                <div>
-                    <p class="eyebrow"><?= e(t('common.week')) ?></p>
-                    <h2><?= e(t('dashboard.meal_calendar')) ?></h2>
-                </div>
-                <form method="get" action="/" class="control-strip">
-                    <input type="hidden" name="page" value="dashboard">
-                    <input type="hidden" name="user_id" value="<?= (int) ($selectedUser['id'] ?? 0) ?>">
-                    <input type="hidden" name="view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
-                    <label class="entry-date-inline">
-                        <?= e(t('common.date')) ?>
-                        <input type="date" name="meal_date" value="<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>" onchange="this.form.submit()">
-                    </label>
-                </form>
-            </div>
-            <?php if (($dashboardMealCalendar ?? []) === []): ?>
-                <p class="muted"><?= e(t('entries.no_photos')) ?></p>
-            <?php else: ?>
-                <div class="meal-calendar entries-calendar">
-                    <?php foreach (($dashboardMealCalendar ?? []) as $dateKey => $day): ?>
-                        <?php
-                        $photoCount = (int) ($day['count'] ?? 0);
-                        $hasLog = $photoCount > 0;
-                        $preview = $day['preview'] ?? null;
-                        $previewUrl = is_array($preview) ? media_url((string) ($preview['file_path'] ?? '')) : '';
-                        $previewPhotoId = is_array($preview) ? (int) ($preview['id'] ?? 0) : 0;
-                        $previewHref = $previewPhotoId > 0
-                            ? '/?page=photo&photo_id=' . $previewPhotoId
-                            : '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey);
-                        ?>
-                        <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?>" href="<?= e($previewHref) ?>">
-                            <article>
-                                <strong><?= e(format_date_eu((string) $dateKey)) ?></strong>
-                                <?php if ($previewUrl !== ''): ?>
-                                    <img src="<?= e($previewUrl) ?>" alt="<?= e(t('common.photo')) ?>">
-                                <?php else: ?>
-                                    <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
-                                <?php endif; ?>
-                                <span class="badge"><?= $photoCount ?> <?= e($photoCount === 1 ? t('entries.photo_singular') : t('entries.photo_plural')) ?></span>
-                            </article>
-                        </a>
-                    <?php endforeach; ?>
-                </div>
-                <div class="dashboard-calendar-links segmented-control compact-segmented-control">
-                    <a class="btn btn-ghost small" href="/?page=entries&mode=calendar&calendar_view=month&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>"><?= e(t('calendar.view_month')) ?></a>
-                    <a class="btn btn-ghost small" href="/?page=entries&mode=calendar&calendar_view=week&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>"><?= e(t('calendar.view_week')) ?></a>
-                    <a class="btn btn-ghost small" href="/?page=entries&mode=calendar&calendar_view=day&date=<?= e((string) ($dashboardMealDate ?? to_date(null))) ?>"><?= e(t('calendar.view_day')) ?></a>
-                </div>
-            <?php endif; ?>
-        </article>
-        <?php endif; ?>
+
 
     </div>
 </section>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script>
-(function () {
-    function formatDayMonth(dateString) {
-        const parts = String(dateString || '').split('/');
-        return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : String(dateString || '');
-    }
-
-    const dateChartOptions = () => ({
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: { position: 'bottom' },
-            tooltip: {
-                callbacks: {
-                    title: (items) => (items && items[0] ? items[0].label : ''),
-                },
-            },
-        },
-        scales: {
-            x: {
-                ticks: {
-                    callback: function (value) {
-                        return formatDayMonth(this.getLabelForValue(value));
-                    },
-                },
-            },
-        },
-    });
-
-    const initAnalyticsSlider = () => {
-        const root = document.querySelector('[data-dashboard-analytics-slider]');
-        if (!(root instanceof HTMLElement)) {
-            return;
-        }
-        const track = root.querySelector('[data-dashboard-analytics-track]');
-        const slides = [...root.querySelectorAll('[data-dashboard-analytics-slide]')].filter((slide) => slide instanceof HTMLElement);
-        const dots = [...root.querySelectorAll('[data-dashboard-analytics-target]')].filter((dot) => dot instanceof HTMLButtonElement);
-        const input = root.querySelector('[data-dashboard-analytics-slide-input]');
-        if (!(track instanceof HTMLElement) || slides.length === 0) {
-            return;
-        }
-
-        let activeIndex = Math.max(0, slides.findIndex((slide) => slide.dataset.dashboardAnalyticsSlide === <?= json_encode($analyticsSlide) ?>));
-        if (activeIndex < 0) {
-            activeIndex = 0;
-        }
-
-        const activate = (index, shouldScroll = true) => {
-            activeIndex = (index + slides.length) % slides.length;
-            const activeSlide = slides[activeIndex];
-            const activeKey = activeSlide.dataset.dashboardAnalyticsSlide || '';
-            slides.forEach((slide, slideIndex) => {
-                slide.classList.toggle('is-active', slideIndex === activeIndex);
-            });
-            dots.forEach((dot) => {
-                dot.classList.toggle('is-active', dot.dataset.dashboardAnalyticsTarget === activeKey);
-                dot.setAttribute('aria-current', dot.dataset.dashboardAnalyticsTarget === activeKey ? 'true' : 'false');
-            });
-            if (input instanceof HTMLInputElement && activeKey !== '') {
-                input.value = activeKey;
-            }
-            if (shouldScroll) {
-                activeSlide.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
-            }
-        };
-
-        dots.forEach((dot) => {
-            dot.addEventListener('click', () => {
-                const targetIndex = slides.findIndex((slide) => slide.dataset.dashboardAnalyticsSlide === dot.dataset.dashboardAnalyticsTarget);
-                if (targetIndex >= 0) {
-                    activate(targetIndex);
-                }
-            });
-        });
-        root.querySelector('[data-dashboard-analytics-prev]')?.addEventListener('click', () => activate(activeIndex - 1));
-        root.querySelector('[data-dashboard-analytics-next]')?.addEventListener('click', () => activate(activeIndex + 1));
-        track.addEventListener('scroll', () => {
-            const trackBox = track.getBoundingClientRect();
-            const closest = slides.reduce((best, slide, index) => {
-                const box = slide.getBoundingClientRect();
-                const distance = Math.abs(box.left - trackBox.left);
-                return distance < best.distance ? { distance, index } : best;
-            }, { distance: Number.POSITIVE_INFINITY, index: activeIndex });
-            if (closest.index !== activeIndex) {
-                activate(closest.index, false);
-            }
-        }, { passive: true });
-
-        activate(activeIndex, false);
-    };
-
-    initAnalyticsSlider();
-
-    const stepsCtx = document.getElementById('stepsChart');
-    if (stepsCtx) {
-        new Chart(stepsCtx, {
-            type: 'line',
-            data: {
-                labels: <?= json_encode($stepsLabels) ?>,
-                datasets: [
-                    {
-                        label: <?= json_encode(t('metric.steps')) ?>,
-                        data: <?= json_encode($stepsValues) ?>,
-                        borderColor: '#14a38b',
-                        backgroundColor: 'rgba(20, 163, 139, 0.16)',
-                        tension: 0.35,
-                        fill: true,
-                    },
-                    {
-                        label: <?= json_encode(t('metric.goal')) ?>,
-                        data: <?= json_encode($stepsGoals) ?>,
-                        borderColor: '#ff6b4a',
-                        borderDash: [6, 4],
-                        pointRadius: 0,
-                    }
-                ]
-            },
-            options: dateChartOptions()
-        });
-    }
-
-    const distanceCtx = document.getElementById('distanceWalkedChart');
-    if (distanceCtx) {
-        new Chart(distanceCtx, {
-            type: 'line',
-            data: {
-                labels: <?= json_encode($distanceLabels) ?>,
-                datasets: [
-                    {
-                        label: <?= json_encode(t('metric.distance_km')) ?>,
-                        data: <?= json_encode($distanceValues) ?>,
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.16)',
-                        tension: 0.35,
-                        fill: true,
-                    }
-                ]
-            },
-            options: dateChartOptions()
-        });
-    }
-
-    const stepsCumulativeCtx = document.getElementById('stepsCumulativeChart');
-    if (stepsCumulativeCtx) {
-        new Chart(stepsCumulativeCtx, {
-            type: 'line',
-            data: {
-                labels: <?= json_encode($stepsLabels) ?>,
-                datasets: [
-                    {
-                        label: <?= json_encode(t('dashboard.steps_cumulative_chart')) ?>,
-                        data: <?= json_encode($stepsCumulativeValues) ?>,
-                        borderColor: '#0f766e',
-                        backgroundColor: 'rgba(15, 118, 110, 0.16)',
-                        tension: 0.35,
-                        fill: true,
-                    }
-                ]
-            },
-            options: dateChartOptions()
-        });
-    }
-
-    const distanceCumulativeCtx = document.getElementById('distanceCumulativeChart');
-    if (distanceCumulativeCtx) {
-        new Chart(distanceCumulativeCtx, {
-            type: 'line',
-            data: {
-                labels: <?= json_encode($distanceLabels) ?>,
-                datasets: [
-                    {
-                        label: <?= json_encode(t('dashboard.distance_cumulative_chart')) ?>,
-                        data: <?= json_encode($distanceCumulativeValues) ?>,
-                        borderColor: '#1d4ed8',
-                        backgroundColor: 'rgba(29, 78, 216, 0.14)',
-                        tension: 0.35,
-                        fill: true,
-                    }
-                ]
-            },
-            options: dateChartOptions()
-        });
-    }
-
-    const calorieCtx = document.getElementById('calorieChart');
-    if (calorieCtx) {
-        new Chart(calorieCtx, {
-            type: 'line',
-            data: {
-                labels: <?= json_encode($calorieLabels) ?>,
-                datasets: [
-                    {
-                        label: <?= json_encode(t('dashboard.calories_consumed')) ?>,
-                        data: <?= json_encode($calorieConsumedValues) ?>,
-                        borderColor: '#ef4444',
-                        backgroundColor: 'rgba(239, 68, 68, 0.16)',
-                        tension: 0.3,
-                        fill: true,
-                    },
-                    {
-                        label: <?= json_encode(t('dashboard.calories_burned')) ?>,
-                        data: <?= json_encode($calorieBurnedValues) ?>,
-                        borderColor: '#2563eb',
-                        backgroundColor: 'rgba(37, 99, 235, 0.14)',
-                        tension: 0.3,
-                        fill: true,
-                    },
-                    {
-                        label: <?= json_encode(t('dashboard.calories_deficit')) ?>,
-                        data: <?= json_encode($calorieDeficitValues) ?>,
-                        borderColor: '#059669',
-                        backgroundColor: 'rgba(5, 150, 105, 0.12)',
-                        tension: 0.3,
-                        fill: false,
-                    },
-                ]
-            },
-            options: dateChartOptions()
-        });
-    }
-
-    const weightCtx = document.getElementById('weightChart');
-    if (weightCtx) {
-        new Chart(weightCtx, {
-            type: 'line',
-            data: {
-                labels: <?= json_encode($weightLabels) ?>,
-                datasets: [{
-                    label: <?= json_encode(t('metric.weight') . ' (kg)') ?>,
-                    data: <?= json_encode($weightValues) ?>,
-                    borderColor: '#22313f',
-                    backgroundColor: 'rgba(34, 49, 63, 0.12)',
-                    tension: 0.2,
-                    fill: true,
-                }]
-            },
-            options: dateChartOptions()
-        });
-    }
-
-    const compareCtx = document.getElementById('compareChart');
-    if (compareCtx) {
-        new Chart(compareCtx, {
-            type: 'bar',
-            data: {
-                labels: <?= json_encode($compareBar['labels']) ?>,
-                datasets: <?= json_encode($compareBar['datasets']) ?>
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-                scales: { y: { beginAtZero: true, max: 100 } }
-            }
-        });
-    }
-})();
-</script>

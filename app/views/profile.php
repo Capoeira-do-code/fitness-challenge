@@ -234,6 +234,35 @@ $profileExportPayload = [
         (array) ($recentActivity ?? [])
     ),
 ];
+$latestWeight = null;
+if ($profileWeightChart !== []) {
+    $latestWeightRow = $profileWeightChart[count($profileWeightChart) - 1];
+    $latestWeight = is_numeric($latestWeightRow['value'] ?? null) ? (float) $latestWeightRow['value'] : null;
+}
+$profileDataCards = [
+    ['label' => t('metric.steps'), 'value' => number_format((int) ($profileMetric['total_steps'] ?? 0), 0, '.', ''), 'meta' => t('metric.total')],
+    ['label' => t('metric.total_km'), 'value' => number_format((float) ($profileMetric['total_km'] ?? 0), 2, '.', '') . ' km', 'meta' => t('metric.distance_km')],
+    ['label' => t('metric.workouts'), 'value' => (string) (int) ($profileMetric['workout_success'] ?? 0), 'meta' => t('metric.total')],
+    ['label' => t('metric.score'), 'value' => number_format((float) ($profileMetric['score'] ?? 0), 1, '.', ''), 'meta' => t('metric.current_value')],
+    ['label' => t('metric.strikes'), 'value' => (string) (int) ($profileMetric['current_strikes'] ?? 0), 'meta' => t('metric.current_value')],
+    ['label' => t('metric.penalty'), 'value' => "\u{20AC}" . number_format((float) ($profileMetric['total_penalty'] ?? 0), 2, '.', ''), 'meta' => t('metric.total')],
+];
+if ($latestWeight !== null) {
+    $profileDataCards[] = ['label' => t('profile.latest_weight'), 'value' => number_format($latestWeight, 1, '.', '') . ' kg', 'meta' => t('metric.weight')];
+}
+$calorieConfigParts = [];
+if (($profileUser['maintenance_calories'] ?? null) !== null) {
+    $calorieConfigParts[] = t('dashboard.calories_maintenance') . ': ' . number_format((float) $profileUser['maintenance_calories'], 0, '.', '') . ' kcal';
+}
+if (($profileUser['calorie_burn_goal'] ?? null) !== null) {
+    $calorieConfigParts[] = t('dashboard.calories_burned') . ': ' . number_format((float) $profileUser['calorie_burn_goal'], 0, '.', '') . ' kcal';
+}
+if (($profileUser['calorie_consumed_max'] ?? null) !== null) {
+    $calorieConfigParts[] = t('dashboard.calories_consumed') . ': ' . number_format((float) $profileUser['calorie_consumed_max'], 0, '.', '') . ' kcal';
+}
+if ($calorieConfigParts !== []) {
+    $profileDataCards[] = ['label' => t('profile.calorie_config'), 'value' => (string) count($calorieConfigParts), 'meta' => implode(' / ', $calorieConfigParts)];
+}
 ?>
 <section class="screen stack-lg spa-shell" data-spa-page="profile">
     <div class="hero-panel profile-hero">
@@ -251,6 +280,28 @@ $profileExportPayload = [
             </div>
         </div>
     </div>
+
+    <?php if ($isOwnProfile): ?>
+    <article class="panel profile-data-overview<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-home-extra <?= $activeSection !== '' ? 'hidden' : '' ?>>
+        <div class="panel-head">
+            <div>
+                <p class="eyebrow"><?= e(t('profile.my_data')) ?></p>
+                <h2><?= e(t('profile.my_data')) ?></h2>
+                <p class="muted small"><?= e(t('profile.my_data_subtitle')) ?></p>
+            </div>
+            <a class="btn btn-ghost small" href="/?page=analytics&user_id=<?= (int) ($profileUser['id'] ?? 0) ?>"><?= e(t('nav.analytics')) ?></a>
+        </div>
+        <div class="profile-data-grid">
+            <?php foreach ($profileDataCards as $card): ?>
+                <article class="profile-data-card">
+                    <span><?= e((string) $card['label']) ?></span>
+                    <strong><?= e((string) $card['value']) ?></strong>
+                    <small><?= e((string) $card['meta']) ?></small>
+                </article>
+            <?php endforeach; ?>
+        </div>
+    </article>
+    <?php endif; ?>
 
     <article class="panel settings-list<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-main <?= $activeSection !== '' ? 'hidden' : '' ?>>
         <a class="settings-row" href="<?= e($profileUrl('goals')) ?>" data-spa-link>
