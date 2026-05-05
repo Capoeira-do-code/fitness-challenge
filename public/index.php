@@ -518,15 +518,34 @@ if ($page === 'api_meal_calendar') {
 
     $selectedDayData = is_array($mealCalendar[$selectedDate] ?? null) ? (array) $mealCalendar[$selectedDate] : [];
     $selectedPhotos = [];
-    foreach (array_values((array) ($selectedDayData['photos'] ?? [])) as $photo) {
-        if (!is_array($photo)) {
-            continue;
+    $periodRows = [];
+    foreach ($mealCalendar as $day) {
+        foreach (array_values((array) ($day['photos'] ?? [])) as $photo) {
+            if (is_array($photo)) {
+                $periodRows[] = $photo;
+            }
         }
+    }
+    usort(
+        $periodRows,
+        static function (array $left, array $right): int {
+            $dateCompare = strcmp((string) ($right['log_date'] ?? ''), (string) ($left['log_date'] ?? ''));
+            if ($dateCompare !== 0) {
+                return $dateCompare;
+            }
+
+            return strcmp((string) ($right['created_at'] ?? ''), (string) ($left['created_at'] ?? ''));
+        }
+    );
+    $periodPhotos = [];
+    $photoPayload = static function (array $photo) use ($selectedDate, $categoryLabels, $nutritionSummary): array {
         $photoId = (int) ($photo['id'] ?? 0);
         $category = (string) ($photo['category'] ?? 'other');
-        $selectedPhotos[] = [
+
+        return [
             'id' => $photoId,
             'display_name' => (string) ($photo['display_name'] ?? ''),
+            'date' => (string) ($photo['log_date'] ?? $selectedDate),
             'date_label' => format_date_eu((string) ($photo['log_date'] ?? $selectedDate)),
             'category_label' => (string) ($categoryLabels[$category] ?? $category),
             'caption' => (string) ($photo['caption'] ?? ''),
@@ -534,6 +553,15 @@ if ($page === 'api_meal_calendar') {
             'photo_url' => media_url((string) ($photo['file_path'] ?? '')),
             'photo_href' => '/?page=photo&photo_id=' . $photoId,
         ];
+    };
+    foreach ($periodRows as $photo) {
+        $periodPhotos[] = $photoPayload($photo);
+    }
+    foreach (array_values((array) ($selectedDayData['photos'] ?? [])) as $photo) {
+        if (!is_array($photo)) {
+            continue;
+        }
+        $selectedPhotos[] = $photoPayload($photo);
     }
 
     json_response([
@@ -543,10 +571,13 @@ if ($page === 'api_meal_calendar') {
         'user_id' => $selectedUserId,
         'days' => $days,
         'selected_photos' => $selectedPhotos,
+        'period_photos' => $periodPhotos,
         'labels' => [
             'no_photo' => t('entries.no_photo'),
             'no_photos' => t('entries.no_photos'),
             'photo' => t('common.photo'),
+            'photo_singular' => t('entries.photo_singular'),
+            'photo_plural' => t('entries.photo_plural'),
             'recent_photos' => t('entries.recent_photos'),
             'date' => t('common.date'),
         ],
@@ -1171,6 +1202,7 @@ if ($page === 'settings') {
         if ($action === 'update_preferences') {
             $before = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $currentUser['id']]);
             $primaryType = in_array(($_POST['primary_goal_type'] ?? 'steps'), ['steps', 'km'], true) ? (string) $_POST['primary_goal_type'] : 'steps';
+            $themeMode = in_array(($_POST['theme_mode'] ?? 'auto'), ['auto', 'light', 'dark'], true) ? (string) $_POST['theme_mode'] : 'auto';
             $layoutJson = (string) ($before['dashboard_layout_json'] ?? '[]');
             $hasWidgetPayload = array_key_exists('dashboard_widgets', $_POST) || array_key_exists('dashboard_order', $_POST);
             if ($hasWidgetPayload) {
@@ -1195,6 +1227,7 @@ if ($page === 'settings') {
                      primary_goal_value = :primary_goal_value,
                      calorie_burn_goal = :calorie_burn_goal,
                      calorie_consumed_max = :calorie_consumed_max,
+                     theme_mode = :theme_mode,
                      dashboard_view = :dashboard_view,
                      dashboard_layout_json = :dashboard_layout_json,
                      updated_at = :updated_at
@@ -1204,6 +1237,7 @@ if ($page === 'settings') {
                     ':primary_goal_value' => ($_POST['primary_goal_value'] ?? '') !== '' ? (float) $_POST['primary_goal_value'] : null,
                     ':calorie_burn_goal' => ($_POST['calorie_burn_goal'] ?? '') !== '' ? max(0.0, (float) $_POST['calorie_burn_goal']) : null,
                     ':calorie_consumed_max' => ($_POST['calorie_consumed_max'] ?? '') !== '' ? max(0.0, (float) $_POST['calorie_consumed_max']) : null,
+                    ':theme_mode' => $themeMode,
                     ':dashboard_view' => (string) ($_POST['dashboard_view'] ?? 'current_week'),
                     ':dashboard_layout_json' => $layoutJson,
                     ':updated_at' => now_iso(),

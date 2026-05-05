@@ -30,9 +30,13 @@ $desktopNavItems = [
     'team' => ['label' => t('nav.team'), 'href' => '/?page=team', 'icon' => 'users'],
     'profile' => ['label' => t('nav.profile'), 'href' => '/?page=profile', 'icon' => 'user'],
 ];
-$mobileNavItems = array_intersect_key($desktopNavItems, array_flip(['dashboard', 'calendar', 'analytics', 'team', 'profile']));
+$mobileNavItems = array_intersect_key($desktopNavItems, array_flip(['dashboard', 'calendar', 'analytics', 'team']));
 $topbarControls = $topbarControls ?? '';
 $unreadNotificationsCount = $loggedIn ? user_unread_notifications_count($GLOBALS['pdo'], (int) ($currentUser['id'] ?? 0)) : 0;
+$themeMode = $loggedIn ? (string) ($currentUser['theme_mode'] ?? 'auto') : 'auto';
+if (!in_array($themeMode, ['auto', 'light', 'dark'], true)) {
+    $themeMode = 'auto';
+}
 $isNavActive = static function (string $pageKey) use ($currentPage): bool {
     if ($pageKey === 'calendar') {
         return $currentPage === 'entries' && (string) ($_GET['mode'] ?? '') === 'calendar';
@@ -67,7 +71,7 @@ $renderMobileIcon = static function (string $icon): string {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/styles.css?v=29">
+    <link rel="stylesheet" href="/assets/styles.css?v=30">
 </head>
 <?php
 $bodyClasses = [];
@@ -82,7 +86,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     $bodyStyle = "--login-bg-image:url('" . e($loginBackgroundUrl) . "');";
 }
 ?>
-<body data-page="<?= e((string) $currentPage) ?>"<?= $bodyClasses !== [] ? ' class="' . e(implode(' ', $bodyClasses)) . '"' : '' ?><?= $bodyStyle !== '' ? ' style="' . $bodyStyle . '"' : '' ?>>
+<body data-page="<?= e((string) $currentPage) ?>" data-theme="<?= e($themeMode) ?>"<?= $bodyClasses !== [] ? ' class="' . e(implode(' ', $bodyClasses)) . '"' : '' ?><?= $bodyStyle !== '' ? ' style="' . $bodyStyle . '"' : '' ?>>
 <?php if ($loggedIn): ?>
     <header class="topbar">
         <a class="brand" href="/?page=dashboard">
@@ -178,9 +182,19 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                 <span><?= e($item['label']) ?></span>
             </a>
         <?php endforeach; ?>
+        <details class="bottom-nav-plus add-menu">
+            <summary aria-label="<?= e(t('entries.title')) ?>">
+                <span class="nav-icon bottom-nav-plus-icon" aria-hidden="true">+</span>
+                <span><?= e(t('common.create')) ?></span>
+            </summary>
+            <div class="add-menu-panel bottom-nav-plus-menu">
+                <a class="btn btn-ghost" href="/?page=entries&mode=data"><?= e(t('entries.quick_data')) ?></a>
+                <a class="btn btn-ghost" href="/?page=entries&mode=meal"><?= e(t('entries.quick_meal')) ?></a>
+            </div>
+        </details>
     </nav>
 <?php endif; ?>
 
-<script src="/assets/main.js?v=23"></script>
+<script src="/assets/main.js?v=24"></script>
 </body>
 </html>

@@ -1293,6 +1293,9 @@
         const backLink = root.querySelector('[data-meal-calendar-back]');
         const photosPanel = document.querySelector('[data-meal-calendar-photos-panel]');
         const photosTarget = photosPanel?.querySelector('[data-meal-calendar-selected-photos]');
+        const periodPanel = document.querySelector('[data-meal-calendar-period-panel]');
+        const periodTarget = periodPanel?.querySelector('[data-meal-calendar-period-photos]');
+        const periodCount = periodPanel?.querySelector('[data-meal-calendar-period-count]');
         const selectedDateLabel = photosPanel?.querySelector('.eyebrow');
 
         if (!(form instanceof HTMLFormElement) || !(dateInput instanceof HTMLInputElement) || !(viewSelect instanceof HTMLInputElement) || !(daysGrid instanceof HTMLElement)) {
@@ -1411,6 +1414,41 @@
             });
             photosTarget.appendChild(grid);
         };
+        const renderPeriodPhotos = (payload) => {
+            if (!(periodTarget instanceof HTMLElement)) {
+                return;
+            }
+            const labels = payload.labels || {};
+            const photos = Array.isArray(payload.period_photos) ? payload.period_photos : [];
+            if (periodCount instanceof HTMLElement) {
+                periodCount.textContent = `${photos.length} ${photos.length === 1 ? (labels.photo_singular || 'photo') : (labels.photo_plural || 'photos')}`;
+            }
+            periodTarget.innerHTML = '';
+            if (photos.length === 0) {
+                appendText(periodTarget, 'p', labels.no_photos || 'No photos', 'muted');
+                return;
+            }
+
+            const grid = document.createElement('div');
+            grid.className = 'entries-calendar-mobile-gallery';
+            photos.forEach((photo) => {
+                const link = document.createElement('a');
+                link.className = 'entries-calendar-mobile-tile';
+                link.href = String(photo.photo_href || '#');
+
+                if (photo.photo_url) {
+                    const image = document.createElement('img');
+                    image.src = String(photo.photo_url || '');
+                    image.alt = String(labels.photo || 'Photo');
+                    link.appendChild(image);
+                } else {
+                    appendText(link, 'div', labels.no_photo || 'No photo', 'entries-calendar-empty');
+                }
+                appendText(link, 'span', photo.date_label || photo.date || '');
+                grid.appendChild(link);
+            });
+            periodTarget.appendChild(grid);
+        };
         const renderPayload = (payload) => {
             if (!payload || payload.ok !== true) {
                 throw new Error('Calendar response was not ok.');
@@ -1433,6 +1471,7 @@
             }
             renderDays(payload);
             renderPhotos(payload);
+            renderPeriodPhotos(payload);
         };
         const loadCalendar = async (pushState = true) => {
             try {

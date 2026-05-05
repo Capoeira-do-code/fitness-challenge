@@ -78,6 +78,7 @@ if ($missingReasonValue === '') {
     $missingReasonValue = trim((string) ($log['workout_exception_reason'] ?? ''));
 }
 $calendarSelectedPhotos = [];
+$calendarPeriodPhotos = [];
 if ($entryMode === 'calendar') {
     $selectedDayData = is_array($mealCalendar[$selectedDate] ?? null) ? (array) $mealCalendar[$selectedDate] : [];
     $calendarSelectedPhotos = is_array($selectedDayData['photos'] ?? null) ? array_values((array) $selectedDayData['photos']) : [];
@@ -103,6 +104,41 @@ $nutritionSummary = static function (array $photo): string {
 
     return implode(' · ', $parts);
 };
+if ($entryMode === 'calendar') {
+    $calendarPeriodRows = [];
+    foreach ((array) ($mealCalendar ?? []) as $day) {
+        foreach (array_values((array) ($day['photos'] ?? [])) as $photo) {
+            if (is_array($photo)) {
+                $calendarPeriodRows[] = $photo;
+            }
+        }
+    }
+    usort(
+        $calendarPeriodRows,
+        static function (array $left, array $right): int {
+            $dateCompare = strcmp((string) ($right['log_date'] ?? ''), (string) ($left['log_date'] ?? ''));
+            if ($dateCompare !== 0) {
+                return $dateCompare;
+            }
+
+            return strcmp((string) ($right['created_at'] ?? ''), (string) ($left['created_at'] ?? ''));
+        }
+    );
+    foreach ($calendarPeriodRows as $photo) {
+        $photoId = (int) ($photo['id'] ?? 0);
+        $category = (string) ($photo['category'] ?? 'other');
+        $calendarPeriodPhotos[] = [
+            'id' => $photoId,
+            'display_name' => (string) ($photo['display_name'] ?? ''),
+            'date_label' => format_date_eu((string) ($photo['log_date'] ?? $selectedDate)),
+            'category_label' => (string) ($categoryLabels[$category] ?? $category),
+            'caption' => (string) ($photo['caption'] ?? ''),
+            'nutrition' => $nutritionSummary($photo),
+            'photo_url' => media_url((string) ($photo['file_path'] ?? '')),
+            'photo_href' => '/?page=photo&photo_id=' . $photoId,
+        ];
+    }
+}
 ?>
 <section class="screen stack-lg<?= $entryMode === 'calendar' ? ' entries-calendar-screen' : '' ?>">
     <div class="hero-panel<?= $entryMode === 'calendar' ? ' entries-calendar-hero' : '' ?>">
@@ -505,6 +541,34 @@ $nutritionSummary = static function (array $photo): string {
                         </article>
                     </a>
                 <?php endforeach; ?>
+            </div>
+        </article>
+
+        <article class="panel entries-calendar-mobile-gallery-panel" data-meal-calendar-period-panel>
+            <div class="panel-head">
+                <div>
+                    <p class="eyebrow"><?= e(t('nav.calendar')) ?></p>
+                    <h2><?= e(t('entries.recent_photos')) ?></h2>
+                </div>
+                <span class="badge" data-meal-calendar-period-count><?= count($calendarPeriodPhotos) ?> <?= e(count($calendarPeriodPhotos) === 1 ? t('entries.photo_singular') : t('entries.photo_plural')) ?></span>
+            </div>
+            <div data-meal-calendar-period-photos>
+                <?php if ($calendarPeriodPhotos === []): ?>
+                    <p class="muted"><?= e(t('entries.no_photos')) ?></p>
+                <?php else: ?>
+                    <div class="entries-calendar-mobile-gallery">
+                        <?php foreach ($calendarPeriodPhotos as $photo): ?>
+                            <a class="entries-calendar-mobile-tile" href="<?= e((string) ($photo['photo_href'] ?? '#')) ?>">
+                                <?php if ((string) ($photo['photo_url'] ?? '') !== ''): ?>
+                                    <img src="<?= e((string) $photo['photo_url']) ?>" alt="<?= e(t('common.photo')) ?>">
+                                <?php else: ?>
+                                    <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
+                                <?php endif; ?>
+                                <span><?= e((string) ($photo['date_label'] ?? '')) ?></span>
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
             </div>
         </article>
 
