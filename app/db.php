@@ -770,6 +770,8 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_approval_log_type_unique ON approval_requests(log_id, approval_type)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_logs_date ON daily_logs(log_date)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_entries_user_date ON photo_entries(user_id, log_date)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_entries_created ON photo_entries(created_at DESC, id DESC)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_entries_user_created ON photo_entries(user_id, created_at DESC, id DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_comments_photo_created ON photo_comments(photo_id, created_at)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_comments_user ON photo_comments(user_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_team_memberships_team ON team_memberships(team_id, active)');

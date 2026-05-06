@@ -7,7 +7,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 $page = $_GET['page'] ?? null;
 if ($page === null) {
     $pathPage = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/');
-    if (in_array($pathPage, ['dashboard', 'analytics', 'entries', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'login', 'login_background'], true)) {
+    if (in_array($pathPage, ['dashboard', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'login', 'login_background'], true)) {
         $page = $pathPage;
     }
 }
@@ -22,7 +22,7 @@ if ($page === 'users') {
     $page = 'admin';
 }
 
-if ($currentUser !== null && !in_array($page, ['app_icon', 'login_background', 'media'], true)) {
+if ($currentUser !== null && !in_array($page, ['app_icon', 'login_background', 'media', 'media_thumb', 'api_meal_calendar'], true)) {
     run_system_backup_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
 }
 
@@ -469,7 +469,23 @@ if ($page === 'media_thumb') {
     }
 
     if (!is_array($thumb) || !is_file((string) ($thumb['path'] ?? ''))) {
-        redirect('/?page=media&path=' . rawurlencode((string) ($normalizedMedia['normalized'] ?? '')));
+        $fallbackPath = resolve_media_storage_path($config, (string) ($normalizedMedia['normalized'] ?? ''));
+        if ($fallbackPath === null || !is_file($fallbackPath)) {
+            http_response_code(404);
+            echo e(t('flash.not_found'));
+            exit;
+        }
+
+        $fallbackMime = detect_media_mime_type($fallbackPath);
+        $fallbackSize = filesize($fallbackPath);
+        header('Content-Type: ' . $fallbackMime);
+        if ($fallbackSize !== false) {
+            header('Content-Length: ' . (string) $fallbackSize);
+        }
+        header('Cache-Control: private, max-age=604800');
+        header('X-Content-Type-Options: nosniff');
+        readfile($fallbackPath);
+        exit;
     }
 
     $thumbPath = (string) $thumb['path'];
@@ -624,6 +640,9 @@ if ($page === 'api_meal_calendar') {
             'photo_plural' => t('entries.photo_plural'),
             'recent_photos' => t('entries.recent_photos'),
             'date' => t('common.date'),
+            'empty_period_title' => t('gallery.empty_period_title'),
+            'empty_period_body' => t('gallery.empty_period_body'),
+            'view_latest' => t('gallery.view_latest'),
         ],
     ]);
 }
@@ -1089,6 +1108,38 @@ if ($page === 'photo') {
         'comments' => fetch_photo_comments($pdo, $photoId, 250),
         'canDeletePhoto' => $canDeletePhoto,
         'canEditPhoto' => $canEditPhoto,
+        'config' => $config,
+    ]);
+}
+
+if ($page === 'gallery') {
+    $pageNum = max(1, (int) ($_GET['page_num'] ?? 1));
+    $perPage = 60;
+    $users = is_admin($currentUser) ? list_active_users($pdo) : [$currentUser];
+    $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
+    if (!is_admin($currentUser) || $selectedUserId <= 0) {
+        $selectedUserId = (int) $currentUser['id'];
+    }
+
+    $selectedUser = find_user_by_id($users, $selectedUserId);
+    if ($selectedUser === null) {
+        $selectedUser = $currentUser;
+        $selectedUserId = (int) $currentUser['id'];
+    }
+
+    $galleryRows = fetch_gallery_photos($pdo, $perPage + 1, ($pageNum - 1) * $perPage, $selectedUserId);
+    $hasNextPage = count($galleryRows) > $perPage;
+    $galleryPhotos = array_slice($galleryRows, 0, $perPage);
+
+    render_view('gallery', [
+        'title' => t('gallery.title'),
+        'currentPage' => 'gallery',
+        'currentUser' => $currentUser,
+        'users' => $users,
+        'selectedUser' => $selectedUser,
+        'galleryPhotos' => $galleryPhotos,
+        'pageNum' => $pageNum,
+        'hasNextPage' => $hasNextPage,
         'config' => $config,
     ]);
 }

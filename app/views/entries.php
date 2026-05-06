@@ -140,23 +140,25 @@ if ($entryMode === 'calendar') {
         ];
     }
 }
+$galleryUrl = '/?' . http_build_query([
+    'page' => 'gallery',
+    'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0),
+]);
 ?>
 <section class="screen stack-lg<?= $entryMode === 'calendar' ? ' entries-calendar-screen' : '' ?>">
-    <div class="hero-panel<?= $entryMode === 'calendar' ? ' entries-calendar-hero' : '' ?>">
+    <?php if ($entryMode !== 'calendar'): ?>
+    <div class="hero-panel">
         <div>
-            <p class="eyebrow"><?= e($entryMode === 'calendar' ? t('nav.calendar') : t('nav.entries')) ?></p>
-            <h1><?= e($entryMode === 'calendar' ? t('entries.calendar_title') : t('entries.title')) ?></h1>
-            <p class="muted"><?= e($entryMode === 'calendar' ? t('entries.calendar_subtitle') : t('entries.subtitle')) ?></p>
+            <p class="eyebrow"><?= e(t('nav.entries')) ?></p>
+            <h1><?= e(t('entries.title')) ?></h1>
+            <p class="muted"><?= e(t('entries.subtitle')) ?></p>
         </div>
-        <?php if ($entryMode === 'calendar'): ?>
-        <span class="hero-spacer" aria-hidden="true"></span>
-        <?php else: ?>
         <div class="chip-group">
             <a class="btn <?= $entryMode === 'data' ? 'btn-primary' : 'btn-ghost' ?>" href="/?page=entries&mode=data&date=<?= e($selectedDate) ?>"><?= e(t('entries.quick_data')) ?></a>
             <a class="btn <?= $entryMode === 'meal' ? 'btn-primary' : 'btn-ghost' ?>" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"><?= e(t('entries.quick_meal')) ?></a>
         </div>
-        <?php endif; ?>
     </div>
+    <?php endif; ?>
 
     <?php if ($entryMode === 'data'): ?>
         <article class="panel entry-data-panel">
@@ -468,7 +470,7 @@ if ($entryMode === 'calendar') {
                     <figure class="photo-card">
                         <a class="photo-card-media" href="/?page=photo&photo_id=<?= $photoId ?>">
                             <?php if ($photoUrl !== ''): ?>
-                                <img src="<?= e($photoUrl) ?>" alt="<?= e(t('common.photo')) ?>">
+                                <img src="<?= e($photoUrl) ?>" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
                             <?php else: ?>
                                 <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
                             <?php endif; ?>
@@ -494,13 +496,16 @@ if ($entryMode === 'calendar') {
     <?php endif; ?>
 
     <?php if ($entryMode === 'calendar'): ?>
-        <article class="panel entries-calendar-panel" data-meal-calendar-root data-user-id="<?= (int) ($selectedUserId ?? $currentUser['id'] ?? 0) ?>">
+        <article class="panel entries-calendar-panel" data-meal-calendar-root data-user-id="<?= (int) ($selectedUserId ?? $currentUser['id'] ?? 0) ?>" data-gallery-url="<?= e($galleryUrl) ?>">
             <div class="panel-head entries-calendar-head">
                 <div>
                     <p class="eyebrow"><?= e(t('common.date')) ?> &middot; <?= e(format_date_eu((string) $selectedDate)) ?></p>
                     <h2><?= e(t('entries.calendar_title')) ?></h2>
                 </div>
-                <a class="btn btn-primary entries-calendar-create" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>" data-meal-calendar-back><?= e(t('entries.create_entry')) ?></a>
+                <div class="entries-calendar-head-actions">
+                    <a class="btn btn-ghost entries-calendar-gallery" href="<?= e($galleryUrl) ?>"><?= e(t('gallery.title')) ?></a>
+                    <a class="btn btn-primary entries-calendar-create" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>" data-meal-calendar-back><?= e(t('entries.create_entry')) ?></a>
+                </div>
             </div>
             <form method="get" action="/" class="control-strip entries-calendar-controls" data-meal-calendar-form>
                 <input type="hidden" name="page" value="entries">
@@ -566,7 +571,11 @@ if ($entryMode === 'calendar') {
             </div>
             <div data-meal-calendar-period-photos>
                 <?php if ($calendarPeriodPhotos === []): ?>
-                    <p class="muted"><?= e(t('entries.no_photos')) ?></p>
+                    <div class="calendar-empty-state">
+                        <strong><?= e(t('gallery.empty_period_title')) ?></strong>
+                        <p><?= e(t('gallery.empty_period_body')) ?></p>
+                        <a class="btn btn-ghost small" href="<?= e($galleryUrl) ?>"><?= e(t('gallery.view_latest')) ?></a>
+                    </div>
                 <?php else: ?>
                     <div class="entries-calendar-mobile-gallery">
                         <?php foreach ($calendarPeriodPhotos as $photo): ?>
@@ -593,7 +602,11 @@ if ($entryMode === 'calendar') {
             </div>
             <div data-meal-calendar-selected-photos>
                 <?php if ($calendarSelectedPhotos === []): ?>
-                    <p class="muted"><?= e(t('entries.no_photos')) ?></p>
+                    <div class="calendar-empty-state">
+                        <strong><?= e(t('gallery.empty_period_title')) ?></strong>
+                        <p><?= e(t('gallery.empty_period_body')) ?></p>
+                        <a class="btn btn-ghost small" href="<?= e($galleryUrl) ?>"><?= e(t('gallery.view_latest')) ?></a>
+                    </div>
                 <?php else: ?>
                     <div class="photo-grid">
                     <?php foreach ($calendarSelectedPhotos as $photo): ?>

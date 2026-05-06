@@ -1333,8 +1333,30 @@ function fetch_recent_photos(PDO $pdo, int $limit = 24, ?int $userId = null): ar
         'SELECT p.*, u.display_name FROM photo_entries p
          JOIN users u ON u.id = p.user_id
          ' . $where . '
-         ORDER BY p.created_at DESC
+         ORDER BY p.created_at DESC, p.id DESC
          LIMIT ' . $limit,
+        $params
+    );
+}
+
+function fetch_gallery_photos(PDO $pdo, int $limit = 60, int $offset = 0, ?int $userId = null): array
+{
+    $limit = max(1, min(120, $limit));
+    $offset = max(0, $offset);
+    $params = [];
+    $where = '';
+    if ($userId !== null) {
+        $where = 'WHERE p.user_id = :user_id';
+        $params[':user_id'] = $userId;
+    }
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT p.*, u.display_name FROM photo_entries p
+         JOIN users u ON u.id = p.user_id
+         ' . $where . '
+         ORDER BY p.created_at DESC, p.id DESC
+         LIMIT ' . $limit . ' OFFSET ' . $offset,
         $params
     );
 }
@@ -2390,6 +2412,10 @@ function generate_media_thumbnail(array $config, string $mediaPath, int $width =
     }
 
     $mime = detect_media_mime_type($sourcePath);
+    if (!media_thumbnail_supported($mime)) {
+        return null;
+    }
+
     $loaders = [
         'image/jpeg' => 'imagecreatefromjpeg',
         'image/png' => 'imagecreatefrompng',

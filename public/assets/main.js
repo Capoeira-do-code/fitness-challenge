@@ -1299,6 +1299,7 @@
         const periodTarget = periodPanel?.querySelector('[data-meal-calendar-period-photos]');
         const periodCount = periodPanel?.querySelector('[data-meal-calendar-period-count]');
         const selectedDateLabel = photosPanel?.querySelector('.eyebrow');
+        const galleryUrl = String(root.dataset.galleryUrl || '/?page=gallery');
 
         if (!(form instanceof HTMLFormElement) || !(dateInput instanceof HTMLInputElement) || !(viewSelect instanceof HTMLInputElement) || !(daysGrid instanceof HTMLElement)) {
             return;
@@ -1426,6 +1427,18 @@
             parent.appendChild(node);
             return node;
         };
+        const renderCalendarEmptyState = (target, labels) => {
+            const empty = document.createElement('div');
+            empty.className = 'calendar-empty-state';
+            appendText(empty, 'strong', labels.empty_period_title || 'No photos in this period');
+            appendText(empty, 'p', labels.empty_period_body || labels.no_photos || 'No photos uploaded yet.');
+            const link = document.createElement('a');
+            link.className = 'btn btn-ghost small';
+            link.href = galleryUrl;
+            link.textContent = labels.view_latest || 'View latest photos';
+            empty.appendChild(link);
+            target.appendChild(empty);
+        };
         const renderDays = (payload) => {
             const labels = payload.labels || {};
             const selectedDate = String(payload.date || '');
@@ -1468,7 +1481,7 @@
             }
             photosTarget.innerHTML = '';
             if (photos.length === 0) {
-                appendText(photosTarget, 'p', labels.no_photos || 'No photos', 'muted');
+                renderCalendarEmptyState(photosTarget, labels);
                 return;
             }
 
@@ -1481,9 +1494,9 @@
                 const media = document.createElement('a');
                 media.className = 'photo-card-media';
                 media.href = String(photo.photo_href || '#');
-                if (photo.photo_url) {
+                if (photo.thumb_url || photo.photo_url) {
                     const image = document.createElement('img');
-                    image.src = String(photo.photo_url || '');
+                    image.src = String(photo.thumb_url || photo.photo_url || '');
                     image.alt = String(labels.photo || 'Photo');
                     image.loading = 'lazy';
                     image.decoding = 'async';
@@ -1518,7 +1531,7 @@
             }
             periodTarget.innerHTML = '';
             if (photos.length === 0) {
-                appendText(periodTarget, 'p', labels.no_photos || 'No photos', 'muted');
+                renderCalendarEmptyState(periodTarget, labels);
                 return;
             }
 

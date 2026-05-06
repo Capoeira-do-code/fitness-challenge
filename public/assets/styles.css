@@ -6325,9 +6325,22 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 }
 
 .entries-calendar-create,
+.entries-calendar-gallery,
 .dashboard-panel-head-compact > .badge,
 .dashboard-panel-head-compact .dashboard-achievements-summary {
     margin-left: auto;
+}
+
+.entries-calendar-head-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-left: auto;
+}
+
+.entries-calendar-head-actions .entries-calendar-gallery,
+.entries-calendar-head-actions .entries-calendar-create {
+    margin-left: 0;
 }
 
 .entries-calendar-controls {
@@ -6858,6 +6871,16 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
         line-height: 1.08;
     }
 
+    .entries-calendar-head-actions {
+        gap: 0.32rem;
+    }
+
+    .entries-calendar-head-actions .btn {
+        min-height: 40px;
+        padding-inline: 0.68rem;
+        font-size: 0.76rem;
+    }
+
     .entries-calendar-create {
         flex: 0 0 auto;
         min-height: 42px;
@@ -6940,6 +6963,46 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     .profile-title {
         padding-right: 2.4rem;
     }
+
+    .gallery-page {
+        gap: 0.45rem;
+        margin-inline: -0.75rem;
+    }
+
+    .gallery-toolbar {
+        padding: 0 0.75rem;
+    }
+
+    .gallery-toolbar h1 {
+        font-size: 1.55rem;
+    }
+
+    .gallery-actions .btn {
+        min-height: 38px;
+        padding-inline: 0.62rem;
+        font-size: 0.74rem;
+    }
+
+    .gallery-filter {
+        padding-inline: 0.75rem;
+    }
+
+    .photos-gallery-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        border-inline: 0;
+        border-radius: 0;
+    }
+
+    .photos-gallery-date {
+        right: 0.32rem;
+        bottom: 0.3rem;
+        font-size: 0.62rem;
+    }
+
+    .gallery-pagination,
+    .gallery-empty {
+        margin-inline: 0.75rem;
+    }
 }
 
 /* Theme mode + mobile photos calendar pass. */
@@ -7014,14 +7077,18 @@ body[data-theme="dark"] textarea {
 
 body[data-theme="dark"] .entries-calendar,
 body[data-theme="dark"] .entries-calendar-photos-panel .photo-grid,
-body[data-theme="dark"] .entries-calendar-mobile-gallery {
+body[data-theme="dark"] .entries-calendar-mobile-gallery,
+body[data-theme="dark"] .photos-gallery-grid {
     background: rgba(255, 255, 255, 0.14);
     border-color: rgba(255, 255, 255, 0.12);
 }
 
 body[data-theme="dark"] .entries-calendar-day article,
 body[data-theme="dark"] .entries-calendar-empty,
-body[data-theme="dark"] .entries-calendar-mobile-tile {
+body[data-theme="dark"] .entries-calendar-mobile-tile,
+body[data-theme="dark"] .photos-gallery-tile,
+body[data-theme="dark"] .calendar-empty-state,
+body[data-theme="dark"] .gallery-empty {
     background: #17222d;
 }
 
@@ -7061,14 +7128,18 @@ body[data-theme="dark"] .bottom-nav {
 
     body[data-theme="auto"] .entries-calendar,
     body[data-theme="auto"] .entries-calendar-photos-panel .photo-grid,
-    body[data-theme="auto"] .entries-calendar-mobile-gallery {
+    body[data-theme="auto"] .entries-calendar-mobile-gallery,
+    body[data-theme="auto"] .photos-gallery-grid {
         background: rgba(255, 255, 255, 0.14);
         border-color: rgba(255, 255, 255, 0.12);
     }
 
     body[data-theme="auto"] .entries-calendar-day article,
     body[data-theme="auto"] .entries-calendar-empty,
-    body[data-theme="auto"] .entries-calendar-mobile-tile {
+    body[data-theme="auto"] .entries-calendar-mobile-tile,
+    body[data-theme="auto"] .photos-gallery-tile,
+    body[data-theme="auto"] .calendar-empty-state,
+    body[data-theme="auto"] .gallery-empty {
         background: #17222d;
     }
 
@@ -7133,6 +7204,121 @@ body[data-theme="dark"] .bottom-nav {
     font-weight: 900;
     letter-spacing: -0.01em;
     text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
+}
+
+.calendar-empty-state,
+.gallery-empty {
+    display: grid;
+    justify-items: start;
+    gap: 0.45rem;
+    padding: 0.95rem;
+    border: 1px solid rgba(210, 220, 215, 0.72);
+    border-radius: 18px;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(244, 251, 248, 0.72)),
+        rgba(255, 255, 255, 0.68);
+}
+
+.calendar-empty-state p,
+.gallery-empty p {
+    margin: 0;
+    color: var(--muted);
+}
+
+.gallery-page {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.gallery-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding-inline: 0.1rem;
+}
+
+.gallery-toolbar h1 {
+    margin: 0;
+    font-size: clamp(1.5rem, 4vw, 2.5rem);
+    letter-spacing: -0.06em;
+}
+
+.gallery-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.gallery-filter {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.gallery-filter label {
+    min-width: min(260px, 100%);
+}
+
+.photos-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+    gap: 1px;
+    overflow: hidden;
+    border: 1px solid rgba(222, 228, 225, 0.95);
+    border-radius: 24px;
+    background: rgba(222, 228, 225, 0.95);
+}
+
+.photos-gallery-tile {
+    position: relative;
+    display: block;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    background: linear-gradient(135deg, #eef4f1, #e5ece8);
+    color: #fff;
+    text-decoration: none;
+}
+
+.photos-gallery-tile::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 48%;
+    background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.52));
+    pointer-events: none;
+}
+
+.photos-gallery-tile img,
+.photos-gallery-tile .entries-calendar-empty {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    object-fit: cover;
+    transition: transform 0.24s ease;
+}
+
+.photos-gallery-tile:hover img,
+.photos-gallery-tile:focus-visible img {
+    transform: scale(1.025);
+}
+
+.photos-gallery-date {
+    position: absolute;
+    right: 0.42rem;
+    bottom: 0.36rem;
+    z-index: 2;
+    font-size: 0.68rem;
+    font-weight: 900;
+    letter-spacing: -0.01em;
+    text-shadow: 0 1px 7px rgba(0, 0, 0, 0.62);
+}
+
+.gallery-pagination {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    padding-block: 0.35rem;
 }
 
 .bottom-nav {

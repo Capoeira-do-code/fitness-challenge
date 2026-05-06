@@ -458,6 +458,26 @@ function media_url(?string $path, mixed $version = null): string
     return $url;
 }
 
+function media_thumbnail_supported(?string $mime = null): bool
+{
+    if (!function_exists('imagecreatetruecolor') || !function_exists('imagejpeg')) {
+        return false;
+    }
+
+    if ($mime === null || $mime === '') {
+        return true;
+    }
+
+    $loaders = [
+        'image/jpeg' => 'imagecreatefromjpeg',
+        'image/png' => 'imagecreatefrompng',
+        'image/webp' => 'imagecreatefromwebp',
+        'image/gif' => 'imagecreatefromgif',
+    ];
+
+    return isset($loaders[$mime]) && function_exists($loaders[$mime]);
+}
+
 function media_thumbnail_url(?string $path, int $width = 360): string
 {
     $normalized = normalize_media_reference($path);
@@ -477,7 +497,15 @@ function media_thumbnail_url(?string $path, int $width = 360): string
             if ($mtime !== false) {
                 $version = (string) $mtime;
             }
+            $mime = function_exists('detect_media_mime_type') ? detect_media_mime_type($resolvedPath) : null;
+            if (!media_thumbnail_supported($mime)) {
+                return media_url((string) ($normalized['normalized'] ?? ''), $version);
+            }
         }
+    }
+
+    if (!media_thumbnail_supported()) {
+        return media_url((string) ($normalized['normalized'] ?? ''), $version);
     }
 
     $url = '/?page=media_thumb&path=' . rawurlencode((string) ($normalized['normalized'] ?? '')) . '&w=' . max(80, min(1200, $width));
