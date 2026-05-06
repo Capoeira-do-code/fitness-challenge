@@ -554,11 +554,32 @@ if ($page === 'api_meal_calendar') {
     };
 
     $mealCalendar = fetch_meal_calendar($pdo, $selectedDate, $selectedUserId, $calendarView);
+    $photoPreviewPayload = static function (array $photo) use ($selectedDate): array {
+        $photoId = (int) ($photo['id'] ?? 0);
+
+        return [
+            'id' => $photoId,
+            'date' => (string) ($photo['log_date'] ?? $selectedDate),
+            'date_label' => format_date_eu((string) ($photo['log_date'] ?? $selectedDate)),
+            'photo_url' => media_url((string) ($photo['file_path'] ?? '')),
+            'thumb_url' => media_thumbnail_url((string) ($photo['file_path'] ?? ''), 360),
+            'photo_href' => '/?page=photo&photo_id=' . $photoId,
+        ];
+    };
     $days = [];
     foreach ($mealCalendar as $dateKey => $day) {
         $photoCount = (int) ($day['count'] ?? 0);
         $preview = is_array($day['preview'] ?? null) ? (array) $day['preview'] : null;
         $previewPhotoId = $preview !== null ? (int) ($preview['id'] ?? 0) : 0;
+        $previewPhotos = [];
+        foreach (array_slice(array_values((array) ($day['photos'] ?? [])), 0, 3) as $previewPhoto) {
+            if (is_array($previewPhoto)) {
+                $previewPayload = $photoPreviewPayload($previewPhoto);
+                if ((string) ($previewPayload['thumb_url'] ?? '') !== '' || (string) ($previewPayload['photo_url'] ?? '') !== '') {
+                    $previewPhotos[] = $previewPayload;
+                }
+            }
+        }
         $days[] = [
             'date' => (string) $dateKey,
             'date_label' => format_date_eu((string) $dateKey),
@@ -570,6 +591,7 @@ if ($page === 'api_meal_calendar') {
                 : '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey),
             'preview_url' => $preview !== null ? media_url((string) ($preview['file_path'] ?? '')) : '',
             'thumb_url' => $preview !== null ? media_thumbnail_url((string) ($preview['file_path'] ?? ''), 360) : '',
+            'preview_photos' => $previewPhotos,
         ];
     }
 
@@ -628,6 +650,9 @@ if ($page === 'api_meal_calendar') {
         'calendar_month' => substr($selectedDate, 0, 7),
         'calendar_week' => date_to_iso_week($selectedDate),
         'calendar_view' => $calendarView,
+        'period_label' => $calendarView === 'month'
+            ? (new DateTimeImmutable($selectedDate))->format('F Y')
+            : ($calendarView === 'week' ? date_to_iso_week($selectedDate) : format_date_eu($selectedDate)),
         'user_id' => $selectedUserId,
         'days' => $days,
         'selected_photos' => $selectedPhotos,

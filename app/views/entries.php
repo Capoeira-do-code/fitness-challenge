@@ -140,6 +140,17 @@ if ($entryMode === 'calendar') {
         ];
     }
 }
+$calendarVisibleLabel = '';
+if ($entryMode === 'calendar') {
+    try {
+        $calendarVisibleDate = new DateTimeImmutable((string) $selectedDate);
+        $calendarVisibleLabel = $calendarView === 'month'
+            ? $calendarVisibleDate->format('F Y')
+            : ($calendarView === 'week' ? date_to_iso_week((string) $selectedDate) : format_date_eu((string) $selectedDate));
+    } catch (Throwable) {
+        $calendarVisibleLabel = (string) $selectedDate;
+    }
+}
 $galleryUrl = '/?' . http_build_query([
     'page' => 'gallery',
     'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0),
@@ -534,6 +545,7 @@ $galleryUrl = '/?' . http_build_query([
                     <?php endforeach; ?>
                 </div>
             </form>
+            <div class="calendar-visible-period" data-meal-calendar-visible-period><?= e($calendarVisibleLabel) ?></div>
             <div class="meal-calendar meal-calendar-<?= e($calendarView) ?><?= $calendarView === 'month' ? ' meal-calendar-month' : '' ?> entries-calendar" data-meal-calendar-days>
                 <?php foreach (($mealCalendar ?? []) as $dateKey => $day): ?>
                     <?php
@@ -542,6 +554,19 @@ $galleryUrl = '/?' . http_build_query([
                     $preview = $day['preview'] ?? null;
                     $previewUrl = is_array($preview) ? media_thumbnail_url((string) ($preview['file_path'] ?? ''), 360) : '';
                     $previewPhotoId = (int) (($preview['id'] ?? 0));
+                    $previewPhotos = [];
+                    foreach (array_slice(array_values((array) ($day['photos'] ?? [])), 0, 3) as $previewPhoto) {
+                        if (!is_array($previewPhoto)) {
+                            continue;
+                        }
+                        $previewPhotoPayload = [
+                            'thumb_url' => media_thumbnail_url((string) ($previewPhoto['file_path'] ?? ''), 360),
+                            'photo_url' => media_url((string) ($previewPhoto['file_path'] ?? '')),
+                        ];
+                        if ((string) ($previewPhotoPayload['thumb_url'] ?: $previewPhotoPayload['photo_url']) !== '') {
+                            $previewPhotos[] = $previewPhotoPayload;
+                        }
+                    }
                     $calendarDayUrl = $previewPhotoId > 0
                         ? '/?page=photo&photo_id=' . $previewPhotoId
                         : '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey);
@@ -549,8 +574,19 @@ $galleryUrl = '/?' . http_build_query([
                     <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?><?= (string) $dateKey === $selectedDate ? ' is-selected' : '' ?>" href="<?= e($calendarDayUrl) ?>">
                         <article>
                             <strong><?= e(format_date_eu((string) $dateKey)) ?></strong>
-                            <?php if ($previewUrl !== ''): ?>
-                                <img src="<?= e($previewUrl) ?>" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
+                            <?php if ($previewPhotos !== []): ?>
+                                <div class="entries-calendar-collage collage-count-<?= min(3, count($previewPhotos)) ?>">
+                                    <?php foreach ($previewPhotos as $previewPhoto): ?>
+                                        <?php $previewImageUrl = (string) ($previewPhoto['thumb_url'] ?: $previewPhoto['photo_url']); ?>
+                                        <?php if ($previewImageUrl !== ''): ?>
+                                            <img src="<?= e($previewImageUrl) ?>" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
+                                        <?php endif; ?>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php elseif ($previewUrl !== ''): ?>
+                                <div class="entries-calendar-collage collage-count-1">
+                                    <img src="<?= e($previewUrl) ?>" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
+                                </div>
                             <?php else: ?>
                                 <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
                             <?php endif; ?>
@@ -579,7 +615,7 @@ $galleryUrl = '/?' . http_build_query([
                 <?php else: ?>
                     <div class="entries-calendar-mobile-gallery">
                         <?php foreach ($calendarPeriodPhotos as $photo): ?>
-                            <a class="entries-calendar-mobile-tile" href="<?= e((string) ($photo['photo_href'] ?? '#')) ?>">
+                            <a class="entries-calendar-mobile-tile" href="<?= e((string) ($photo['photo_href'] ?? '#')) ?>" data-date-label="<?= e((string) ($photo['date_label'] ?? '')) ?>">
                                 <?php if ((string) ($photo['photo_url'] ?? '') !== ''): ?>
                                     <img src="<?= e((string) ($photo['thumb_url'] ?? $photo['photo_url'])) ?>" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
                                 <?php else: ?>

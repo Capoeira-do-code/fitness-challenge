@@ -58,6 +58,68 @@
         }, { passive: true });
     }
 
+    const initLiquidInteractions = () => {
+        if (document.documentElement.dataset.liquidInteractionsReady === '1') {
+            return;
+        }
+        document.documentElement.dataset.liquidInteractionsReady = '1';
+
+        const pressableSelector = [
+            '.btn',
+            '.nav-links a',
+            '.bottom-nav a',
+            '.bottom-nav-plus > summary',
+            '.calendar-view-segments a',
+            '.analytics-period-segments a',
+            '.entries-calendar-day',
+            '.entries-calendar-mobile-tile',
+            '.photos-gallery-tile',
+            'button',
+            'summary',
+        ].join(',');
+
+        const clearPressed = () => {
+            document.querySelectorAll('.is-pressed').forEach((node) => node.classList.remove('is-pressed'));
+        };
+
+        document.addEventListener('pointerdown', (event) => {
+            const target = event.target instanceof Element ? event.target.closest(pressableSelector) : null;
+            if (target instanceof HTMLElement) {
+                target.classList.add('is-pressed');
+            }
+        }, { passive: true });
+        document.addEventListener('pointerup', clearPressed, { passive: true });
+        document.addEventListener('pointercancel', clearPressed, { passive: true });
+        document.addEventListener('blur', clearPressed, true);
+
+        document.addEventListener('submit', (event) => {
+            const form = event.target;
+            if (form instanceof HTMLFormElement && !form.hasAttribute('data-no-transition')) {
+                document.body.classList.add('is-transitioning');
+            }
+        }, true);
+
+        document.addEventListener('click', (event) => {
+            const target = event.target instanceof Element ? event.target.closest('a[href]') : null;
+            if (!(target instanceof HTMLAnchorElement)) {
+                return;
+            }
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || target.target === '_blank' || target.hasAttribute('download')) {
+                return;
+            }
+            const href = target.getAttribute('href') || '';
+            if (href === '' || href.startsWith('#') || href.startsWith('javascript:')) {
+                return;
+            }
+            const nextUrl = new URL(target.href, window.location.origin);
+            if (nextUrl.origin !== window.location.origin) {
+                return;
+            }
+            document.body.classList.add('is-transitioning');
+            window.setTimeout(() => document.body.classList.remove('is-transitioning'), 1800);
+        }, true);
+    };
+
     const entryForm = document.querySelector('[data-testid="entry-form"]');
     if (entryForm) {
         const stepsInput = entryForm.querySelector('[name="steps"]');
@@ -1299,6 +1361,7 @@
         const periodTarget = periodPanel?.querySelector('[data-meal-calendar-period-photos]');
         const periodCount = periodPanel?.querySelector('[data-meal-calendar-period-count]');
         const selectedDateLabel = photosPanel?.querySelector('.eyebrow');
+        const visiblePeriodLabel = root.querySelector('[data-meal-calendar-visible-period]');
         const galleryUrl = String(root.dataset.galleryUrl || '/?page=gallery');
 
         if (!(form instanceof HTMLFormElement) || !(dateInput instanceof HTMLInputElement) || !(viewSelect instanceof HTMLInputElement) || !(daysGrid instanceof HTMLElement)) {
@@ -1453,13 +1516,26 @@
 
                 const article = document.createElement('article');
                 appendText(article, 'strong', day.date_label || day.date || '');
-                if (day.thumb_url || day.preview_url) {
-                    const image = document.createElement('img');
-                    image.src = String(day.thumb_url || day.preview_url || '');
-                    image.alt = String(labels.photo || 'Photo');
-                    image.loading = 'lazy';
-                    image.decoding = 'async';
-                    article.appendChild(image);
+                const previewPhotos = Array.isArray(day.preview_photos) ? day.preview_photos : [];
+                if (previewPhotos.length > 0 || day.thumb_url || day.preview_url) {
+                    const collage = document.createElement('div');
+                    const collagePhotos = previewPhotos.length > 0
+                        ? previewPhotos.slice(0, 3)
+                        : [{ thumb_url: day.thumb_url, photo_url: day.preview_url }];
+                    collage.className = `entries-calendar-collage collage-count-${Math.min(3, Math.max(1, collagePhotos.length))}`;
+                    collagePhotos.forEach((photo) => {
+                        const src = String(photo.thumb_url || photo.photo_url || '');
+                        if (src === '') {
+                            return;
+                        }
+                        const image = document.createElement('img');
+                        image.src = src;
+                        image.alt = String(labels.photo || 'Photo');
+                        image.loading = 'lazy';
+                        image.decoding = 'async';
+                        collage.appendChild(image);
+                    });
+                    article.appendChild(collage);
                 } else {
                     appendText(article, 'div', labels.no_photo || 'No photo', 'entries-calendar-empty');
                 }
@@ -1541,6 +1617,7 @@
                 const link = document.createElement('a');
                 link.className = 'entries-calendar-mobile-tile';
                 link.href = String(photo.photo_href || '#');
+                link.dataset.dateLabel = String(photo.date_label || photo.date || '');
 
                 if (photo.thumb_url || photo.photo_url) {
                     const image = document.createElement('img');
@@ -1556,6 +1633,31 @@
                 grid.appendChild(link);
             });
             periodTarget.appendChild(grid);
+        };
+        const updateVisiblePhotoPeriod = () => {
+            if (!(visiblePeriodLabel instanceof HTMLElement) || !(periodTarget instanceof HTMLElement)) {
+                return;
+            }
+            const tiles = Array.from(periodTarget.querySelectorAll('.entries-calendar-mobile-tile'));
+            const viewportMid = window.innerHeight * 0.38;
+            const activeTile = tiles.find((tile) => {
+                const rect = tile.getBoundingClientRect();
+                return rect.bottom >= 0 && rect.top <= viewportMid;
+            });
+            if (activeTile instanceof HTMLElement && activeTile.dataset.dateLabel) {
+                visiblePeriodLabel.textContent = activeTile.dataset.dateLabel;
+            }
+        };
+        let visiblePeriodTicking = false;
+        const queueVisiblePhotoPeriod = () => {
+            if (visiblePeriodTicking) {
+                return;
+            }
+            visiblePeriodTicking = true;
+            window.requestAnimationFrame(() => {
+                updateVisiblePhotoPeriod();
+                visiblePeriodTicking = false;
+            });
         };
         const renderPayload = (payload) => {
             if (!payload || payload.ok !== true) {
@@ -1578,13 +1680,22 @@
             if (backLink instanceof HTMLAnchorElement) {
                 backLink.href = `/?page=entries&mode=meal&date=${encodeURIComponent(dateInput.value)}`;
             }
+            if (visiblePeriodLabel instanceof HTMLElement) {
+                visiblePeriodLabel.classList.add('is-updating');
+                window.requestAnimationFrame(() => {
+                    visiblePeriodLabel.textContent = String(payload.period_label || payload.calendar_month || payload.calendar_week || payload.date || '');
+                    visiblePeriodLabel.classList.remove('is-updating');
+                });
+            }
             renderDays(payload);
             renderPhotos(payload);
             renderPeriodPhotos(payload);
+            queueVisiblePhotoPeriod();
         };
         const loadCalendar = async (pushState = true) => {
             try {
                 root.classList.add('is-loading');
+                document.body.classList.add('is-transitioning');
                 const response = await fetch(endpointUrl().toString(), {
                     headers: { 'Accept': 'application/json' },
                     credentials: 'same-origin',
@@ -1599,6 +1710,7 @@
                 submitFallback();
             } finally {
                 root.classList.remove('is-loading');
+                document.body.classList.remove('is-transitioning');
             }
         };
 
@@ -1642,6 +1754,170 @@
             }
             loadCalendar(false);
         });
+        window.addEventListener('scroll', queueVisiblePhotoPeriod, { passive: true });
+    };
+
+    const formatDayMonth = (dateString) => {
+        const parts = String(dateString || '').split('/');
+        return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : String(dateString || '');
+    };
+
+    const analyticsChartInstances = new WeakMap();
+
+    const initAnalyticsCharts = (container = document) => {
+        if (typeof window.Chart === 'undefined') {
+            return;
+        }
+        const root = container instanceof Element ? container : document;
+        const payloadNode = root.querySelector('[data-analytics-chart-data]');
+        if (!(payloadNode instanceof HTMLScriptElement)) {
+            return;
+        }
+
+        let payload = null;
+        try {
+            payload = JSON.parse(payloadNode.textContent || '{}');
+        } catch (error) {
+            console.error('Analytics chart payload failed to parse:', error);
+            return;
+        }
+
+        const dateChartOptions = () => ({
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: { callbacks: { title: (items) => (items && items[0] ? items[0].label : '') } },
+            },
+            scales: { x: { ticks: { callback: function (value) { return formatDayMonth(this.getLabelForValue(value)); } } } },
+        });
+
+        (Array.isArray(payload.charts) ? payload.charts : []).forEach((chartConfig) => {
+            const chartId = String(chartConfig.id || '');
+            if (chartId === '') {
+                return;
+            }
+            const canvas = root.querySelector(`#${chartId}`);
+            if (!(canvas instanceof HTMLCanvasElement)) {
+                return;
+            }
+            const existing = analyticsChartInstances.get(canvas);
+            if (existing && typeof existing.destroy === 'function') {
+                existing.destroy();
+            }
+            const chart = new window.Chart(canvas, {
+                type: chartConfig.type || 'line',
+                data: { labels: chartConfig.labels || [], datasets: chartConfig.datasets || [] },
+                options: dateChartOptions(),
+            });
+            analyticsChartInstances.set(canvas, chart);
+        });
+
+        const compareConfig = payload.compare || {};
+        const compareCanvas = root.querySelector(`#${String(compareConfig.id || 'compareChart')}`);
+        if (compareCanvas instanceof HTMLCanvasElement) {
+            const existing = analyticsChartInstances.get(compareCanvas);
+            if (existing && typeof existing.destroy === 'function') {
+                existing.destroy();
+            }
+            const chart = new window.Chart(compareCanvas, {
+                type: 'bar',
+                data: { labels: compareConfig.labels || [], datasets: compareConfig.datasets || [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: { y: { beginAtZero: true, max: 100 } },
+                },
+            });
+            analyticsChartInstances.set(compareCanvas, chart);
+        }
+    };
+
+    window.initAnalyticsCharts = initAnalyticsCharts;
+
+    const initAnalyticsEnhancement = () => {
+        const root = document.querySelector('[data-analytics-page]');
+        if (!(root instanceof HTMLElement) || root.dataset.analyticsReady === '1') {
+            return;
+        }
+        root.dataset.analyticsReady = '1';
+
+        const form = root.querySelector('[data-analytics-filter]');
+        if (!(form instanceof HTMLFormElement)) {
+            initAnalyticsCharts(root);
+            return;
+        }
+
+        const setPeriod = (period) => {
+            const periodInput = form.querySelector('input[name="analytics_period"]');
+            if (periodInput instanceof HTMLInputElement) {
+                periodInput.value = period;
+            }
+        };
+
+        const replaceAnalyticsPage = async (url) => {
+            try {
+                root.classList.add('is-loading');
+                document.body.classList.add('is-transitioning');
+                const response = await fetch(url.toString(), {
+                    headers: { 'Accept': 'text/html' },
+                    credentials: 'same-origin',
+                });
+                if (!response.ok) {
+                    throw new Error(`Analytics request failed: ${response.status}`);
+                }
+                const html = await response.text();
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const nextPage = doc.querySelector('[data-analytics-page]');
+                if (!(nextPage instanceof HTMLElement)) {
+                    throw new Error('Analytics page fragment missing.');
+                }
+                const currentTopbarContext = document.querySelector('.topbar-actions .topbar-context');
+                const nextTopbarContext = doc.querySelector('.topbar-actions .topbar-context');
+                if (currentTopbarContext instanceof HTMLElement && nextTopbarContext instanceof HTMLElement) {
+                    currentTopbarContext.replaceWith(nextTopbarContext);
+                }
+                root.replaceWith(nextPage);
+                history.pushState({}, '', url.toString());
+                initAnalyticsEnhancement();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } catch (error) {
+                console.error('Analytics update failed:', error);
+                window.location.href = url.toString();
+            } finally {
+                document.body.classList.remove('is-transitioning');
+            }
+        };
+
+        const formUrl = () => new URL(`/?${new URLSearchParams(new FormData(form)).toString()}`, window.location.origin);
+
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            replaceAnalyticsPage(formUrl());
+        });
+        form.addEventListener('change', (event) => {
+            if (event.target instanceof HTMLSelectElement || event.target instanceof HTMLInputElement) {
+                replaceAnalyticsPage(formUrl());
+            }
+        });
+        form.addEventListener('click', (event) => {
+            const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+            if (!(link instanceof HTMLAnchorElement)) {
+                return;
+            }
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+                return;
+            }
+            event.preventDefault();
+            const period = link.dataset.analyticsPeriod || '';
+            if (period !== '') {
+                setPeriod(period);
+            }
+            replaceAnalyticsPage(new URL(link.href, window.location.origin));
+        });
+
+        initAnalyticsCharts(root);
     };
 
     const initAchievementDeleteModal = () => {
@@ -2472,11 +2748,13 @@
         };
 
         safeInit(initLoginLocale);
+        safeInit(initLiquidInteractions);
         safeInit(initSpaNavigation);
         safeInit(initAdminAchievementFields);
         safeInit(initAchievementInfoModal);
         safeInit(initAchievementDeleteModal);
         safeInit(initMealCalendar);
+        safeInit(initAnalyticsEnhancement);
         safeInit(initPhotoDeleteModal);
         safeInit(initPhotoEditModal);
         safeInit(initStrikeReviewModal);

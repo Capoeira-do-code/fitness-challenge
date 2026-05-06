@@ -143,6 +143,67 @@ try {
     $analyticsMonthNext = $analyticsMonth;
 }
 
+$analyticsChartPayload = [
+    'charts' => [
+        [
+            'id' => 'stepsChart',
+            'type' => 'line',
+            'labels' => $stepsLabels,
+            'datasets' => [
+                ['label' => t('metric.steps'), 'data' => $stepsValues, 'borderColor' => '#14a38b', 'backgroundColor' => 'rgba(20, 163, 139, 0.16)', 'tension' => 0.35, 'fill' => true],
+                ['label' => t('metric.goal'), 'data' => $stepsGoals, 'borderColor' => '#ff6b4a', 'borderDash' => [6, 4], 'pointRadius' => 0],
+            ],
+        ],
+        [
+            'id' => 'distanceWalkedChart',
+            'type' => 'line',
+            'labels' => $distanceLabels,
+            'datasets' => [
+                ['label' => t('metric.distance_km'), 'data' => $distanceValues, 'borderColor' => '#3b82f6', 'backgroundColor' => 'rgba(59, 130, 246, 0.16)', 'tension' => 0.35, 'fill' => true],
+            ],
+        ],
+        [
+            'id' => 'stepsCumulativeChart',
+            'type' => 'line',
+            'labels' => $stepsLabels,
+            'datasets' => [
+                ['label' => t('dashboard.steps_cumulative_chart'), 'data' => $stepsCumulativeValues, 'borderColor' => '#0f766e', 'backgroundColor' => 'rgba(15, 118, 110, 0.16)', 'tension' => 0.35, 'fill' => true],
+            ],
+        ],
+        [
+            'id' => 'distanceCumulativeChart',
+            'type' => 'line',
+            'labels' => $distanceLabels,
+            'datasets' => [
+                ['label' => t('dashboard.distance_cumulative_chart'), 'data' => $distanceCumulativeValues, 'borderColor' => '#1d4ed8', 'backgroundColor' => 'rgba(29, 78, 216, 0.14)', 'tension' => 0.35, 'fill' => true],
+            ],
+        ],
+        [
+            'id' => 'calorieChart',
+            'type' => 'line',
+            'labels' => $calorieLabels,
+            'datasets' => [
+                ['label' => t('dashboard.calories_consumed'), 'data' => $calorieConsumedValues, 'borderColor' => '#ef4444', 'backgroundColor' => 'rgba(239, 68, 68, 0.16)', 'tension' => 0.3, 'fill' => true],
+                ['label' => t('dashboard.calories_burned'), 'data' => $calorieBurnedValues, 'borderColor' => '#2563eb', 'backgroundColor' => 'rgba(37, 99, 235, 0.14)', 'tension' => 0.3, 'fill' => true],
+                ['label' => t('dashboard.calories_deficit'), 'data' => $calorieDeficitValues, 'borderColor' => '#059669', 'backgroundColor' => 'rgba(5, 150, 105, 0.12)', 'tension' => 0.3, 'fill' => false],
+            ],
+        ],
+        [
+            'id' => 'weightChart',
+            'type' => 'line',
+            'labels' => $weightLabels,
+            'datasets' => [
+                ['label' => t('metric.weight') . ' (kg)', 'data' => $weightValues, 'borderColor' => '#22313f', 'backgroundColor' => 'rgba(34, 49, 63, 0.12)', 'tension' => 0.2, 'fill' => true],
+            ],
+        ],
+    ],
+    'compare' => [
+        'id' => 'compareChart',
+        'labels' => $compareBar['labels'] ?? [],
+        'datasets' => $compareBar['datasets'] ?? [],
+    ],
+];
+
 ob_start();
 ?>
 <details class="topbar-context">
@@ -175,17 +236,8 @@ ob_start();
 <?php
 $topbarControls = ob_get_clean();
 ?>
-<section class="screen stack-lg analytics-page">
-    <div class="hero-panel analytics-hero">
-        <div>
-            <p class="eyebrow"><?= e(t('dashboard.analytics_eyebrow')) ?></p>
-            <h1><?= e(t('nav.analytics')) ?></h1>
-            <p class="muted"><?= e((string) ($selectedUser['display_name'] ?? t('common.user'))) ?> - <?= e($analyticsRangeText) ?></p>
-        </div>
-        <a class="btn btn-ghost" href="/?page=dashboard&user_id=<?= (int) ($selectedUser['id'] ?? 0) ?>"><?= e(t('nav.dashboard')) ?></a>
-    </div>
-
-    <form method="get" action="/" class="panel analytics-controls analytics-filter-panel">
+<section class="screen stack-lg analytics-page" data-analytics-page>
+    <form method="get" action="/" class="panel analytics-controls analytics-filter-panel" data-analytics-filter>
         <input type="hidden" name="page" value="analytics">
         <input type="hidden" name="analytics_period" value="<?= e($analyticsPeriod) ?>">
         <div class="analytics-viewing-summary">
@@ -195,7 +247,7 @@ $topbarControls = ob_get_clean();
         </div>
         <label class="analytics-user-filter">
             <?= e(t('dashboard.viewing')) ?>
-            <select name="user_id" onchange="this.form.submit()">
+            <select name="user_id">
                 <?php foreach ($users as $user): ?>
                     <option value="<?= (int) $user['id'] ?>" <?= (int) $user['id'] === (int) ($selectedUser['id'] ?? 0) ? 'selected' : '' ?>><?= e((string) $user['display_name']) ?></option>
                 <?php endforeach; ?>
@@ -203,25 +255,35 @@ $topbarControls = ob_get_clean();
         </label>
         <div class="analytics-period-segments" role="group" aria-label="<?= e(t('dashboard.analytics_period')) ?>">
             <?php foreach ($analyticsPeriodLabels as $periodKey => $periodLabel): ?>
-                <a class="<?= $analyticsPeriod === $periodKey ? 'active' : '' ?>" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => $periodKey]))) ?>"><?= e((string) $periodLabel) ?></a>
+                <a class="<?= $analyticsPeriod === $periodKey ? 'active' : '' ?>" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => $periodKey]))) ?>" data-analytics-period="<?= e($periodKey) ?>"><?= e((string) $periodLabel) ?></a>
             <?php endforeach; ?>
         </div>
         <?php if ($analyticsPeriod === 'week'): ?>
-            <label class="analytics-date-filter"><?= e(t('common.week')) ?><input type="date" name="analytics_week" value="<?= e($analyticsWeek) ?>" onchange="this.form.submit()"></label>
+            <label class="analytics-date-filter"><?= e(t('common.week')) ?><input type="date" name="analytics_week" value="<?= e($analyticsWeek) ?>"></label>
         <?php else: ?>
             <input type="hidden" name="analytics_week" value="<?= e($analyticsWeek) ?>">
         <?php endif; ?>
         <?php if ($analyticsPeriod === 'month'): ?>
-            <label class="analytics-date-filter"><?= e(t('dashboard.analytics_month')) ?><input type="month" name="analytics_month" value="<?= e($analyticsMonth) ?>" onchange="this.form.submit()"></label>
+            <label class="analytics-date-filter"><?= e(t('dashboard.analytics_month')) ?><input type="month" name="analytics_month" value="<?= e($analyticsMonth) ?>"></label>
         <?php else: ?>
             <input type="hidden" name="analytics_month" value="<?= e($analyticsMonth) ?>">
         <?php endif; ?>
         <div class="analytics-nav-links">
-            <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'week', 'analytics_week' => $analyticsWeekPrev]))) ?>"><?= e(t('common.previous')) ?></a>
-            <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'week', 'analytics_week' => $analyticsWeekNext]))) ?>"><?= e(t('common.next')) ?></a>
-            <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'month', 'analytics_month' => $analyticsMonthPrev]))) ?>"><?= e(t('dashboard.analytics_prev_month')) ?></a>
-            <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'month', 'analytics_month' => $analyticsMonthNext]))) ?>"><?= e(t('dashboard.analytics_next_month')) ?></a>
+            <?php if ($analyticsPeriod === 'week'): ?>
+                <div class="analytics-nav-group" aria-label="<?= e(t('common.week')) ?>">
+                    <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'week', 'analytics_week' => $analyticsWeekPrev]))) ?>">&larr; <?= e(t('common.previous')) ?></a>
+                    <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'week', 'analytics_week' => $analyticsWeekNext]))) ?>"><?= e(t('common.next')) ?> &rarr;</a>
+                </div>
+            <?php elseif ($analyticsPeriod === 'month'): ?>
+                <div class="analytics-nav-group" aria-label="<?= e(t('dashboard.analytics_month')) ?>">
+                    <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'month', 'analytics_month' => $analyticsMonthPrev]))) ?>">&larr; <?= e(t('dashboard.analytics_prev_month')) ?></a>
+                    <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'month', 'analytics_month' => $analyticsMonthNext]))) ?>"><?= e(t('dashboard.analytics_next_month')) ?> &rarr;</a>
+                </div>
+            <?php else: ?>
+                <a class="btn btn-ghost small analytics-dashboard-link" href="/?page=dashboard&user_id=<?= (int) ($selectedUser['id'] ?? 0) ?>"><?= e(t('nav.dashboard')) ?></a>
+            <?php endif; ?>
         </div>
+        <button class="btn btn-primary small analytics-apply-btn" type="submit"><?= e(t('audit.filter')) ?></button>
     </form>
 
     <section class="analytics-section">
@@ -295,65 +357,7 @@ $topbarControls = ob_get_clean();
             </article>
         </div>
     </section>
+    <script type="application/json" data-analytics-chart-data><?= json_encode($analyticsChartPayload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?></script>
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script>
-(function () {
-    function formatDayMonth(dateString) {
-        const parts = String(dateString || '').split('/');
-        return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : String(dateString || '');
-    }
-
-    const dateChartOptions = () => ({
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: { position: 'bottom' },
-            tooltip: { callbacks: { title: (items) => (items && items[0] ? items[0].label : '') } },
-        },
-        scales: { x: { ticks: { callback: function (value) { return formatDayMonth(this.getLabelForValue(value)); } } } },
-    });
-
-    const charts = [
-        ['stepsChart', 'line', <?= json_encode($stepsLabels) ?>, [
-            { label: <?= json_encode(t('metric.steps')) ?>, data: <?= json_encode($stepsValues) ?>, borderColor: '#14a38b', backgroundColor: 'rgba(20, 163, 139, 0.16)', tension: 0.35, fill: true },
-            { label: <?= json_encode(t('metric.goal')) ?>, data: <?= json_encode($stepsGoals) ?>, borderColor: '#ff6b4a', borderDash: [6, 4], pointRadius: 0 },
-        ]],
-        ['distanceWalkedChart', 'line', <?= json_encode($distanceLabels) ?>, [
-            { label: <?= json_encode(t('metric.distance_km')) ?>, data: <?= json_encode($distanceValues) ?>, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.16)', tension: 0.35, fill: true },
-        ]],
-        ['stepsCumulativeChart', 'line', <?= json_encode($stepsLabels) ?>, [
-            { label: <?= json_encode(t('dashboard.steps_cumulative_chart')) ?>, data: <?= json_encode($stepsCumulativeValues) ?>, borderColor: '#0f766e', backgroundColor: 'rgba(15, 118, 110, 0.16)', tension: 0.35, fill: true },
-        ]],
-        ['distanceCumulativeChart', 'line', <?= json_encode($distanceLabels) ?>, [
-            { label: <?= json_encode(t('dashboard.distance_cumulative_chart')) ?>, data: <?= json_encode($distanceCumulativeValues) ?>, borderColor: '#1d4ed8', backgroundColor: 'rgba(29, 78, 216, 0.14)', tension: 0.35, fill: true },
-        ]],
-        ['calorieChart', 'line', <?= json_encode($calorieLabels) ?>, [
-            { label: <?= json_encode(t('dashboard.calories_consumed')) ?>, data: <?= json_encode($calorieConsumedValues) ?>, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.16)', tension: 0.3, fill: true },
-            { label: <?= json_encode(t('dashboard.calories_burned')) ?>, data: <?= json_encode($calorieBurnedValues) ?>, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.14)', tension: 0.3, fill: true },
-            { label: <?= json_encode(t('dashboard.calories_deficit')) ?>, data: <?= json_encode($calorieDeficitValues) ?>, borderColor: '#059669', backgroundColor: 'rgba(5, 150, 105, 0.12)', tension: 0.3, fill: false },
-        ]],
-        ['weightChart', 'line', <?= json_encode($weightLabels) ?>, [
-            { label: <?= json_encode(t('metric.weight') . ' (kg)') ?>, data: <?= json_encode($weightValues) ?>, borderColor: '#22313f', backgroundColor: 'rgba(34, 49, 63, 0.12)', tension: 0.2, fill: true },
-        ]],
-    ];
-
-    charts.forEach(([id, type, labels, datasets]) => {
-        const canvas = document.getElementById(id);
-        if (!canvas) {
-            return;
-        }
-        new Chart(canvas, { type, data: { labels, datasets }, options: dateChartOptions() });
-    });
-
-    const compareCtx = document.getElementById('compareChart');
-    if (compareCtx) {
-        new Chart(compareCtx, {
-            type: 'bar',
-            data: { labels: <?= json_encode($compareBar['labels']) ?>, datasets: <?= json_encode($compareBar['datasets']) ?> },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, max: 100 } } },
-        });
-    }
-})();
-</script>

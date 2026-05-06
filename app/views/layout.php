@@ -71,7 +71,7 @@ $renderMobileIcon = static function (string $icon): string {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/styles.css?v=32">
+    <link rel="stylesheet" href="/assets/styles.css?v=33">
 </head>
 <?php
 $bodyClasses = [];
@@ -80,6 +80,9 @@ if (!$loggedIn && $currentPage === 'login') {
 }
 if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     $bodyClasses[] = 'login-body-has-bg';
+}
+if ($loggedIn && (string) ($_GET['layout_edit'] ?? '') === '1') {
+    $bodyClasses[] = 'layout-edit-active';
 }
 $bodyStyle = '';
 if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
@@ -195,6 +198,6 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     </nav>
 <?php endif; ?>
 
-    <script src="/assets/main.js?v=26"></script>
+    <script src="/assets/main.js?v=27"></script>
 </body>
 </html>
