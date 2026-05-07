@@ -71,7 +71,7 @@ $renderMobileIcon = static function (string $icon): string {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/styles.css?v=33">
+    <link rel="stylesheet" href="/assets/styles.css?v=34">
 </head>
 <?php
 $bodyClasses = [];
@@ -177,15 +177,17 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
             <a class="btn btn-ghost" href="/?page=entries&mode=meal"><?= e(t('entries.quick_meal')) ?></a>
         </div>
     </details>
-    <nav class="bottom-nav" aria-label="Primary mobile">
-        <?php foreach ($mobileNavItems as $pageKey => $item): ?>
-            <?php $navActive = $isNavActive((string) $pageKey); ?>
-            <a class="<?= $navActive ? 'active' : '' ?>" href="<?= e($item['href']) ?>" <?= $navActive ? 'aria-current="page"' : '' ?>>
-                <span class="nav-icon"><?= $renderMobileIcon((string) $item['icon']) ?></span>
-                <span><?= e($item['label']) ?></span>
-            </a>
-        <?php endforeach; ?>
-        <details class="bottom-nav-plus add-menu">
+    <nav class="bottom-nav mobile-liquid-nav" aria-label="Primary mobile">
+        <div class="liquid-nav-pill">
+            <?php foreach ($mobileNavItems as $pageKey => $item): ?>
+                <?php $navActive = $isNavActive((string) $pageKey); ?>
+                <a class="liquid-nav-item<?= $navActive ? ' active' : '' ?>" href="<?= e($item['href']) ?>" <?= $navActive ? 'aria-current="page"' : '' ?>>
+                    <span class="nav-icon"><?= $renderMobileIcon((string) $item['icon']) ?></span>
+                    <span class="nav-label"><?= e($item['label']) ?></span>
+                </a>
+            <?php endforeach; ?>
+        </div>
+        <details class="bottom-nav-plus liquid-nav-plus add-menu">
             <summary aria-label="<?= e(t('entries.title')) ?>">
                 <span class="nav-icon bottom-nav-plus-icon" aria-hidden="true">+</span>
                 <span><?= e(t('common.create')) ?></span>
@@ -198,6 +200,6 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     </nav>
 <?php endif; ?>
 
-    <script src="/assets/main.js?v=27"></script>
+<script src="/assets/main.js?v=28"></script>
 </body>
 </html>

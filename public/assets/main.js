@@ -58,6 +58,22 @@
         }, { passive: true });
     }
 
+    const initFlashNotifications = () => {
+        document.querySelectorAll('.flash').forEach((flash) => {
+            if (!(flash instanceof HTMLElement) || flash.dataset.flashReady === '1') {
+                return;
+            }
+            flash.dataset.flashReady = '1';
+            flash.addEventListener('animationend', (event) => {
+                if (event.animationName !== 'flashExitMobile' && event.animationName !== 'flashExitDesktop') {
+                    return;
+                }
+                flash.hidden = true;
+                flash.remove();
+            });
+        });
+    };
+
     const initLiquidInteractions = () => {
         if (document.documentElement.dataset.liquidInteractionsReady === '1') {
             return;
@@ -69,6 +85,9 @@
             '.nav-links a',
             '.bottom-nav a',
             '.bottom-nav-plus > summary',
+            '.liquid-nav-item',
+            '.liquid-nav-plus > summary',
+            '.photo-mode-segments a',
             '.calendar-view-segments a',
             '.analytics-period-segments a',
             '.entries-calendar-day',
@@ -2748,6 +2767,7 @@
         };
 
         safeInit(initLoginLocale);
+        safeInit(initFlashNotifications);
         safeInit(initLiquidInteractions);
         safeInit(initSpaNavigation);
         safeInit(initAdminAchievementFields);

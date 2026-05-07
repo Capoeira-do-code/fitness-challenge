@@ -11,6 +11,11 @@ $baseParams = [
     'page' => 'gallery',
     'user_id' => $selectedUserId,
 ];
+$calendarUrl = '/?' . http_build_query([
+    'page' => 'entries',
+    'mode' => 'calendar',
+    'calendar_view' => 'month',
+]);
 $prevUrl = '/?' . http_build_query($baseParams + ['page_num' => max(1, $pageNum - 1)]);
 $nextUrl = '/?' . http_build_query($baseParams + ['page_num' => $pageNum + 1]);
 ?>
@@ -25,6 +30,11 @@ $nextUrl = '/?' . http_build_query($baseParams + ['page_num' => $pageNum + 1]);
             <a class="btn btn-primary small" href="/?page=entries&mode=meal"><?= e(t('entries.create_entry')) ?></a>
         </div>
     </div>
+
+    <nav class="photo-mode-segments" aria-label="<?= e(t('gallery.photo_mode')) ?>">
+        <a class="active" href="/?<?= e(http_build_query($baseParams)) ?>" aria-current="page"><?= e(t('gallery.mode_recent')) ?></a>
+        <a href="<?= e($calendarUrl) ?>"><?= e(t('gallery.mode_calendar')) ?></a>
+    </nav>
 
     <?php if (is_admin($currentUser) && count((array) ($users ?? [])) > 1): ?>
         <form method="get" action="/" class="gallery-filter">

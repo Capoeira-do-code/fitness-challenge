@@ -155,6 +155,12 @@ $galleryUrl = '/?' . http_build_query([
     'page' => 'gallery',
     'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0),
 ]);
+$calendarModeUrl = '/?' . http_build_query([
+    'page' => 'entries',
+    'mode' => 'calendar',
+    'calendar_view' => 'month',
+    'date' => $selectedDate,
+]);
 ?>
 <section class="screen stack-lg<?= $entryMode === 'calendar' ? ' entries-calendar-screen' : '' ?>">
     <?php if ($entryMode !== 'calendar'): ?>
@@ -507,6 +513,11 @@ $galleryUrl = '/?' . http_build_query([
     <?php endif; ?>
 
     <?php if ($entryMode === 'calendar'): ?>
+        <nav class="photo-mode-segments" aria-label="<?= e(t('gallery.photo_mode')) ?>">
+            <a href="<?= e($galleryUrl) ?>"><?= e(t('gallery.mode_recent')) ?></a>
+            <a class="active" href="<?= e($calendarModeUrl) ?>" aria-current="page"><?= e(t('gallery.mode_calendar')) ?></a>
+        </nav>
+
         <article class="panel entries-calendar-panel" data-meal-calendar-root data-user-id="<?= (int) ($selectedUserId ?? $currentUser['id'] ?? 0) ?>" data-gallery-url="<?= e($galleryUrl) ?>">
             <div class="panel-head entries-calendar-head">
                 <div>

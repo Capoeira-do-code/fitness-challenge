@@ -191,14 +191,14 @@ ob_start();
 <?php if ($dashboardLayoutEditMode): ?>
 <button class="btn btn-primary btn-topbar" type="submit" form="dashboard-layout-edit-form"><?= e(t('common.save')) ?></button>
 <?php else: ?>
-<details class="topbar-context">
-    <summary class="btn btn-ghost btn-topbar"><?= e(t('dashboard.view_mode')) ?></summary>
+<details class="topbar-context dashboard-mobile-controls">
+    <summary class="btn btn-ghost btn-topbar dashboard-controls-trigger"><?= e(t('dashboard.view_mode')) ?></summary>
     <div class="topbar-context-panel">
-        <form method="get" class="stack">
+        <form method="get" class="stack dashboard-control-form">
         <input type="hidden" name="page" value="dashboard">
-        <label>
+        <label class="dashboard-control-field">
             <?= e(t('dashboard.viewing')) ?>
-            <select name="user_id" onchange="this.form.submit()" data-testid="dashboard-user-select">
+            <select class="glass-select" name="user_id" onchange="this.form.submit()" data-testid="dashboard-user-select">
                 <?php foreach ($users as $user): ?>
                     <option value="<?= (int) $user['id'] ?>" <?= (int) $user['id'] === (int) $selectedUser['id'] ? 'selected' : '' ?>>
                         <?= e((string) $user['display_name']) ?>
@@ -206,9 +206,9 @@ ob_start();
                 <?php endforeach; ?>
             </select>
         </label>
-        <label>
+        <label class="dashboard-control-field">
             <?= e(t('dashboard.view_mode')) ?>
-            <select name="view" onchange="this.form.submit()" data-testid="dashboard-week-select">
+            <select class="glass-select" name="view" onchange="this.form.submit()" data-testid="dashboard-week-select">
                 <option value="current_week" <?= ($dashboardView ?? '') === 'current_week' ? 'selected' : '' ?>><?= e(t('dashboard.current_week')) ?></option>
                 <option value="total" <?= ($dashboardView ?? '') === 'total' ? 'selected' : '' ?>><?= e(t('metric.total')) ?></option>
                 <?php foreach ($weekOptions as $weekStart): ?>
@@ -217,7 +217,7 @@ ob_start();
             </select>
         </label>
         </form>
-        <a class="btn btn-primary btn-block dashboard-mobile-edit-entry" href="<?= e($dashboardEditLayoutUrl) ?>"><?= e(t('dashboard.edit_layout')) ?></a>
+        <a class="btn btn-primary btn-block dashboard-mobile-edit-entry edit-layout-button" href="<?= e($dashboardEditLayoutUrl) ?>"><?= e(t('dashboard.edit_layout')) ?></a>
         <details class="inline-context-sub dashboard-layout-context">
             <summary class="btn btn-ghost btn-block dashboard-edit-layout-trigger"><?= e(t('dashboard.edit_layout')) ?></summary>
             <form method="post" action="/?page=dashboard" class="team-layout-editor dashboard-layout-editor" data-dashboard-layout-editor>
