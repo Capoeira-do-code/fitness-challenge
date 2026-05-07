@@ -81,6 +81,28 @@ function date_to_iso_week(string $date): string
     }
 }
 
+function localized_month_label(string $date): string
+{
+    try {
+        $dt = new DateTimeImmutable($date);
+    } catch (Throwable) {
+        $dt = new DateTimeImmutable('today');
+    }
+
+    $month = (int) $dt->format('n');
+    $year = $dt->format('Y');
+    $locale = current_locale();
+    $months = str_starts_with($locale, 'es')
+        ? [1 => 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+        : (
+            str_starts_with($locale, 'it')
+                ? [1 => 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre']
+                : [1 => 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+        );
+
+    return ($months[$month] ?? $dt->format('F')) . ' ' . $year;
+}
+
 function default_motivation_quotes(): array
 {
     return [

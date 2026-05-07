@@ -17,6 +17,15 @@ $createUserMode = (string) ($_GET['create_user'] ?? '') === '1';
 $selectedHabitId = (string) ($_GET['habit_id'] ?? '');
 $selectedTypeId = (string) ($_GET['type_id'] ?? '');
 $selectedAchievementId = (string) ($_GET['achievement_id'] ?? '');
+$selectedAdminAchievementId = (int) ($selectedAdminAchievementId ?? 0);
+$adminAchievementStats = is_array($adminAchievementStats ?? null) ? (array) $adminAchievementStats : [];
+$selectedAdminAchievement = null;
+foreach ((array) ($adminAchievements ?? []) as $adminAchievementCandidate) {
+    if ((int) ($adminAchievementCandidate['id'] ?? 0) === $selectedAdminAchievementId) {
+        $selectedAdminAchievement = $adminAchievementCandidate;
+        break;
+    }
+}
 $achievementLocales = locale_options();
 $achievementIconOptions = achievement_icon_options();
 $sectionRows = [
@@ -102,8 +111,18 @@ $workoutFieldDataKeyLabels = [
                 <span class="settings-chevron" aria-hidden="true">›</span>
             </a>
             <?php foreach ($users as $user): ?>
-                <a class="settings-row" href="/?page=admin&section=users&user_id=<?= (int) $user['id'] ?>" data-spa-link>
-                    <span><?= e((string) $user['display_name']) ?> <small class="muted">@<?= e((string) $user['username']) ?></small></span>
+                <?php $adminUserAvatarUrl = avatar_url($user); ?>
+                <a class="settings-row admin-user-row" href="/?page=admin&section=users&user_id=<?= (int) $user['id'] ?>" data-spa-link>
+                    <?php if ($adminUserAvatarUrl !== ''): ?>
+                        <img class="admin-user-avatar" src="<?= e($adminUserAvatarUrl) ?>" alt="<?= e((string) $user['display_name']) ?>">
+                    <?php else: ?>
+                        <span class="admin-user-avatar admin-user-avatar-initials"><?= e(initials_for((string) $user['display_name'])) ?></span>
+                    <?php endif; ?>
+                    <span class="admin-user-main">
+                        <strong><?= e((string) $user['display_name']) ?></strong>
+                        <small class="muted">@<?= e((string) $user['username']) ?> · <?= e((string) $user['role']) ?></small>
+                    </span>
+                    <span class="badge <?= (int) ($user['active'] ?? 1) === 1 ? 'badge-ok' : 'badge-warn' ?>"><?= (int) ($user['active'] ?? 1) === 1 ? e(t('common.active')) : e(t('workout_types.inactive')) ?></span>
                     <span class="settings-chevron" aria-hidden="true">›</span>
                 </a>
             <?php endforeach; ?>
@@ -649,8 +668,37 @@ $workoutFieldDataKeyLabels = [
         </div>
 
         <section class="stack admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId !== '' ? 'hidden' : '' ?>>
-            <h3><?= e(t('admin.achievements_created')) ?></h3>
-            <div class="settings-list compact-list">
+            <?php if (is_array($selectedAdminAchievement)): ?>
+                <article class="admin-achievement-spotlight">
+                    <div class="admin-achievement-spotlight-main">
+                        <?= achievement_visual_html($selectedAdminAchievement, 'achievement-visual admin-achievement-spotlight-visual') ?>
+                        <div>
+                            <p class="eyebrow"><?= e(t('admin.achievement_selected')) ?></p>
+                            <h3><?= e((string) ($selectedAdminAchievement['name'] ?? '')) ?></h3>
+                            <p class="muted small"><?= e((string) ($selectedAdminAchievement['description'] ?? '')) ?></p>
+                        </div>
+                    </div>
+                    <div class="admin-achievement-stats">
+                        <span><strong><?= (int) ($adminAchievementStats['unlocked'] ?? 0) ?></strong><?= e(t('admin.achievement_unlocked')) ?></span>
+                        <span><strong><?= (int) ($adminAchievementStats['in_progress'] ?? 0) ?></strong><?= e(t('admin.achievement_in_progress')) ?></span>
+                        <span><strong><?= (int) ($adminAchievementStats['locked'] ?? 0) ?></strong><?= e(t('admin.achievement_locked')) ?></span>
+                        <span><strong><?= e((string) ($adminAchievementStats['avg_progress'] ?? 0)) ?>%</strong><?= e(t('admin.achievement_avg_progress')) ?></span>
+                    </div>
+                    <?php if (!empty($adminAchievementStats['recent_unlocks'])): ?>
+                        <div class="admin-achievement-recent">
+                            <strong><?= e(t('admin.recent_unlocks')) ?></strong>
+                            <?php foreach (array_slice((array) $adminAchievementStats['recent_unlocks'], 0, 3) as $unlock): ?>
+                                <span><?= e((string) ($unlock['owner'] ?? '')) ?> · <?= e(format_date_eu((string) ($unlock['awarded_at'] ?? ''))) ?></span>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                    <a class="btn btn-ghost small" href="/?page=admin&section=achievements&achievement_id=<?= (int) ($selectedAdminAchievement['id'] ?? 0) ?>" data-spa-link><?= e(t('common.edit')) ?></a>
+                </article>
+            <?php endif; ?>
+
+            <details class="admin-achievement-selector" <?= is_array($selectedAdminAchievement) ? '' : 'open' ?>>
+                <summary><?= e(t('admin.achievement_select')) ?></summary>
+                <div class="settings-list compact-list">
                 <?php foreach (($adminAchievements ?? []) as $achievement): ?>
                     <?php
                     $triggerKey = trim((string) ($achievement['trigger_key'] ?? ''));
@@ -669,7 +717,7 @@ $workoutFieldDataKeyLabels = [
                         }
                     }
                     ?>
-                    <a class="settings-row admin-achievement-row" href="/?page=admin&section=achievements&achievement_id=<?= (int) $achievement['id'] ?>" data-spa-link>
+                    <a class="settings-row admin-achievement-row<?= (int) ($achievement['id'] ?? 0) === $selectedAdminAchievementId ? ' is-selected' : '' ?>" href="/?page=admin&section=achievements&achievement_id=<?= (int) $achievement['id'] ?>" data-spa-link>
                         <span>
                             <strong><?= e((string) $achievement['name']) ?></strong>
                             <small class="muted"><?= e((string) $achievement['scope']) ?> · <?= e($conditionSummary) ?></small>
@@ -681,7 +729,8 @@ $workoutFieldDataKeyLabels = [
                 <?php if (($adminAchievements ?? []) === []): ?>
                     <p class="muted panel-inline-empty"><?= e(t('achievements.empty')) ?></p>
                 <?php endif; ?>
-            </div>
+                </div>
+            </details>
         </section>
 
         <div class="stack admin-create-view" data-spa-param-show="achievement_id" data-spa-value="new" <?= $selectedAchievementId === 'new' ? '' : 'hidden' ?>>

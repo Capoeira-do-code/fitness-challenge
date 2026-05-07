@@ -508,6 +508,7 @@ if ($page === 'api_meal_calendar') {
     if (!in_array($calendarView, ['month', 'week', 'day'], true)) {
         $calendarView = 'week';
     }
+    $includePhotos = (string) ($_GET['include_photos'] ?? '1') !== '0';
     $selectedDate = calendar_date_from_request($_GET, $calendarView);
 
     $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
@@ -583,12 +584,22 @@ if ($page === 'api_meal_calendar') {
         $days[] = [
             'date' => (string) $dateKey,
             'date_label' => format_date_eu((string) $dateKey),
+            'day_number' => (new DateTimeImmutable((string) $dateKey))->format('j'),
+            'date_short' => (new DateTimeImmutable((string) $dateKey))->format('d/m'),
             'has_log' => $photoCount > 0,
             'count' => $photoCount,
             'count_label' => $photoCount . ' ' . ($photoCount === 1 ? t('entries.photo_singular') : t('entries.photo_plural')),
             'href' => $previewPhotoId > 0
                 ? '/?page=photo&photo_id=' . $previewPhotoId
-                : '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey),
+                : ($selectedUserId === (int) $currentUser['id']
+                    ? '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey)
+                    : '/?' . http_build_query([
+                        'page' => 'entries',
+                        'mode' => 'calendar',
+                        'user_id' => $selectedUserId,
+                        'calendar_view' => $calendarView,
+                        'date' => (string) $dateKey,
+                    ])),
             'preview_url' => $preview !== null ? media_url((string) ($preview['file_path'] ?? '')) : '',
             'thumb_url' => $preview !== null ? media_thumbnail_url((string) ($preview['file_path'] ?? ''), 360) : '',
             'preview_photos' => $previewPhotos,
@@ -598,10 +609,12 @@ if ($page === 'api_meal_calendar') {
     $selectedDayData = is_array($mealCalendar[$selectedDate] ?? null) ? (array) $mealCalendar[$selectedDate] : [];
     $selectedPhotos = [];
     $periodRows = [];
-    foreach ($mealCalendar as $day) {
-        foreach (array_values((array) ($day['photos'] ?? [])) as $photo) {
-            if (is_array($photo)) {
-                $periodRows[] = $photo;
+    if ($includePhotos) {
+        foreach ($mealCalendar as $day) {
+            foreach (array_values((array) ($day['photos'] ?? [])) as $photo) {
+                if (is_array($photo)) {
+                    $periodRows[] = $photo;
+                }
             }
         }
     }
@@ -634,14 +647,16 @@ if ($page === 'api_meal_calendar') {
             'photo_href' => '/?page=photo&photo_id=' . $photoId,
         ];
     };
-    foreach ($periodRows as $photo) {
-        $periodPhotos[] = $photoPayload($photo);
-    }
-    foreach (array_values((array) ($selectedDayData['photos'] ?? [])) as $photo) {
-        if (!is_array($photo)) {
-            continue;
+    if ($includePhotos) {
+        foreach ($periodRows as $photo) {
+            $periodPhotos[] = $photoPayload($photo);
         }
-        $selectedPhotos[] = $photoPayload($photo);
+        foreach (array_values((array) ($selectedDayData['photos'] ?? [])) as $photo) {
+            if (!is_array($photo)) {
+                continue;
+            }
+            $selectedPhotos[] = $photoPayload($photo);
+        }
     }
 
     json_response([
@@ -651,7 +666,7 @@ if ($page === 'api_meal_calendar') {
         'calendar_week' => date_to_iso_week($selectedDate),
         'calendar_view' => $calendarView,
         'period_label' => $calendarView === 'month'
-            ? (new DateTimeImmutable($selectedDate))->format('F Y')
+            ? localized_month_label($selectedDate)
             : ($calendarView === 'week' ? date_to_iso_week($selectedDate) : format_date_eu($selectedDate)),
         'user_id' => $selectedUserId,
         'days' => $days,
@@ -917,8 +932,19 @@ if ($page === 'entries') {
         }
     }
 
-    $users = [$currentUser];
+    $users = $entryMode === 'calendar' && is_admin($currentUser) ? list_active_users($pdo) : [$currentUser];
     $selectedUserId = (int) $currentUser['id'];
+    if ($entryMode === 'calendar' && is_admin($currentUser) && isset($_GET['user_id'])) {
+        $selectedUserId = (int) $_GET['user_id'];
+    }
+    if ($selectedUserId <= 0) {
+        $selectedUserId = (int) $currentUser['id'];
+    }
+    $selectedUser = find_user_by_id($users, $selectedUserId);
+    if ($selectedUser === null) {
+        $selectedUser = $currentUser;
+        $selectedUserId = (int) $currentUser['id'];
+    }
 
     $calendarView = (string) ($_GET['calendar_view'] ?? ($currentUser['meal_calendar_view'] ?? 'month'));
     if (!in_array($calendarView, ['month', 'week', 'day'], true)) {
@@ -940,6 +966,7 @@ if ($page === 'entries') {
         'entryMode' => $entryMode,
         'users' => $users,
         'selectedUserId' => $selectedUserId,
+        'selectedUser' => $selectedUser,
         'selectedDate' => $selectedDate,
         'currentLog' => $currentLog,
         'recentPhotos' => $recentPhotos,
@@ -1303,10 +1330,18 @@ if ($page === 'challenges') {
 }
 
 if ($page === 'settings') {
+    $settingsView = (string) ($_GET['view'] ?? '');
+    if (!in_array($settingsView, ['avatar'], true)) {
+        $settingsView = '';
+    }
+    $settingsRedirect = static function (?string $view = null): string {
+        return $view === 'avatar' ? '/?page=settings&view=avatar#avatar' : '/?page=settings';
+    };
+
     if (is_post()) {
         if (!csrf_verify()) {
             flash_set('error', t('flash.csrf'));
-            redirect('/?page=settings');
+            redirect($settingsRedirect($settingsView));
         }
 
         $action = (string) ($_POST['action'] ?? '');
@@ -1447,15 +1482,35 @@ if ($page === 'settings') {
                 }
                 flash_set('error', $e->getMessage());
             }
-            redirect('/?page=settings');
+            $avatarRedirectView = (string) ($_POST['settings_view'] ?? '') === 'avatar' ? 'avatar' : null;
+            redirect($settingsRedirect($avatarRedirectView));
         }
     }
 
     $currentUser = current_user($pdo) ?? $currentUser;
+    $settingsGoalRows = list_goals($pdo, 'user', (int) $currentUser['id']);
+    $settingsHabitDefinitions = list_habit_definitions($pdo, true);
+    $settingsGoalMetric = [];
+    try {
+        $settingsChallenge = challenge_settings($pdo, $config);
+        $settingsMetrics = compute_challenge_metrics(
+            $pdo,
+            [$currentUser],
+            (string) $settingsChallenge['challenge_start'],
+            (string) $settingsChallenge['challenge_end']
+        );
+        $settingsMetrics = apply_strike_review_overrides_to_metrics($pdo, $settingsMetrics);
+        $settingsGoalMetric = $settingsMetrics[(int) $currentUser['id']] ?? array_values($settingsMetrics)[0] ?? [];
+    } catch (Throwable) {
+        $settingsGoalMetric = [];
+    }
+
     render_view('settings', [
         'title' => t('settings.title'),
         'currentPage' => 'settings',
         'currentUser' => $currentUser,
+        'settingsView' => $settingsView,
+        'settingsGoalCards' => build_user_goal_view_models($settingsGoalRows, is_array($settingsGoalMetric) ? $settingsGoalMetric : [], $settingsHabitDefinitions),
         'config' => $config,
     ]);
 }
@@ -2004,6 +2059,9 @@ if ($page === 'profile') {
     evaluate_automatic_achievements($pdo, $metrics);
     $profileUser = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $profileUser['id']]) ?? $profileUser;
 
+    $personalGoals = list_goals($pdo, 'user', (int) $profileUser['id']);
+    $profileGoalCards = build_user_goal_view_models($personalGoals, is_array($profileMetric) ? $profileMetric : [], $habitDefinitions);
+
     render_view('profile', [
         'title' => t('profile.title'),
         'currentPage' => 'profile',
@@ -2023,7 +2081,8 @@ if ($page === 'profile') {
         'profileDailyDetails' => $profileDailyDetails,
         'profileDailyPhotoNutrition' => $profileDailyPhotoNutrition,
         'profileBaseUrl' => $profileUrl(),
-        'personalGoals' => list_goals($pdo, 'user', (int) $profileUser['id']),
+        'personalGoals' => $personalGoals,
+        'profileGoalCards' => $profileGoalCards,
         'userAchievements' => list_awarded_achievements($pdo, (int) $profileUser['id'], null),
         'canDeleteAchievements' => $canDeleteProfileAchievements,
         'recentActivity' => fetch_audit_logs($pdo, ['actor_user_id' => (int) $profileUser['id']], 30),
@@ -2796,6 +2855,7 @@ if ($page === 'admin') {
 
     $team = default_team($pdo);
     $users = db_fetch_all($pdo, 'SELECT * FROM users ORDER BY created_at ASC');
+    $challengeSettings = challenge_settings($pdo, $config);
     $appIconSetting = db_fetch_one(
         $pdo,
         'SELECT setting_value, updated_at FROM app_settings WHERE setting_key = :key',
@@ -2815,6 +2875,60 @@ if ($page === 'admin') {
     $systemBackups = list_system_backups($pdo, $config, 200);
     $workoutTypeFields = list_workout_type_fields_grouped($pdo, false);
     $loginBackgroundLibrary = list_login_background_library($config);
+    $adminAchievements = list_achievements_for_admin($pdo);
+    $selectedAdminAchievementId = 0;
+    $selectedAdminAchievementParam = trim((string) ($_GET['achievement_id'] ?? ''));
+    if ($selectedAdminAchievementParam !== '' && ctype_digit($selectedAdminAchievementParam)) {
+        $selectedAdminAchievementId = (int) $selectedAdminAchievementParam;
+    }
+    if ($selectedAdminAchievementId <= 0 && $adminAchievements !== []) {
+        $selectedAdminAchievementId = (int) ($adminAchievements[0]['id'] ?? 0);
+    }
+    $selectedAdminAchievement = null;
+    foreach ($adminAchievements as $adminAchievement) {
+        if ((int) ($adminAchievement['id'] ?? 0) === $selectedAdminAchievementId) {
+            $selectedAdminAchievement = $adminAchievement;
+            break;
+        }
+    }
+    $adminAchievementStats = [
+        'unlocked' => 0,
+        'in_progress' => 0,
+        'locked' => 0,
+        'total' => 0,
+        'avg_progress' => 0.0,
+        'recent_unlocks' => [],
+        'rows' => [],
+    ];
+    if (is_array($selectedAdminAchievement)) {
+        try {
+            $activeAdminUsers = array_values(array_filter(
+                $users,
+                static fn(array $user): bool => (int) ($user['active'] ?? 1) === 1
+            ));
+            if ($activeAdminUsers === []) {
+                $activeAdminUsers = list_active_users($pdo);
+            }
+            $adminAchievementMetrics = compute_challenge_metrics(
+                $pdo,
+                $activeAdminUsers,
+                (string) $challengeSettings['challenge_start'],
+                (string) $challengeSettings['challenge_end']
+            );
+            $adminAchievementMetrics = apply_strike_review_overrides_to_metrics($pdo, $adminAchievementMetrics);
+            $adminAchievementStats = build_admin_achievement_stats($pdo, $selectedAdminAchievement, $activeAdminUsers, $team, $adminAchievementMetrics);
+        } catch (Throwable) {
+            $adminAchievementStats = [
+                'unlocked' => 0,
+                'in_progress' => 0,
+                'locked' => 0,
+                'total' => 0,
+                'avg_progress' => 0.0,
+                'recent_unlocks' => [],
+                'rows' => [],
+            ];
+        }
+    }
     $auditFilters = [
         'actor_user_id' => isset($_GET['actor_user_id']) && $_GET['actor_user_id'] !== '' ? (int) $_GET['actor_user_id'] : null,
         'entity_type' => trim((string) ($_GET['entity_type'] ?? '')),
@@ -2835,7 +2949,9 @@ if ($page === 'admin') {
         'workoutTypeFields' => $workoutTypeFields,
         'habits' => list_habit_definitions($pdo, false),
         'achievements' => list_achievements($pdo, true),
-        'adminAchievements' => list_achievements_for_admin($pdo),
+        'adminAchievements' => $adminAchievements,
+        'selectedAdminAchievementId' => $selectedAdminAchievementId,
+        'adminAchievementStats' => $adminAchievementStats,
         'achievementAwards' => list_recent_achievement_awards($pdo, 300),
         'motivationalQuotes' => list_motivational_quotes($pdo),
         'appIconPath' => $appIconPath,
@@ -2845,7 +2961,7 @@ if ($page === 'admin') {
         'loginBackgroundLibrary' => $loginBackgroundLibrary,
         'backupSettings' => $backupSettings,
         'systemBackups' => $systemBackups,
-        'challengeSettings' => challenge_settings($pdo, $config),
+        'challengeSettings' => $challengeSettings,
         'auditLogs' => fetch_audit_logs($pdo, $auditFilters, 100),
         'auditFilters' => $auditFilters,
         'config' => $config,

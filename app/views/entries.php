@@ -77,12 +77,6 @@ $missingReasonValue = trim((string) ($log['step_exception_reason'] ?? ''));
 if ($missingReasonValue === '') {
     $missingReasonValue = trim((string) ($log['workout_exception_reason'] ?? ''));
 }
-$calendarSelectedPhotos = [];
-$calendarPeriodPhotos = [];
-if ($entryMode === 'calendar') {
-    $selectedDayData = is_array($mealCalendar[$selectedDate] ?? null) ? (array) $mealCalendar[$selectedDate] : [];
-    $calendarSelectedPhotos = is_array($selectedDayData['photos'] ?? null) ? array_values((array) $selectedDayData['photos']) : [];
-}
 $nutritionSummary = static function (array $photo): string {
     $parts = [];
     $calories = $photo['calories'] ?? null;
@@ -104,48 +98,12 @@ $nutritionSummary = static function (array $photo): string {
 
     return implode(' · ', $parts);
 };
-if ($entryMode === 'calendar') {
-    $calendarPeriodRows = [];
-    foreach ((array) ($mealCalendar ?? []) as $day) {
-        foreach (array_values((array) ($day['photos'] ?? [])) as $photo) {
-            if (is_array($photo)) {
-                $calendarPeriodRows[] = $photo;
-            }
-        }
-    }
-    usort(
-        $calendarPeriodRows,
-        static function (array $left, array $right): int {
-            $dateCompare = strcmp((string) ($right['log_date'] ?? ''), (string) ($left['log_date'] ?? ''));
-            if ($dateCompare !== 0) {
-                return $dateCompare;
-            }
-
-            return strcmp((string) ($right['created_at'] ?? ''), (string) ($left['created_at'] ?? ''));
-        }
-    );
-    foreach ($calendarPeriodRows as $photo) {
-        $photoId = (int) ($photo['id'] ?? 0);
-        $category = (string) ($photo['category'] ?? 'other');
-        $calendarPeriodPhotos[] = [
-            'id' => $photoId,
-            'display_name' => (string) ($photo['display_name'] ?? ''),
-            'date_label' => format_date_eu((string) ($photo['log_date'] ?? $selectedDate)),
-            'category_label' => (string) ($categoryLabels[$category] ?? $category),
-            'caption' => (string) ($photo['caption'] ?? ''),
-            'nutrition' => $nutritionSummary($photo),
-            'photo_url' => media_url((string) ($photo['file_path'] ?? '')),
-            'thumb_url' => media_thumbnail_url((string) ($photo['file_path'] ?? ''), 360),
-            'photo_href' => '/?page=photo&photo_id=' . $photoId,
-        ];
-    }
-}
 $calendarVisibleLabel = '';
 if ($entryMode === 'calendar') {
     try {
         $calendarVisibleDate = new DateTimeImmutable((string) $selectedDate);
         $calendarVisibleLabel = $calendarView === 'month'
-            ? $calendarVisibleDate->format('F Y')
+            ? localized_month_label((string) $selectedDate)
             : ($calendarView === 'week' ? date_to_iso_week((string) $selectedDate) : format_date_eu((string) $selectedDate));
     } catch (Throwable) {
         $calendarVisibleLabel = (string) $selectedDate;
@@ -158,9 +116,77 @@ $galleryUrl = '/?' . http_build_query([
 $calendarModeUrl = '/?' . http_build_query([
     'page' => 'entries',
     'mode' => 'calendar',
+    'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0),
     'calendar_view' => 'month',
     'date' => $selectedDate,
 ]);
+if ($entryMode === 'calendar') {
+    ob_start();
+    ?>
+    <details class="topbar-context calendar-view-menu">
+        <summary class="btn btn-ghost btn-topbar"><?= e(t('common.view')) ?></summary>
+        <div class="topbar-context-panel calendar-view-panel">
+            <form method="get" action="/" class="stack calendar-view-form" data-meal-calendar-form data-calendar-page="entries">
+                <input type="hidden" name="page" value="entries">
+                <input type="hidden" name="mode" value="calendar">
+                <input type="hidden" name="include_photos" value="0">
+                <input type="hidden" value="<?= e($selectedDate) ?>" data-meal-calendar-date>
+                <div class="calendar-view-summary">
+                    <span class="eyebrow"><?= e(t('nav.calendar')) ?></span>
+                    <strong data-meal-calendar-visible-period><?= e($calendarVisibleLabel) ?></strong>
+                    <small><?= e((string) ($selectedUser['display_name'] ?? $currentUser['display_name'] ?? '')) ?></small>
+                </div>
+                <label>
+                    <?= e(t('dashboard.viewing')) ?>
+                    <?php if (is_admin($currentUser) && count((array) ($users ?? [])) > 1): ?>
+                        <select name="user_id" onchange="this.form.submit()">
+                            <?php foreach ((array) $users as $user): ?>
+                                <option value="<?= (int) ($user['id'] ?? 0) ?>" <?= (int) ($user['id'] ?? 0) === (int) ($selectedUserId ?? 0) ? 'selected' : '' ?>>
+                                    <?= e((string) ($user['display_name'] ?? '')) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    <?php else: ?>
+                        <input type="hidden" name="user_id" value="<?= (int) ($selectedUserId ?? $currentUser['id'] ?? 0) ?>">
+                        <span class="calendar-view-static"><?= e((string) ($selectedUser['display_name'] ?? $currentUser['display_name'] ?? '')) ?></span>
+                    <?php endif; ?>
+                </label>
+                <nav class="calendar-view-segments" aria-label="<?= e(t('gallery.photo_mode')) ?>">
+                    <a href="<?= e('/?' . http_build_query(['page' => 'gallery', 'gallery_view' => 'recent', 'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0)])) ?>"><?= e(t('gallery.mode_recent')) ?></a>
+                    <a class="active" href="<?= e($calendarModeUrl) ?>" aria-current="page"><?= e(t('gallery.mode_calendar')) ?></a>
+                </nav>
+                <?php if ($calendarView === 'month'): ?>
+                    <label>
+                        <span data-meal-calendar-period-label><?= e(t('dashboard.month')) ?></span>
+                        <input type="month" name="calendar_month" value="<?= e(substr($selectedDate, 0, 7)) ?>" onchange="this.form.submit()" data-meal-calendar-period data-label-month="<?= e(t('dashboard.month')) ?>" data-label-week="<?= e(t('common.week')) ?>" data-label-date="<?= e(t('common.date')) ?>">
+                    </label>
+                <?php elseif ($calendarView === 'week'): ?>
+                    <label>
+                        <span data-meal-calendar-period-label><?= e(t('common.week')) ?></span>
+                        <input type="week" name="calendar_week" value="<?= e(date_to_iso_week($selectedDate)) ?>" onchange="this.form.submit()" data-meal-calendar-period data-label-month="<?= e(t('dashboard.month')) ?>" data-label-week="<?= e(t('common.week')) ?>" data-label-date="<?= e(t('common.date')) ?>">
+                    </label>
+                <?php else: ?>
+                    <label>
+                        <span data-meal-calendar-period-label><?= e(t('common.date')) ?></span>
+                        <input type="date" name="date" value="<?= e($selectedDate) ?>" onchange="this.form.submit()" data-meal-calendar-period data-label-month="<?= e(t('dashboard.month')) ?>" data-label-week="<?= e(t('common.week')) ?>" data-label-date="<?= e(t('common.date')) ?>">
+                    </label>
+                <?php endif; ?>
+                <input type="hidden" name="calendar_view" value="<?= e($calendarView) ?>" data-meal-calendar-view>
+                <div class="calendar-view-segments" role="group" aria-label="<?= e(t('calendar.view_mode')) ?>">
+                    <?php foreach (['month' => t('calendar.view_month'), 'week' => t('calendar.view_week'), 'day' => t('calendar.view_day')] as $viewKey => $viewLabel): ?>
+                        <a class="<?= $calendarView === $viewKey ? 'active' : '' ?>" href="/?<?= e(http_build_query(['page' => 'entries', 'mode' => 'calendar', 'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0), 'calendar_view' => $viewKey, 'date' => $selectedDate])) ?>" data-calendar-view-option="<?= e($viewKey) ?>"><?= e($viewLabel) ?></a>
+                    <?php endforeach; ?>
+                </div>
+                <div class="calendar-view-actions">
+                    <a class="btn btn-ghost btn-block" href="<?= e('/?' . http_build_query(['page' => 'gallery', 'gallery_view' => 'calendar', 'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0), 'calendar_view' => $calendarView, 'date' => $selectedDate])) ?>"><?= e(t('gallery.title')) ?></a>
+                    <a class="btn btn-primary btn-block" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
+                </div>
+            </form>
+        </div>
+    </details>
+    <?php
+    $topbarControls = ob_get_clean();
+}
 ?>
 <section class="screen stack-lg<?= $entryMode === 'calendar' ? ' entries-calendar-screen' : '' ?>">
     <?php if ($entryMode !== 'calendar'): ?>
@@ -513,50 +539,11 @@ $calendarModeUrl = '/?' . http_build_query([
     <?php endif; ?>
 
     <?php if ($entryMode === 'calendar'): ?>
-        <nav class="photo-mode-segments" aria-label="<?= e(t('gallery.photo_mode')) ?>">
-            <a href="<?= e($galleryUrl) ?>"><?= e(t('gallery.mode_recent')) ?></a>
-            <a class="active" href="<?= e($calendarModeUrl) ?>" aria-current="page"><?= e(t('gallery.mode_calendar')) ?></a>
-        </nav>
-
-        <article class="panel entries-calendar-panel" data-meal-calendar-root data-user-id="<?= (int) ($selectedUserId ?? $currentUser['id'] ?? 0) ?>" data-gallery-url="<?= e($galleryUrl) ?>">
-            <div class="panel-head entries-calendar-head">
-                <div>
-                    <p class="eyebrow"><?= e(t('common.date')) ?> &middot; <?= e(format_date_eu((string) $selectedDate)) ?></p>
-                    <h2><?= e(t('entries.calendar_title')) ?></h2>
-                </div>
-                <div class="entries-calendar-head-actions">
-                    <a class="btn btn-ghost entries-calendar-gallery" href="<?= e($galleryUrl) ?>"><?= e(t('gallery.title')) ?></a>
-                    <a class="btn btn-primary entries-calendar-create" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>" data-meal-calendar-back><?= e(t('entries.create_entry')) ?></a>
-                </div>
+        <article class="panel entries-calendar-panel entries-calendar-focused" data-meal-calendar-root data-calendar-page="entries" data-user-id="<?= (int) ($selectedUserId ?? $currentUser['id'] ?? 0) ?>" data-include-photos="0" data-gallery-url="<?= e($galleryUrl) ?>">
+            <div class="entries-calendar-titlebar">
+                <p class="eyebrow"><?= e((string) ($selectedUser['display_name'] ?? $currentUser['display_name'] ?? '')) ?></p>
+                <h1 data-meal-calendar-visible-period><?= e($calendarVisibleLabel) ?></h1>
             </div>
-            <form method="get" action="/" class="control-strip entries-calendar-controls" data-meal-calendar-form>
-                <input type="hidden" name="page" value="entries">
-                <input type="hidden" name="mode" value="calendar">
-                <input type="hidden" value="<?= e($selectedDate) ?>" data-meal-calendar-date>
-                <?php if ($calendarView === 'month'): ?>
-                    <label class="entry-date-inline">
-                        <span data-meal-calendar-period-label><?= e(t('dashboard.month')) ?></span>
-                        <input type="month" name="calendar_month" value="<?= e(substr($selectedDate, 0, 7)) ?>" onchange="this.form.submit()" data-meal-calendar-period data-label-month="<?= e(t('dashboard.month')) ?>" data-label-week="<?= e(t('common.week')) ?>" data-label-date="<?= e(t('common.date')) ?>">
-                    </label>
-                <?php elseif ($calendarView === 'week'): ?>
-                    <label class="entry-date-inline">
-                        <span data-meal-calendar-period-label><?= e(t('common.week')) ?></span>
-                        <input type="week" name="calendar_week" value="<?= e(date_to_iso_week($selectedDate)) ?>" onchange="this.form.submit()" data-meal-calendar-period data-label-month="<?= e(t('dashboard.month')) ?>" data-label-week="<?= e(t('common.week')) ?>" data-label-date="<?= e(t('common.date')) ?>">
-                    </label>
-                <?php else: ?>
-                    <label class="entry-date-inline">
-                        <span data-meal-calendar-period-label><?= e(t('common.date')) ?></span>
-                        <input type="date" name="date" value="<?= e($selectedDate) ?>" onchange="this.form.submit()" data-meal-calendar-period data-label-month="<?= e(t('dashboard.month')) ?>" data-label-week="<?= e(t('common.week')) ?>" data-label-date="<?= e(t('common.date')) ?>">
-                    </label>
-                <?php endif; ?>
-                <input type="hidden" name="calendar_view" value="<?= e($calendarView) ?>" data-meal-calendar-view>
-                <div class="calendar-view-segments" role="group" aria-label="<?= e(t('calendar.view_mode')) ?>">
-                    <?php foreach (['month' => t('calendar.view_month'), 'week' => t('calendar.view_week'), 'day' => t('calendar.view_day')] as $viewKey => $viewLabel): ?>
-                        <a class="<?= $calendarView === $viewKey ? 'active' : '' ?>" href="/?page=entries&mode=calendar&calendar_view=<?= e($viewKey) ?>&date=<?= e($selectedDate) ?>" data-calendar-view-option="<?= e($viewKey) ?>"><?= e($viewLabel) ?></a>
-                    <?php endforeach; ?>
-                </div>
-            </form>
-            <div class="calendar-visible-period" data-meal-calendar-visible-period><?= e($calendarVisibleLabel) ?></div>
             <div class="meal-calendar meal-calendar-<?= e($calendarView) ?><?= $calendarView === 'month' ? ' meal-calendar-month' : '' ?> entries-calendar" data-meal-calendar-days>
                 <?php foreach (($mealCalendar ?? []) as $dateKey => $day): ?>
                     <?php
@@ -578,13 +565,30 @@ $calendarModeUrl = '/?' . http_build_query([
                             $previewPhotos[] = $previewPhotoPayload;
                         }
                     }
+                    try {
+                        $calendarDayDate = new DateTimeImmutable((string) $dateKey);
+                        $calendarDayLabel = $calendarView === 'month'
+                            ? $calendarDayDate->format('j')
+                            : ($calendarView === 'week' ? $calendarDayDate->format('d/m') : format_date_eu((string) $dateKey));
+                    } catch (Throwable) {
+                        $calendarDayLabel = (string) $dateKey;
+                    }
+                    $canCreateForCalendarDay = (int) ($selectedUserId ?? 0) === (int) ($currentUser['id'] ?? 0);
                     $calendarDayUrl = $previewPhotoId > 0
                         ? '/?page=photo&photo_id=' . $previewPhotoId
-                        : '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey);
+                        : ($canCreateForCalendarDay
+                            ? '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey)
+                            : '/?' . http_build_query([
+                                'page' => 'entries',
+                                'mode' => 'calendar',
+                                'user_id' => (int) ($selectedUserId ?? 0),
+                                'calendar_view' => $calendarView,
+                                'date' => (string) $dateKey,
+                            ]));
                     ?>
                     <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?><?= (string) $dateKey === $selectedDate ? ' is-selected' : '' ?>" href="<?= e($calendarDayUrl) ?>">
                         <article>
-                            <strong><?= e(format_date_eu((string) $dateKey)) ?></strong>
+                            <strong><?= e($calendarDayLabel) ?></strong>
                             <?php if ($previewPhotos !== []): ?>
                                 <div class="entries-calendar-collage collage-count-<?= min(3, count($previewPhotos)) ?>">
                                     <?php foreach ($previewPhotos as $previewPhoto): ?>
@@ -605,86 +609,6 @@ $calendarModeUrl = '/?' . http_build_query([
                         </article>
                     </a>
                 <?php endforeach; ?>
-            </div>
-        </article>
-
-        <article class="panel entries-calendar-mobile-gallery-panel" data-meal-calendar-period-panel>
-            <div class="panel-head">
-                <div>
-                    <p class="eyebrow"><?= e(t('nav.calendar')) ?></p>
-                    <h2><?= e(t('entries.recent_photos')) ?></h2>
-                </div>
-                <span class="badge" data-meal-calendar-period-count><?= count($calendarPeriodPhotos) ?> <?= e(count($calendarPeriodPhotos) === 1 ? t('entries.photo_singular') : t('entries.photo_plural')) ?></span>
-            </div>
-            <div data-meal-calendar-period-photos>
-                <?php if ($calendarPeriodPhotos === []): ?>
-                    <div class="calendar-empty-state">
-                        <strong><?= e(t('gallery.empty_period_title')) ?></strong>
-                        <p><?= e(t('gallery.empty_period_body')) ?></p>
-                        <a class="btn btn-ghost small" href="<?= e($galleryUrl) ?>"><?= e(t('gallery.view_latest')) ?></a>
-                    </div>
-                <?php else: ?>
-                    <div class="entries-calendar-mobile-gallery">
-                        <?php foreach ($calendarPeriodPhotos as $photo): ?>
-                            <a class="entries-calendar-mobile-tile" href="<?= e((string) ($photo['photo_href'] ?? '#')) ?>" data-date-label="<?= e((string) ($photo['date_label'] ?? '')) ?>">
-                                <?php if ((string) ($photo['photo_url'] ?? '') !== ''): ?>
-                                    <img src="<?= e((string) ($photo['thumb_url'] ?? $photo['photo_url'])) ?>" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
-                                <?php else: ?>
-                                    <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
-                                <?php endif; ?>
-                                <span><?= e((string) ($photo['date_label'] ?? '')) ?></span>
-                            </a>
-                        <?php endforeach; ?>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </article>
-
-        <article class="panel entries-calendar-photos-panel" data-meal-calendar-photos-panel>
-            <div class="panel-head">
-                <div>
-                    <p class="eyebrow"><?= e(t('common.date')) ?> · <?= e(format_date_eu((string) $selectedDate)) ?></p>
-                    <h2><?= e(t('entries.recent_photos')) ?></h2>
-                </div>
-            </div>
-            <div data-meal-calendar-selected-photos>
-                <?php if ($calendarSelectedPhotos === []): ?>
-                    <div class="calendar-empty-state">
-                        <strong><?= e(t('gallery.empty_period_title')) ?></strong>
-                        <p><?= e(t('gallery.empty_period_body')) ?></p>
-                        <a class="btn btn-ghost small" href="<?= e($galleryUrl) ?>"><?= e(t('gallery.view_latest')) ?></a>
-                    </div>
-                <?php else: ?>
-                    <div class="photo-grid">
-                    <?php foreach ($calendarSelectedPhotos as $photo): ?>
-                        <?php
-                        $photoId = (int) ($photo['id'] ?? 0);
-                        $calendarPhotoCategory = (string) ($photo['category'] ?? 'other');
-                        $calendarPhotoUrl = media_url((string) ($photo['file_path'] ?? ''));
-                        $nutritionLine = $nutritionSummary($photo);
-                        ?>
-                        <figure class="photo-card">
-                            <a class="photo-card-media" href="/?page=photo&photo_id=<?= $photoId ?>">
-                                <?php if ($calendarPhotoUrl !== ''): ?>
-                                    <img src="<?= e($calendarPhotoUrl) ?>" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
-                                <?php else: ?>
-                                    <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
-                                <?php endif; ?>
-                            </a>
-                            <figcaption>
-                                <strong><?= e((string) ($photo['display_name'] ?? '')) ?></strong>
-                                <span><?= e(format_date_eu((string) ($photo['log_date'] ?? $selectedDate))) ?> · <?= e($categoryLabels[$calendarPhotoCategory] ?? $calendarPhotoCategory) ?></span>
-                                <?php if (!empty($photo['caption'])): ?>
-                                    <span><?= e((string) $photo['caption']) ?></span>
-                                <?php endif; ?>
-                                <?php if ($nutritionLine !== ''): ?>
-                                    <span class="photo-nutrition-line"><?= e($nutritionLine) ?></span>
-                                <?php endif; ?>
-                            </figcaption>
-                        </figure>
-                    <?php endforeach; ?>
-                    </div>
-                <?php endif; ?>
             </div>
         </article>
     <?php endif; ?>

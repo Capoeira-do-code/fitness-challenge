@@ -19,23 +19,8 @@ $calendarUrl = '/?' . http_build_query($baseParams + [
     'calendar_view' => $calendarView,
     'date' => $selectedDate,
 ]);
-$monthLabel = static function (string $date): string {
-    try {
-        $dt = new DateTimeImmutable($date);
-    } catch (Throwable) {
-        $dt = new DateTimeImmutable('today');
-    }
-    $month = (int) $dt->format('n');
-    $year = $dt->format('Y');
-    $locale = current_locale();
-    $months = str_starts_with($locale, 'es')
-        ? [1 => 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-        : [1 => 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
-    return ($months[$month] ?? $dt->format('F')) . ' ' . $year;
-};
 $calendarVisibleLabel = $calendarView === 'month'
-    ? $monthLabel($selectedDate)
+    ? localized_month_label($selectedDate)
     : ($calendarView === 'week' ? date_to_iso_week($selectedDate) : format_date_eu($selectedDate));
 $periodPhotos = [];
 $selectedPhotos = [];
@@ -63,55 +48,53 @@ foreach (array_values((array) ($selectedDayData['photos'] ?? [])) as $photo) {
         $selectedPhotos[] = $photo;
     }
 }
+ob_start();
 ?>
-<section class="screen gallery-page gallery-page-clean">
-    <div class="gallery-view-strip">
-        <form method="get" action="/" class="gallery-user-control">
+<details class="topbar-context calendar-view-menu">
+    <summary class="btn btn-ghost btn-topbar"><?= e(t('common.view')) ?></summary>
+    <div class="topbar-context-panel calendar-view-panel">
+        <form method="get" action="/" class="stack calendar-view-form" data-meal-calendar-form data-calendar-page="gallery">
             <input type="hidden" name="page" value="gallery">
             <input type="hidden" name="gallery_view" value="<?= e($galleryView) ?>">
+            <input type="hidden" name="include_photos" value="1">
+            <input type="hidden" value="<?= e($selectedDate) ?>" data-meal-calendar-date>
+            <div class="calendar-view-summary">
+                <span class="eyebrow"><?= e(t('gallery.title')) ?></span>
+                <strong data-meal-calendar-visible-period><?= e($galleryView === 'recent' ? t('gallery.mode_recent') : $calendarVisibleLabel) ?></strong>
+                <small><?= e((string) ($selectedUser['display_name'] ?? '')) ?></small>
+            </div>
+            <label>
+                <?= e(t('dashboard.viewing')) ?>
+                <?php if (is_admin($currentUser) && count((array) ($users ?? [])) > 1): ?>
+                    <select name="user_id" onchange="this.form.submit()" aria-label="<?= e(t('dashboard.viewing')) ?>">
+                        <?php foreach ((array) $users as $user): ?>
+                            <option value="<?= (int) ($user['id'] ?? 0) ?>" <?= (int) ($user['id'] ?? 0) === $selectedUserId ? 'selected' : '' ?>>
+                                <?= e((string) ($user['display_name'] ?? '')) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                <?php else: ?>
+                    <input type="hidden" name="user_id" value="<?= $selectedUserId ?>">
+                    <span class="calendar-view-static"><?= e((string) ($selectedUser['display_name'] ?? '')) ?></span>
+                <?php endif; ?>
+            </label>
+            <nav class="calendar-view-segments" aria-label="<?= e(t('gallery.photo_mode')) ?>">
+                <a class="<?= $galleryView === 'recent' ? 'active' : '' ?>" href="<?= e($recentUrl) ?>" <?= $galleryView === 'recent' ? 'aria-current="page"' : '' ?>><?= e(t('gallery.mode_recent')) ?></a>
+                <a class="<?= $galleryView === 'calendar' ? 'active' : '' ?>" href="<?= e($calendarUrl) ?>" <?= $galleryView === 'calendar' ? 'aria-current="page"' : '' ?>><?= e(t('gallery.mode_calendar')) ?></a>
+            </nav>
             <?php if ($galleryView === 'calendar'): ?>
-                <input type="hidden" name="calendar_view" value="<?= e($calendarView) ?>">
-                <input type="hidden" name="date" value="<?= e($selectedDate) ?>">
-            <?php endif; ?>
-            <span><?= e(t('dashboard.viewing')) ?></span>
-            <?php if (is_admin($currentUser) && count((array) ($users ?? [])) > 1): ?>
-                <select name="user_id" onchange="this.form.submit()" aria-label="<?= e(t('dashboard.viewing')) ?>">
-                    <?php foreach ((array) $users as $user): ?>
-                        <option value="<?= (int) ($user['id'] ?? 0) ?>" <?= (int) ($user['id'] ?? 0) === $selectedUserId ? 'selected' : '' ?>>
-                            <?= e((string) ($user['display_name'] ?? '')) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            <?php else: ?>
-                <strong><?= e((string) ($selectedUser['display_name'] ?? '')) ?></strong>
-            <?php endif; ?>
-        </form>
-
-        <nav class="gallery-segment-control" aria-label="<?= e(t('gallery.photo_mode')) ?>">
-            <a class="<?= $galleryView === 'recent' ? 'active' : '' ?>" href="<?= e($recentUrl) ?>" <?= $galleryView === 'recent' ? 'aria-current="page"' : '' ?>><?= e(t('gallery.mode_recent')) ?></a>
-            <a class="<?= $galleryView === 'calendar' ? 'active' : '' ?>" href="<?= e($calendarUrl) ?>" <?= $galleryView === 'calendar' ? 'aria-current="page"' : '' ?>><?= e(t('gallery.mode_calendar')) ?></a>
-        </nav>
-    </div>
-
-    <?php if ($galleryView === 'calendar'): ?>
-        <article class="panel entries-calendar-panel gallery-calendar-panel" data-meal-calendar-root data-calendar-page="gallery" data-user-id="<?= $selectedUserId ?>">
-            <form method="get" action="/" class="control-strip entries-calendar-controls" data-meal-calendar-form>
-                <input type="hidden" name="page" value="gallery">
-                <input type="hidden" name="gallery_view" value="calendar">
-                <input type="hidden" name="user_id" value="<?= $selectedUserId ?>">
-                <input type="hidden" value="<?= e($selectedDate) ?>" data-meal-calendar-date>
                 <?php if ($calendarView === 'month'): ?>
-                    <label class="entry-date-inline">
+                    <label>
                         <span data-meal-calendar-period-label><?= e(t('dashboard.month')) ?></span>
                         <input type="month" name="calendar_month" value="<?= e(substr($selectedDate, 0, 7)) ?>" onchange="this.form.submit()" data-meal-calendar-period data-label-month="<?= e(t('dashboard.month')) ?>" data-label-week="<?= e(t('common.week')) ?>" data-label-date="<?= e(t('common.date')) ?>">
                     </label>
                 <?php elseif ($calendarView === 'week'): ?>
-                    <label class="entry-date-inline">
+                    <label>
                         <span data-meal-calendar-period-label><?= e(t('common.week')) ?></span>
                         <input type="week" name="calendar_week" value="<?= e(date_to_iso_week($selectedDate)) ?>" onchange="this.form.submit()" data-meal-calendar-period data-label-month="<?= e(t('dashboard.month')) ?>" data-label-week="<?= e(t('common.week')) ?>" data-label-date="<?= e(t('common.date')) ?>">
                     </label>
                 <?php else: ?>
-                    <label class="entry-date-inline">
+                    <label>
                         <span data-meal-calendar-period-label><?= e(t('common.date')) ?></span>
                         <input type="date" name="date" value="<?= e($selectedDate) ?>" onchange="this.form.submit()" data-meal-calendar-period data-label-month="<?= e(t('dashboard.month')) ?>" data-label-week="<?= e(t('common.week')) ?>" data-label-date="<?= e(t('common.date')) ?>">
                     </label>
@@ -122,7 +105,20 @@ foreach (array_values((array) ($selectedDayData['photos'] ?? [])) as $photo) {
                         <a class="<?= $calendarView === $viewKey ? 'active' : '' ?>" href="/?<?= e(http_build_query($baseParams + ['gallery_view' => 'calendar', 'calendar_view' => $viewKey, 'date' => $selectedDate])) ?>" data-calendar-view-option="<?= e($viewKey) ?>"><?= e($viewLabel) ?></a>
                     <?php endforeach; ?>
                 </div>
-            </form>
+            <?php endif; ?>
+            <div class="calendar-view-actions">
+                <a class="btn btn-ghost btn-block" href="/?page=entries&mode=calendar&calendar_view=month&user_id=<?= $selectedUserId ?>"><?= e(t('nav.calendar')) ?></a>
+                <a class="btn btn-primary btn-block" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
+            </div>
+        </form>
+    </div>
+</details>
+<?php
+$topbarControls = ob_get_clean();
+?>
+<section class="screen gallery-page gallery-page-clean">
+    <?php if ($galleryView === 'calendar'): ?>
+        <article class="panel entries-calendar-panel gallery-calendar-panel" data-meal-calendar-root data-calendar-page="gallery" data-user-id="<?= $selectedUserId ?>" data-include-photos="1">
             <div class="calendar-visible-period" data-meal-calendar-visible-period><?= e($calendarVisibleLabel) ?></div>
             <div class="meal-calendar meal-calendar-<?= e($calendarView) ?><?= $calendarView === 'month' ? ' meal-calendar-month' : '' ?> entries-calendar" data-meal-calendar-days>
                 <?php foreach ($mealCalendar as $dateKey => $day): ?>
@@ -246,7 +242,7 @@ foreach (array_values((array) ($selectedDayData['photos'] ?? [])) as $photo) {
                 if ($monthKey !== $currentMonth):
                     $currentMonth = $monthKey;
                 ?>
-                    <div class="gallery-month-label"><?= e($monthLabel($date)) ?></div>
+                    <div class="gallery-month-label"><?= e(localized_month_label($date)) ?></div>
                 <?php endif; ?>
                 <a class="photos-gallery-tile" href="/?page=photo&photo_id=<?= $photoId ?>" aria-label="<?= e(t('common.photo')) ?> <?= e($dateLabel) ?>">
                     <?php if ($photoUrl !== ''): ?>

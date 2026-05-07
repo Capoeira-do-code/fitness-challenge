@@ -3890,6 +3890,112 @@ function goal_target_reached(array $goal, array $metric, float $progressValue): 
     return $progressValue >= $target;
 }
 
+function goal_target_label_for_type(string $rawType, array $habitLabels = []): string
+{
+    $type = normalize_goal_target_type($rawType);
+
+    return match (true) {
+        $type === 'steps' => (string) t('metric.steps'),
+        $type === 'km' => (string) t('metric.distance_km'),
+        $type === 'workouts' => (string) t('metric.workouts'),
+        $type === 'weight' => (string) t('metric.weight'),
+        str_starts_with($type, 'habit:') => $habitLabels[substr($type, 6)] ?? $type,
+        default => $rawType !== '' ? $rawType : (string) t('common.other'),
+    };
+}
+
+function format_goal_display_value(float $value, string $rawType): string
+{
+    $type = normalize_goal_target_type($rawType);
+    $decimals = ($type === 'steps' || $type === 'workouts' || str_starts_with($type, 'habit:')) ? 0 : 1;
+
+    return number_format($value, $decimals, '.', '');
+}
+
+function goal_progress_percent_for_metric(array $goal, float $currentValue, array $metric = []): float
+{
+    $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
+    $targetValue = (float) ($goal['target_value'] ?? 0);
+    if ($targetValue <= 0) {
+        return 0.0;
+    }
+
+    if ($type === 'weight') {
+        $startWeight = $metric['first_weight'] ?? null;
+        if (is_numeric($startWeight)) {
+            $start = (float) $startWeight;
+            if ($start > $targetValue) {
+                $denominator = max(0.001, $start - $targetValue);
+                return max(0.0, min(100.0, round((($start - $currentValue) / $denominator) * 100, 1)));
+            }
+            if ($start < $targetValue) {
+                $denominator = max(0.001, $targetValue - $start);
+                return max(0.0, min(100.0, round((($currentValue - $start) / $denominator) * 100, 1)));
+            }
+
+            return abs($currentValue - $targetValue) < 0.0001 ? 100.0 : 0.0;
+        }
+
+        return $currentValue <= $targetValue
+            ? 100.0
+            : max(0.0, min(100.0, round(($targetValue / max(0.001, $currentValue)) * 100, 1)));
+    }
+
+    if (in_array($type, ['strikes', 'penalties'], true)) {
+        if ($currentValue <= $targetValue) {
+            return 100.0;
+        }
+
+        return max(0.0, round((1 - (($currentValue - $targetValue) / max(0.001, $targetValue))) * 100, 1));
+    }
+
+    return max(0.0, min(100.0, round(($currentValue / $targetValue) * 100, 1)));
+}
+
+function build_user_goal_view_models(array $goals, array $metric = [], array $habits = []): array
+{
+    $habitLabels = [];
+    foreach ($habits as $habit) {
+        if (is_array($habit)) {
+            $habitLabels[(string) ($habit['code'] ?? '')] = (string) ($habit['label'] ?? $habit['code'] ?? '');
+        }
+    }
+
+    $rows = [];
+    foreach ($goals as $goal) {
+        if (!is_array($goal)) {
+            continue;
+        }
+        $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
+        $target = (float) ($goal['target_value'] ?? 0);
+        $current = $metric !== [] ? goal_progress_value_from_metric($goal, $metric) : (float) ($goal['current_value'] ?? 0);
+        $progress = goal_progress_percent_for_metric($goal, $current, $metric);
+        $dueDate = trim((string) ($goal['due_date'] ?? ''));
+        $status = (string) ($goal['status'] ?? 'active');
+        $rows[] = [
+            'id' => (int) ($goal['id'] ?? 0),
+            'title' => (string) ($goal['title'] ?? ''),
+            'status' => $status,
+            'status_label' => match ($status) {
+                'complete' => (string) t('common.complete'),
+                'archived' => (string) t('goals.archive'),
+                default => (string) t('common.active'),
+            },
+            'type' => $type,
+            'type_label' => goal_target_label_for_type((string) ($goal['target_type'] ?? ''), $habitLabels),
+            'current' => $current,
+            'current_label' => format_goal_display_value($current, $type),
+            'target' => $target,
+            'target_label' => format_goal_display_value($target, $type),
+            'progress_pct' => $progress,
+            'due_date' => $dueDate,
+            'due_label' => $dueDate !== '' ? format_date_eu($dueDate) : '',
+        ];
+    }
+
+    return $rows;
+}
+
 function auto_complete_user_goals(PDO $pdo, int $userId, string $startDate, string $endDate, ?int $actorUserId = null): int
 {
     if ($userId <= 0) {
@@ -5476,6 +5582,99 @@ function list_achievement_collection(PDO $pdo, string $scope, ?int $userId, ?int
     }
 
     return $rows;
+}
+
+function build_admin_achievement_stats(PDO $pdo, array $achievement, array $users, ?array $team, array $metricsByUser): array
+{
+    $achievementId = (int) ($achievement['id'] ?? 0);
+    if ($achievementId <= 0) {
+        return [
+            'unlocked' => 0,
+            'in_progress' => 0,
+            'locked' => 0,
+            'total' => 0,
+            'avg_progress' => 0.0,
+            'recent_unlocks' => [],
+            'rows' => [],
+        ];
+    }
+
+    $scope = (string) ($achievement['scope'] ?? 'user') === 'team' ? 'team' : 'user';
+    $rows = [];
+    if ($scope === 'team') {
+        $teamId = (int) ($team['id'] ?? 0);
+        if ($teamId > 0) {
+            $collection = list_achievement_collection($pdo, 'team', null, $teamId, $metricsByUser);
+            foreach ($collection as $row) {
+                if ((int) ($row['id'] ?? 0) === $achievementId) {
+                    $rows[] = [
+                        'owner' => (string) ($team['name'] ?? t('nav.team')),
+                        'is_unlocked' => !empty($row['is_unlocked']),
+                        'awarded_at' => (string) ($row['awarded_at'] ?? ''),
+                        'progress_pct' => is_numeric($row['progress_pct'] ?? null) ? (float) $row['progress_pct'] : (!empty($row['is_unlocked']) ? 100.0 : 0.0),
+                        'progress_text' => (string) ($row['progress_text'] ?? ''),
+                    ];
+                    break;
+                }
+            }
+        }
+    } else {
+        foreach ($users as $user) {
+            if (!is_array($user) || (int) ($user['active'] ?? 1) !== 1) {
+                continue;
+            }
+            $userId = (int) ($user['id'] ?? 0);
+            if ($userId <= 0) {
+                continue;
+            }
+            $collection = list_achievement_collection($pdo, 'user', $userId, null, $metricsByUser);
+            foreach ($collection as $row) {
+                if ((int) ($row['id'] ?? 0) !== $achievementId) {
+                    continue;
+                }
+                $rows[] = [
+                    'owner' => (string) ($user['display_name'] ?? $user['username'] ?? t('common.user')),
+                    'is_unlocked' => !empty($row['is_unlocked']),
+                    'awarded_at' => (string) ($row['awarded_at'] ?? ''),
+                    'progress_pct' => is_numeric($row['progress_pct'] ?? null) ? (float) $row['progress_pct'] : (!empty($row['is_unlocked']) ? 100.0 : 0.0),
+                    'progress_text' => (string) ($row['progress_text'] ?? ''),
+                ];
+                break;
+            }
+        }
+    }
+
+    $unlocked = 0;
+    $inProgress = 0;
+    $locked = 0;
+    $progressTotal = 0.0;
+    $recentUnlocks = [];
+    foreach ($rows as $row) {
+        $progress = max(0.0, min(100.0, (float) ($row['progress_pct'] ?? 0)));
+        $progressTotal += $progress;
+        if (!empty($row['is_unlocked'])) {
+            $unlocked++;
+            if ((string) ($row['awarded_at'] ?? '') !== '') {
+                $recentUnlocks[] = $row;
+            }
+        } elseif ($progress > 0) {
+            $inProgress++;
+        } else {
+            $locked++;
+        }
+    }
+
+    usort($recentUnlocks, static fn(array $left, array $right): int => strcmp((string) ($right['awarded_at'] ?? ''), (string) ($left['awarded_at'] ?? '')));
+
+    return [
+        'unlocked' => $unlocked,
+        'in_progress' => $inProgress,
+        'locked' => $locked,
+        'total' => count($rows),
+        'avg_progress' => count($rows) > 0 ? round($progressTotal / count($rows), 1) : 0.0,
+        'recent_unlocks' => array_slice($recentUnlocks, 0, 6),
+        'rows' => $rows,
+    ];
 }
 
 function delete_achievement_award(PDO $pdo, int $awardId, int $actorUserId): void

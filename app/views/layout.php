@@ -71,7 +71,7 @@ $renderMobileIcon = static function (string $icon): string {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/styles.css?v=35">
+    <link rel="stylesheet" href="/assets/styles.css?v=36">
 </head>
 <?php
 $bodyClasses = [];
@@ -141,7 +141,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                     <?php if (is_admin($currentUser)): ?>
                         <a href="/?page=admin"><?= e(t('nav.admin')) ?></a>
                     <?php endif; ?>
-                    <a href="/?page=settings#avatar"><?= e(t('settings.change_avatar')) ?></a>
+                    <a href="/?page=settings&view=avatar#avatar"><?= e(t('settings.change_avatar')) ?></a>
                     <a href="/?page=logout"><?= e(t('nav.logout')) ?></a>
                 </div>
             </details>
@@ -200,6 +200,6 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     </nav>
 <?php endif; ?>
 
-<script src="/assets/main.js?v=28"></script>
+<script src="/assets/main.js?v=29"></script>
 </body>
 </html>

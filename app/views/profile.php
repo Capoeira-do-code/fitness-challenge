@@ -40,6 +40,9 @@ $profileAchievementsUrl = '/?' . http_build_query([
 ]);
 
 $activeGoals = array_values(array_filter((array) ($personalGoals ?? []), static fn(array $goal): bool => (string) ($goal['status'] ?? 'active') === 'active'));
+$profileGoalCards = array_values((array) ($profileGoalCards ?? []));
+$profileActiveGoalCards = array_values(array_filter($profileGoalCards, static fn(array $goal): bool => (string) ($goal['status'] ?? 'active') === 'active'));
+$profileCompletedGoalCards = array_values(array_filter($profileGoalCards, static fn(array $goal): bool => (string) ($goal['status'] ?? '') === 'complete'));
 $achievementCount = count($userAchievements ?? []);
 $activityCount = count($recentActivity ?? []);
 $goalPreview = array_slice(array_map(static fn(array $goal): string => (string) $goal['title'], $activeGoals), 0, 2);
@@ -340,27 +343,36 @@ $profileSetupRows = [
         <article class="panel profile-home-card profile-home-goals">
             <div class="profile-home-card-head">
                 <div>
-                    <p class="eyebrow"><?= e(t('goals.personal')) ?></p>
+                    <p class="eyebrow"><?= count($profileActiveGoalCards) ?> <?= e(t('profile.active_goals_suffix')) ?> · <?= count($profileCompletedGoalCards) ?> <?= e(t('settings.completed_goals')) ?></p>
                     <h2><?= e(t('goals.personal')) ?></h2>
                 </div>
-                <?php if ($canEditProfile): ?>
-                    <a class="btn btn-ghost small" href="<?= e($profileUrl('goals', ['goal_new' => 1])) ?>" data-spa-link><?= e(t('profile.new_goal')) ?></a>
-                <?php endif; ?>
-            </div>
-            <?php if (is_array($featuredGoal)): ?>
-                <div class="profile-home-goal-main">
-                    <strong><?= e((string) ($featuredGoal['title'] ?? '')) ?></strong>
-                    <span><?= e($goalTypeLabel((string) ($featuredGoal['target_type'] ?? ''))) ?> · <?= e($formatGoalValue($featuredGoalCurrent, $featuredGoalType)) ?> / <?= e($formatGoalValue((float) ($featuredGoal['target_value'] ?? 0), $featuredGoalType)) ?></span>
-                    <?php if ((string) ($featuredGoal['due_date'] ?? '') !== ''): ?>
-                        <small><?= e(t('goals.due_date')) ?>: <?= e(format_date_eu((string) $featuredGoal['due_date'])) ?></small>
+                <div class="inline-actions-mini">
+                    <?php if ($canEditProfile): ?>
+                        <a class="btn btn-primary small" href="<?= e($profileUrl('goals', ['goal_new' => 1])) ?>" data-spa-link><?= e(t('profile.new_goal')) ?></a>
+                        <a class="btn btn-ghost small" href="<?= e($profileUrl('goals')) ?>" data-spa-link><?= e(t('settings.edit_goals')) ?></a>
+                    <?php else: ?>
+                        <a class="btn btn-ghost small" href="<?= e($profileUrl('goals')) ?>" data-spa-link><?= e(t('common.view_all')) ?></a>
                     <?php endif; ?>
-                    <div class="goal-progress"><span style="width: <?= e((string) $featuredGoalProgress) ?>%"></span></div>
-                    <small><?= e(t('profile.current_progress')) ?>: <?= e((string) $featuredGoalProgress) ?>%</small>
+                </div>
+            </div>
+            <?php if ($profileActiveGoalCards !== []): ?>
+                <div class="profile-home-goal-list">
+                    <?php foreach (array_slice($profileActiveGoalCards, 0, 4) as $goalCard): ?>
+                        <a class="profile-home-goal-row" href="<?= e($profileUrl('goals', ['goal_id' => (int) ($goalCard['id'] ?? 0)])) ?>" data-spa-link>
+                            <span>
+                                <strong><?= e((string) ($goalCard['title'] ?? '')) ?></strong>
+                                <small><?= e((string) ($goalCard['type_label'] ?? '')) ?> · <?= e((string) ($goalCard['current_label'] ?? '0')) ?> / <?= e((string) ($goalCard['target_label'] ?? '0')) ?></small>
+                                <?php if ((string) ($goalCard['due_label'] ?? '') !== ''): ?>
+                                    <small><?= e(t('goals.due_date')) ?>: <?= e((string) $goalCard['due_label']) ?></small>
+                                <?php endif; ?>
+                            </span>
+                            <span class="profile-home-goal-meter" aria-hidden="true"><span style="width: <?= e((string) ($goalCard['progress_pct'] ?? 0)) ?>%"></span></span>
+                        </a>
+                    <?php endforeach; ?>
                 </div>
             <?php else: ?>
                 <p class="muted"><?= e(t('goals.empty')) ?></p>
             <?php endif; ?>
-            <a class="btn btn-ghost small profile-home-secondary" href="<?= e($profileUrl('goals')) ?>" data-spa-link><?= e(t('common.view_all')) ?></a>
         </article>
 
         <article class="panel profile-home-card">

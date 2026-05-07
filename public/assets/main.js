@@ -27,14 +27,17 @@
         window.addEventListener('orientationchange', syncMobileBottomNavHeight, { passive: true });
 
         let lastY = window.scrollY;
+        let lastToggleY = lastY;
+        let navHidden = false;
         let ticking = false;
         const toggleNav = () => {
             const currentY = Math.max(0, window.scrollY);
-            const goingDown = currentY > lastY + 8;
-            const goingUp = currentY < lastY - 8;
-            const shouldHide = goingDown && currentY > 90;
+            const goingDown = currentY > lastY + 4;
+            const goingUp = currentY < lastY - 6;
+            const shouldHide = !navHidden && goingDown && currentY > 120 && currentY - lastToggleY > 28;
+            const shouldShow = navHidden && (currentY < 48 || (goingUp && lastToggleY - currentY > 18));
 
-            if (shouldHide || goingUp || currentY < 40) {
+            if (shouldHide || shouldShow) {
                 if (shouldHide && floatingLog instanceof HTMLDetailsElement) {
                     floatingLog.open = false;
                     floatingLog.classList.remove('is-open');
@@ -45,8 +48,10 @@
                     }
                     element.classList.toggle('nav-hidden', shouldHide);
                 });
-                lastY = currentY;
+                navHidden = shouldHide;
+                lastToggleY = currentY;
             }
+            lastY = currentY;
             ticking = false;
         };
 
@@ -1366,12 +1371,13 @@
         if (!(root instanceof HTMLElement) || root.dataset.mealCalendarReady === '1') {
             return;
         }
-        const form = root.querySelector('[data-meal-calendar-form]');
-        const dateInput = root.querySelector('[data-meal-calendar-date]');
-        const periodInput = root.querySelector('[data-meal-calendar-period]');
-        const periodLabel = root.querySelector('[data-meal-calendar-period-label]');
-        const viewSelect = root.querySelector('[data-meal-calendar-view]');
-        const viewOptions = root.querySelectorAll('[data-calendar-view-option]');
+        const calendarPage = String(root.dataset.calendarPage || 'entries');
+        const form = document.querySelector(`[data-meal-calendar-form][data-calendar-page="${calendarPage}"]`) || root.querySelector('[data-meal-calendar-form]');
+        const dateInput = form?.querySelector('[data-meal-calendar-date]');
+        const periodInput = form?.querySelector('[data-meal-calendar-period]');
+        const periodLabel = form?.querySelector('[data-meal-calendar-period-label]');
+        const viewSelect = form?.querySelector('[data-meal-calendar-view]');
+        const viewOptions = form?.querySelectorAll('[data-calendar-view-option]') || root.querySelectorAll('[data-calendar-view-option]');
         const daysGrid = root.querySelector('[data-meal-calendar-days]');
         const backLink = root.querySelector('[data-meal-calendar-back]');
         const photosPanel = document.querySelector('[data-meal-calendar-photos-panel]');
@@ -1380,9 +1386,8 @@
         const periodTarget = periodPanel?.querySelector('[data-meal-calendar-period-photos]');
         const periodCount = periodPanel?.querySelector('[data-meal-calendar-period-count]');
         const selectedDateLabel = photosPanel?.querySelector('.eyebrow');
-        const visiblePeriodLabel = root.querySelector('[data-meal-calendar-visible-period]');
+        const visiblePeriodLabels = document.querySelectorAll('[data-meal-calendar-visible-period]');
         const galleryUrl = String(root.dataset.galleryUrl || '/?page=gallery');
-        const calendarPage = String(root.dataset.calendarPage || 'entries');
 
         if (!(form instanceof HTMLFormElement) || !(dateInput instanceof HTMLInputElement) || !(viewSelect instanceof HTMLInputElement) || !(daysGrid instanceof HTMLElement)) {
             return;
@@ -1403,6 +1408,7 @@
             const url = new URL('/', window.location.origin);
             url.searchParams.set('page', 'api_meal_calendar');
             url.searchParams.set('calendar_view', viewSelect.value || 'week');
+            url.searchParams.set('include_photos', String(root.dataset.includePhotos || '1') === '0' ? '0' : '1');
             const periodValue = periodInput instanceof HTMLInputElement ? periodInput.value : '';
             if (viewSelect.value === 'month' && /^\d{4}-\d{2}$/.test(periodValue)) {
                 url.searchParams.set('calendar_month', periodValue);
@@ -1428,6 +1434,10 @@
                 }
             } else {
                 url.searchParams.set('mode', 'calendar');
+                const userId = String(root.dataset.userId || '').trim();
+                if (userId !== '') {
+                    url.searchParams.set('user_id', userId);
+                }
             }
             url.searchParams.set('calendar_view', view || 'week');
             const targetView = view || 'week';
@@ -1533,6 +1543,7 @@
         const renderDays = (payload) => {
             const labels = payload.labels || {};
             const selectedDate = String(payload.date || '');
+            const activeView = String(payload.calendar_view || viewSelect.value || 'month');
             daysGrid.classList.toggle('meal-calendar-month', payload.calendar_view === 'month');
             daysGrid.classList.toggle('meal-calendar-week', payload.calendar_view === 'week');
             daysGrid.classList.toggle('meal-calendar-day', payload.calendar_view === 'day');
@@ -1543,7 +1554,10 @@
                 link.href = String(day.href || '#');
 
                 const article = document.createElement('article');
-                appendText(article, 'strong', day.date_label || day.date || '');
+                const dayLabel = activeView === 'month'
+                    ? (day.day_number || day.date_short || day.date_label || day.date || '')
+                    : (activeView === 'week' ? (day.date_short || day.date_label || day.date || '') : (day.date_label || day.date || ''));
+                appendText(article, 'strong', dayLabel);
                 const previewPhotos = Array.isArray(day.preview_photos) ? day.preview_photos : [];
                 if (previewPhotos.length > 0 || day.thumb_url || day.preview_url) {
                     const collage = document.createElement('div');
@@ -1663,7 +1677,7 @@
             periodTarget.appendChild(grid);
         };
         const updateVisiblePhotoPeriod = () => {
-            if (!(visiblePeriodLabel instanceof HTMLElement) || !(periodTarget instanceof HTMLElement)) {
+            if (!(periodTarget instanceof HTMLElement)) {
                 return;
             }
             const tiles = Array.from(periodTarget.querySelectorAll('.entries-calendar-mobile-tile'));
@@ -1673,7 +1687,11 @@
                 return rect.bottom >= 0 && rect.top <= viewportMid;
             });
             if (activeTile instanceof HTMLElement && activeTile.dataset.dateLabel) {
-                visiblePeriodLabel.textContent = activeTile.dataset.dateLabel;
+                visiblePeriodLabels.forEach((label) => {
+                    if (label instanceof HTMLElement) {
+                        label.textContent = activeTile.dataset.dateLabel || '';
+                    }
+                });
             }
         };
         let visiblePeriodTicking = false;
@@ -1708,13 +1726,20 @@
             if (backLink instanceof HTMLAnchorElement) {
                 backLink.href = `/?page=entries&mode=meal&date=${encodeURIComponent(dateInput.value)}`;
             }
-            if (visiblePeriodLabel instanceof HTMLElement) {
-                visiblePeriodLabel.classList.add('is-updating');
-                window.requestAnimationFrame(() => {
-                    visiblePeriodLabel.textContent = String(payload.period_label || payload.calendar_month || payload.calendar_week || payload.date || '');
-                    visiblePeriodLabel.classList.remove('is-updating');
+            visiblePeriodLabels.forEach((label) => {
+                if (label instanceof HTMLElement) {
+                    label.classList.add('is-updating');
+                }
+            });
+            window.requestAnimationFrame(() => {
+                visiblePeriodLabels.forEach((label) => {
+                    if (!(label instanceof HTMLElement)) {
+                        return;
+                    }
+                    label.textContent = String(payload.period_label || payload.calendar_month || payload.calendar_week || payload.date || '');
+                    label.classList.remove('is-updating');
                 });
-            }
+            });
             renderDays(payload);
             renderPhotos(payload);
             renderPeriodPhotos(payload);
@@ -2240,6 +2265,7 @@
 
             const fileInput = form.querySelector('[data-image-crop-input]');
             const outputInput = form.querySelector('[data-image-crop-output]');
+            const cropper = form.querySelector('[data-image-cropper]');
             const canvas = form.querySelector('[data-image-crop-canvas]');
             const zoomInput = form.querySelector('[data-image-crop-zoom]');
             const emptyHint = form.querySelector('[data-image-crop-empty]');
@@ -2290,6 +2316,9 @@
 
                 if (!(state.img instanceof Image)) {
                     outputInput.value = '';
+                    if (cropper instanceof HTMLElement) {
+                        cropper.hidden = true;
+                    }
                     if (emptyHint instanceof HTMLElement) {
                         emptyHint.hidden = false;
                     }
@@ -2298,6 +2327,9 @@
 
                 if (emptyHint instanceof HTMLElement) {
                     emptyHint.hidden = true;
+                }
+                if (cropper instanceof HTMLElement) {
+                    cropper.hidden = false;
                 }
 
                 clampOffsets();
@@ -2312,6 +2344,9 @@
 
             const resetFromImage = (img) => {
                 state.img = img;
+                if (cropper instanceof HTMLElement) {
+                    cropper.hidden = false;
+                }
                 state.scale = Number(zoomInput.value || 1);
                 if (!Number.isFinite(state.scale) || state.scale < 1) {
                     state.scale = 1;
@@ -2332,6 +2367,9 @@
                     state.img = null;
                     render();
                     return;
+                }
+                if (cropper instanceof HTMLElement) {
+                    cropper.hidden = false;
                 }
 
                 const reader = new FileReader();
@@ -2406,6 +2444,18 @@
             form.dataset.cropReady = '1';
             render();
         });
+    };
+
+    const initSettingsAvatarHashFallback = () => {
+        if (document.body?.dataset.page !== 'settings') {
+            return;
+        }
+        const url = new URL(window.location.href);
+        if (url.hash !== '#avatar' || url.searchParams.get('view') === 'avatar') {
+            return;
+        }
+        url.searchParams.set('view', 'avatar');
+        window.location.replace(url.toString());
     };
 
     const initProfilePdfExport = () => {
@@ -2919,6 +2969,7 @@
         safeInit(initStrikeReviewModal);
         safeInit(initProfileGoalsSection);
         safeInit(initProfileConfigEditor);
+        safeInit(initSettingsAvatarHashFallback);
         safeInit(initImageCroppers);
         safeInit(initProfilePdfExport);
         safeInit(initTeamLayoutEditor);
