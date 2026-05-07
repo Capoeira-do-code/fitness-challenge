@@ -1382,6 +1382,7 @@
         const selectedDateLabel = photosPanel?.querySelector('.eyebrow');
         const visiblePeriodLabel = root.querySelector('[data-meal-calendar-visible-period]');
         const galleryUrl = String(root.dataset.galleryUrl || '/?page=gallery');
+        const calendarPage = String(root.dataset.calendarPage || 'entries');
 
         if (!(form instanceof HTMLFormElement) || !(dateInput instanceof HTMLInputElement) || !(viewSelect instanceof HTMLInputElement) || !(daysGrid instanceof HTMLElement)) {
             return;
@@ -1418,8 +1419,16 @@
         };
         const pageUrl = (date, view) => {
             const url = new URL('/', window.location.origin);
-            url.searchParams.set('page', 'entries');
-            url.searchParams.set('mode', 'calendar');
+            url.searchParams.set('page', calendarPage === 'gallery' ? 'gallery' : 'entries');
+            if (calendarPage === 'gallery') {
+                url.searchParams.set('gallery_view', 'calendar');
+                const userId = String(root.dataset.userId || '').trim();
+                if (userId !== '') {
+                    url.searchParams.set('user_id', userId);
+                }
+            } else {
+                url.searchParams.set('mode', 'calendar');
+            }
             url.searchParams.set('calendar_view', view || 'week');
             const targetView = view || 'week';
             if (targetView === 'month') {
@@ -1756,7 +1765,9 @@
         });
         window.addEventListener('popstate', () => {
             const url = new URL(window.location.href);
-            if (url.searchParams.get('page') !== 'entries' || url.searchParams.get('mode') !== 'calendar') {
+            const isEntriesCalendar = url.searchParams.get('page') === 'entries' && url.searchParams.get('mode') === 'calendar';
+            const isGalleryCalendar = url.searchParams.get('page') === 'gallery' && url.searchParams.get('gallery_view') === 'calendar';
+            if ((calendarPage === 'gallery' && !isGalleryCalendar) || (calendarPage !== 'gallery' && !isEntriesCalendar)) {
                 return;
             }
             dateInput.value = url.searchParams.get('date') || dateInput.value;
@@ -1862,7 +1873,7 @@
         }
         root.dataset.analyticsReady = '1';
 
-        const form = root.querySelector('[data-analytics-filter]');
+        const form = document.querySelector('[data-analytics-filter]');
         if (!(form instanceof HTMLFormElement)) {
             initAnalyticsCharts(root);
             return;
@@ -1937,6 +1948,63 @@
         });
 
         initAnalyticsCharts(root);
+    };
+
+    const initDashboardEnhancement = () => {
+        const root = document.querySelector('[data-dashboard-page]');
+        if (!(root instanceof HTMLElement) || root.dataset.dashboardReady === '1') {
+            return;
+        }
+        root.dataset.dashboardReady = '1';
+        const form = document.querySelector('[data-dashboard-control-form]');
+        if (!(form instanceof HTMLFormElement)) {
+            return;
+        }
+
+        const replaceDashboardPage = async (url) => {
+            try {
+                root.classList.add('is-loading');
+                document.body.classList.add('is-transitioning');
+                const response = await fetch(url.toString(), {
+                    headers: { 'Accept': 'text/html' },
+                    credentials: 'same-origin',
+                });
+                if (!response.ok) {
+                    throw new Error(`Dashboard request failed: ${response.status}`);
+                }
+                const html = await response.text();
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const nextPage = doc.querySelector('[data-dashboard-page]');
+                if (!(nextPage instanceof HTMLElement)) {
+                    throw new Error('Dashboard page fragment missing.');
+                }
+                const currentTopbarContext = document.querySelector('.topbar-actions .topbar-context');
+                const nextTopbarContext = doc.querySelector('.topbar-actions .topbar-context');
+                if (currentTopbarContext instanceof HTMLElement && nextTopbarContext instanceof HTMLElement) {
+                    currentTopbarContext.replaceWith(nextTopbarContext);
+                }
+                root.replaceWith(nextPage);
+                history.pushState({}, '', url.toString());
+                initDashboardEnhancement();
+                initTeamLayoutEditor();
+            } catch (error) {
+                console.error('Dashboard update failed:', error);
+                window.location.href = url.toString();
+            } finally {
+                document.body.classList.remove('is-transitioning');
+            }
+        };
+
+        const formUrl = () => new URL(`/?${new URLSearchParams(new FormData(form)).toString()}`, window.location.origin);
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            replaceDashboardPage(formUrl());
+        });
+        form.addEventListener('change', (event) => {
+            if (event.target instanceof HTMLSelectElement || event.target instanceof HTMLInputElement) {
+                replaceDashboardPage(formUrl());
+            }
+        });
     };
 
     const initAchievementDeleteModal = () => {
@@ -2757,6 +2825,76 @@
         });
     };
 
+    const initNotificationsAjax = () => {
+        const root = document.querySelector('[data-notifications-page]');
+        if (!(root instanceof HTMLElement) || root.dataset.notificationsReady === '1') {
+            return;
+        }
+        root.dataset.notificationsReady = '1';
+
+        const replaceBadge = (doc) => {
+            const currentTrigger = document.querySelector('.user-menu-trigger');
+            if (!(currentTrigger instanceof HTMLElement)) {
+                return;
+            }
+            const currentBadge = currentTrigger.querySelector('[data-notification-badge]');
+            const nextBadge = doc.querySelector('.user-menu-trigger [data-notification-badge]');
+            if (nextBadge instanceof HTMLElement) {
+                const clone = nextBadge.cloneNode(true);
+                if (currentBadge instanceof HTMLElement) {
+                    currentBadge.replaceWith(clone);
+                } else {
+                    currentTrigger.appendChild(clone);
+                }
+                return;
+            }
+            if (currentBadge instanceof HTMLElement) {
+                currentBadge.remove();
+            }
+        };
+
+        root.addEventListener('submit', async (event) => {
+            const form = event.target;
+            if (!(form instanceof HTMLFormElement) || !form.matches('[data-notification-form]')) {
+                return;
+            }
+            const confirmMessage = String(form.dataset.confirm || '').trim();
+            if (confirmMessage !== '' && !window.confirm(confirmMessage)) {
+                event.preventDefault();
+                return;
+            }
+
+            event.preventDefault();
+            try {
+                root.classList.add('is-loading');
+                document.body.classList.add('is-transitioning');
+                const response = await fetch(form.action || window.location.href, {
+                    method: 'POST',
+                    body: new FormData(form),
+                    headers: { 'Accept': 'text/html' },
+                    credentials: 'same-origin',
+                });
+                if (!response.ok) {
+                    throw new Error(`Notification request failed: ${response.status}`);
+                }
+                const html = await response.text();
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const nextPage = doc.querySelector('[data-notifications-page]');
+                if (!(nextPage instanceof HTMLElement)) {
+                    throw new Error('Notifications fragment missing.');
+                }
+                replaceBadge(doc);
+                root.replaceWith(nextPage);
+                initNotificationsAjax();
+            } catch (error) {
+                console.error('Notification action failed:', error);
+                HTMLFormElement.prototype.submit.call(form);
+            } finally {
+                document.body.classList.remove('is-transitioning');
+            }
+        });
+    };
+
     const initAll = () => {
         const safeInit = (initFn) => {
             try {
@@ -2775,6 +2913,7 @@
         safeInit(initAchievementDeleteModal);
         safeInit(initMealCalendar);
         safeInit(initAnalyticsEnhancement);
+        safeInit(initDashboardEnhancement);
         safeInit(initPhotoDeleteModal);
         safeInit(initPhotoEditModal);
         safeInit(initStrikeReviewModal);
@@ -2783,6 +2922,7 @@
         safeInit(initImageCroppers);
         safeInit(initProfilePdfExport);
         safeInit(initTeamLayoutEditor);
+        safeInit(initNotificationsAjax);
     };
 
     if (document.readyState === 'loading') {

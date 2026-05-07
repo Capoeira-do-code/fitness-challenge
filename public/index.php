@@ -1138,8 +1138,15 @@ if ($page === 'photo') {
 }
 
 if ($page === 'gallery') {
-    $pageNum = max(1, (int) ($_GET['page_num'] ?? 1));
-    $perPage = 60;
+    $galleryView = (string) ($_GET['gallery_view'] ?? 'recent');
+    if (!in_array($galleryView, ['recent', 'calendar'], true)) {
+        $galleryView = 'recent';
+    }
+    $calendarView = (string) ($_GET['calendar_view'] ?? ($currentUser['meal_calendar_view'] ?? 'month'));
+    if (!in_array($calendarView, ['month', 'week', 'day'], true)) {
+        $calendarView = 'month';
+    }
+    $selectedDate = calendar_date_from_request($_GET, $calendarView);
     $users = is_admin($currentUser) ? list_active_users($pdo) : [$currentUser];
     $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
     if (!is_admin($currentUser) || $selectedUserId <= 0) {
@@ -1152,9 +1159,12 @@ if ($page === 'gallery') {
         $selectedUserId = (int) $currentUser['id'];
     }
 
-    $galleryRows = fetch_gallery_photos($pdo, $perPage + 1, ($pageNum - 1) * $perPage, $selectedUserId);
-    $hasNextPage = count($galleryRows) > $perPage;
-    $galleryPhotos = array_slice($galleryRows, 0, $perPage);
+    $galleryPhotos = $galleryView === 'recent'
+        ? fetch_gallery_photos($pdo, 5000, 0, $selectedUserId)
+        : [];
+    $mealCalendar = $galleryView === 'calendar'
+        ? fetch_meal_calendar($pdo, $selectedDate, $selectedUserId, $calendarView)
+        : [];
 
     render_view('gallery', [
         'title' => t('gallery.title'),
@@ -1163,8 +1173,10 @@ if ($page === 'gallery') {
         'users' => $users,
         'selectedUser' => $selectedUser,
         'galleryPhotos' => $galleryPhotos,
-        'pageNum' => $pageNum,
-        'hasNextPage' => $hasNextPage,
+        'galleryView' => $galleryView,
+        'calendarView' => $calendarView,
+        'selectedDate' => $selectedDate,
+        'mealCalendar' => $mealCalendar,
         'config' => $config,
     ]);
 }
@@ -1784,7 +1796,11 @@ if ($page === 'profile') {
         }
 
         foreach ((array) ($profileMetric['weekly'] ?? []) as $weekRow) {
-            $workoutValue = max(0, (int) ($profileMetric['workout_target'] ?? 0) - (int) ($weekRow['workout_failures'] ?? 0));
+            $workoutValue = max(
+                max(0, (int) ($weekRow['workouts'] ?? 0)),
+                max(0, (int) ($weekRow['workout_success_week'] ?? 0)),
+                max(0, (int) ($weekRow['workout_target_week'] ?? 0) - (int) ($weekRow['workout_failures'] ?? 0))
+            );
             $scoreValue = round(max(
                 0.0,
                 100 - (
@@ -3630,7 +3646,7 @@ if ($page === 'team') {
         ],
         'workouts' => [
             'title' => t('metric.workouts'),
-            'summary_value' => (float) ($teamSummary['workout_success'] ?? 0),
+            'summary_value' => max((float) ($teamSummary['workout_count'] ?? 0), (float) ($teamSummary['workout_success'] ?? 0)),
             'chart_type' => 'bar',
             'chart_labels' => $teamDailyLabels,
             'chart_values' => $teamDailyWorkouts,
@@ -4261,9 +4277,12 @@ if ($page === 'metric') {
         );
         $stepPct = $stepRequired > 0 ? round(($stepSuccess / $stepRequired) * 100, 1) : 0.0;
         $workoutTarget = max(0, (int) ($row['workout_target_week'] ?? 0));
-        $workoutSuccess = isset($row['workout_success_week'])
-            ? max(0, (int) ($row['workout_success_week'] ?? 0))
-            : max(0, $workoutTarget - (int) ($row['workout_failures'] ?? 0));
+        $workoutSuccess = max(
+            max(0, (int) ($row['workouts'] ?? 0)),
+            isset($row['workout_success_week'])
+                ? max(0, (int) ($row['workout_success_week'] ?? 0))
+                : max(0, $workoutTarget - (int) ($row['workout_failures'] ?? 0))
+        );
         $workoutPct = $workoutTarget > 0 ? round(($workoutSuccess / $workoutTarget) * 100, 1) : 0.0;
         $strikesNet = max(
             0,
@@ -4281,14 +4300,15 @@ if ($page === 'metric') {
         return score_value_from_components($components);
     };
     $workout_success_for_week = static function (array $row): int {
+        $workouts = max(0, (int) ($row['workouts'] ?? 0));
         if (isset($row['workout_success_week'])) {
-            return (int) ($row['workout_success_week'] ?? 0);
+            return max($workouts, (int) ($row['workout_success_week'] ?? 0));
         }
         if (isset($row['workout_target_week'])) {
-            return max(0, (int) ($row['workout_target_week'] ?? 0) - (int) ($row['workout_failures'] ?? 0));
+            return max($workouts, max(0, (int) ($row['workout_target_week'] ?? 0) - (int) ($row['workout_failures'] ?? 0)));
         }
 
-        return (int) ($row['workouts'] ?? 0);
+        return $workouts;
     };
     $strikes_net_for_week = static function (array $row): int {
         $totalFailures = (int) ($row['total_failures'] ?? ((int) ($row['step_failures'] ?? 0) + (int) ($row['workout_failures'] ?? 0)));
@@ -4948,9 +4968,12 @@ if ($page === 'analytics') {
             $steps += (int) ($row['steps'] ?? 0);
             $distance += (float) ($row['km'] ?? 0);
             $workoutTarget += max(0, (int) ($row['workout_target_week'] ?? 0));
-            $workouts += array_key_exists('workout_success_week', $row)
-                ? max(0, (int) ($row['workout_success_week'] ?? 0))
-                : max(0, (int) ($row['workout_target_week'] ?? 0) - (int) ($row['workout_failures'] ?? 0));
+            $workouts += max(
+                max(0, (int) ($row['workouts'] ?? 0)),
+                array_key_exists('workout_success_week', $row)
+                    ? max(0, (int) ($row['workout_success_week'] ?? 0))
+                    : max(0, (int) ($row['workout_target_week'] ?? 0) - (int) ($row['workout_failures'] ?? 0))
+            );
             $weekStepRequired = max(
                 0,
                 (int) ($row['step_days_required_week'] ?? ((int) ($row['step_days_success_week'] ?? 0) + (int) ($row['step_failures'] ?? 0)))
@@ -5144,13 +5167,24 @@ if ($page === 'dashboard') {
         $users = list_active_users($pdo);
     }
     $metricsStartedAt = microtime(true);
-    $metricsByUser = compute_challenge_metrics(
-        $pdo,
-        $users,
-        (string) $settings['challenge_start'],
-        (string) $settings['challenge_end']
-    );
-    $metricsByUser = apply_strike_review_overrides_to_metrics($pdo, $metricsByUser);
+    $dashboardMetricCacheKey = 'dashboard_metrics:' . hash('sha256', json_encode([
+        'users' => array_map(static fn(array $user): int => (int) ($user['id'] ?? 0), $users),
+        'start' => (string) $settings['challenge_start'],
+        'end' => (string) $settings['challenge_end'],
+    ], JSON_UNESCAPED_SLASHES) ?: '');
+    $cachedMetrics = app_cache_get($dashboardMetricCacheKey, 300);
+    if (is_array($cachedMetrics)) {
+        $metricsByUser = $cachedMetrics;
+    } else {
+        $metricsByUser = compute_challenge_metrics(
+            $pdo,
+            $users,
+            (string) $settings['challenge_start'],
+            (string) $settings['challenge_end']
+        );
+        $metricsByUser = apply_strike_review_overrides_to_metrics($pdo, $metricsByUser);
+        app_cache_set($dashboardMetricCacheKey, $metricsByUser);
+    }
     $captureDashboardTiming('metrics', $metricsStartedAt);
 
     $metricsById = [];
@@ -5275,8 +5309,20 @@ if ($page === 'dashboard') {
         $dashboardServerTimingParts[] = $safeName . ';dur=' . number_format($durationMs, 2, '.', '');
     }
     $dashboardTotalMs = max(0.0, (microtime(true) - $dashboardRequestStartedAt) * 1000);
+    $dbProfile = function_exists('db_profile_snapshot') ? db_profile_snapshot() : [];
+    if ($dbProfile !== []) {
+        $dashboardServerTimingParts[] = 'db;dur=' . number_format((float) ($dbProfile['query_time_ms'] ?? 0), 2, '.', '');
+        $dashboardServerTimingParts[] = 'db_queries;desc="' . max(0, (int) ($dbProfile['query_count'] ?? 0)) . '"';
+    }
     $dashboardServerTimingParts[] = 'total;dur=' . number_format($dashboardTotalMs, 2, '.', '');
     header('Server-Timing: ' . implode(', ', $dashboardServerTimingParts));
+    if (function_exists('db_profile_enabled') && db_profile_enabled()) {
+        error_log('[dashboard-profile] ' . json_encode([
+            'total_ms' => round($dashboardTotalMs, 2),
+            'timings_ms' => $dashboardTimings,
+            'db' => $dbProfile,
+        ], JSON_UNESCAPED_SLASHES));
+    }
 
     render_view('dashboard', [
         'title' => t('nav.dashboard'),

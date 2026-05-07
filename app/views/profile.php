@@ -188,7 +188,7 @@ $profileExportPayload = [
     'totals' => [
         'steps' => (int) ($profileMetric['total_steps'] ?? 0),
         'distance_km' => (float) ($profileMetric['total_km'] ?? 0),
-        'workouts' => (int) ($profileMetric['workout_success'] ?? 0),
+        'workouts' => (int) max((int) ($profileMetric['workout_count'] ?? 0), (int) ($profileMetric['workout_success'] ?? 0)),
         'score' => (float) ($profileMetric['score'] ?? 0),
         'strikes' => (int) ($profileMetric['current_strikes'] ?? 0),
         'penalty' => (int) ($profileMetric['total_penalty'] ?? 0),
@@ -241,10 +241,11 @@ if ($profileWeightChart !== []) {
     $latestWeightRow = $profileWeightChart[count($profileWeightChart) - 1];
     $latestWeight = is_numeric($latestWeightRow['value'] ?? null) ? (float) $latestWeightRow['value'] : null;
 }
+$profileWorkoutTotal = (int) max((int) ($profileMetric['workout_count'] ?? 0), (int) ($profileMetric['workout_success'] ?? 0));
 $profileDataCards = [
     ['label' => t('metric.steps'), 'value' => number_format((int) ($profileMetric['total_steps'] ?? 0), 0, '.', ''), 'meta' => t('metric.total')],
     ['label' => t('metric.total_km'), 'value' => number_format((float) ($profileMetric['total_km'] ?? 0), 2, '.', '') . ' km', 'meta' => t('metric.distance_km')],
-    ['label' => t('metric.workouts'), 'value' => (string) (int) ($profileMetric['workout_success'] ?? 0), 'meta' => t('metric.total')],
+    ['label' => t('metric.workouts'), 'value' => (string) $profileWorkoutTotal, 'meta' => t('metric.total')],
     ['label' => t('metric.score'), 'value' => number_format((float) ($profileMetric['score'] ?? 0), 1, '.', ''), 'meta' => t('metric.current_value')],
     ['label' => t('metric.strikes'), 'value' => (string) (int) ($profileMetric['current_strikes'] ?? 0), 'meta' => t('metric.current_value')],
     ['label' => t('metric.penalty'), 'value' => "\u{20AC}" . number_format((float) ($profileMetric['total_penalty'] ?? 0), 2, '.', ''), 'meta' => t('metric.total')],
@@ -265,6 +266,19 @@ if (($profileUser['calorie_consumed_max'] ?? null) !== null) {
 if ($calorieConfigParts !== []) {
     $profileDataCards[] = ['label' => t('profile.calorie_config'), 'value' => (string) count($calorieConfigParts), 'meta' => implode(' / ', $calorieConfigParts)];
 }
+$featuredGoal = $activeGoals[0] ?? null;
+$featuredGoalCurrent = is_array($featuredGoal) ? $goalCurrentValue($featuredGoal) : 0.0;
+$featuredGoalProgress = is_array($featuredGoal) ? $goalProgressPercent($featuredGoal, $featuredGoalCurrent) : 0.0;
+$featuredGoalType = is_array($featuredGoal) ? normalize_goal_target_type((string) ($featuredGoal['target_type'] ?? 'custom')) : 'custom';
+$latestAchievements = array_slice(array_values((array) ($userAchievements ?? [])), 0, 3);
+$latestActivity = array_slice(array_values((array) ($recentActivity ?? [])), 0, 5);
+$profileSetupRows = [
+    ['label' => t('common.username'), 'value' => '@' . (string) ($profileUser['username'] ?? '')],
+    ['label' => t('settings.primary_goal'), 'value' => (string) ($profileUser['primary_goal_type'] ?? 'steps') . ' ' . (string) ($profileUser['primary_goal_value'] ?? $profileUser['step_goal'] ?? '')],
+    ['label' => t('profile.workout_target'), 'value' => (string) ($profileUser['workout_target'] ?? 0) . '/' . strtolower(t('common.week'))],
+    ['label' => t('metric.ideal_weight'), 'value' => ($profileUser['ideal_weight'] ?? null) !== null ? (string) $profileUser['ideal_weight'] . ' kg' : '-'],
+    ['label' => t('profile.calorie_config'), 'value' => $calorieConfigParts !== [] ? implode(' / ', $calorieConfigParts) : '-'],
+];
 ?>
 <section class="screen stack-lg spa-shell" data-spa-page="profile">
     <div class="hero-panel profile-hero">
@@ -309,7 +323,6 @@ if ($calorieConfigParts !== []) {
                 <h2><?= e(t('profile.my_data')) ?></h2>
                 <p class="muted small"><?= e(t('profile.my_data_subtitle')) ?></p>
             </div>
-            <a class="btn btn-ghost small" href="/?page=analytics&user_id=<?= (int) ($profileUser['id'] ?? 0) ?>"><?= e(t('nav.analytics')) ?></a>
         </div>
         <div class="profile-data-grid">
             <?php foreach ($profileDataCards as $card): ?>
@@ -323,36 +336,97 @@ if ($calorieConfigParts !== []) {
     </article>
     <?php endif; ?>
 
-    <article class="panel settings-list<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-main <?= $activeSection !== '' ? 'hidden' : '' ?>>
-        <a class="settings-row" href="<?= e($profileUrl('goals')) ?>" data-spa-link>
-            <span>
-                <strong><?= e(t('goals.personal')) ?></strong>
-                <small class="muted"><?= count($activeGoals) ?> <?= e(t('profile.active_goals_suffix')) ?> · <?= e($goalPreview !== [] ? implode(' · ', $goalPreview) : t('goals.empty')) ?></small>
-            </span>
-            <span class="settings-chevron" aria-hidden="true">›</span>
-        </a>
-        <a class="settings-row" href="<?= e($profileUrl('achievements')) ?>" data-spa-link>
-            <span>
-                <strong><?= e(t('profile.achievements')) ?></strong>
-                <small class="muted"><?= $achievementCount ?> <?= e(t('profile.unlocked_suffix')) ?> · <?= e($achievementPreview !== [] ? implode(' · ', $achievementPreview) : t('achievements.empty')) ?></small>
-            </span>
-            <span class="settings-chevron" aria-hidden="true">›</span>
-        </a>
-        <a class="settings-row" href="<?= e($profileUrl('config')) ?>" data-spa-link>
-            <span>
-                <strong><?= e(t('profile.current_config')) ?></strong>
-                <small class="muted"><?= e((string) $profileUser['username']) ?> · <?= e((string) ($profileUser['primary_goal_type'] ?? 'steps')) ?></small>
-            </span>
-            <span class="settings-chevron" aria-hidden="true">›</span>
-        </a>
-        <a class="settings-row" href="<?= e($profileUrl('activity')) ?>" data-spa-link>
-            <span>
-                <strong><?= e(t('profile.recent_activity')) ?></strong>
-                <small class="muted"><?= $activityCount ?> events · <?= e($activityPreview !== [] ? implode(' · ', $activityPreview) : t('audit.empty')) ?></small>
-            </span>
-            <span class="settings-chevron" aria-hidden="true">›</span>
-        </a>
-    </article>
+    <section class="profile-home-grid<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-main <?= $activeSection !== '' ? 'hidden' : '' ?>>
+        <article class="panel profile-home-card profile-home-goals">
+            <div class="profile-home-card-head">
+                <div>
+                    <p class="eyebrow"><?= e(t('goals.personal')) ?></p>
+                    <h2><?= e(t('goals.personal')) ?></h2>
+                </div>
+                <?php if ($canEditProfile): ?>
+                    <a class="btn btn-ghost small" href="<?= e($profileUrl('goals', ['goal_new' => 1])) ?>" data-spa-link><?= e(t('profile.new_goal')) ?></a>
+                <?php endif; ?>
+            </div>
+            <?php if (is_array($featuredGoal)): ?>
+                <div class="profile-home-goal-main">
+                    <strong><?= e((string) ($featuredGoal['title'] ?? '')) ?></strong>
+                    <span><?= e($goalTypeLabel((string) ($featuredGoal['target_type'] ?? ''))) ?> · <?= e($formatGoalValue($featuredGoalCurrent, $featuredGoalType)) ?> / <?= e($formatGoalValue((float) ($featuredGoal['target_value'] ?? 0), $featuredGoalType)) ?></span>
+                    <?php if ((string) ($featuredGoal['due_date'] ?? '') !== ''): ?>
+                        <small><?= e(t('goals.due_date')) ?>: <?= e(format_date_eu((string) $featuredGoal['due_date'])) ?></small>
+                    <?php endif; ?>
+                    <div class="goal-progress"><span style="width: <?= e((string) $featuredGoalProgress) ?>%"></span></div>
+                    <small><?= e(t('profile.current_progress')) ?>: <?= e((string) $featuredGoalProgress) ?>%</small>
+                </div>
+            <?php else: ?>
+                <p class="muted"><?= e(t('goals.empty')) ?></p>
+            <?php endif; ?>
+            <a class="btn btn-ghost small profile-home-secondary" href="<?= e($profileUrl('goals')) ?>" data-spa-link><?= e(t('common.view_all')) ?></a>
+        </article>
+
+        <article class="panel profile-home-card">
+            <div class="profile-home-card-head">
+                <div>
+                    <p class="eyebrow"><?= e((string) $achievementCount) ?> <?= e(t('profile.unlocked_suffix')) ?></p>
+                    <h2><?= e(t('profile.achievements')) ?></h2>
+                </div>
+                <a class="btn btn-ghost small" href="<?= e($profileUrl('achievements')) ?>" data-spa-link><?= e(t('common.view_all')) ?></a>
+            </div>
+            <?php if ($latestAchievements === []): ?>
+                <p class="muted"><?= e(t('achievements.empty')) ?></p>
+            <?php else: ?>
+                <div class="profile-home-list">
+                    <?php foreach ($latestAchievements as $achievement): ?>
+                        <div>
+                            <strong><?= e((string) ($achievement['name'] ?? '')) ?></strong>
+                            <span><?= e(!empty($achievement['awarded_at']) ? format_date_eu((string) $achievement['awarded_at']) : (string) ($achievement['description'] ?? '')) ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </article>
+
+        <article class="panel profile-home-card">
+            <div class="profile-home-card-head">
+                <div>
+                    <p class="eyebrow"><?= e(t('profile.current_config')) ?></p>
+                    <h2><?= e(t('profile.current_config')) ?></h2>
+                </div>
+                <?php if ($canEditProfile): ?>
+                    <a class="btn btn-ghost small" href="<?= e($profileUrl('config', ['edit' => 1])) ?>" data-spa-link><?= e(t('common.edit')) ?></a>
+                <?php endif; ?>
+            </div>
+            <dl class="profile-home-facts">
+                <?php foreach ($profileSetupRows as $row): ?>
+                    <div>
+                        <dt><?= e((string) $row['label']) ?></dt>
+                        <dd><?= e((string) $row['value']) ?></dd>
+                    </div>
+                <?php endforeach; ?>
+            </dl>
+        </article>
+
+        <article class="panel profile-home-card">
+            <div class="profile-home-card-head">
+                <div>
+                    <p class="eyebrow"><?= e((string) $activityCount) ?> events</p>
+                    <h2><?= e(t('profile.recent_activity')) ?></h2>
+                </div>
+                <a class="btn btn-ghost small" href="<?= e($profileUrl('activity')) ?>" data-spa-link><?= e(t('common.view_all')) ?></a>
+            </div>
+            <?php if ($latestActivity === []): ?>
+                <p class="muted"><?= e(t('audit.empty')) ?></p>
+            <?php else: ?>
+                <div class="profile-home-list profile-home-activity">
+                    <?php foreach ($latestActivity as $item): ?>
+                        <div>
+                            <strong><?= e((string) ($item['summary'] ?? '')) ?></strong>
+                            <span><?= e((string) ($item['action'] ?? '')) ?> · <?= e(format_date_eu((string) ($item['created_at'] ?? ''))) ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </article>
+    </section>
 
     <article class="panel settings-panel<?= $activeSection === 'goals' ? ' active' : '' ?>" data-spa-section="goals" <?= $activeSection === 'goals' ? '' : 'hidden' ?>>
         <div class="stack profile-section-list" data-spa-show-when-no-param="goal_id,goal_new" <?= $goalCreateMode || $goalDetailId > 0 ? 'hidden' : '' ?>>

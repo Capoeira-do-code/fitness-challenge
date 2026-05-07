@@ -11,6 +11,80 @@ const APPROVAL_STATUS_PENDING = 'pending';
 const APPROVAL_STATUS_APPROVED = 'approved';
 const APPROVAL_STATUS_REJECTED = 'rejected';
 
+function app_cache_enabled(): bool
+{
+    $config = is_array($GLOBALS['config'] ?? null) ? (array) $GLOBALS['config'] : [];
+    $raw = strtolower(trim((string) ($config['app_cache_enabled'] ?? getenv('APP_CACHE_ENABLED') ?: '1')));
+
+    return in_array($raw, ['1', 'true', 'yes', 'on'], true);
+}
+
+function app_cache_dir(): string
+{
+    $config = is_array($GLOBALS['config'] ?? null) ? (array) $GLOBALS['config'] : [];
+    $dbPath = (string) ($config['db_path'] ?? dirname(__DIR__) . '/storage/fitness.sqlite');
+
+    return dirname($dbPath) . '/cache';
+}
+
+function app_cache_path(string $key): string
+{
+    return app_cache_dir() . '/' . hash('sha256', $key) . '.json';
+}
+
+function app_cache_get(string $key, int $ttlSeconds = 300): mixed
+{
+    if (!app_cache_enabled()) {
+        return null;
+    }
+    $path = app_cache_path($key);
+    if (!is_file($path) || filemtime($path) === false || (time() - (int) filemtime($path)) > max(1, $ttlSeconds)) {
+        return null;
+    }
+
+    $raw = file_get_contents($path);
+    if (!is_string($raw) || $raw === '') {
+        return null;
+    }
+    $payload = json_decode($raw, true);
+    if (!is_array($payload) || !array_key_exists('value', $payload)) {
+        return null;
+    }
+
+    return $payload['value'];
+}
+
+function app_cache_set(string $key, mixed $value): void
+{
+    if (!app_cache_enabled()) {
+        return;
+    }
+    $dir = app_cache_dir();
+    if (!is_dir($dir)) {
+        mkdir($dir, 0775, true);
+    }
+    $encoded = json_encode(['created_at' => now_iso(), 'value' => $value], JSON_UNESCAPED_SLASHES);
+    if (!is_string($encoded)) {
+        return;
+    }
+
+    file_put_contents(app_cache_path($key), $encoded, LOCK_EX);
+}
+
+function app_cache_clear(): void
+{
+    $dir = app_cache_dir();
+    if (!is_dir($dir)) {
+        return;
+    }
+
+    foreach (glob($dir . '/*.json') ?: [] as $path) {
+        if (is_file($path)) {
+            @unlink($path);
+        }
+    }
+}
+
 function normalize_log_time(mixed $logTimeRaw, string $fallback = '00:00'): string
 {
     $time = trim((string) $logTimeRaw);
@@ -1341,7 +1415,7 @@ function fetch_recent_photos(PDO $pdo, int $limit = 24, ?int $userId = null): ar
 
 function fetch_gallery_photos(PDO $pdo, int $limit = 60, int $offset = 0, ?int $userId = null): array
 {
-    $limit = max(1, min(120, $limit));
+    $limit = max(1, min(5000, $limit));
     $offset = max(0, $offset);
     $params = [];
     $where = '';
@@ -1355,7 +1429,7 @@ function fetch_gallery_photos(PDO $pdo, int $limit = 60, int $offset = 0, ?int $
         'SELECT p.*, u.display_name FROM photo_entries p
          JOIN users u ON u.id = p.user_id
          ' . $where . '
-         ORDER BY p.created_at DESC, p.id DESC
+         ORDER BY p.log_date DESC, p.created_at DESC, p.id DESC
          LIMIT ' . $limit . ' OFFSET ' . $offset,
         $params
     );
@@ -3313,7 +3387,7 @@ function goal_progress_value_from_metric(array $goal, array $metric): float
     return match (true) {
         $type === 'steps' => (float) ($metric['total_steps'] ?? 0),
         $type === 'km' => (float) ($metric['total_km'] ?? 0),
-        $type === 'workouts' => (float) ($metric['workout_success'] ?? 0),
+        $type === 'workouts' => max((float) ($metric['workout_count'] ?? 0), (float) ($metric['workout_success'] ?? 0)),
         $type === 'score' => (float) ($metric['score'] ?? 0),
         $type === 'strikes' => (float) ($metric['current_strikes'] ?? 0),
         $type === 'penalties' => (float) ($metric['total_penalty'] ?? 0),
@@ -3380,7 +3454,7 @@ function goal_team_metric_value_for_type(string $targetType, array $teamSummary,
     return match ($type) {
         'steps' => (float) ($teamSummary['total_steps'] ?? 0),
         'km' => (float) ($teamSummary['total_km'] ?? 0),
-        'workouts' => (float) ($teamSummary['workout_success'] ?? 0),
+        'workouts' => max((float) ($teamSummary['workout_count'] ?? 0), (float) ($teamSummary['workout_success'] ?? 0)),
         'score' => (float) ($teamSummary['score_avg'] ?? 0),
         'strikes' => (float) ($teamSummary['strikes'] ?? 0),
         'penalties' => (float) ($teamSummary['penalty'] ?? 0),
@@ -3467,11 +3541,17 @@ function goal_window_metric_value_for_team(PDO $pdo, array $goal, array $teamUse
 
     $logRows = db_fetch_all(
         $pdo,
-        'SELECT user_id, log_date, log_time, steps, distance_km, workout_done, junk_food, extra_workout, training_calories_burned
-         FROM daily_logs
-         WHERE log_date BETWEEN :start_date AND :end_date
-           AND user_id IN (' . implode(',', $placeholders) . ')
-         ORDER BY user_id ASC, log_date ASC',
+        'SELECT dl.user_id, dl.log_date, dl.log_time, dl.steps, dl.distance_km, dl.workout_done, dl.junk_food, dl.extra_workout, dl.training_calories_burned,
+                COALESCE(w.workout_entry_count, CASE WHEN dl.workout_done = 1 THEN 1 ELSE 0 END) AS workout_entry_count
+         FROM daily_logs dl
+         LEFT JOIN (
+            SELECT log_id, COUNT(*) AS workout_entry_count
+            FROM daily_log_workouts
+            GROUP BY log_id
+         ) w ON w.log_id = dl.id
+         WHERE dl.log_date BETWEEN :start_date AND :end_date
+           AND dl.user_id IN (' . implode(',', $placeholders) . ')
+         ORDER BY dl.user_id ASC, dl.log_date ASC',
         $params
     );
 
@@ -3493,9 +3573,7 @@ function goal_window_metric_value_for_team(PDO $pdo, array $goal, array $teamUse
         $userId = (int) ($logRow['user_id'] ?? 0);
         $logDate = (string) ($logRow['log_date'] ?? '');
         $approvalsByDate = is_array($approvalsByUserDate[$userId] ?? null) ? (array) $approvalsByUserDate[$userId] : [];
-        if (is_counted_workout($logRow, $approvalsByDate, $logDate)) {
-            $sumWorkouts += 1;
-        }
+        $sumWorkouts += counted_workout_total($logRow, $approvalsByDate, $logDate);
     }
 
     if ($type === 'calories_consumed') {
@@ -5310,6 +5388,21 @@ function achievement_progress_for_row(PDO $pdo, array $achievement, string $scop
 function list_achievement_collection(PDO $pdo, string $scope, ?int $userId, ?int $teamId, array $metricsByUser): array
 {
     $scope = $scope === 'team' ? 'team' : 'user';
+    $cacheKey = null;
+    if (function_exists('app_cache_get') && function_exists('app_cache_set')) {
+        $cacheKey = 'achievement_collection:' . hash('sha256', json_encode([
+            'scope' => $scope,
+            'user_id' => $userId,
+            'team_id' => $teamId,
+            'locale' => current_locale(),
+            'metrics' => $metricsByUser,
+        ], JSON_UNESCAPED_SLASHES) ?: '');
+        $cached = app_cache_get($cacheKey, 300);
+        if (is_array($cached)) {
+            return $cached;
+        }
+    }
+
     $achievements = localize_achievement_rows($pdo, db_fetch_all(
         $pdo,
         'SELECT a.*,
@@ -5377,6 +5470,10 @@ function list_achievement_collection(PDO $pdo, string $scope, ?int $userId, ?int
 
         return strcmp((string) ($left['name'] ?? ''), (string) ($right['name'] ?? ''));
     });
+
+    if ($cacheKey !== null) {
+        app_cache_set($cacheKey, $rows);
+    }
 
     return $rows;
 }
@@ -6190,7 +6287,7 @@ function metric_value_for_rule(array $metrics, string $metricKey, string $window
         } elseif ($metricKey === 'distance_km') {
             $value += (float) ($metric['total_km'] ?? 0);
         } elseif ($metricKey === 'workouts') {
-            $value += (float) ($metric['workout_success'] ?? 0);
+            $value += max((float) ($metric['workout_count'] ?? 0), (float) ($metric['workout_success'] ?? 0));
         } elseif ($metricKey === 'score') {
             $value += (float) ($metric['score'] ?? 0);
         } elseif ($metricKey === 'strikes') {
@@ -6227,13 +6324,32 @@ function has_three_workouts_in_week(PDO $pdo, int $userId): bool
 {
     $rows = db_fetch_all(
         $pdo,
-        'SELECT log_date FROM daily_logs WHERE user_id = :user_id AND workout_done = 1 ORDER BY log_date ASC',
+        'SELECT dl.log_date, dl.workout_done, dl.junk_food, dl.extra_workout,
+                COALESCE(w.workout_entry_count, CASE WHEN dl.workout_done = 1 THEN 1 ELSE 0 END) AS workout_entry_count
+         FROM daily_logs dl
+         LEFT JOIN (
+            SELECT log_id, COUNT(*) AS workout_entry_count
+            FROM daily_log_workouts
+            GROUP BY log_id
+         ) w ON w.log_id = dl.id
+         WHERE dl.user_id = :user_id AND dl.workout_done = 1
+         ORDER BY dl.log_date ASC',
         [':user_id' => $userId]
     );
+    if ($rows === []) {
+        return false;
+    }
+
+    $dates = array_values(array_filter(array_map(static fn(array $row): string => (string) ($row['log_date'] ?? ''), $rows)));
+    $approvalsByUser = $dates !== []
+        ? load_approval_status_by_user_date($pdo, min($dates), max($dates))
+        : [];
+    $approvalsByDate = is_array($approvalsByUser[$userId] ?? null) ? (array) $approvalsByUser[$userId] : [];
     $counts = [];
     foreach ($rows as $row) {
-        $week = week_start_for(new DateTimeImmutable((string) $row['log_date']))->format('Y-m-d');
-        $counts[$week] = ($counts[$week] ?? 0) + 1;
+        $date = (string) ($row['log_date'] ?? '');
+        $week = week_start_for(new DateTimeImmutable($date))->format('Y-m-d');
+        $counts[$week] = ($counts[$week] ?? 0) + counted_workout_total($row, $approvalsByDate, $date);
         if ($counts[$week] >= 3) {
             return true;
         }
@@ -6398,14 +6514,18 @@ function metric_snapshot_for_view(array $metric, string $view): array
         $weightProgress = (float) $metric['weight_progress_pct'];
     }
     $workoutsForWeek = static function (array $row): int {
-        if (array_key_exists('workout_success_week', $row)) {
-            return max(0, (int) ($row['workout_success_week'] ?? 0));
-        }
+        $workouts = max(0, (int) ($row['workouts'] ?? 0));
+        $success = array_key_exists('workout_success_week', $row)
+            ? max(0, (int) ($row['workout_success_week'] ?? 0))
+            : 0;
         if (array_key_exists('workout_target_week', $row)) {
-            return max(0, (int) ($row['workout_target_week'] ?? 0) - (int) ($row['workout_failures'] ?? 0));
+            $success = max(
+                $success,
+                max(0, (int) ($row['workout_target_week'] ?? 0) - (int) ($row['workout_failures'] ?? 0))
+            );
         }
 
-        return max(0, (int) ($row['workouts'] ?? 0));
+        return max($workouts, $success);
     };
     $strikesForWeek = static fn(array $row): int => max(
         0,
@@ -6415,7 +6535,9 @@ function metric_snapshot_for_view(array $metric, string $view): array
 
     if ($view === 'total') {
         $stepsCompletionPct = round((float) ($metric['step_completion_pct'] ?? 0), 1);
-        $workoutCompletionPct = round((float) ($metric['workout_completion_pct'] ?? 0), 1);
+        $totalWorkouts = max(0, (int) max((int) ($metric['workout_count'] ?? 0), (int) ($metric['workout_success'] ?? 0)));
+        $workoutTarget = max(0, (int) ($metric['workout_target'] ?? 0));
+        $workoutCompletionPct = $workoutTarget > 0 ? round(($totalWorkouts / $workoutTarget) * 100, 1) : 0.0;
         $disciplineScore = max(
             0.0,
             100.0 - min(
@@ -6430,8 +6552,8 @@ function metric_snapshot_for_view(array $metric, string $view): array
         return [
             'steps' => (int) ($metric['total_steps'] ?? 0),
             'distance_km' => round((float) ($metric['total_km'] ?? 0), 2),
-            'workouts' => (int) ($metric['workout_success'] ?? 0),
-            'workout_target' => max(0, (int) ($metric['workout_target'] ?? 0)),
+            'workouts' => $totalWorkouts,
+            'workout_target' => $workoutTarget,
             'score' => $score,
             'strikes' => max(0, (int) ($metric['current_strikes'] ?? 0)),
             'penalty' => max(0.0, (float) ($metric['total_penalty'] ?? 0)),
@@ -7125,7 +7247,9 @@ function apply_strike_review_overrides_to_metric(PDO $pdo, array $metric, ?array
         );
         $weekStepSuccess = max(0, min($weekStepRequired, $weekStepRequired - $weekStepFailures));
         $weekWorkoutTarget = max(0, (int) ($weekRow['workout_target_week'] ?? 0));
-        $weekWorkoutSuccess = max(0, min($weekWorkoutTarget, $weekWorkoutTarget - $weekWorkoutFailures));
+        $weekWorkoutLogged = max(0, (int) ($weekRow['workouts'] ?? 0));
+        $weekWorkoutComplianceSuccess = max(0, min($weekWorkoutTarget, $weekWorkoutTarget - $weekWorkoutFailures));
+        $weekWorkoutSuccess = max($weekWorkoutLogged, $weekWorkoutComplianceSuccess);
         $weekWarnings = count($remainingWarningEvents);
 
         $stepFailuresTotal += $weekStepFailures;
@@ -7150,7 +7274,14 @@ function apply_strike_review_overrides_to_metric(PDO $pdo, array $metric, ?array
     $stepsRequired = max(0, (int) ($metric['steps_required'] ?? 0));
     $workoutTarget = max(0, (int) ($metric['workout_target'] ?? 0));
     $stepsSuccess = max(0, min($stepsRequired, $stepsRequired - $stepFailuresTotal));
-    $workoutSuccess = max(0, min($workoutTarget, $workoutTarget - $workoutFailuresTotal));
+    $workoutSuccess = 0;
+    $workoutCount = 0;
+    foreach ($rebuiltWeekly as $weekRow) {
+        $workoutSuccess += max(0, (int) ($weekRow['workout_success_week'] ?? 0));
+        $workoutCount += max(0, (int) ($weekRow['workouts'] ?? 0));
+    }
+    $workoutSuccess = max($workoutSuccess, $workoutCount, (int) ($metric['workout_count'] ?? 0));
+    $workoutCount = max($workoutCount, (int) ($metric['workout_count'] ?? 0));
     $stepCompletionPct = $stepsRequired > 0 ? round(($stepsSuccess / $stepsRequired) * 100, 1) : 0.0;
     $workoutCompletionPct = $workoutTarget > 0 ? round(($workoutSuccess / $workoutTarget) * 100, 1) : 0.0;
     $disciplinePenalty = min(100.0, ($runningStrikes * 10) + ($warningTotal * 3));
@@ -7171,6 +7302,7 @@ function apply_strike_review_overrides_to_metric(PDO $pdo, array $metric, ?array
     $metric['total_penalty'] = $totalPenalty;
     $metric['steps_success'] = $stepsSuccess;
     $metric['workout_success'] = $workoutSuccess;
+    $metric['workout_count'] = $workoutCount;
     $metric['step_completion_pct'] = $stepCompletionPct;
     $metric['workout_completion_pct'] = $workoutCompletionPct;
     $metric['discipline_score'] = round($disciplineScore, 1);
@@ -7405,11 +7537,14 @@ function team_rows_for_view(array $metrics, string $view): array
     foreach ($metrics as $metric) {
         $snapshot = metric_snapshot_for_view($metric, $view);
         if ($view === 'total') {
-            $snapshot['workouts'] = max(0, (int) ($metric['workout_count'] ?? $metric['workout_success'] ?? 0));
+            $snapshot['workouts'] = max(0, (int) max((int) ($metric['workout_count'] ?? 0), (int) ($metric['workout_success'] ?? 0)));
         } else {
             $workoutWeekRow = metric_week_row_for_view($metric, $view);
             if (is_array($workoutWeekRow)) {
-                $snapshot['workouts'] = max(0, (int) ($workoutWeekRow['workouts'] ?? 0));
+                $snapshot['workouts'] = max(
+                    0,
+                    (int) max((int) ($workoutWeekRow['workouts'] ?? 0), (int) ($workoutWeekRow['workout_success_week'] ?? 0))
+                );
                 $snapshot['workout_target'] = max(0, (int) ($workoutWeekRow['workout_target_week'] ?? 0));
             }
         }
@@ -7441,6 +7576,7 @@ function team_summary_from_rows(array $rows): array
         'score_avg' => 0.0,
         'total_steps' => 0,
         'total_km' => 0.0,
+        'workout_count' => 0,
         'workout_success' => 0,
         'workout_target' => 0,
         'strikes' => 0,
@@ -7454,6 +7590,7 @@ function team_summary_from_rows(array $rows): array
         $totals['score_avg'] += (float) ($row['score'] ?? 0);
         $totals['total_steps'] += (int) ($row['steps'] ?? 0);
         $totals['total_km'] += (float) ($row['distance'] ?? 0);
+        $totals['workout_count'] += (int) ($row['workouts'] ?? 0);
         $totals['workout_success'] += (int) ($row['workouts'] ?? 0);
         $totals['workout_target'] += (int) ($row['workout_target'] ?? 0);
         $totals['strikes'] += (int) ($row['strikes'] ?? 0);

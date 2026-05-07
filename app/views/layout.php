@@ -71,7 +71,7 @@ $renderMobileIcon = static function (string $icon): string {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/styles.css?v=34">
+    <link rel="stylesheet" href="/assets/styles.css?v=35">
 </head>
 <?php
 $bodyClasses = [];
@@ -131,7 +131,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                         <span><?= e(initials_for((string) $currentUser['display_name'])) ?></span>
                     <?php endif; ?>
                     <?php if ($unreadNotificationsCount > 0): ?>
-                        <span class="user-menu-unread-dot" aria-hidden="true"></span>
+                        <span class="user-menu-unread-badge" data-notification-badge aria-label="<?= e(t('nav.notifications')) ?>: <?= (int) $unreadNotificationsCount ?>"><?= (int) min(99, $unreadNotificationsCount) ?></span>
                     <?php endif; ?>
                 </summary>
                 <div class="user-menu-panel">

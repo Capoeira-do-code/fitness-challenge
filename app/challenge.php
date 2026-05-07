@@ -76,6 +76,46 @@ function load_logs_by_user(PDO $pdo, string $startDate, string $endDate): array
     }
 
     if ($rows !== []) {
+        $logIds = [];
+        foreach ($rows as $row) {
+            $logId = (int) ($row['id'] ?? 0);
+            if ($logId > 0) {
+                $logIds[$logId] = true;
+            }
+        }
+        if ($logIds !== []) {
+            $countParams = [];
+            $placeholders = [];
+            foreach (array_keys($logIds) as $index => $logId) {
+                $key = ':log_id_' . $index;
+                $placeholders[] = $key;
+                $countParams[$key] = $logId;
+            }
+            $workoutCounts = db_fetch_all(
+                $pdo,
+                'SELECT log_id, COUNT(*) AS total
+                 FROM daily_log_workouts
+                 WHERE log_id IN (' . implode(',', $placeholders) . ')
+                 GROUP BY log_id',
+                $countParams
+            );
+            $countsByLogId = [];
+            foreach ($workoutCounts as $countRow) {
+                $countsByLogId[(int) ($countRow['log_id'] ?? 0)] = max(0, (int) ($countRow['total'] ?? 0));
+            }
+            foreach ($result as &$logsByDate) {
+                foreach ($logsByDate as &$log) {
+                    $logId = (int) ($log['id'] ?? 0);
+                    $rowCount = $countsByLogId[$logId] ?? 0;
+                    $log['workout_entry_count'] = $rowCount > 0
+                        ? $rowCount
+                        : ((int) ($log['workout_done'] ?? 0) === 1 ? 1 : 0);
+                }
+                unset($log);
+            }
+            unset($logsByDate);
+        }
+
         $habitRows = db_fetch_all(
             $pdo,
             'SELECT dl.user_id, dl.log_date, hd.code, dlh.value
@@ -174,6 +214,15 @@ function is_counted_workout(?array $log, array $approvalsByDate, string $date): 
     return is_approval_approved($approvalsByDate, $date, APPROVAL_TYPE_EXTRA_WORKOUT_OVERRIDE);
 }
 
+function counted_workout_total(?array $log, array $approvalsByDate, string $date): int
+{
+    if (!is_counted_workout($log, $approvalsByDate, $date)) {
+        return 0;
+    }
+
+    return max(1, (int) ($log['workout_entry_count'] ?? 1));
+}
+
 function compute_user_metrics(
     array $user,
     array $logs,
@@ -222,14 +271,14 @@ function compute_user_metrics(
     }
     $primaryGoalType = (string) ($primaryGoals[0]['type'] ?? 'steps');
     $primaryGoalValue = (float) ($primaryGoals[0]['value'] ?? (float) ($user['step_goal'] ?? 0));
-    $did_hit_primary_goals = static function (array $goals, ?array $log, bool $didWorkoutCounted): bool {
+    $did_hit_primary_goals = static function (array $goals, ?array $log, int $countedWorkouts): bool {
         if ($goals === [] || $log === null) {
             return false;
         }
 
         $steps = (int) ($log['steps'] ?? 0);
         $km = (float) ($log['distance_km'] ?? 0);
-        $workouts = $didWorkoutCounted ? 1.0 : 0.0;
+        $workouts = (float) max(0, $countedWorkouts);
         foreach ($goals as $goal) {
             $type = (string) ($goal['type'] ?? '');
             $value = (float) ($goal['value'] ?? 0);
@@ -283,15 +332,16 @@ function compute_user_metrics(
             $latestWeight = $weight;
         }
 
-        $didWorkoutCounted = is_counted_workout($log, $approvalsByDate, $date);
+        $countedWorkoutTotal = counted_workout_total($log, $approvalsByDate, $date);
+        $didWorkoutCounted = $countedWorkoutTotal > 0;
         $workoutSeries[] = [
             'date' => $date,
-            'workouts' => $didWorkoutCounted ? 1 : 0,
+            'workouts' => $countedWorkoutTotal,
         ];
-        if ($didWorkoutCounted) {
-            $workoutCount++;
+        if ($countedWorkoutTotal > 0) {
+            $workoutCount += $countedWorkoutTotal;
         }
-        $hitPrimaryGoals = $did_hit_primary_goals($primaryGoals, $log, $didWorkoutCounted);
+        $hitPrimaryGoals = $did_hit_primary_goals($primaryGoals, $log, $countedWorkoutTotal);
         $didSomething = $didWorkoutCounted || $hitPrimaryGoals;
 
         if ($didSomething) {
@@ -351,8 +401,9 @@ function compute_user_metrics(
             $distanceReason = trim((string) ($log['distance_exception_reason'] ?? ''));
             $workoutReason = trim((string) ($log['workout_exception_reason'] ?? ''));
 
-            $countedWorkout = is_counted_workout($log, $approvalsByDate, $date);
-            $hitPrimaryGoals = $did_hit_primary_goals($primaryGoals, $log, $countedWorkout);
+            $countedWorkoutTotal = counted_workout_total($log, $approvalsByDate, $date);
+            $countedWorkout = $countedWorkoutTotal > 0;
+            $hitPrimaryGoals = $did_hit_primary_goals($primaryGoals, $log, $countedWorkoutTotal);
 
             if ($countedWorkout || $hitPrimaryGoals) {
                 $weekSkipStreak = 0;
@@ -388,22 +439,27 @@ function compute_user_metrics(
             }
 
             if ($countedWorkout) {
-                $weekCountedWorkouts++;
+                $weekCountedWorkouts += $countedWorkoutTotal;
             }
 
             $workoutExceptionApproved = $workoutReason !== '' && is_approval_approved($approvalsByDate, $date, APPROVAL_TYPE_WORKOUT_EXCEPTION);
-            if ($workoutExceptionApproved) {
+            $isStrictWorkoutDay = (int) $user['workout_strict'] === 1
+                && mask_allows_day((string) $user['workout_days_mask'], $date);
+            if (
+                $workoutExceptionApproved
+                && !$countedWorkout
+                && (((int) $user['workout_strict'] !== 1) || $isStrictWorkoutDay)
+            ) {
                 $weekExcusedWorkouts++;
             }
 
-            if ((int) $user['workout_strict'] === 1 && mask_allows_day((string) $user['workout_days_mask'], $date)) {
+            if ($isStrictWorkoutDay) {
                 $workoutTarget++;
                 $weekWorkoutTarget++;
                 $workoutOk = $countedWorkout || $workoutExceptionApproved;
 
                 if ($workoutOk) {
-                    $workoutSuccess++;
-                    $weekWorkoutSuccess++;
+                    // Compliance remains day-based; totals below use the actual counted workout rows.
                 } else {
                     $workoutFailures++;
                     $weekWorkoutFailures++;
@@ -412,10 +468,10 @@ function compute_user_metrics(
             }
         }
 
+        $weekWorkoutSuccess = $weekCountedWorkouts + $weekExcusedWorkouts;
         if ((int) $user['workout_strict'] !== 1) {
             $weekTarget = (int) $user['workout_target'];
             $weekWorkoutTarget = $weekTarget;
-            $weekWorkoutSuccess = min($weekTarget, $weekCountedWorkouts + $weekExcusedWorkouts);
             if ($isComplete) {
                 $workoutTarget += $weekTarget;
                 $workoutSuccess += $weekWorkoutSuccess;
@@ -427,6 +483,8 @@ function compute_user_metrics(
                     $weekFailureEvents[] = ['date' => $weekEnd->format('Y-m-d'), 'type' => 'workout'];
                 }
             }
+        } else {
+            $workoutSuccess += $weekWorkoutSuccess;
         }
 
         usort(
@@ -492,6 +550,7 @@ function compute_user_metrics(
     }
 
     $stepCompletionPct = $stepsRequired > 0 ? round(($stepsSuccess / $stepsRequired) * 100, 1) : 0.0;
+    $workoutSuccess = max($workoutSuccess, $workoutCount);
     $workoutCompletionPct = $workoutTarget > 0 ? round(($workoutSuccess / $workoutTarget) * 100, 1) : 0.0;
 
     $idealWeight = $user['ideal_weight'] !== null ? (float) $user['ideal_weight'] : null;
@@ -569,6 +628,19 @@ function compute_challenge_metrics(PDO $pdo, array $users, string $startDate, st
 
     $startKey = $start->format('Y-m-d');
     $endKey = $end->format('Y-m-d');
+    $cacheKey = null;
+    if (function_exists('app_cache_get') && function_exists('app_cache_set')) {
+        $cacheKey = 'challenge_metrics:' . hash('sha256', json_encode([
+            'users' => array_values(array_map(static fn(array $user): int => (int) ($user['id'] ?? 0), $users)),
+            'start' => $startKey,
+            'end' => $endKey,
+            'today' => $today->format('Y-m-d'),
+        ], JSON_UNESCAPED_SLASHES) ?: '');
+        $cached = app_cache_get($cacheKey, 300);
+        if (is_array($cached)) {
+            return $cached;
+        }
+    }
 
     $logsByUser = load_logs_by_user($pdo, $startKey, $endKey);
     $approvalsByUser = load_approval_status_by_user_date($pdo, $startKey, $endKey);
@@ -600,6 +672,10 @@ function compute_challenge_metrics(PDO $pdo, array $users, string $startDate, st
             );
         }
     );
+
+    if ($cacheKey !== null) {
+        app_cache_set($cacheKey, $results);
+    }
 
     return $results;
 }

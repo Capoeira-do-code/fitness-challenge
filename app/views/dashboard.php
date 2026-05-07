@@ -194,11 +194,11 @@ ob_start();
 <details class="topbar-context dashboard-mobile-controls">
     <summary class="btn btn-ghost btn-topbar dashboard-controls-trigger"><?= e(t('dashboard.view_mode')) ?></summary>
     <div class="topbar-context-panel">
-        <form method="get" class="stack dashboard-control-form">
+        <form method="get" class="stack dashboard-control-form" data-dashboard-control-form>
         <input type="hidden" name="page" value="dashboard">
         <label class="dashboard-control-field">
             <?= e(t('dashboard.viewing')) ?>
-            <select class="glass-select" name="user_id" onchange="this.form.submit()" data-testid="dashboard-user-select">
+            <select class="glass-select" name="user_id" data-testid="dashboard-user-select">
                 <?php foreach ($users as $user): ?>
                     <option value="<?= (int) $user['id'] ?>" <?= (int) $user['id'] === (int) $selectedUser['id'] ? 'selected' : '' ?>>
                         <?= e((string) $user['display_name']) ?>
@@ -208,7 +208,7 @@ ob_start();
         </label>
         <label class="dashboard-control-field">
             <?= e(t('dashboard.view_mode')) ?>
-            <select class="glass-select" name="view" onchange="this.form.submit()" data-testid="dashboard-week-select">
+            <select class="glass-select" name="view" data-testid="dashboard-week-select">
                 <option value="current_week" <?= ($dashboardView ?? '') === 'current_week' ? 'selected' : '' ?>><?= e(t('dashboard.current_week')) ?></option>
                 <option value="total" <?= ($dashboardView ?? '') === 'total' ? 'selected' : '' ?>><?= e(t('metric.total')) ?></option>
                 <?php foreach ($weekOptions as $weekStart): ?>
@@ -257,7 +257,7 @@ ob_start();
 <?php
 $topbarControls = ob_get_clean();
 ?>
-<section class="screen stack-lg">
+<section class="screen stack-lg" data-dashboard-page>
     <div class="motivation-band">
         <span><?= e(t('dashboard.motivation')) ?></span>
         <strong>"<?= e((string) ($motivationQuote ?? t('dashboard.default_quote'))) ?>"</strong>

@@ -767,9 +767,14 @@ function ensure_indexes(PDO $pdo): void
 
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_approval_status ON approval_requests(status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_approval_user ON approval_requests(user_id)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_approval_status_created ON approval_requests(status, created_at DESC)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_approval_user_status_created ON approval_requests(user_id, status, created_at DESC)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_approval_log_type_unique ON approval_requests(log_id, approval_type)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_logs_date ON daily_logs(log_date)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_logs_user_date ON daily_logs(user_id, log_date)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_logs_user_updated ON daily_logs(user_id, updated_at)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_entries_user_date ON photo_entries(user_id, log_date)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_entries_user_log_created ON photo_entries(user_id, log_date, created_at DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_entries_created ON photo_entries(created_at DESC, id DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_entries_user_created ON photo_entries(user_id, created_at DESC, id DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_comments_photo_created ON photo_comments(photo_id, created_at)');
@@ -778,8 +783,13 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_team_memberships_user ON team_memberships(user_id, active)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_goals_scope ON goals(scope, status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_goal_team ON goals(team_id, status)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_goal_user ON goals(user_id, status)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_goals_scope_team_status ON goals(scope, team_id, status)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_goals_scope_user_status ON goals(scope, user_id, status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_awards_user ON achievement_awards(user_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_awards_team ON achievement_awards(team_id)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_awards_user_awarded ON achievement_awards(user_id, awarded_at DESC)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_awards_team_awarded ON achievement_awards(team_id, awarded_at DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_translations_locale ON achievement_translations(locale)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_achievement_translations_unique ON achievement_translations(achievement_id, locale)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_achievement_awards_user_unique ON achievement_awards(achievement_id, user_id) WHERE user_id IS NOT NULL');
@@ -801,6 +811,7 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_motivational_quotes_active ON motivational_quotes(active, created_at DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON user_notifications(user_id, created_at)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON user_notifications(user_id, is_read)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created ON user_notifications(user_id, is_read, created_at DESC)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_user_unique_key ON user_notifications(user_id, unique_key) WHERE unique_key IS NOT NULL');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_system_backups_created ON system_backups(created_at DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_system_backups_status ON system_backups(status)');
@@ -1624,8 +1635,10 @@ function backfill_daily_log_habits(PDO $pdo): void
 
 function db_fetch_one(PDO $pdo, string $sql, array $params = []): ?array
 {
+    $startedAt = microtime(true);
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
+    db_profile_record($sql, $params, $startedAt);
     $row = $stmt->fetch();
 
     return $row === false ? null : $row;
@@ -1633,15 +1646,77 @@ function db_fetch_one(PDO $pdo, string $sql, array $params = []): ?array
 
 function db_fetch_all(PDO $pdo, string $sql, array $params = []): array
 {
+    $startedAt = microtime(true);
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
+    db_profile_record($sql, $params, $startedAt);
 
     return $stmt->fetchAll();
 }
 
 function db_execute(PDO $pdo, string $sql, array $params = []): bool
 {
+    $startedAt = microtime(true);
     $stmt = $pdo->prepare($sql);
 
-    return $stmt->execute($params);
+    $result = $stmt->execute($params);
+    db_profile_record($sql, $params, $startedAt);
+    if ($result && preg_match('/^\s*(insert|update|delete|replace|create|drop|alter)\b/i', $sql) === 1 && function_exists('app_cache_clear')) {
+        app_cache_clear();
+    }
+
+    return $result;
+}
+
+function db_profile_enabled(): bool
+{
+    $config = is_array($GLOBALS['config'] ?? null) ? (array) $GLOBALS['config'] : [];
+    $raw = strtolower(trim((string) ($config['app_profile_enabled'] ?? getenv('APP_PROFILE') ?: '0')));
+
+    return in_array($raw, ['1', 'true', 'yes', 'on'], true);
+}
+
+function db_profile_record(string $sql, array $params, float $startedAt): void
+{
+    $durationMs = max(0.0, (microtime(true) - $startedAt) * 1000);
+    if (!isset($GLOBALS['db_profile']) || !is_array($GLOBALS['db_profile'])) {
+        $GLOBALS['db_profile'] = [
+            'query_count' => 0,
+            'query_time_ms' => 0.0,
+            'slow_queries' => [],
+        ];
+    }
+
+    $GLOBALS['db_profile']['query_count'] = (int) ($GLOBALS['db_profile']['query_count'] ?? 0) + 1;
+    $GLOBALS['db_profile']['query_time_ms'] = (float) ($GLOBALS['db_profile']['query_time_ms'] ?? 0.0) + $durationMs;
+
+    if (!db_profile_enabled()) {
+        return;
+    }
+
+    $config = is_array($GLOBALS['config'] ?? null) ? (array) $GLOBALS['config'] : [];
+    $slowMs = max(1.0, (float) ($config['db_slow_query_ms'] ?? 50));
+    if ($durationMs < $slowMs) {
+        return;
+    }
+
+    $normalizedSql = trim((string) preg_replace('/\s+/', ' ', $sql));
+    $record = [
+        'duration_ms' => round($durationMs, 2),
+        'sql' => $normalizedSql,
+        'params' => $params,
+    ];
+    $GLOBALS['db_profile']['slow_queries'][] = $record;
+    error_log('[db-slow] ' . (json_encode($record, JSON_UNESCAPED_SLASHES) ?: $normalizedSql));
+}
+
+function db_profile_snapshot(): array
+{
+    $profile = is_array($GLOBALS['db_profile'] ?? null) ? (array) $GLOBALS['db_profile'] : [];
+
+    return [
+        'query_count' => (int) ($profile['query_count'] ?? 0),
+        'query_time_ms' => round((float) ($profile['query_time_ms'] ?? 0.0), 2),
+        'slow_queries' => array_values((array) ($profile['slow_queries'] ?? [])),
+    ];
 }

@@ -383,7 +383,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     <article class="mini-card"><div><strong><?= e(t('metric.score')) ?></strong><span><?= e((string) ($memberMetric['score'] ?? 0)) ?></span></div></article>
                     <article class="mini-card"><div><strong><?= e(t('metric.steps')) ?></strong><span><?= e((string) ($memberMetric['total_steps'] ?? 0)) ?></span></div></article>
                     <article class="mini-card"><div><strong><?= e(t('metric.distance_km')) ?></strong><span><?= e((string) ($memberMetric['total_km'] ?? 0)) ?> km</span></div></article>
-                    <article class="mini-card"><div><strong><?= e(t('metric.workouts')) ?></strong><span><?= e((string) ($memberMetric['workout_count'] ?? $memberMetric['workout_success'] ?? 0)) ?></span></div></article>
+                    <article class="mini-card"><div><strong><?= e(t('metric.workouts')) ?></strong><span><?= e((string) max((int) ($memberMetric['workout_count'] ?? 0), (int) ($memberMetric['workout_success'] ?? 0))) ?></span></div></article>
                     <article class="mini-card"><div><strong><?= e(t('metric.strikes')) ?></strong><span><?= e((string) ($memberMetric['current_strikes'] ?? 0)) ?></span></div></article>
                     <article class="mini-card"><div><strong><?= e(t('metric.penalty')) ?></strong><span class="penalty-chip penalty-chip-<?= (int) ($memberMetric['total_penalty'] ?? 0) <= 0 ? 'good' : ((int) ($memberMetric['total_penalty'] ?? 0) <= 50 ? 'warn' : 'bad') ?>">€<?= e((string) ($memberMetric['total_penalty'] ?? 0)) ?></span><small class="muted"><?= e(t('team.lower_is_better')) ?></small></div></article>
                 </div>
@@ -513,7 +513,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         <?php
         $summarySteps = (float) ($summary['total_steps'] ?? 0);
         $summaryDistance = (float) ($summary['total_km'] ?? 0);
-        $summaryWorkouts = (float) ($summary['workout_success'] ?? 0);
+        $summaryWorkouts = max((float) ($summary['workout_count'] ?? 0), (float) ($summary['workout_success'] ?? 0));
         $summaryWorkoutTarget = max(0, (int) ($summary['workout_target'] ?? 0));
         $summaryScore = (float) ($summary['score_avg'] ?? 0);
         $summaryStrikes = (float) ($summary['strikes'] ?? 0);
