@@ -138,6 +138,40 @@ Variables opcionales para credenciales de test:
 
 Si no se definen, usa seed users y `SEED_PASSWORD` (o `ChangeMe123!`).
 
+## PHP Runtime Manager (instalador + UI dedicada)
+
+Script nuevo para instalar/configurar un runtime PHP mas rapido y generar perfiles `php.ini` optimizados:
+
+```bash
+./bin/php_runtime_manager.py
+```
+
+Comandos utiles:
+
+```bash
+# Wizard interactivo (default)
+./bin/php_runtime_manager.py wizard
+
+# Auditar runtime actual
+./bin/php_runtime_manager.py audit
+./bin/php_runtime_manager.py audit --json
+
+# Imprimir comando recomendado de instalacion de PHP
+./bin/php_runtime_manager.py print-install
+
+# Generar php.ini optimizado
+./bin/php_runtime_manager.py write-ini --profile balanced
+
+# Arrancar app con perfil optimizado
+./bin/php_runtime_manager.py serve --profile balanced --host 0.0.0.0 --port 8080
+```
+
+Perfiles disponibles:
+
+- `dev`: debug rapido con recarga frecuente.
+- `balanced` (recomendado): equilibrio entre DX y rendimiento.
+- `max`: mayor rendimiento local con menor revalidacion de archivos.
+
 ## Notas
 
 - Para exponer en internet, ponlo detrás de reverse proxy con HTTPS.

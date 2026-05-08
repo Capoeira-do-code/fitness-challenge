@@ -2488,6 +2488,7 @@
         if (tiles.length === 0) {
             return;
         }
+        const monthStarts = tiles.filter((tile) => tile.dataset.monthStart === '1');
 
         let lastLabel = '';
         let scrollTimer = 0;
@@ -2509,16 +2510,24 @@
                 return;
             }
 
-            let activeTile = tiles[0];
-            for (const tile of tiles) {
+            let activeLabel = '';
+            let activeMonthStart = null;
+            for (const tile of monthStarts) {
                 const rect = tile.getBoundingClientRect();
                 if (rect.top <= topbarOffset + 10) {
-                    activeTile = tile;
+                    activeMonthStart = tile;
                 } else {
                     break;
                 }
             }
-            const label = String(activeTile.dataset.monthLabel || '').trim();
+            if (activeMonthStart instanceof HTMLElement) {
+                activeLabel = String(activeMonthStart.dataset.monthLabel || '').trim();
+            }
+            if (activeLabel === '') {
+                const firstVisible = tiles.find((tile) => tile.getBoundingClientRect().bottom >= topbarOffset + 4);
+                activeLabel = String(firstVisible?.dataset.monthLabel || tiles[0]?.dataset.monthLabel || '').trim();
+            }
+            const label = activeLabel;
             if (label !== '') {
                 if (label !== lastLabel) {
                     overlay.textContent = label;

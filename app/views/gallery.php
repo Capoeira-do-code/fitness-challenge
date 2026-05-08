@@ -14,10 +14,16 @@ $baseParams = [
     'user_id' => $selectedUserId,
 ];
 $recentUrl = '/?' . http_build_query($baseParams + ['gallery_view' => 'recent']);
+$todayDate = to_date(null);
 $calendarUrl = '/?' . http_build_query($baseParams + [
     'gallery_view' => 'calendar',
     'calendar_view' => $calendarView,
     'date' => $selectedDate,
+]);
+$calendarSwitchUrl = '/?' . http_build_query($baseParams + [
+    'gallery_view' => 'calendar',
+    'calendar_view' => $galleryView === 'recent' ? 'month' : $calendarView,
+    'date' => $galleryView === 'recent' ? $todayDate : $selectedDate,
 ]);
 $calendarVisibleLabel = $calendarView === 'month'
     ? localized_month_label($selectedDate)
@@ -53,7 +59,7 @@ ob_start();
                 <?php endif; ?>
                 <nav class="calendar-view-segments" aria-label="<?= e(t('gallery.photo_mode')) ?>">
                     <a class="<?= $galleryView === 'recent' ? 'active' : '' ?>" href="<?= e($recentUrl) ?>" <?= $galleryView === 'recent' ? 'aria-current="page"' : '' ?>><?= e(t('gallery.mode_recent')) ?></a>
-                    <a class="<?= $galleryView === 'calendar' ? 'active' : '' ?>" href="<?= e($calendarUrl) ?>" <?= $galleryView === 'calendar' ? 'aria-current="page"' : '' ?>><?= e(t('gallery.mode_calendar')) ?></a>
+                    <a class="<?= $galleryView === 'calendar' ? 'active' : '' ?>" href="<?= e($calendarSwitchUrl) ?>" <?= $galleryView === 'calendar' ? 'aria-current="page"' : '' ?>><?= e(t('gallery.mode_calendar')) ?></a>
                 </nav>
             </div>
             <?php if ($galleryView === 'calendar'): ?>
@@ -82,14 +88,14 @@ ob_start();
                     </label>
                 <?php endif; ?>
                 <input type="hidden" name="calendar_view" value="<?= e($calendarView) ?>" data-meal-calendar-view>
-            <?php endif; ?>
-            <div class="view-panel-section">
-                <span class="view-panel-label"><?= e(t('common.actions')) ?></span>
-                <div class="calendar-view-actions">
-                    <a class="btn btn-primary btn-block" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
-                    <a class="btn btn-ghost btn-block" href="/?page=entries&mode=calendar&calendar_view=month&user_id=<?= $selectedUserId ?>"><?= e(t('entries.open_calendar')) ?></a>
+                <div class="view-panel-section">
+                    <span class="view-panel-label"><?= e(t('common.actions')) ?></span>
+                    <div class="calendar-view-actions">
+                        <a class="btn btn-primary btn-block" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
+                        <a class="btn btn-ghost btn-block" href="/?page=entries&mode=calendar&calendar_view=month&user_id=<?= $selectedUserId ?>"><?= e(t('entries.open_calendar')) ?></a>
+                    </div>
                 </div>
-            </div>
+            <?php endif; ?>
         </form>
     </div>
 </details>
