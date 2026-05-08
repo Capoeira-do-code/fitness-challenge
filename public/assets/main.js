@@ -1168,6 +1168,11 @@
         };
 
         roots.forEach((root) => {
+            if (!(root instanceof HTMLElement) || root.dataset.spaNavigationReady === '1') {
+                applyState(root, window.location.href);
+                return;
+            }
+            root.dataset.spaNavigationReady = '1';
             applyState(root, window.location.href);
             root.addEventListener('click', (event) => {
                 const target = event.target;
@@ -1186,10 +1191,14 @@
             });
         });
 
-        window.addEventListener('popstate', () => {
+        if (typeof window.__fcSpaPopstateHandler === 'function') {
+            window.removeEventListener('popstate', window.__fcSpaPopstateHandler);
+        }
+        window.__fcSpaPopstateHandler = () => {
             roots.forEach((root) => applyState(root, window.location.href));
             initAdminAchievementFields();
-        });
+        };
+        window.addEventListener('popstate', window.__fcSpaPopstateHandler);
     };
 
     const initProfileGoalsSection = () => {
@@ -1197,6 +1206,11 @@
         if (!profileRoot) {
             return;
         }
+
+        if (document.documentElement.dataset.profileGoalsDelegated === '1') {
+            return;
+        }
+        document.documentElement.dataset.profileGoalsDelegated = '1';
 
         document.addEventListener('click', (event) => {
             const target = event.target;
@@ -2546,8 +2560,16 @@
             }
         };
 
-        window.addEventListener('scroll', requestUpdate, { passive: true });
-        window.addEventListener('resize', requestUpdate, { passive: true });
+        if (typeof window.__fcGalleryMonthOverlayScrollHandler === 'function') {
+            window.removeEventListener('scroll', window.__fcGalleryMonthOverlayScrollHandler);
+        }
+        if (typeof window.__fcGalleryMonthOverlayResizeHandler === 'function') {
+            window.removeEventListener('resize', window.__fcGalleryMonthOverlayResizeHandler);
+        }
+        window.__fcGalleryMonthOverlayScrollHandler = requestUpdate;
+        window.__fcGalleryMonthOverlayResizeHandler = requestUpdate;
+        window.addEventListener('scroll', window.__fcGalleryMonthOverlayScrollHandler, { passive: true });
+        window.addEventListener('resize', window.__fcGalleryMonthOverlayResizeHandler, { passive: true });
     };
 
     const initProfilePdfExport = () => {
@@ -3037,7 +3059,303 @@
         });
     };
 
-    const initAll = () => {
+    const initInPageNavigation = () => {
+        if (document.documentElement.dataset.inPageNavigationReady === '1') {
+            return;
+        }
+        document.documentElement.dataset.inPageNavigationReady = '1';
+
+        const canRunInlineScript = (script) => {
+            if (!(script instanceof HTMLScriptElement)) {
+                return false;
+            }
+            const type = String(script.type || '').trim().toLowerCase();
+            if (type === 'application/json' || type === 'application/ld+json' || type === 'text/plain') {
+                return false;
+            }
+            const src = String(script.getAttribute('src') || '').trim();
+            if (src.includes('/assets/main.js')) {
+                return false;
+            }
+            return type === '' || type === 'text/javascript' || type === 'application/javascript' || type === 'module';
+        };
+
+        const isPjaxPageUrl = (url) => {
+            if (!(url instanceof URL)) {
+                return false;
+            }
+            if (url.origin !== window.location.origin) {
+                return false;
+            }
+            if (url.pathname !== '/') {
+                return false;
+            }
+            const page = (url.searchParams.get('page') || 'dashboard').trim().toLowerCase();
+            if (page === '' || page === 'dashboard' || page === 'gallery' || page === 'analytics' || page === 'team' || page === 'profile' || page === 'settings' || page === 'admin' || page === 'notifications') {
+                return true;
+            }
+            return page === 'entries' && (url.searchParams.get('mode') || '').trim().toLowerCase() === 'calendar';
+        };
+
+        const shouldSkipLink = (link, event) => {
+            if (!(link instanceof HTMLAnchorElement)) {
+                return true;
+            }
+            if (event.defaultPrevented || event.button !== 0) {
+                return true;
+            }
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+                return true;
+            }
+            if (link.target === '_blank' || link.hasAttribute('download')) {
+                return true;
+            }
+            const href = String(link.getAttribute('href') || '').trim();
+            if (href === '' || href.startsWith('#') || href.startsWith('javascript:')) {
+                return true;
+            }
+            if (link.closest('[data-spa-link], [data-spa-back], [data-analytics-page], [data-dashboard-page], [data-calendar-view-option], [data-no-pjax]')) {
+                return true;
+            }
+            return false;
+        };
+
+        const syncBodyState = (nextBody) => {
+            if (!(nextBody instanceof HTMLBodyElement)) {
+                return;
+            }
+            const nextClasses = String(nextBody.getAttribute('class') || '').trim();
+            document.body.className = nextClasses;
+            const nextStyle = String(nextBody.getAttribute('style') || '').trim();
+            if (nextStyle === '') {
+                document.body.removeAttribute('style');
+            } else {
+                document.body.setAttribute('style', nextStyle);
+            }
+            Array.from(document.body.attributes).forEach((attribute) => {
+                if (attribute.name.startsWith('data-')) {
+                    document.body.removeAttribute(attribute.name);
+                }
+            });
+            Array.from(nextBody.attributes).forEach((attribute) => {
+                if (attribute.name.startsWith('data-')) {
+                    document.body.setAttribute(attribute.name, attribute.value);
+                }
+            });
+        };
+
+        const syncBottomNav = (doc) => {
+            const currentItems = Array.from(document.querySelectorAll('.bottom-nav .liquid-nav-item'));
+            const nextItems = Array.from(doc.querySelectorAll('.bottom-nav .liquid-nav-item'));
+            if (currentItems.length === 0 || nextItems.length === 0 || currentItems.length !== nextItems.length) {
+                return;
+            }
+            currentItems.forEach((node, index) => {
+                const current = node instanceof HTMLAnchorElement ? node : null;
+                const next = nextItems[index] instanceof HTMLAnchorElement ? nextItems[index] : null;
+                if (!(current instanceof HTMLAnchorElement) || !(next instanceof HTMLAnchorElement)) {
+                    return;
+                }
+                current.className = next.className;
+                current.href = next.href;
+                if (next.hasAttribute('aria-current')) {
+                    current.setAttribute('aria-current', next.getAttribute('aria-current') || 'page');
+                } else {
+                    current.removeAttribute('aria-current');
+                }
+                const nextIcon = next.querySelector('.nav-icon');
+                const currentIcon = current.querySelector('.nav-icon');
+                if (nextIcon instanceof HTMLElement && currentIcon instanceof HTMLElement) {
+                    currentIcon.innerHTML = nextIcon.innerHTML;
+                }
+                const nextLabel = next.querySelector('.nav-label');
+                const currentLabel = current.querySelector('.nav-label');
+                if (nextLabel instanceof HTMLElement && currentLabel instanceof HTMLElement) {
+                    currentLabel.textContent = nextLabel.textContent || '';
+                }
+            });
+        };
+
+        const executeInsertedScripts = () => {
+            document.querySelectorAll('main.container script').forEach((script) => {
+                if (!(script instanceof HTMLScriptElement) || !canRunInlineScript(script)) {
+                    return;
+                }
+                const nextScript = document.createElement('script');
+                Array.from(script.attributes).forEach((attribute) => {
+                    nextScript.setAttribute(attribute.name, attribute.value);
+                });
+                if (!nextScript.src) {
+                    nextScript.textContent = script.textContent || '';
+                }
+                script.replaceWith(nextScript);
+            });
+        };
+
+        const persistScrollState = () => {
+            const currentState = history.state && typeof history.state === 'object'
+                ? history.state
+                : {};
+            history.replaceState(
+                {
+                    ...currentState,
+                    __fcPjax: true,
+                    scrollX: window.scrollX,
+                    scrollY: window.scrollY,
+                },
+                '',
+                window.location.href
+            );
+        };
+
+        const restoreScrollFromState = (state) => {
+            if (!state || typeof state !== 'object') {
+                window.scrollTo(0, 0);
+                return;
+            }
+            const scrollX = Number(state.scrollX || 0);
+            const scrollY = Number(state.scrollY || 0);
+            window.scrollTo(Number.isFinite(scrollX) ? scrollX : 0, Number.isFinite(scrollY) ? scrollY : 0);
+        };
+
+        const navigateInPage = async (targetUrl, { push = true, popState = null } = {}) => {
+            if (window.__fcPjaxBusy === true) {
+                return;
+            }
+            window.__fcPjaxBusy = true;
+            document.body.classList.add('is-transitioning');
+            document.dispatchEvent(new CustomEvent('fc:beforePageSwap', {
+                detail: {
+                    from: window.location.href,
+                    to: targetUrl.toString(),
+                },
+            }));
+
+            try {
+                const response = await fetch(targetUrl.toString(), {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'text/html',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin',
+                });
+                if (!response.ok) {
+                    throw new Error(`In-page request failed (${response.status})`);
+                }
+                const html = await response.text();
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const nextMain = doc.querySelector('main.container');
+                const currentMain = document.querySelector('main.container');
+                if (!(nextMain instanceof HTMLElement) || !(currentMain instanceof HTMLElement)) {
+                    throw new Error('Missing main container in in-page response.');
+                }
+
+                if (push) {
+                    persistScrollState();
+                    history.pushState({ __fcPjax: true, scrollX: 0, scrollY: 0 }, '', targetUrl.toString());
+                }
+
+                document.title = doc.title || document.title;
+                syncBodyState(doc.body);
+
+                const currentTopbar = document.querySelector('header.topbar');
+                const nextTopbar = doc.querySelector('header.topbar');
+                if (currentTopbar instanceof HTMLElement && nextTopbar instanceof HTMLElement) {
+                    currentTopbar.replaceWith(nextTopbar);
+                } else if (currentTopbar instanceof HTMLElement && !(nextTopbar instanceof HTMLElement)) {
+                    currentTopbar.remove();
+                } else if (!(currentTopbar instanceof HTMLElement) && nextTopbar instanceof HTMLElement) {
+                    document.body.insertBefore(nextTopbar, document.body.firstChild);
+                }
+
+                currentMain.replaceWith(nextMain);
+                syncBottomNav(doc);
+                executeInsertedScripts();
+                runPageHydration(false);
+
+                if (push) {
+                    window.scrollTo(0, 0);
+                } else {
+                    restoreScrollFromState(popState);
+                }
+                document.dispatchEvent(new CustomEvent('fc:afterPageSwap', {
+                    detail: {
+                        url: targetUrl.toString(),
+                        push,
+                    },
+                }));
+            } catch (error) {
+                console.error('In-page navigation failed:', error);
+                window.location.href = targetUrl.toString();
+                return;
+            } finally {
+                window.__fcPjaxBusy = false;
+                document.body.classList.remove('is-transitioning');
+            }
+        };
+
+        if (!history.state || typeof history.state !== 'object' || history.state.__fcPjax !== true) {
+            history.replaceState({
+                __fcPjax: true,
+                scrollX: window.scrollX,
+                scrollY: window.scrollY,
+            }, '', window.location.href);
+        }
+
+        document.addEventListener('click', (event) => {
+            const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+            if (!(link instanceof HTMLAnchorElement) || shouldSkipLink(link, event)) {
+                return;
+            }
+            const url = new URL(link.href, window.location.origin);
+            if (!isPjaxPageUrl(url)) {
+                return;
+            }
+            event.preventDefault();
+            navigateInPage(url, { push: true });
+        }, true);
+
+        document.addEventListener('submit', (event) => {
+            const form = event.target;
+            if (!(form instanceof HTMLFormElement)) {
+                return;
+            }
+            if (String(form.method || 'get').trim().toLowerCase() !== 'get') {
+                return;
+            }
+            if (form.target === '_blank' || form.hasAttribute('data-no-pjax')) {
+                return;
+            }
+            if (form.closest('[data-analytics-filter], [data-dashboard-control-form], [data-no-pjax]')) {
+                return;
+            }
+            const actionUrl = new URL(form.action || window.location.href, window.location.origin);
+            if (!isPjaxPageUrl(actionUrl)) {
+                return;
+            }
+            const params = new URLSearchParams();
+            const formData = new FormData(form);
+            formData.forEach((value, key) => {
+                if (typeof value === 'string') {
+                    params.append(key, value);
+                }
+            });
+            actionUrl.search = params.toString();
+            event.preventDefault();
+            navigateInPage(actionUrl, { push: true });
+        }, true);
+
+        window.addEventListener('popstate', (event) => {
+            const targetUrl = new URL(window.location.href);
+            if (!isPjaxPageUrl(targetUrl)) {
+                return;
+            }
+            navigateInPage(targetUrl, { push: false, popState: event.state });
+        });
+    };
+
+    const runPageHydration = (includeOneTime = false) => {
         const safeInit = (initFn) => {
             try {
                 initFn();
@@ -3046,9 +3364,12 @@
             }
         };
 
+        if (includeOneTime) {
+            safeInit(initLiquidInteractions);
+            safeInit(initInPageNavigation);
+        }
         safeInit(initLoginLocale);
         safeInit(initFlashNotifications);
-        safeInit(initLiquidInteractions);
         safeInit(initSpaNavigation);
         safeInit(initAdminAchievementFields);
         safeInit(initAchievementInfoModal);
@@ -3070,8 +3391,8 @@
     };
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initAll);
+        document.addEventListener('DOMContentLoaded', () => runPageHydration(true));
     } else {
-        initAll();
+        runPageHydration(true);
     }
 })();

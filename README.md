@@ -114,8 +114,13 @@ Opciones:
 ./bin/e2e_local.py --profile full --db-mode reset --force
 ./bin/e2e_local.py --run-checks
 ./bin/e2e_local.py --run-checks --profile full --db-mode e2e
+./bin/e2e_local.py --open-mode app --browser chrome --window-size 1280x860 --window-pos 40,40
+./bin/e2e_local.py --open-mode popup
+./bin/e2e_local.py --open-mode tab
+./bin/e2e_local.py --open-mode none
 ./bin/e2e_local.py --no-auto-install-deps
 ./bin/e2e_local.py --down
+./bin/e2e_local.py --runtime-manager
 ```
 
 Detalles:
@@ -123,12 +128,16 @@ Detalles:
 - `profile=auto` (default): usa `full` si Docker existe; si no, usa `basic`.
 - `profile=basic`: no usa Docker. Inicia la UI con `php -S` si no hay servidor ya corriendo en `base-url`.
 - `profile=full`: usa Docker para levantar la UI.
-- `run-checks`: activa modo runner y genera reporte HTML (en vez de modo serve UI).
+- `open-mode` (default `app`): abre en ventana app/popup/tab o desactiva apertura automatica.
+- `browser`: preferencia de navegador para `app/popup` (`auto|chrome|chromium|edge`).
+- `window-size` y `window-pos`: tamano/posicion de ventana en `app/popup`.
+- `run-checks`: ejecuta checks rapidos (lint PHP + smoke HTTP + assets) y genera reporte HTML.
 - `auto-install-deps` (default `true`): intenta instalar dependencias faltantes (ej. `php`) automáticamente.
 - `db-mode` aplica solo en `profile=full`; por defecto `e2e` (usa `storage/fitness_e2e.sqlite`).
 - `reset` es destructivo y exige `--force`.
-- En `run-checks` + `profile=full`, auto-instala Playwright/chromium si faltan.
-- Genera reporte HTML en `e2e-report/latest.html`.
+- `down`: apaga stack Docker en full (`docker compose down`).
+- `runtime-manager`: abre el wizard de `php_runtime_manager.py`.
+- Genera reporte HTML en `e2e-report/latest.html` y `e2e-report/report_YYYYMMDD_HHMMSS.html`.
 - Devuelve código distinto de cero si fallan tests.
 
 Variables opcionales para credenciales de test:

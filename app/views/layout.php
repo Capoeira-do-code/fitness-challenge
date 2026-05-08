@@ -200,6 +200,6 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     </nav>
 <?php endif; ?>
 
-<script src="/assets/main.js?v=32"></script>
+<script src="/assets/main.js?v=33"></script>
 </body>
 </html>
