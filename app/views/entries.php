@@ -498,13 +498,14 @@ if ($entryMode === 'calendar') {
                     <?php
                     $photoId = (int) ($photo['id'] ?? 0);
                     $category = (string) ($photo['category'] ?? 'other');
-                    $photoUrl = media_url((string) ($photo['file_path'] ?? ''));
+                    $photoPath = (string) ($photo['file_path'] ?? '');
+                    $photoUrl = media_thumbnail_url($photoPath, 400);
                     $nutritionLine = $nutritionSummary($photo);
                     ?>
                     <figure class="photo-card">
                         <a class="photo-card-media" href="/?page=photo&photo_id=<?= $photoId ?>">
                             <?php if ($photoUrl !== ''): ?>
-                                <img src="<?= e($photoUrl) ?>" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
+                                <img src="<?= e($photoUrl) ?>" srcset="<?= e(media_thumbnail_srcset($photoPath, [200, 400, 800])) ?>" sizes="(max-width: 700px) 46vw, 220px" width="400" height="400" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
                             <?php else: ?>
                                 <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
                             <?php endif; ?>
@@ -589,13 +590,13 @@ if ($entryMode === 'calendar') {
                                     <?php foreach ($previewPhotos as $previewPhoto): ?>
                                         <?php $previewImageUrl = (string) ($previewPhoto['thumb_url'] ?: $previewPhoto['photo_url']); ?>
                                         <?php if ($previewImageUrl !== ''): ?>
-                                            <img src="<?= e($previewImageUrl) ?>" srcset="<?= e((string) ($previewPhoto['thumb_srcset'] ?? '')) ?>" sizes="(max-width: 600px) 24vw, 140px" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
+                                            <img src="<?= e($previewImageUrl) ?>" srcset="<?= e((string) ($previewPhoto['thumb_srcset'] ?? '')) ?>" sizes="(max-width: 600px) 24vw, 140px" width="400" height="400" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
                                         <?php endif; ?>
                                     <?php endforeach; ?>
                                 </div>
                             <?php elseif ($previewUrl !== ''): ?>
                                 <div class="entries-calendar-collage collage-count-1">
-                                    <img src="<?= e($previewUrl) ?>" srcset="<?= e($previewSrcset) ?>" sizes="(max-width: 600px) 24vw, 140px" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
+                                    <img src="<?= e($previewUrl) ?>" srcset="<?= e($previewSrcset) ?>" sizes="(max-width: 600px) 24vw, 140px" width="400" height="400" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
                                 </div>
                             <?php else: ?>
                                 <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>

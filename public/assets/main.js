@@ -1577,6 +1577,8 @@
                             image.srcset = String(photo.thumb_srcset || '');
                         }
                         image.sizes = String(photo.thumb_sizes || '(max-width: 600px) 24vw, 140px');
+                        image.width = 400;
+                        image.height = 400;
                         image.alt = String(labels.photo || 'Photo');
                         image.loading = 'lazy';
                         image.decoding = 'async';
@@ -1624,6 +1626,8 @@
                         image.srcset = String(photo.thumb_srcset || '');
                     }
                     image.sizes = String(photo.thumb_sizes || '(max-width: 600px) 46vw, 240px');
+                    image.width = 400;
+                    image.height = 400;
                     image.alt = String(labels.photo || 'Photo');
                     image.loading = 'lazy';
                     image.decoding = 'async';
@@ -1677,6 +1681,8 @@
                         image.srcset = String(photo.thumb_srcset || '');
                     }
                     image.sizes = String(photo.thumb_sizes || '(max-width: 600px) 33vw, 180px');
+                    image.width = 400;
+                    image.height = 400;
                     image.alt = String(labels.photo || 'Photo');
                     image.loading = 'lazy';
                     image.decoding = 'async';
@@ -2471,6 +2477,70 @@
         window.location.replace(url.toString());
     };
 
+    const initGalleryMonthOverlay = () => {
+        const overlay = document.querySelector('[data-gallery-month-floating]');
+        const grid = document.querySelector('.photos-gallery-grid-continuous');
+        if (!(overlay instanceof HTMLElement) || !(grid instanceof HTMLElement)) {
+            return;
+        }
+        const tiles = Array.from(grid.querySelectorAll('.photos-gallery-tile[data-month-label]'))
+            .filter((tile) => tile instanceof HTMLElement);
+        if (tiles.length === 0) {
+            return;
+        }
+
+        let lastLabel = '';
+        let scrollTimer = 0;
+        let ticking = false;
+        const hideOverlaySoon = () => {
+            window.clearTimeout(scrollTimer);
+            scrollTimer = window.setTimeout(() => {
+                overlay.classList.remove('is-visible');
+                overlay.hidden = true;
+            }, 900);
+        };
+        const update = () => {
+            const topbarOffset = 86;
+            const gridRect = grid.getBoundingClientRect();
+            if (window.scrollY <= 12 || gridRect.bottom <= topbarOffset || gridRect.top > window.innerHeight) {
+                overlay.classList.remove('is-visible');
+                overlay.hidden = true;
+                ticking = false;
+                return;
+            }
+
+            let activeTile = tiles[0];
+            for (const tile of tiles) {
+                const rect = tile.getBoundingClientRect();
+                if (rect.top <= topbarOffset + 10) {
+                    activeTile = tile;
+                } else {
+                    break;
+                }
+            }
+            const label = String(activeTile.dataset.monthLabel || '').trim();
+            if (label !== '') {
+                if (label !== lastLabel) {
+                    overlay.textContent = label;
+                    lastLabel = label;
+                }
+                overlay.hidden = false;
+                overlay.classList.add('is-visible');
+                hideOverlaySoon();
+            }
+            ticking = false;
+        };
+        const requestUpdate = () => {
+            if (!ticking) {
+                ticking = true;
+                window.requestAnimationFrame(update);
+            }
+        };
+
+        window.addEventListener('scroll', requestUpdate, { passive: true });
+        window.addEventListener('resize', requestUpdate, { passive: true });
+    };
+
     const initProfilePdfExport = () => {
         const button = document.querySelector('[data-profile-pdf-export]');
         const payloadNode = document.getElementById('profile-pdf-data');
@@ -2983,6 +3053,7 @@
         safeInit(initProfileGoalsSection);
         safeInit(initProfileConfigEditor);
         safeInit(initSettingsAvatarHashFallback);
+        safeInit(initGalleryMonthOverlay);
         safeInit(initImageCroppers);
         safeInit(initProfilePdfExport);
         safeInit(initTeamLayoutEditor);

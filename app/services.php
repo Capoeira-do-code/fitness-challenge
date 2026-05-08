@@ -2574,6 +2574,42 @@ function warm_media_thumbnails(array $config, string $mediaPath, array $widths =
     }
 }
 
+function regenerate_photo_thumbnails(PDO $pdo, array $config, array $widths = [200, 400, 800]): array
+{
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT id, file_path FROM photo_entries WHERE file_path IS NOT NULL AND file_path != "" ORDER BY id ASC'
+    );
+    $photos = 0;
+    $generated = 0;
+    $failed = 0;
+    foreach ($rows as $row) {
+        $path = trim((string) ($row['file_path'] ?? ''));
+        if ($path === '') {
+            continue;
+        }
+        $photos++;
+        foreach ($widths as $width) {
+            try {
+                $thumb = generate_media_thumbnail($config, $path, (int) $width);
+                if (is_array($thumb) && is_file((string) ($thumb['path'] ?? ''))) {
+                    $generated++;
+                } else {
+                    $failed++;
+                }
+            } catch (Throwable) {
+                $failed++;
+            }
+        }
+    }
+
+    return [
+        'photos' => $photos,
+        'generated' => $generated,
+        'failed' => $failed,
+    ];
+}
+
 function create_user(PDO $pdo, array $payload): void
 {
     $now = now_iso();

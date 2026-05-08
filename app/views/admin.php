@@ -383,6 +383,16 @@ $workoutFieldDataKeyLabels = [
             <button class="btn btn-secondary" type="submit"><?= e(t('admin.backup_create_now')) ?></button>
         </form>
 
+        <form method="post" action="/?page=admin" class="admin-thumbnail-regenerate">
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="regenerate_photo_thumbnails">
+            <div>
+                <strong><?= e(t('admin.photo_thumbnails_title')) ?></strong>
+                <p class="muted small"><?= e(t('admin.photo_thumbnails_subtitle')) ?></p>
+            </div>
+            <button class="btn btn-ghost" type="submit"><?= e(t('admin.photo_thumbnails_regenerate')) ?></button>
+        </form>
+
         <?php if (($systemBackups ?? []) === []): ?>
             <p class="muted"><?= e(t('admin.backup_empty')) ?></p>
         <?php else: ?>

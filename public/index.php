@@ -2698,6 +2698,30 @@ if ($page === 'admin') {
             redirect('/?page=admin&section=backups');
         }
 
+        if ($action === 'regenerate_photo_thumbnails') {
+            try {
+                $result = regenerate_photo_thumbnails($pdo, $config);
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'photo_thumbnails_regenerated',
+                    'photo_entry',
+                    'all',
+                    'Photo thumbnails regenerated.',
+                    null,
+                    $result
+                );
+                flash_set('success', t('flash.photo_thumbnails_regenerated', [
+                    'photos' => (string) ($result['photos'] ?? 0),
+                    'generated' => (string) ($result['generated'] ?? 0),
+                    'failed' => (string) ($result['failed'] ?? 0),
+                ]));
+            } catch (Throwable $e) {
+                flash_set('error', t('flash.photo_thumbnails_failed', ['error' => $e->getMessage()]));
+            }
+            redirect('/?page=admin&section=backups');
+        }
+
         if ($action === 'delete_backup') {
             $backupId = (int) ($_POST['backup_id'] ?? 0);
             $backup = fetch_system_backup($pdo, $backupId);
