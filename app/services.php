@@ -1605,6 +1605,7 @@ function save_photo_entry(
         (string) $userId,
         image_upload_policy($config, 'photo_entry')
     );
+    warm_media_thumbnails($config, $storedPath);
     $now = now_iso();
 
     db_execute(
@@ -1973,7 +1974,9 @@ function detect_uploaded_image_mime(string $filePath): string
             if (is_string($detected) && $detected !== '') {
                 $mime = strtolower(trim($detected));
             }
-            finfo_close($finfo);
+            if (PHP_VERSION_ID < 80500) {
+                finfo_close($finfo);
+            }
         }
     }
 
@@ -2123,7 +2126,9 @@ function save_uploaded_image_from_data_url(array $config, string $dataUrl, strin
             if (is_string($detected) && $detected !== '') {
                 $mime = strtolower(trim($detected));
             }
-            finfo_close($finfo);
+            if (PHP_VERSION_ID < 80500) {
+                finfo_close($finfo);
+            }
         }
     }
 
@@ -2436,7 +2441,9 @@ function detect_media_mime_type(string $filePath): string
             if (is_string($detected) && $detected !== '') {
                 $mime = $detected;
             }
-            finfo_close($finfo);
+            if (PHP_VERSION_ID < 80500) {
+                finfo_close($finfo);
+            }
         }
     }
 
@@ -2496,15 +2503,19 @@ function generate_media_thumbnail(array $config, string $mediaPath, int $width =
         'image/webp' => 'imagecreatefromwebp',
         'image/gif' => 'imagecreatefromgif',
     ];
-    if (!isset($loaders[$mime]) || !function_exists($loaders[$mime]) || !function_exists('imagecreatetruecolor') || !function_exists('imagejpeg')) {
+    $writeWebp = function_exists('imagewebp');
+    $writeJpeg = function_exists('imagejpeg');
+    if (!isset($loaders[$mime]) || !function_exists($loaders[$mime]) || !function_exists('imagecreatetruecolor') || (!$writeWebp && !$writeJpeg)) {
         return null;
     }
 
     $sourceMtime = @filemtime($sourcePath) ?: time();
-    $cacheKey = sha1((string) ($normalized['normalized'] ?? '') . '|' . (string) $sourceMtime . '|' . (string) $width);
-    $cachePath = media_thumbnail_cache_dir($config) . '/' . $cacheKey . '.jpg';
+    $targetMime = $writeWebp ? 'image/webp' : 'image/jpeg';
+    $targetExtension = $writeWebp ? 'webp' : 'jpg';
+    $cacheKey = sha1((string) ($normalized['normalized'] ?? '') . '|' . (string) $sourceMtime . '|' . (string) $width . '|' . $targetExtension);
+    $cachePath = media_thumbnail_cache_dir($config) . '/' . $cacheKey . '.' . $targetExtension;
     if (is_file($cachePath)) {
-        return ['path' => $cachePath, 'mime' => 'image/jpeg'];
+        return ['path' => $cachePath, 'mime' => $targetMime];
     }
 
     $size = @getimagesize($sourcePath);
@@ -2525,16 +2536,42 @@ function generate_media_thumbnail(array $config, string $mediaPath, int $width =
 
     $targetImage = imagecreatetruecolor($targetWidth, $targetHeight);
     if (!$targetImage instanceof GdImage) {
-        imagedestroy($sourceImage);
+        if (PHP_VERSION_ID < 80500) {
+            imagedestroy($sourceImage);
+        }
         return null;
     }
 
+    if ($targetMime === 'image/webp') {
+        imagealphablending($targetImage, false);
+        imagesavealpha($targetImage, true);
+    } else {
+        $white = imagecolorallocate($targetImage, 255, 255, 255);
+        if ($white !== false) {
+            imagefilledrectangle($targetImage, 0, 0, $targetWidth, $targetHeight, $white);
+        }
+    }
     imagecopyresampled($targetImage, $sourceImage, 0, 0, 0, 0, $targetWidth, $targetHeight, $sourceWidth, $sourceHeight);
-    $written = imagejpeg($targetImage, $cachePath, 78);
-    imagedestroy($sourceImage);
-    imagedestroy($targetImage);
+    $written = $targetMime === 'image/webp'
+        ? imagewebp($targetImage, $cachePath, 78)
+        : imagejpeg($targetImage, $cachePath, 78);
+    if (PHP_VERSION_ID < 80500) {
+        imagedestroy($sourceImage);
+        imagedestroy($targetImage);
+    }
 
-    return $written && is_file($cachePath) ? ['path' => $cachePath, 'mime' => 'image/jpeg'] : null;
+    return $written && is_file($cachePath) ? ['path' => $cachePath, 'mime' => $targetMime] : null;
+}
+
+function warm_media_thumbnails(array $config, string $mediaPath, array $widths = [200, 400, 800]): void
+{
+    foreach ($widths as $width) {
+        try {
+            generate_media_thumbnail($config, $mediaPath, (int) $width);
+        } catch (Throwable) {
+            continue;
+        }
+    }
 }
 
 function create_user(PDO $pdo, array $payload): void

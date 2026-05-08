@@ -6,3 +6,4 @@ storage/
 storage/*
 !storage/.gitkeep
 storage/fitness.sqlite
+/storage

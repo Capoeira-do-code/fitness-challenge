@@ -10649,3 +10649,109 @@ body[data-theme="dark"] :where(.settings-goal-progress, .profile-home-goal-meter
             inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
     }
 }
+
+/* Final gallery/calendar mobile sheet and nav motion pass. */
+:root {
+    --topbar-height: 64px;
+}
+
+.topbar,
+.topbar-actions,
+.topbar-context {
+    overflow: visible;
+}
+
+.topbar {
+    z-index: 1000;
+}
+
+.topbar-context[open] {
+    z-index: 10040;
+}
+
+.topbar-context[open] .topbar-context-panel {
+    z-index: 10050;
+}
+
+.calendar-view-panel {
+    width: min(330px, calc(100vw - 24px));
+}
+
+.calendar-view-form {
+    gap: 0.58rem;
+}
+
+.view-panel-section {
+    display: grid;
+    gap: 0.32rem;
+    min-width: 0;
+}
+
+.view-panel-label,
+.view-panel-section > span:first-child {
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 800;
+    line-height: 1.1;
+    text-transform: uppercase;
+}
+
+.view-panel-section .calendar-view-segments {
+    width: 100%;
+}
+
+.view-panel-section .btn {
+    justify-content: center;
+}
+
+.calendar-view-actions {
+    gap: 0.46rem;
+}
+
+@media (max-width: 768px) {
+    .calendar-view-menu[open] .calendar-view-panel {
+        position: fixed !important;
+        top: calc(var(--topbar-height, 64px) + env(safe-area-inset-top)) !important;
+        right: 12px !important;
+        bottom: auto !important;
+        left: 12px !important;
+        width: auto !important;
+        max-height: calc(100vh - var(--topbar-height, 64px) - 28px - env(safe-area-inset-bottom)) !important;
+        overflow-y: auto !important;
+        overscroll-behavior: contain;
+        border-radius: 22px;
+        padding: 0.82rem;
+        transform: none !important;
+    }
+
+    .mobile-liquid-nav {
+        transform: translateY(0) translateZ(0) !important;
+        opacity: 1;
+        transition:
+            transform 0.28s cubic-bezier(.22, 1, .36, 1),
+            opacity 0.22s ease !important;
+        will-change: transform, opacity;
+    }
+
+    .mobile-liquid-nav.nav-hidden,
+    .mobile-liquid-nav.is-hidden,
+    .bottom-nav.nav-hidden,
+    .bottom-nav.is-hidden {
+        transform: translateY(calc(100% + 24px)) translateZ(0) !important;
+        opacity: 0;
+        pointer-events: none;
+        filter: none;
+    }
+}
+
+body[data-theme="dark"] .view-panel-label,
+body[data-theme="dark"] .view-panel-section > span:first-child {
+    color: rgba(255, 255, 255, 0.72);
+}
+
+@media (prefers-color-scheme: dark) {
+    body[data-theme="auto"] .view-panel-label,
+    body[data-theme="auto"] .view-panel-section > span:first-child {
+        color: rgba(255, 255, 255, 0.72);
+    }
+}

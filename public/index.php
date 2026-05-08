@@ -504,9 +504,9 @@ if ($page === 'media_thumb') {
 $currentUser = require_login($pdo);
 
 if ($page === 'api_meal_calendar') {
-    $calendarView = (string) ($_GET['calendar_view'] ?? ($currentUser['meal_calendar_view'] ?? 'week'));
+    $calendarView = (string) ($_GET['calendar_view'] ?? 'month');
     if (!in_array($calendarView, ['month', 'week', 'day'], true)) {
-        $calendarView = 'week';
+        $calendarView = 'month';
     }
     $includePhotos = (string) ($_GET['include_photos'] ?? '1') !== '0';
     $selectedDate = calendar_date_from_request($_GET, $calendarView);
@@ -564,6 +564,8 @@ if ($page === 'api_meal_calendar') {
             'date_label' => format_date_eu((string) ($photo['log_date'] ?? $selectedDate)),
             'photo_url' => media_url((string) ($photo['file_path'] ?? '')),
             'thumb_url' => media_thumbnail_url((string) ($photo['file_path'] ?? ''), 360),
+            'thumb_srcset' => media_thumbnail_srcset((string) ($photo['file_path'] ?? ''), [200, 400, 800]),
+            'thumb_sizes' => '(max-width: 600px) 24vw, 140px',
             'photo_href' => '/?page=photo&photo_id=' . $photoId,
         ];
     };
@@ -602,6 +604,8 @@ if ($page === 'api_meal_calendar') {
                     ])),
             'preview_url' => $preview !== null ? media_url((string) ($preview['file_path'] ?? '')) : '',
             'thumb_url' => $preview !== null ? media_thumbnail_url((string) ($preview['file_path'] ?? ''), 360) : '',
+            'thumb_srcset' => $preview !== null ? media_thumbnail_srcset((string) ($preview['file_path'] ?? ''), [200, 400, 800]) : '',
+            'thumb_sizes' => '(max-width: 600px) 24vw, 140px',
             'preview_photos' => $previewPhotos,
         ];
     }
@@ -644,6 +648,8 @@ if ($page === 'api_meal_calendar') {
             'nutrition' => $nutritionSummary($photo),
             'photo_url' => media_url((string) ($photo['file_path'] ?? '')),
             'thumb_url' => media_thumbnail_url((string) ($photo['file_path'] ?? ''), 360),
+            'thumb_srcset' => media_thumbnail_srcset((string) ($photo['file_path'] ?? ''), [200, 400, 800]),
+            'thumb_sizes' => '(max-width: 600px) 33vw, 180px',
             'photo_href' => '/?page=photo&photo_id=' . $photoId,
         ];
     };
@@ -946,7 +952,7 @@ if ($page === 'entries') {
         $selectedUserId = (int) $currentUser['id'];
     }
 
-    $calendarView = (string) ($_GET['calendar_view'] ?? ($currentUser['meal_calendar_view'] ?? 'month'));
+    $calendarView = (string) ($_GET['calendar_view'] ?? 'month');
     if (!in_array($calendarView, ['month', 'week', 'day'], true)) {
         $calendarView = 'month';
     }
@@ -1165,11 +1171,14 @@ if ($page === 'photo') {
 }
 
 if ($page === 'gallery') {
-    $galleryView = (string) ($_GET['gallery_view'] ?? 'recent');
+    $galleryView = (string) ($_GET['gallery_view'] ?? '');
     if (!in_array($galleryView, ['recent', 'calendar'], true)) {
-        $galleryView = 'recent';
+        $redirectParams = $_GET;
+        $redirectParams['page'] = 'gallery';
+        $redirectParams['gallery_view'] = 'recent';
+        redirect('/?' . http_build_query($redirectParams));
     }
-    $calendarView = (string) ($_GET['calendar_view'] ?? ($currentUser['meal_calendar_view'] ?? 'month'));
+    $calendarView = (string) ($_GET['calendar_view'] ?? 'month');
     if (!in_array($calendarView, ['month', 'week', 'day'], true)) {
         $calendarView = 'month';
     }

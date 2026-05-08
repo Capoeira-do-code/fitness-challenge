@@ -47,6 +47,7 @@
                         return;
                     }
                     element.classList.toggle('nav-hidden', shouldHide);
+                    element.classList.toggle('is-hidden', shouldHide);
                 });
                 navHidden = shouldHide;
                 lastToggleY = currentY;
@@ -1572,6 +1573,10 @@
                         }
                         const image = document.createElement('img');
                         image.src = src;
+                        if (photo.thumb_srcset) {
+                            image.srcset = String(photo.thumb_srcset || '');
+                        }
+                        image.sizes = String(photo.thumb_sizes || '(max-width: 600px) 24vw, 140px');
                         image.alt = String(labels.photo || 'Photo');
                         image.loading = 'lazy';
                         image.decoding = 'async';
@@ -1615,6 +1620,10 @@
                 if (photo.thumb_url || photo.photo_url) {
                     const image = document.createElement('img');
                     image.src = String(photo.thumb_url || photo.photo_url || '');
+                    if (photo.thumb_srcset) {
+                        image.srcset = String(photo.thumb_srcset || '');
+                    }
+                    image.sizes = String(photo.thumb_sizes || '(max-width: 600px) 46vw, 240px');
                     image.alt = String(labels.photo || 'Photo');
                     image.loading = 'lazy';
                     image.decoding = 'async';
@@ -1664,6 +1673,10 @@
                 if (photo.thumb_url || photo.photo_url) {
                     const image = document.createElement('img');
                     image.src = String(photo.thumb_url || photo.photo_url || '');
+                    if (photo.thumb_srcset) {
+                        image.srcset = String(photo.thumb_srcset || '');
+                    }
+                    image.sizes = String(photo.thumb_sizes || '(max-width: 600px) 33vw, 180px');
                     image.alt = String(labels.photo || 'Photo');
                     image.loading = 'lazy';
                     image.decoding = 'async';

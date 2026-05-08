@@ -482,7 +482,7 @@ function media_url(?string $path, mixed $version = null): string
 
 function media_thumbnail_supported(?string $mime = null): bool
 {
-    if (!function_exists('imagecreatetruecolor') || !function_exists('imagejpeg')) {
+    if (!function_exists('imagecreatetruecolor') || (!function_exists('imagewebp') && !function_exists('imagejpeg'))) {
         return false;
     }
 
@@ -533,6 +533,23 @@ function media_thumbnail_url(?string $path, int $width = 360): string
     $url = '/?page=media_thumb&path=' . rawurlencode((string) ($normalized['normalized'] ?? '')) . '&w=' . max(80, min(1200, $width));
 
     return with_cache_buster($url, $version);
+}
+
+function media_thumbnail_srcset(?string $path, array $widths = [200, 400, 800]): string
+{
+    $items = [];
+    foreach ($widths as $width) {
+        $safeWidth = max(80, min(1200, (int) $width));
+        if ($safeWidth <= 0 || isset($items[$safeWidth])) {
+            continue;
+        }
+        $url = media_thumbnail_url($path, $safeWidth);
+        if ($url !== '') {
+            $items[$safeWidth] = $url . ' ' . $safeWidth . 'w';
+        }
+    }
+
+    return implode(', ', array_values($items));
 }
 
 function avatar_url(array $user): string

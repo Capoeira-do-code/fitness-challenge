@@ -111,14 +111,8 @@ if ($entryMode === 'calendar') {
 }
 $galleryUrl = '/?' . http_build_query([
     'page' => 'gallery',
+    'gallery_view' => 'recent',
     'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0),
-]);
-$calendarModeUrl = '/?' . http_build_query([
-    'page' => 'entries',
-    'mode' => 'calendar',
-    'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0),
-    'calendar_view' => 'month',
-    'date' => $selectedDate,
 ]);
 if ($entryMode === 'calendar') {
     ob_start();
@@ -131,13 +125,8 @@ if ($entryMode === 'calendar') {
                 <input type="hidden" name="mode" value="calendar">
                 <input type="hidden" name="include_photos" value="0">
                 <input type="hidden" value="<?= e($selectedDate) ?>" data-meal-calendar-date>
-                <div class="calendar-view-summary">
-                    <span class="eyebrow"><?= e(t('nav.calendar')) ?></span>
-                    <strong data-meal-calendar-visible-period><?= e($calendarVisibleLabel) ?></strong>
-                    <small><?= e((string) ($selectedUser['display_name'] ?? $currentUser['display_name'] ?? '')) ?></small>
-                </div>
-                <label>
-                    <?= e(t('dashboard.viewing')) ?>
+                <div class="view-panel-section">
+                    <span class="view-panel-label"><?= e(t('common.user')) ?></span>
                     <?php if (is_admin($currentUser) && count((array) ($users ?? [])) > 1): ?>
                         <select name="user_id" onchange="this.form.submit()">
                             <?php foreach ((array) $users as $user): ?>
@@ -150,36 +139,38 @@ if ($entryMode === 'calendar') {
                         <input type="hidden" name="user_id" value="<?= (int) ($selectedUserId ?? $currentUser['id'] ?? 0) ?>">
                         <span class="calendar-view-static"><?= e((string) ($selectedUser['display_name'] ?? $currentUser['display_name'] ?? '')) ?></span>
                     <?php endif; ?>
-                </label>
-                <nav class="calendar-view-segments" aria-label="<?= e(t('gallery.photo_mode')) ?>">
-                    <a href="<?= e('/?' . http_build_query(['page' => 'gallery', 'gallery_view' => 'recent', 'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0)])) ?>"><?= e(t('gallery.mode_recent')) ?></a>
-                    <a class="active" href="<?= e($calendarModeUrl) ?>" aria-current="page"><?= e(t('gallery.mode_calendar')) ?></a>
-                </nav>
+                </div>
+                <div class="view-panel-section">
+                    <span class="view-panel-label"><?= e(t('calendar.view_mode')) ?></span>
+                    <div class="calendar-view-segments" role="group" aria-label="<?= e(t('calendar.view_mode')) ?>">
+                        <?php foreach (['month' => t('calendar.view_month'), 'week' => t('calendar.view_week'), 'day' => t('calendar.view_day')] as $viewKey => $viewLabel): ?>
+                            <a class="<?= $calendarView === $viewKey ? 'active' : '' ?>" href="/?<?= e(http_build_query(['page' => 'entries', 'mode' => 'calendar', 'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0), 'calendar_view' => $viewKey, 'date' => $selectedDate])) ?>" data-calendar-view-option="<?= e($viewKey) ?>"><?= e($viewLabel) ?></a>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
                 <?php if ($calendarView === 'month'): ?>
-                    <label>
+                    <label class="view-panel-section">
                         <span data-meal-calendar-period-label><?= e(t('dashboard.month')) ?></span>
                         <input type="month" name="calendar_month" value="<?= e(substr($selectedDate, 0, 7)) ?>" onchange="this.form.submit()" data-meal-calendar-period data-label-month="<?= e(t('dashboard.month')) ?>" data-label-week="<?= e(t('common.week')) ?>" data-label-date="<?= e(t('common.date')) ?>">
                     </label>
                 <?php elseif ($calendarView === 'week'): ?>
-                    <label>
+                    <label class="view-panel-section">
                         <span data-meal-calendar-period-label><?= e(t('common.week')) ?></span>
                         <input type="week" name="calendar_week" value="<?= e(date_to_iso_week($selectedDate)) ?>" onchange="this.form.submit()" data-meal-calendar-period data-label-month="<?= e(t('dashboard.month')) ?>" data-label-week="<?= e(t('common.week')) ?>" data-label-date="<?= e(t('common.date')) ?>">
                     </label>
                 <?php else: ?>
-                    <label>
+                    <label class="view-panel-section">
                         <span data-meal-calendar-period-label><?= e(t('common.date')) ?></span>
                         <input type="date" name="date" value="<?= e($selectedDate) ?>" onchange="this.form.submit()" data-meal-calendar-period data-label-month="<?= e(t('dashboard.month')) ?>" data-label-week="<?= e(t('common.week')) ?>" data-label-date="<?= e(t('common.date')) ?>">
                     </label>
                 <?php endif; ?>
                 <input type="hidden" name="calendar_view" value="<?= e($calendarView) ?>" data-meal-calendar-view>
-                <div class="calendar-view-segments" role="group" aria-label="<?= e(t('calendar.view_mode')) ?>">
-                    <?php foreach (['month' => t('calendar.view_month'), 'week' => t('calendar.view_week'), 'day' => t('calendar.view_day')] as $viewKey => $viewLabel): ?>
-                        <a class="<?= $calendarView === $viewKey ? 'active' : '' ?>" href="/?<?= e(http_build_query(['page' => 'entries', 'mode' => 'calendar', 'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0), 'calendar_view' => $viewKey, 'date' => $selectedDate])) ?>" data-calendar-view-option="<?= e($viewKey) ?>"><?= e($viewLabel) ?></a>
-                    <?php endforeach; ?>
-                </div>
-                <div class="calendar-view-actions">
-                    <a class="btn btn-ghost btn-block" href="<?= e('/?' . http_build_query(['page' => 'gallery', 'gallery_view' => 'calendar', 'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0), 'calendar_view' => $calendarView, 'date' => $selectedDate])) ?>"><?= e(t('gallery.title')) ?></a>
-                    <a class="btn btn-primary btn-block" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
+                <div class="view-panel-section">
+                    <span class="view-panel-label"><?= e(t('common.actions')) ?></span>
+                    <div class="calendar-view-actions">
+                        <a class="btn btn-ghost btn-block" href="<?= e('/?' . http_build_query(['page' => 'gallery', 'gallery_view' => 'recent', 'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0)])) ?>"><?= e(t('gallery.open_recent')) ?></a>
+                        <a class="btn btn-primary btn-block" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
+                    </div>
                 </div>
             </form>
         </div>
@@ -550,16 +541,20 @@ if ($entryMode === 'calendar') {
                     $photoCount = (int) ($day['count'] ?? 0);
                     $hasLog = $photoCount > 0;
                     $preview = $day['preview'] ?? null;
-                    $previewUrl = is_array($preview) ? media_thumbnail_url((string) ($preview['file_path'] ?? ''), 360) : '';
+                    $previewPath = is_array($preview) ? (string) ($preview['file_path'] ?? '') : '';
+                    $previewUrl = $previewPath !== '' ? media_thumbnail_url($previewPath, 360) : '';
+                    $previewSrcset = $previewPath !== '' ? media_thumbnail_srcset($previewPath, [200, 400, 800]) : '';
                     $previewPhotoId = (int) (($preview['id'] ?? 0));
                     $previewPhotos = [];
                     foreach (array_slice(array_values((array) ($day['photos'] ?? [])), 0, 3) as $previewPhoto) {
                         if (!is_array($previewPhoto)) {
                             continue;
                         }
+                        $previewPhotoPath = (string) ($previewPhoto['file_path'] ?? '');
                         $previewPhotoPayload = [
-                            'thumb_url' => media_thumbnail_url((string) ($previewPhoto['file_path'] ?? ''), 360),
-                            'photo_url' => media_url((string) ($previewPhoto['file_path'] ?? '')),
+                            'thumb_url' => media_thumbnail_url($previewPhotoPath, 360),
+                            'photo_url' => media_url($previewPhotoPath),
+                            'thumb_srcset' => media_thumbnail_srcset($previewPhotoPath, [200, 400, 800]),
                         ];
                         if ((string) ($previewPhotoPayload['thumb_url'] ?: $previewPhotoPayload['photo_url']) !== '') {
                             $previewPhotos[] = $previewPhotoPayload;
@@ -594,13 +589,13 @@ if ($entryMode === 'calendar') {
                                     <?php foreach ($previewPhotos as $previewPhoto): ?>
                                         <?php $previewImageUrl = (string) ($previewPhoto['thumb_url'] ?: $previewPhoto['photo_url']); ?>
                                         <?php if ($previewImageUrl !== ''): ?>
-                                            <img src="<?= e($previewImageUrl) ?>" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
+                                            <img src="<?= e($previewImageUrl) ?>" srcset="<?= e((string) ($previewPhoto['thumb_srcset'] ?? '')) ?>" sizes="(max-width: 600px) 24vw, 140px" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
                                         <?php endif; ?>
                                     <?php endforeach; ?>
                                 </div>
                             <?php elseif ($previewUrl !== ''): ?>
                                 <div class="entries-calendar-collage collage-count-1">
-                                    <img src="<?= e($previewUrl) ?>" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
+                                    <img src="<?= e($previewUrl) ?>" srcset="<?= e($previewSrcset) ?>" sizes="(max-width: 600px) 24vw, 140px" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
                                 </div>
                             <?php else: ?>
                                 <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
