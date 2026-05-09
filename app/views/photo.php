@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 $photo = is_array($photo ?? null) ? $photo : [];
 $comments = is_array($comments ?? null) ? array_values((array) $comments) : [];
+$commentCount = count($comments);
 $photoId = (int) ($photo['id'] ?? 0);
 $photoUrl = media_url((string) ($photo['file_path'] ?? ''));
 $photoLogDate = to_date((string) ($photo['log_date'] ?? null));
@@ -71,11 +72,11 @@ foreach ($nutritionFields as $field => $meta) {
                 <h1 class="photo-post-title"><?= e(t('photo.title')) ?></h1>
             </div>
             <div class="photo-post-head-actions">
-                <a class="btn btn-ghost small photo-back-btn" href="<?= e($backUrl) ?>">← <?= e(t('photo.back_to_entries')) ?></a>
+                <a class="btn btn-ghost small photo-back-btn" href="<?= e($backUrl) ?>">&larr; <?= e(t('photo.back_to_entries')) ?></a>
                 <?php if ($photoCanDelete || $photoCanEdit): ?>
                     <?php $photoDeleteFormId = 'photo-delete-form-page-' . $photoId; ?>
                     <details class="photo-post-menu photo-post-head-menu">
-                        <summary class="btn btn-ghost small" aria-label="<?= e(t('photo.actions')) ?>">•••</summary>
+                        <summary class="btn btn-ghost small" aria-label="<?= e(t('photo.actions')) ?>">&bull;&bull;&bull;</summary>
                         <div class="photo-post-menu-panel">
                             <?php if ($photoCanEdit): ?>
                                 <button
@@ -171,7 +172,9 @@ foreach ($nutritionFields as $field => $meta) {
         <article class="photo-comments stack">
             <div class="panel-head photo-comments-head">
                 <h2><?= e(t('photo.comments')) ?></h2>
-                <span class="badge"><?= count($comments) ?></span>
+                <?php if ($commentCount > 0): ?>
+                    <span class="badge"><?= $commentCount ?></span>
+                <?php endif; ?>
             </div>
 
             <form method="post" action="/?page=photo&photo_id=<?= $photoId ?>" class="stack photo-comment-form">

@@ -114,6 +114,21 @@ $galleryUrl = '/?' . http_build_query([
     'gallery_view' => 'recent',
     'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0),
 ]);
+$entrySelectedDateObject = null;
+try {
+    $entrySelectedDateObject = new DateTimeImmutable((string) $selectedDate);
+} catch (Throwable) {
+    $entrySelectedDateObject = new DateTimeImmutable('today');
+}
+$entryPrevDate = $entrySelectedDateObject->modify('-1 day')->format('Y-m-d');
+$entryNextDate = $entrySelectedDateObject->modify('+1 day')->format('Y-m-d');
+$entryUrlFor = static function (string $mode, string $date) use ($selectedDate): string {
+    return '/?' . http_build_query([
+        'page' => 'entries',
+        'mode' => $mode,
+        'date' => $date !== '' ? $date : (string) $selectedDate,
+    ]);
+};
 if ($entryMode === 'calendar') {
     ob_start();
     ?>
@@ -181,33 +196,30 @@ if ($entryMode === 'calendar') {
 ?>
 <section class="screen stack-lg<?= $entryMode === 'calendar' ? ' entries-calendar-screen' : '' ?>">
     <?php if ($entryMode !== 'calendar'): ?>
-    <div class="hero-panel">
-        <div>
-            <p class="eyebrow"><?= e(t('nav.entries')) ?></p>
-            <h1><?= e(t('entries.title')) ?></h1>
-            <p class="muted"><?= e(t('entries.subtitle')) ?></p>
-        </div>
-        <div class="chip-group">
-            <a class="btn <?= $entryMode === 'data' ? 'btn-primary' : 'btn-ghost' ?>" href="/?page=entries&mode=data&date=<?= e($selectedDate) ?>"><?= e(t('entries.quick_data')) ?></a>
-            <a class="btn <?= $entryMode === 'meal' ? 'btn-primary' : 'btn-ghost' ?>" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"><?= e(t('entries.quick_meal')) ?></a>
-        </div>
-    </div>
+    <nav class="entry-mode-tabs" aria-label="<?= e(t('entries.title')) ?>">
+        <a class="<?= $entryMode === 'data' ? 'active' : '' ?>" href="<?= e($entryUrlFor('data', (string) $selectedDate)) ?>" <?= $entryMode === 'data' ? 'aria-current="page"' : '' ?>><?= e(t('entries.quick_data')) ?></a>
+        <a class="<?= $entryMode === 'meal' ? 'active' : '' ?>" href="<?= e($entryUrlFor('meal', (string) $selectedDate)) ?>" <?= $entryMode === 'meal' ? 'aria-current="page"' : '' ?>><?= e(t('entries.quick_meal')) ?></a>
+    </nav>
     <?php endif; ?>
 
     <?php if ($entryMode === 'data'): ?>
         <article class="panel entry-data-panel">
-            <div class="panel-head entry-data-head">
-                <div>
-                    <p class="eyebrow"><?= e(t('entries.day_data')) ?></p>
-                    <h2><?= e(t('entries.day_data')) ?></h2>
-                </div>
-                <div class="entry-datetime-inline">
-                    <label class="entry-date-inline">
-                        <?= e(t('common.date')) ?>
-                        <input id="entry-date" type="date" name="log_date" value="<?= e($selectedDate) ?>" onchange="window.location='/?page=entries&mode=data&date='+this.value;" data-testid="entry-date">
-                    </label>
+            <div class="panel-head entry-data-head entry-data-toolbar">
+                <div class="entry-datetime-inline entry-date-time-row">
+                    <div class="entry-date-nav" aria-label="<?= e(t('common.date')) ?>">
+                        <a class="btn btn-ghost icon-btn entry-day-arrow" href="<?= e($entryUrlFor('data', $entryPrevDate)) ?>" aria-label="<?= e(t('common.previous')) ?> <?= e(t('common.date')) ?>">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+                        </a>
+                        <label class="entry-date-inline">
+                            <span><?= e(t('common.date')) ?></span>
+                            <input id="entry-date" type="date" name="log_date" value="<?= e($selectedDate) ?>" onchange="if (this.value) window.location='/?page=entries&mode=data&date='+this.value;" data-testid="entry-date">
+                        </label>
+                        <a class="btn btn-ghost icon-btn entry-day-arrow" href="<?= e($entryUrlFor('data', $entryNextDate)) ?>" aria-label="<?= e(t('common.next')) ?> <?= e(t('common.date')) ?>">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+                        </a>
+                    </div>
                     <label class="entry-time-inline">
-                        <?= e(t('entries.log_time')) ?>
+                        <span><?= e(t('entries.log_time')) ?></span>
                         <input type="time" name="log_time" value="<?= e($logTimeValue) ?>" form="entry-data-form">
                     </label>
                 </div>
@@ -218,7 +230,7 @@ if ($entryMode === 'calendar') {
                 <input type="hidden" name="action" value="save_log">
                 <input type="hidden" name="log_date" value="<?= e($selectedDate) ?>">
                 <input type="hidden" name="workout_form_mode" value="1">
-                <div class="entry-form-section grid-inline entries-two-col">
+                <div class="entry-form-section grid-inline entries-two-col entry-metric-pair">
                     <label>
                         <?= e(t('metric.steps')) ?>
                         <input type="number" min="0" name="steps" value="<?= e($baseStepsValue) ?>" data-testid="entry-steps">
@@ -229,7 +241,7 @@ if ($entryMode === 'calendar') {
                     </label>
                 </div>
 
-                <div class="entry-form-section quick-stats entries-two-col">
+                <div class="entry-form-section quick-stats entries-two-col entry-metric-pair">
                     <label>
                         <?= e(t('entries.training_calories_burned')) ?>
                         <input type="number" min="0" step="1" name="training_calories_burned" value="<?= e($baseCaloriesValue) ?>">
@@ -267,7 +279,7 @@ if ($entryMode === 'calendar') {
                                 }
                                 ?>
                                 <div class="workout-row" data-workout-row>
-                                    <label>
+                                    <label class="workout-type-field">
                                         <?= e(t('entries.workout_type')) ?>
                                         <select name="workouts[<?= (int) $rowIndex ?>][workout_type_id]" data-name-template="workouts[__INDEX__][workout_type_id]" data-workout-select>
                                             <option value=""><?= e(t('common.none')) ?></option>
@@ -301,7 +313,10 @@ if ($entryMode === 'calendar') {
                                             </label>
                                         <?php endforeach; ?>
                                     </div>
-                                    <button type="button" class="btn btn-ghost small workout-remove-btn" data-workout-remove><?= e(t('entries.remove_workout')) ?></button>
+                                    <button type="button" class="btn btn-ghost small workout-remove-btn" data-workout-remove aria-label="<?= e(t('entries.remove_workout')) ?>" title="<?= e(t('entries.remove_workout')) ?>">
+                                        <span aria-hidden="true">&times;</span>
+                                        <span class="sr-only"><?= e(t('entries.remove_workout')) ?></span>
+                                    </button>
                                 </div>
                             <?php endforeach; ?>
                         </div>
@@ -309,7 +324,7 @@ if ($entryMode === 'calendar') {
 
                     <template data-workout-template>
                         <div class="workout-row" data-workout-row>
-                            <label>
+                            <label class="workout-type-field">
                                 <?= e(t('entries.workout_type')) ?>
                                 <select name="workouts[__INDEX__][workout_type_id]" data-name-template="workouts[__INDEX__][workout_type_id]" data-workout-select>
                                     <option value=""><?= e(t('common.none')) ?></option>
@@ -324,7 +339,10 @@ if ($entryMode === 'calendar') {
                                 <input type="text" name="workouts[__INDEX__][workout_type]" data-name-template="workouts[__INDEX__][workout_type]" placeholder="<?= e(t('entries.workout_type_placeholder')) ?>" data-workout-custom-input>
                             </label>
                             <div class="workout-subfields" data-workout-subfields></div>
-                            <button type="button" class="btn btn-ghost small workout-remove-btn" data-workout-remove><?= e(t('entries.remove_workout')) ?></button>
+                            <button type="button" class="btn btn-ghost small workout-remove-btn" data-workout-remove aria-label="<?= e(t('entries.remove_workout')) ?>" title="<?= e(t('entries.remove_workout')) ?>">
+                                <span aria-hidden="true">&times;</span>
+                                <span class="sr-only"><?= e(t('entries.remove_workout')) ?></span>
+                            </button>
                         </div>
                     </template>
                 </div>

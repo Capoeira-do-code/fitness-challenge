@@ -17,8 +17,8 @@ $penaltyClass = static function (int|float $penalty): string {
     return 'bad';
 };
 ?>
-<section class="screen stack-lg">
-    <div class="hero-panel">
+<section class="screen stack-lg penalties-page">
+    <div class="hero-panel penalties-hero">
         <div>
             <p class="eyebrow"><?= e(t('metric.penalty')) ?></p>
             <h1><?= e(t('penalties.title')) ?></h1>
@@ -27,8 +27,8 @@ $penaltyClass = static function (int|float $penalty): string {
         <a class="btn btn-ghost" href="<?= e((string) $backUrl) ?>"><?= e(t('penalties.back_dashboard')) ?></a>
     </div>
 
-    <article class="panel">
-        <form method="get" class="control-strip wrap">
+    <article class="panel penalties-filter-panel">
+        <form method="get" class="control-strip wrap penalties-filter-form">
             <input type="hidden" name="page" value="penalties">
             <label>
                 <?= e(t('dashboard.viewing')) ?>
@@ -60,7 +60,7 @@ $penaltyClass = static function (int|float $penalty): string {
             <p class="muted"><?= e(t('penalties.no_data')) ?></p>
         </article>
     <?php else: ?>
-        <article class="panel">
+        <article class="panel penalties-summary-panel">
             <div class="metric-grid dashboard-kpis">
                 <article class="metric-card">
                     <div>
@@ -131,7 +131,7 @@ $penaltyClass = static function (int|float $penalty): string {
             </article>
         </div>
 
-        <article class="panel">
+        <article class="panel penalties-weekly-panel">
             <div class="panel-head">
                 <div>
                     <h2><?= e(t('penalties.weekly_detail')) ?></h2>

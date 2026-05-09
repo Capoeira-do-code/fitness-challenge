@@ -64,15 +64,11 @@ $renderAchievementCard = static function (array $achievement) use ($achievements
 ?>
 
 <section class="page-hero achievements-page-hero<?= $achievementScope === 'team' ? ' achievements-page-hero-team' : '' ?>">
+    <a class="btn btn-ghost achievements-back-btn" href="<?= e($backHref) ?>"><?= e(t('common.back')) ?></a>
     <div>
         <p class="eyebrow"><?= e($achievementScope === 'team' ? t('nav.team') : t('common.user')) ?></p>
         <h1><?= e(t('achievements.all_title')) ?></h1>
-        <p class="muted"><?= e($ownerName) ?> <span aria-hidden="true">&middot;</span> <?= e($achievementCompletionText) ?>% <?= e(t('achievements.completion')) ?></p>
-        <div class="achievements-page-meter" aria-hidden="true">
-            <span style="width: <?= e((string) max(0, min(100, $achievementCompletionPct))) ?>%"></span>
-        </div>
     </div>
-    <a class="btn btn-ghost achievements-back-btn" href="<?= e($backHref) ?>"><?= e(t('common.back')) ?></a>
 </section>
 
 <section class="achievement-summary-strip">

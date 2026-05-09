@@ -512,17 +512,23 @@ if ($page === 'api_meal_calendar') {
     $selectedDate = calendar_date_from_request($_GET, $calendarView);
 
     $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
+    if (is_admin($currentUser) && $selectedUserId < 0) {
+        $selectedUserId = 0;
+    }
     if (!is_admin($currentUser) && $selectedUserId !== (int) $currentUser['id']) {
         $selectedUserId = (int) $currentUser['id'];
     }
-    if ($selectedUserId <= 0) {
+    if (!is_admin($currentUser) && $selectedUserId <= 0) {
         $selectedUserId = (int) $currentUser['id'];
     }
 
-    $targetUser = db_fetch_one($pdo, 'SELECT id FROM users WHERE id = :id AND active = 1', [':id' => $selectedUserId]);
-    if ($targetUser === null) {
-        json_response(['ok' => false, 'message' => t('flash.invalid_user')], 404);
+    if ($selectedUserId > 0) {
+        $targetUser = db_fetch_one($pdo, 'SELECT id FROM users WHERE id = :id AND active = 1', [':id' => $selectedUserId]);
+        if ($targetUser === null) {
+            json_response(['ok' => false, 'message' => t('flash.invalid_user')], 404);
+        }
     }
+    $calendarUserFilter = $selectedUserId > 0 ? $selectedUserId : null;
 
     $categoryLabels = [
         'breakfast' => t('entries.breakfast'),
@@ -554,7 +560,7 @@ if ($page === 'api_meal_calendar') {
         return implode(' | ', $parts);
     };
 
-    $mealCalendar = fetch_meal_calendar($pdo, $selectedDate, $selectedUserId, $calendarView);
+    $mealCalendar = fetch_meal_calendar($pdo, $selectedDate, $calendarUserFilter, $calendarView);
     $photoPreviewPayload = static function (array $photo) use ($selectedDate): array {
         $photoId = (int) ($photo['id'] ?? 0);
 
@@ -1170,7 +1176,7 @@ if ($page === 'photo') {
 
     render_view('photo', [
         'title' => t('photo.title'),
-        'currentPage' => 'entries',
+        'currentPage' => 'photo',
         'currentUser' => $currentUser,
         'photo' => $photo,
         'comments' => fetch_photo_comments($pdo, $photoId, 250),
@@ -1193,23 +1199,28 @@ if ($page === 'gallery') {
         $calendarView = 'month';
     }
     $users = is_admin($currentUser) ? list_active_users($pdo) : [$currentUser];
-    $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
-    if (!is_admin($currentUser) || $selectedUserId <= 0) {
+    $selectedUserId = isset($_GET['user_id'])
+        ? (int) $_GET['user_id']
+        : (is_admin($currentUser) ? 0 : (int) $currentUser['id']);
+    if (!is_admin($currentUser)) {
         $selectedUserId = (int) $currentUser['id'];
+    } elseif ($selectedUserId < 0) {
+        $selectedUserId = 0;
     }
 
-    $selectedUser = find_user_by_id($users, $selectedUserId);
-    if ($selectedUser === null) {
+    $selectedUser = $selectedUserId > 0 ? find_user_by_id($users, $selectedUserId) : null;
+    if ($selectedUserId > 0 && $selectedUser === null) {
         $selectedUser = $currentUser;
         $selectedUserId = (int) $currentUser['id'];
     }
+    $galleryUserFilter = $selectedUserId > 0 ? $selectedUserId : null;
 
     $hasExplicitCalendarDate = trim((string) ($_GET['date'] ?? '')) !== ''
         || trim((string) ($_GET['calendar_month'] ?? '')) !== ''
         || trim((string) ($_GET['calendar_week'] ?? '')) !== '';
     $calendarDateFallback = null;
     if (!$hasExplicitCalendarDate) {
-        $latestMealPhoto = fetch_latest_meal_photo($pdo, $selectedUserId);
+        $latestMealPhoto = fetch_latest_meal_photo($pdo, $galleryUserFilter);
         $calendarDateFallback = is_array($latestMealPhoto ?? null) && !empty($latestMealPhoto['log_date'])
             ? (string) $latestMealPhoto['log_date']
             : null;
@@ -1217,10 +1228,10 @@ if ($page === 'gallery') {
     $selectedDate = calendar_date_from_request($_GET, $calendarView, $calendarDateFallback);
 
     $galleryPhotos = $galleryView === 'recent'
-        ? fetch_gallery_photos($pdo, 5000, 0, $selectedUserId)
+        ? fetch_gallery_photos($pdo, 5000, 0, $galleryUserFilter)
         : [];
     $mealCalendar = $galleryView === 'calendar'
-        ? fetch_meal_calendar($pdo, $selectedDate, $selectedUserId, $calendarView)
+        ? fetch_meal_calendar($pdo, $selectedDate, $galleryUserFilter, $calendarView)
         : [];
 
     render_view('gallery', [
@@ -1972,6 +1983,19 @@ if ($page === 'profile') {
     foreach ($habitDefinitions as $habitDefinition) {
         $habitLabelsByCode[(string) $habitDefinition['code']] = (string) $habitDefinition['label'];
     }
+    $personalGoals = list_goals($pdo, 'user', (int) $profileUser['id']);
+    $habitGoalCodes = [];
+    foreach ($personalGoals as $goal) {
+        $goalType = normalize_goal_target_type((string) ($goal['target_type'] ?? ''));
+        if ((string) ($goal['status'] ?? 'active') !== 'active' || !str_starts_with($goalType, 'habit:')) {
+            continue;
+        }
+        $habitCode = substr($goalType, 6);
+        if ($habitCode !== '') {
+            $habitGoalCodes[$habitCode] = true;
+        }
+    }
+    $habitGoalCodesList = array_values(array_keys($habitGoalCodes));
 
     $rangeStart = new DateTimeImmutable($profileChallengeStart);
     $rangeEnd = new DateTimeImmutable($profileChallengeEnd);
@@ -1981,6 +2005,46 @@ if ($page === 'profile') {
 
     $profileDailyDetails = [];
     $profileDailyPhotoNutrition = [];
+    $dailyHasInput = static function (?array $log, array $workouts, array $habitsForPdf, string $stepReason, string $workoutReason, array $approvalsForDate): bool {
+        if ($log === null) {
+            return false;
+        }
+        $hasApproval = false;
+        foreach ($approvalsForDate as $approval) {
+            if (!is_array($approval)) {
+                continue;
+            }
+            if (trim((string) ($approval['status'] ?? '')) !== '' || trim((string) ($approval['detail'] ?? '')) !== '') {
+                $hasApproval = true;
+                break;
+            }
+        }
+
+        return (int) ($log['steps'] ?? 0) > 0
+            || (float) ($log['distance_km'] ?? 0) > 0
+            || $workouts !== []
+            || (($log['training_calories_burned'] ?? null) !== null && (float) $log['training_calories_burned'] > 0)
+            || ($log['weight'] ?? null) !== null
+            || (int) ($log['junk_food'] ?? 0) === 1
+            || (int) ($log['extra_workout'] ?? 0) === 1
+            || trim((string) ($log['notes'] ?? '')) !== ''
+            || $stepReason !== ''
+            || $workoutReason !== ''
+            || $hasApproval
+            || $habitsForPdf !== [];
+    };
+    $nutritionHasInput = static function (array $photos, array $nutritionTotals, array $photoItems): bool {
+        if ($photos !== [] || $photoItems !== []) {
+            return true;
+        }
+        foreach ($nutritionTotals as $value) {
+            if ((float) $value > 0) {
+                return true;
+            }
+        }
+
+        return false;
+    };
     foreach (day_sequence($rangeStart, $rangeEnd) as $day) {
         $date = $day->format('Y-m-d');
         $log = $logsByDate[$date] ?? null;
@@ -2003,41 +2067,48 @@ if ($page === 'profile') {
             if ($code === '') {
                 continue;
             }
+            $habitValue = !empty($log['habits'][$code]) && (int) ($log['habits'][$code]['value'] ?? 0) === 1 ? 1 : 0;
             $habitValues[] = [
                 'code' => $code,
                 'label' => (string) ($habitLabelsByCode[$code] ?? $code),
-                'value' => !empty($log['habits'][$code]) && (int) ($log['habits'][$code]['value'] ?? 0) === 1 ? 1 : 0,
+                'value' => $habitValue,
             ];
         }
+        $habitValuesForPdf = array_values(array_filter(
+            $habitValues,
+            static fn(array $habit): bool => (int) ($habit['value'] ?? 0) === 1 || isset($habitGoalCodes[(string) ($habit['code'] ?? '')])
+        ));
 
         $stepReason = trim((string) ($log['step_exception_reason'] ?? ''));
         $workoutReason = trim((string) ($log['workout_exception_reason'] ?? ''));
         $combinedReason = $stepReason !== '' ? $stepReason : $workoutReason;
         $approvalsForDate = is_array($approvalsByDate[$date] ?? null) ? (array) $approvalsByDate[$date] : [];
 
-        $profileDailyDetails[] = [
-            'date' => $date,
-            'steps' => (int) ($log['steps'] ?? 0),
-            'distance_km' => round((float) ($log['distance_km'] ?? 0), 2),
-            'workout_count' => count($workouts),
-            'workout_counted' => count($workouts) > 0 ? 1 : 0,
-            'workout_types' => $workoutTypes,
-            'training_calories_burned' => ($log['training_calories_burned'] ?? null) !== null ? round((float) $log['training_calories_burned'], 2) : null,
-            'weight' => ($log['weight'] ?? null) !== null ? round((float) $log['weight'], 2) : null,
-            'junk_food' => (int) ($log['junk_food'] ?? 0) === 1 ? 1 : 0,
-            'extra_workout' => (int) ($log['extra_workout'] ?? 0) === 1 ? 1 : 0,
-            'notes' => trim((string) ($log['notes'] ?? '')),
-            'missing_reason' => $combinedReason,
-            'step_exception_reason' => $stepReason,
-            'workout_exception_reason' => $workoutReason,
-            'approval_step_status' => (string) ($approvalsForDate[APPROVAL_TYPE_STEP_EXCEPTION]['status'] ?? ''),
-            'approval_step_detail' => (string) ($approvalsForDate[APPROVAL_TYPE_STEP_EXCEPTION]['detail'] ?? ''),
-            'approval_workout_status' => (string) ($approvalsForDate[APPROVAL_TYPE_WORKOUT_EXCEPTION]['status'] ?? ''),
-            'approval_workout_detail' => (string) ($approvalsForDate[APPROVAL_TYPE_WORKOUT_EXCEPTION]['detail'] ?? ''),
-            'approval_extra_status' => (string) ($approvalsForDate[APPROVAL_TYPE_EXTRA_WORKOUT_OVERRIDE]['status'] ?? ''),
-            'approval_extra_detail' => (string) ($approvalsForDate[APPROVAL_TYPE_EXTRA_WORKOUT_OVERRIDE]['detail'] ?? ''),
-            'habits' => $habitValues,
-        ];
+        if ($dailyHasInput($log, $workouts, $habitValuesForPdf, $stepReason, $workoutReason, $approvalsForDate)) {
+            $profileDailyDetails[] = [
+                'date' => $date,
+                'steps' => (int) ($log['steps'] ?? 0),
+                'distance_km' => round((float) ($log['distance_km'] ?? 0), 2),
+                'workout_count' => count($workouts),
+                'workout_counted' => count($workouts) > 0 ? 1 : 0,
+                'workout_types' => $workoutTypes,
+                'training_calories_burned' => ($log['training_calories_burned'] ?? null) !== null ? round((float) $log['training_calories_burned'], 2) : null,
+                'weight' => ($log['weight'] ?? null) !== null ? round((float) $log['weight'], 2) : null,
+                'junk_food' => (int) ($log['junk_food'] ?? 0) === 1 ? 1 : 0,
+                'extra_workout' => (int) ($log['extra_workout'] ?? 0) === 1 ? 1 : 0,
+                'notes' => trim((string) ($log['notes'] ?? '')),
+                'missing_reason' => $combinedReason,
+                'step_exception_reason' => $stepReason,
+                'workout_exception_reason' => $workoutReason,
+                'approval_step_status' => (string) ($approvalsForDate[APPROVAL_TYPE_STEP_EXCEPTION]['status'] ?? ''),
+                'approval_step_detail' => (string) ($approvalsForDate[APPROVAL_TYPE_STEP_EXCEPTION]['detail'] ?? ''),
+                'approval_workout_status' => (string) ($approvalsForDate[APPROVAL_TYPE_WORKOUT_EXCEPTION]['status'] ?? ''),
+                'approval_workout_detail' => (string) ($approvalsForDate[APPROVAL_TYPE_WORKOUT_EXCEPTION]['detail'] ?? ''),
+                'approval_extra_status' => (string) ($approvalsForDate[APPROVAL_TYPE_EXTRA_WORKOUT_OVERRIDE]['status'] ?? ''),
+                'approval_extra_detail' => (string) ($approvalsForDate[APPROVAL_TYPE_EXTRA_WORKOUT_OVERRIDE]['detail'] ?? ''),
+                'habits' => $habitValuesForPdf,
+            ];
+        }
 
         $photos = is_array($photosByDate[$date] ?? null) ? (array) $photosByDate[$date] : [];
         $nutritionTotals = [
@@ -2070,26 +2141,189 @@ if ($page === 'profile') {
                 'sodium_mg' => ($photo['sodium_mg'] ?? null) !== null ? round((float) $photo['sodium_mg'], 2) : null,
             ];
         }
-        $profileDailyPhotoNutrition[] = [
-            'date' => $date,
-            'photo_count' => count($photos),
-            'totals' => [
-                'calories' => round($nutritionTotals['calories'], 2),
-                'protein_g' => round($nutritionTotals['protein_g'], 2),
-                'carbs_g' => round($nutritionTotals['carbs_g'], 2),
-                'fat_g' => round($nutritionTotals['fat_g'], 2),
-                'fiber_g' => round($nutritionTotals['fiber_g'], 2),
-                'sugar_g' => round($nutritionTotals['sugar_g'], 2),
-                'sodium_mg' => round($nutritionTotals['sodium_mg'], 2),
-            ],
-            'items' => $photoItems,
+        if ($nutritionHasInput($photos, $nutritionTotals, $photoItems)) {
+            $profileDailyPhotoNutrition[] = [
+                'date' => $date,
+                'photo_count' => count($photos),
+                'totals' => [
+                    'calories' => round($nutritionTotals['calories'], 2),
+                    'protein_g' => round($nutritionTotals['protein_g'], 2),
+                    'carbs_g' => round($nutritionTotals['carbs_g'], 2),
+                    'fat_g' => round($nutritionTotals['fat_g'], 2),
+                    'fiber_g' => round($nutritionTotals['fiber_g'], 2),
+                    'sugar_g' => round($nutritionTotals['sugar_g'], 2),
+                    'sodium_mg' => round($nutritionTotals['sodium_mg'], 2),
+                ],
+                'items' => $photoItems,
+            ];
+        }
+    }
+
+    $profileWeeklySummary = [];
+    foreach ((array) ($profileMetric['weekly'] ?? []) as $weekRow) {
+        $stepRequired = max(0, (int) ($weekRow['step_days_required_week'] ?? 0));
+        $stepSuccess = max(0, (int) ($weekRow['step_days_success_week'] ?? 0));
+        $workoutTarget = max(0, (int) ($weekRow['workout_target_week'] ?? 0));
+        $workoutSuccess = max(0, (int) ($weekRow['workout_success_week'] ?? 0));
+        $progressParts = [];
+        if ($stepRequired > 0) {
+            $progressParts[] = min(100.0, ($stepSuccess / $stepRequired) * 100);
+        }
+        if ($workoutTarget > 0) {
+            $progressParts[] = min(100.0, ($workoutSuccess / $workoutTarget) * 100);
+        }
+        $progressPct = $progressParts !== [] ? round(array_sum($progressParts) / count($progressParts), 1) : 0.0;
+        $profileWeeklySummary[] = [
+            'week_start' => (string) ($weekRow['week_start'] ?? ''),
+            'week_end' => (string) ($weekRow['week_end'] ?? ''),
+            'status' => (string) ($weekRow['status'] ?? ''),
+            'steps' => (int) ($weekRow['steps'] ?? 0),
+            'distance_km' => round((float) ($weekRow['km'] ?? 0), 2),
+            'workouts' => (int) ($weekRow['workouts'] ?? 0),
+            'step_success' => $stepSuccess,
+            'step_required' => $stepRequired,
+            'workout_success' => $workoutSuccess,
+            'workout_target' => $workoutTarget,
+            'progress_pct' => $progressPct,
+            'failures' => (int) ($weekRow['total_failures'] ?? 0),
+            'strikes_after_week' => (int) ($weekRow['strikes_after_week'] ?? 0),
+            'penalty' => (float) ($weekRow['penalty'] ?? 0),
         ];
     }
+
+    $profileMonthlySummaryByKey = [];
+    $ensureMonthSummary = static function (array &$rows, string $date): array {
+        $key = substr($date, 0, 7);
+        if (!isset($rows[$key])) {
+            $rows[$key] = [
+                'month' => $key,
+                'label' => localized_month_label($date),
+                'input_days' => 0,
+                'photo_days' => 0,
+                'photo_count' => 0,
+                'steps' => 0,
+                'distance_km' => 0.0,
+                'workouts' => 0,
+                'training_calories_burned' => 0.0,
+                'calories' => 0.0,
+                'protein_g' => 0.0,
+                'carbs_g' => 0.0,
+                'fat_g' => 0.0,
+                'weights' => [],
+                'progress_values' => [],
+            ];
+        }
+
+        return $rows[$key];
+    };
+    foreach ($profileDailyDetails as $day) {
+        $date = (string) ($day['date'] ?? '');
+        if ($date === '') {
+            continue;
+        }
+        $month = $ensureMonthSummary($profileMonthlySummaryByKey, $date);
+        $month['input_days']++;
+        $month['steps'] += (int) ($day['steps'] ?? 0);
+        $month['distance_km'] += (float) ($day['distance_km'] ?? 0);
+        $month['workouts'] += (int) ($day['workout_count'] ?? 0);
+        $month['training_calories_burned'] += (float) ($day['training_calories_burned'] ?? 0);
+        if (($day['weight'] ?? null) !== null) {
+            $month['weights'][] = (float) $day['weight'];
+        }
+        $profileMonthlySummaryByKey[substr($date, 0, 7)] = $month;
+    }
+    foreach ($profileDailyPhotoNutrition as $day) {
+        $date = (string) ($day['date'] ?? '');
+        if ($date === '') {
+            continue;
+        }
+        $month = $ensureMonthSummary($profileMonthlySummaryByKey, $date);
+        $totals = is_array($day['totals'] ?? null) ? (array) $day['totals'] : [];
+        $month['photo_days']++;
+        $month['photo_count'] += (int) ($day['photo_count'] ?? 0);
+        $month['calories'] += (float) ($totals['calories'] ?? 0);
+        $month['protein_g'] += (float) ($totals['protein_g'] ?? 0);
+        $month['carbs_g'] += (float) ($totals['carbs_g'] ?? 0);
+        $month['fat_g'] += (float) ($totals['fat_g'] ?? 0);
+        $profileMonthlySummaryByKey[substr($date, 0, 7)] = $month;
+    }
+    foreach ($profileWeeklySummary as $week) {
+        $date = (string) ($week['week_start'] ?? '');
+        if ($date === '') {
+            continue;
+        }
+        $month = $ensureMonthSummary($profileMonthlySummaryByKey, $date);
+        $month['progress_values'][] = (float) ($week['progress_pct'] ?? 0);
+        $profileMonthlySummaryByKey[substr($date, 0, 7)] = $month;
+    }
+    ksort($profileMonthlySummaryByKey);
+    $profileMonthlySummary = [];
+    foreach ($profileMonthlySummaryByKey as $month) {
+        $weights = (array) ($month['weights'] ?? []);
+        $progressValues = (array) ($month['progress_values'] ?? []);
+        $profileMonthlySummary[] = [
+            'month' => (string) ($month['month'] ?? ''),
+            'label' => (string) ($month['label'] ?? ''),
+            'input_days' => (int) ($month['input_days'] ?? 0),
+            'photo_days' => (int) ($month['photo_days'] ?? 0),
+            'photo_count' => (int) ($month['photo_count'] ?? 0),
+            'steps' => (int) ($month['steps'] ?? 0),
+            'distance_km' => round((float) ($month['distance_km'] ?? 0), 2),
+            'workouts' => (int) ($month['workouts'] ?? 0),
+            'training_calories_burned' => round((float) ($month['training_calories_burned'] ?? 0), 2),
+            'calories' => round((float) ($month['calories'] ?? 0), 2),
+            'protein_g' => round((float) ($month['protein_g'] ?? 0), 2),
+            'carbs_g' => round((float) ($month['carbs_g'] ?? 0), 2),
+            'fat_g' => round((float) ($month['fat_g'] ?? 0), 2),
+            'avg_weight' => $weights !== [] ? round(array_sum($weights) / count($weights), 2) : null,
+            'weight_change' => count($weights) > 1 ? round($weights[count($weights) - 1] - $weights[0], 2) : null,
+            'progress_pct' => $progressValues !== [] ? round(array_sum($progressValues) / count($progressValues), 1) : 0.0,
+        ];
+    }
+    $nutritionTotalsForPdf = [
+        'calories' => 0.0,
+        'protein_g' => 0.0,
+        'carbs_g' => 0.0,
+        'fat_g' => 0.0,
+        'fiber_g' => 0.0,
+        'sugar_g' => 0.0,
+        'sodium_mg' => 0.0,
+    ];
+    $photoCountForPdf = 0;
+    foreach ($profileDailyPhotoNutrition as $day) {
+        $photoCountForPdf += (int) ($day['photo_count'] ?? 0);
+        $totals = is_array($day['totals'] ?? null) ? (array) $day['totals'] : [];
+        foreach ($nutritionTotalsForPdf as $key => $value) {
+            $nutritionTotalsForPdf[$key] = $value + (float) ($totals[$key] ?? 0);
+        }
+    }
+    $progressValuesForPdf = array_map(static fn(array $week): float => (float) ($week['progress_pct'] ?? 0), $profileWeeklySummary);
+    $weightValuesForPdf = array_values(array_filter(array_map(
+        static fn(array $day): ?float => ($day['weight'] ?? null) !== null ? (float) $day['weight'] : null,
+        $profileDailyDetails
+    ), static fn(?float $value): bool => $value !== null));
+    $profileTotalSummary = [
+        'input_days' => count($profileDailyDetails),
+        'photo_days' => count($profileDailyPhotoNutrition),
+        'photo_count' => $photoCountForPdf,
+        'steps' => (int) ($profileMetric['total_steps'] ?? 0),
+        'distance_km' => round((float) ($profileMetric['total_km'] ?? 0), 2),
+        'workouts' => (int) max((int) ($profileMetric['workout_count'] ?? 0), (int) ($profileMetric['workout_success'] ?? 0)),
+        'training_calories_burned' => round(array_sum(array_map(static fn(array $day): float => (float) ($day['training_calories_burned'] ?? 0), $profileDailyDetails)), 2),
+        'nutrition' => array_map(static fn(float $value): float => round($value, 2), $nutritionTotalsForPdf),
+        'avg_progress_pct' => $progressValuesForPdf !== [] ? round(array_sum($progressValuesForPdf) / count($progressValuesForPdf), 1) : 0.0,
+        'failures' => array_sum(array_map(static fn(array $week): int => (int) ($week['failures'] ?? 0), $profileWeeklySummary)),
+        'strikes' => (int) ($profileMetric['current_strikes'] ?? 0),
+        'penalty' => (float) ($profileMetric['total_penalty'] ?? 0),
+        'first_weight' => $weightValuesForPdf !== [] ? $weightValuesForPdf[0] : null,
+        'avg_weight' => $weightValuesForPdf !== [] ? round(array_sum($weightValuesForPdf) / count($weightValuesForPdf), 2) : null,
+        'latest_weight' => $weightValuesForPdf !== [] ? $weightValuesForPdf[count($weightValuesForPdf) - 1] : null,
+        'weight_change' => count($weightValuesForPdf) > 1 ? round($weightValuesForPdf[count($weightValuesForPdf) - 1] - $weightValuesForPdf[0], 2) : null,
+    ];
 
     evaluate_automatic_achievements($pdo, $metrics);
     $profileUser = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $profileUser['id']]) ?? $profileUser;
 
-    $personalGoals = list_goals($pdo, 'user', (int) $profileUser['id']);
     $profileGoalCards = build_user_goal_view_models($personalGoals, is_array($profileMetric) ? $profileMetric : [], $habitDefinitions);
 
     render_view('profile', [
@@ -2110,6 +2344,10 @@ if ($page === 'profile') {
         ],
         'profileDailyDetails' => $profileDailyDetails,
         'profileDailyPhotoNutrition' => $profileDailyPhotoNutrition,
+        'profileWeeklySummary' => $profileWeeklySummary,
+        'profileMonthlySummary' => $profileMonthlySummary,
+        'profileTotalSummary' => $profileTotalSummary,
+        'habitGoalCodes' => $habitGoalCodesList,
         'profileBaseUrl' => $profileUrl(),
         'personalGoals' => $personalGoals,
         'profileGoalCards' => $profileGoalCards,
@@ -4333,6 +4571,61 @@ if ($page === 'metric') {
         redirect('/?page=admin');
     }
 
+    if (is_post()) {
+        if (!csrf_verify()) {
+            flash_set('error', t('flash.csrf'));
+            redirect('/?page=analytics');
+        }
+
+        $action = (string) ($_POST['action'] ?? '');
+        if ($action === 'save_analytics_layout') {
+            $allowedSections = analytics_layout_sections_default();
+            $resetLayout = !empty($_POST['reset_analytics_layout']);
+            $sections = [];
+            if (!$resetLayout) {
+                $sections = array_values(array_intersect(array_map('strval', (array) ($_POST['analytics_sections'] ?? [])), $allowedSections));
+                $sections = array_values(array_unique($sections));
+                $sectionOrder = (array) ($_POST['analytics_order'] ?? []);
+                usort($sections, static function (string $left, string $right) use ($sectionOrder, $allowedSections): int {
+                    $leftOrder = isset($sectionOrder[$left]) ? (int) $sectionOrder[$left] : (int) array_search($left, $allowedSections, true);
+                    $rightOrder = isset($sectionOrder[$right]) ? (int) $sectionOrder[$right] : (int) array_search($right, $allowedSections, true);
+
+                    return $leftOrder <=> $rightOrder;
+                });
+            }
+
+            db_execute(
+                $pdo,
+                'UPDATE users SET analytics_layout_json = :analytics_layout_json, updated_at = :updated_at WHERE id = :id',
+                [
+                    ':analytics_layout_json' => $resetLayout ? null : json_encode($sections, JSON_UNESCAPED_SLASHES),
+                    ':updated_at' => now_iso(),
+                    ':id' => (int) $currentUser['id'],
+                ]
+            );
+
+            $redirectParams = ['page' => 'analytics'];
+            if (!empty($_POST['redirect_user_id'])) {
+                $redirectParams['user_id'] = (int) $_POST['redirect_user_id'];
+            }
+            $redirectPeriod = (string) ($_POST['analytics_period'] ?? 'current_week');
+            if (in_array($redirectPeriod, ['current_week', 'week', 'month', 'total'], true)) {
+                $redirectParams['analytics_period'] = $redirectPeriod;
+            }
+            $redirectWeek = trim((string) ($_POST['analytics_week'] ?? ''));
+            if ($redirectWeek !== '') {
+                $redirectParams['analytics_week'] = to_date($redirectWeek);
+            }
+            $redirectMonth = trim((string) ($_POST['analytics_month'] ?? ''));
+            if (preg_match('/^\d{4}-\d{2}$/', $redirectMonth)) {
+                $redirectParams['analytics_month'] = $redirectMonth;
+            }
+
+            flash_set('success', t('analytics.layout_saved'));
+            redirect('/?' . http_build_query($redirectParams));
+        }
+    }
+
     $team = default_team($pdo);
     $users = list_active_team_users($pdo, (int) $team['id']);
     if ($users === []) {
@@ -5209,6 +5502,12 @@ if ($page === 'analytics') {
         $analyticsEndDate,
         $maintenanceCalories
     );
+    $analyticsFoodStats = fetch_user_food_stats(
+        $pdo,
+        (int) ($selectedMetric['user']['id'] ?? 0),
+        $analyticsStartDate,
+        $analyticsEndDate
+    );
 
     render_view('analytics', [
         'title' => t('nav.analytics'),
@@ -5233,6 +5532,7 @@ if ($page === 'analytics') {
         'dashboardCalorieStats' => $dashboardCalorieStats,
         'dashboardCalorieRangeStart' => $analyticsStartDate,
         'dashboardCalorieRangeEnd' => $analyticsEndDate,
+        'analyticsFoodStats' => $analyticsFoodStats,
         'config' => $config,
     ]);
 }

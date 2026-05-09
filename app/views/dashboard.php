@@ -343,9 +343,6 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <article class="panel dashboard-panel dashboard-span-full dashboard-quick-actions" style="order: -20">
-            <div class="panel-head">
-                <h2><?= e(t('dashboard.quick_actions')) ?></h2>
-            </div>
             <div class="dashboard-quick-actions-grid">
                 <a class="btn btn-primary dashboard-quick-action" href="/?page=entries&mode=data">
                     <?= e(t('dashboard.quick_action_training')) ?>
@@ -360,9 +357,7 @@ $topbarControls = ob_get_clean();
             <div class="panel-head dashboard-panel-head-compact dashboard-penalty-head">
                 <div>
                     <p class="eyebrow"><?= e(t('metric.penalty')) ?></p>
-                    <h2><?= e(t('dashboard.penalty_compact_title')) ?></h2>
                 </div>
-                <span class="penalty-chip dashboard-penalty-amount penalty-chip-<?= e($penaltySeverityClass($selectedWeekPenalty)) ?>">&euro;<?= e(number_format($selectedWeekPenalty, 2, '.', '')) ?></span>
             </div>
             <div class="dashboard-penalty-compact-grid">
                 <span>
@@ -380,7 +375,6 @@ $topbarControls = ob_get_clean();
         <article class="panel dashboard-panel dashboard-analytics-cta" style="order: -14">
             <div>
                 <p class="eyebrow"><?= e(t('dashboard.analytics_eyebrow')) ?></p>
-                <h2><?= e(t('nav.analytics')) ?></h2>
                 <p class="muted small"><?= e(t('dashboard.analytics_dashboard_hint')) ?></p>
             </div>
             <a class="btn btn-primary small btn-block" href="/?<?= e(http_build_query(['page' => 'analytics', 'user_id' => (int) ($selectedUser['id'] ?? 0), 'analytics_period' => 'week', 'analytics_week' => (string) ($selectedWeekStart ?? to_date(null))])) ?>"><?= e(t('dashboard.open_analytics')) ?></a>
@@ -391,7 +385,6 @@ $topbarControls = ob_get_clean();
             <div class="panel-head dashboard-panel-head-compact">
                 <div>
                     <p class="eyebrow"><?= e(t('achievements.title')) ?></p>
-                    <h2><?= e(t('dashboard.personal_achievements')) ?></h2>
                     <p class="muted small"><?= e(t('dashboard.latest_unlocked_achievements')) ?></p>
                 </div>
                 <div class="dashboard-achievements-summary">
@@ -513,8 +506,7 @@ $topbarControls = ob_get_clean();
         <article class="panel dashboard-panel dashboard-approvals" data-testid="pending-approvals" style="order: <?= $contentWidgetOrder('approvals') ?>">
             <div class="panel-head dashboard-panel-head-compact">
                 <div>
-                    <p class="eyebrow"><?= e(t('common.pending')) ?></p>
-                    <h2><?= e(t('dashboard.approvals_title')) ?></h2>
+                    <p class="eyebrow"><?= e(t('dashboard.approvals_pending_eyebrow')) ?></p>
                 </div>
                 <span class="badge"><?= count($pendingApprovals) ?></span>
             </div>

@@ -3,8 +3,9 @@
 declare(strict_types=1);
 
 $photos = array_values((array) ($galleryPhotos ?? []));
-$selectedUser = is_array($selectedUser ?? null) ? (array) $selectedUser : (array) ($currentUser ?? []);
-$selectedUserId = (int) ($selectedUser['id'] ?? $currentUser['id'] ?? 0);
+$selectedUser = is_array($selectedUser ?? null) ? (array) $selectedUser : [];
+$isAllUsersGallery = is_admin($currentUser) && $selectedUser === [];
+$selectedUserId = $isAllUsersGallery ? 0 : (int) ($selectedUser['id'] ?? $currentUser['id'] ?? 0);
 $galleryView = in_array((string) ($galleryView ?? 'recent'), ['recent', 'calendar'], true) ? (string) $galleryView : 'recent';
 $calendarView = in_array((string) ($calendarView ?? 'month'), ['month', 'week', 'day'], true) ? (string) $calendarView : 'month';
 $selectedDate = to_date((string) ($selectedDate ?? null));
@@ -14,7 +15,6 @@ $baseParams = [
     'user_id' => $selectedUserId,
 ];
 $recentUrl = '/?' . http_build_query($baseParams + ['gallery_view' => 'recent']);
-$todayDate = to_date(null);
 $calendarUrl = '/?' . http_build_query($baseParams + [
     'gallery_view' => 'calendar',
     'calendar_view' => $calendarView,
@@ -23,7 +23,7 @@ $calendarUrl = '/?' . http_build_query($baseParams + [
 $calendarSwitchUrl = '/?' . http_build_query($baseParams + [
     'gallery_view' => 'calendar',
     'calendar_view' => $galleryView === 'recent' ? 'month' : $calendarView,
-    'date' => $galleryView === 'recent' ? $todayDate : $selectedDate,
+    'date' => $selectedDate,
 ]);
 $calendarVisibleLabel = $calendarView === 'month'
     ? localized_month_label($selectedDate)
@@ -42,6 +42,9 @@ ob_start();
                 <span class="view-panel-label"><?= e(t('common.user')) ?></span>
                 <?php if (is_admin($currentUser) && count((array) ($users ?? [])) > 1): ?>
                     <select name="user_id" onchange="this.form.submit()" aria-label="<?= e(t('dashboard.viewing')) ?>">
+                        <option value="0" <?= $selectedUserId === 0 ? 'selected' : '' ?>>
+                            <?= e(t('gallery.all_photos')) ?>
+                        </option>
                         <?php foreach ((array) $users as $user): ?>
                             <option value="<?= (int) ($user['id'] ?? 0) ?>" <?= (int) ($user['id'] ?? 0) === $selectedUserId ? 'selected' : '' ?>>
                                 <?= e((string) ($user['display_name'] ?? '')) ?>
@@ -105,7 +108,20 @@ $topbarControls = ob_get_clean();
 <section class="screen gallery-page gallery-page-clean">
     <?php if ($galleryView === 'calendar'): ?>
         <article class="panel entries-calendar-panel gallery-calendar-panel" data-meal-calendar-root data-calendar-page="gallery" data-user-id="<?= $selectedUserId ?>" data-include-photos="0">
-            <div class="calendar-visible-period" data-meal-calendar-visible-period><?= e($calendarVisibleLabel) ?></div>
+            <?php if ($calendarView === 'month'): ?>
+                <form method="get" action="/" class="calendar-visible-period-form" data-meal-calendar-visible-period-form>
+                    <input type="hidden" name="page" value="gallery">
+                    <input type="hidden" name="user_id" value="<?= $selectedUserId ?>">
+                    <input type="hidden" name="gallery_view" value="calendar">
+                    <input type="hidden" name="calendar_view" value="month">
+                    <div class="calendar-visible-period" role="button" tabindex="0" data-meal-calendar-visible-period-trigger aria-label="<?= e(t('dashboard.month')) ?>">
+                        <span data-meal-calendar-visible-period><?= e($calendarVisibleLabel) ?></span>
+                        <input class="calendar-visible-period-input" type="month" name="calendar_month" value="<?= e(substr($selectedDate, 0, 7)) ?>" aria-label="<?= e(t('dashboard.month')) ?>" tabindex="-1" data-meal-calendar-visible-period-input>
+                    </div>
+                </form>
+            <?php else: ?>
+                <div class="calendar-visible-period" data-meal-calendar-visible-period><?= e($calendarVisibleLabel) ?></div>
+            <?php endif; ?>
             <div class="meal-calendar meal-calendar-<?= e($calendarView) ?><?= $calendarView === 'month' ? ' meal-calendar-month' : '' ?> entries-calendar" data-meal-calendar-days>
                 <?php foreach ($mealCalendar as $dateKey => $day): ?>
                     <?php

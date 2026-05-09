@@ -161,6 +161,10 @@ $profileChallengeRange = is_array($profileChallengeRange ?? null) ? (array) $pro
 ];
 $profileDailyDetails = is_array($profileDailyDetails ?? null) ? array_values((array) $profileDailyDetails) : [];
 $profileDailyPhotoNutrition = is_array($profileDailyPhotoNutrition ?? null) ? array_values((array) $profileDailyPhotoNutrition) : [];
+$profileWeeklySummary = is_array($profileWeeklySummary ?? null) ? array_values((array) $profileWeeklySummary) : [];
+$profileMonthlySummary = is_array($profileMonthlySummary ?? null) ? array_values((array) $profileMonthlySummary) : [];
+$profileTotalSummary = is_array($profileTotalSummary ?? null) ? (array) $profileTotalSummary : [];
+$habitGoalCodes = is_array($habitGoalCodes ?? null) ? array_values((array) $habitGoalCodes) : [];
 $profileExportPayload = [
     'username' => (string) ($profileUser['username'] ?? ''),
     'display_name' => (string) ($profileUser['display_name'] ?? ''),
@@ -168,11 +172,97 @@ $profileExportPayload = [
     'i18n' => [
         'pdf_title' => (string) t('profile.pdf_title'),
         'pdf_section_overview' => (string) t('profile.pdf_section_overview'),
-        'pdf_section_charts' => (string) t('profile.pdf_section_charts'),
         'pdf_section_daily' => (string) t('profile.pdf_section_daily'),
         'pdf_section_nutrition' => (string) t('profile.pdf_section_nutrition'),
-        'pdf_section_activity' => (string) t('profile.pdf_section_activity'),
+        'pdf_section_weekly' => (string) t('profile.pdf_section_weekly'),
+        'pdf_section_monthly' => (string) t('profile.pdf_section_monthly'),
+        'pdf_section_total' => (string) t('profile.pdf_section_total'),
+        'pdf_section_goals' => (string) t('profile.pdf_section_goals'),
+        'pdf_section_achievements' => (string) t('profile.pdf_section_achievements'),
+        'pdf_executive_summary' => (string) t('profile.pdf_executive_summary'),
+        'pdf_weekly_progress_table' => (string) t('profile.pdf_weekly_progress_table'),
+        'pdf_monthly_summary_table' => (string) t('profile.pdf_monthly_summary_table'),
+        'pdf_total_summary_table' => (string) t('profile.pdf_total_summary_table'),
+        'pdf_daily_input_table' => (string) t('profile.pdf_daily_input_table'),
+        'pdf_nutrition_day_table' => (string) t('profile.pdf_nutrition_day_table'),
+        'pdf_flags_notes' => (string) t('profile.pdf_flags_notes'),
+        'pdf_chart_weekly_progress' => (string) t('profile.pdf_chart_weekly_progress'),
+        'pdf_chart_monthly_progress' => (string) t('profile.pdf_chart_monthly_progress'),
+        'pdf_chart_monthly_steps' => (string) t('profile.pdf_chart_monthly_steps'),
+        'pdf_chart_monthly_workouts' => (string) t('profile.pdf_chart_monthly_workouts'),
+        'pdf_chart_nutrition_calories' => (string) t('profile.pdf_chart_nutrition_calories'),
         'pdf_generating' => (string) t('profile.pdf_generating'),
+        'pdf_generated' => (string) t('profile.pdf_generated'),
+        'pdf_challenge_range' => (string) t('profile.pdf_challenge_range'),
+        'pdf_key_metrics' => (string) t('profile.pdf_key_metrics'),
+        'pdf_current_setup' => (string) t('profile.pdf_current_setup'),
+        'pdf_totals' => (string) t('profile.pdf_totals'),
+        'pdf_daily_table' => (string) t('profile.pdf_daily_table'),
+        'pdf_nutrition_summary' => (string) t('profile.pdf_nutrition_summary'),
+        'pdf_food_items' => (string) t('profile.pdf_food_items'),
+        'pdf_goals_table' => (string) t('profile.pdf_goals_table'),
+        'pdf_achievements_table' => (string) t('profile.pdf_achievements_table'),
+        'pdf_no_data' => (string) t('profile.pdf_no_data'),
+        'pdf_approvals' => (string) t('profile.pdf_approvals'),
+        'pdf_habits' => (string) t('profile.pdf_habits'),
+        'pdf_missing_reason' => (string) t('profile.pdf_missing_reason'),
+        'pdf_export_failed' => (string) t('profile.pdf_export_failed'),
+        'pdf_yes' => (string) t('profile.pdf_yes'),
+        'pdf_no' => (string) t('profile.pdf_no'),
+    ],
+    'labels' => [
+        'username' => (string) t('common.username'),
+        'date' => (string) t('common.date'),
+        'status' => (string) t('common.status'),
+        'notes' => (string) t('common.notes'),
+        'actions' => (string) t('common.actions'),
+        'category' => (string) t('common.category'),
+        'caption' => (string) t('common.caption'),
+        'total' => (string) t('metric.total'),
+        'steps' => (string) t('metric.steps'),
+        'distance' => (string) t('metric.distance_km'),
+        'workouts' => (string) t('metric.workouts'),
+        'score' => (string) t('metric.score'),
+        'weight' => (string) t('metric.weight'),
+        'strikes' => (string) t('metric.strikes'),
+        'penalty' => (string) t('metric.penalty'),
+        'primary_goal' => (string) t('settings.primary_goal'),
+        'primary_goal_value' => (string) t('settings.primary_goal_value'),
+        'primary_goals_spec' => (string) t('settings.primary_goals_spec'),
+        'workout_target' => (string) t('profile.workout_target'),
+        'maintenance_calories' => (string) t('profile.maintenance_calories'),
+        'calorie_burn_goal' => (string) t('settings.calorie_burn_goal'),
+        'calorie_consumed_max' => (string) t('settings.calorie_consumed_max'),
+        'ideal_weight' => (string) t('metric.ideal_weight'),
+        'photos' => (string) t('entries.photo_plural'),
+        'calories' => (string) t('entries.photo_calories'),
+        'protein' => (string) t('entries.photo_protein'),
+        'carbs' => (string) t('entries.photo_carbs'),
+        'fat' => (string) t('entries.photo_fat'),
+        'fiber' => (string) t('entries.photo_fiber'),
+        'sugar' => (string) t('entries.photo_sugar'),
+        'sodium' => (string) t('entries.photo_sodium'),
+        'training_calories_burned' => (string) t('entries.training_calories_burned'),
+        'junk_food' => (string) t('entries.junk_food'),
+        'extra_workout' => (string) t('entries.extra_workout'),
+        'goal_name' => (string) t('goals.goal_name'),
+        'type' => (string) t('goals.type'),
+        'target' => (string) t('goals.target'),
+        'due_date' => (string) t('goals.due_date'),
+        'achievement_name' => (string) t('achievements.name'),
+        'description' => (string) t('achievements.description'),
+        'reward' => (string) t('achievements.reward'),
+        'week' => (string) t('common.week'),
+        'month' => (string) t('dashboard.month'),
+        'progress' => (string) t('profile.pdf_progress'),
+        'current' => (string) t('profile.pdf_current'),
+        'compliance' => (string) t('profile.pdf_compliance'),
+        'input_days' => (string) t('profile.pdf_input_days'),
+        'photo_days' => (string) t('profile.pdf_photo_days'),
+        'failures' => (string) t('profile.pdf_failures'),
+        'calories_consumed' => (string) t('profile.pdf_calories_consumed'),
+        'average_weight' => (string) t('profile.pdf_average_weight'),
+        'weight_change' => (string) t('profile.pdf_weight_change'),
     ],
     'challenge_range' => [
         'start' => (string) ($profileChallengeRange['start'] ?? ''),
@@ -202,20 +292,64 @@ $profileExportPayload = [
         'workouts' => array_values((array) ($profileWorkoutWeekly ?? [])),
         'score' => array_values((array) ($profileScoreWeekly ?? [])),
         'weight' => $profileWeightChart,
+        'weekly_progress' => array_map(
+            static fn(array $week): array => [
+                'label' => format_date_eu((string) ($week['week_start'] ?? '')),
+                'value' => (float) ($week['progress_pct'] ?? 0),
+            ],
+            $profileWeeklySummary
+        ),
+        'monthly_progress' => array_map(
+            static fn(array $month): array => [
+                'label' => (string) ($month['label'] ?? $month['month'] ?? ''),
+                'value' => (float) ($month['progress_pct'] ?? 0),
+            ],
+            $profileMonthlySummary
+        ),
+        'monthly_steps' => array_map(
+            static fn(array $month): array => [
+                'label' => (string) ($month['label'] ?? $month['month'] ?? ''),
+                'value' => (int) ($month['steps'] ?? 0),
+            ],
+            $profileMonthlySummary
+        ),
+        'monthly_workouts' => array_map(
+            static fn(array $month): array => [
+                'label' => (string) ($month['label'] ?? $month['month'] ?? ''),
+                'value' => (int) ($month['workouts'] ?? 0),
+            ],
+            $profileMonthlySummary
+        ),
+        'nutrition_calories' => array_map(
+            static fn(array $month): array => [
+                'label' => (string) ($month['label'] ?? $month['month'] ?? ''),
+                'value' => (float) ($month['calories'] ?? 0),
+            ],
+            $profileMonthlySummary
+        ),
     ],
     'daily_details' => $profileDailyDetails,
     'daily_photo_nutrition' => $profileDailyPhotoNutrition,
+    'weekly_summary' => $profileWeeklySummary,
+    'monthly_summary' => $profileMonthlySummary,
+    'total_summary' => $profileTotalSummary,
+    'habit_goal_codes' => $habitGoalCodes,
     'goals' => array_map(
         static function (array $goal): array {
             return [
                 'title' => (string) ($goal['title'] ?? ''),
-                'target_type' => (string) ($goal['target_type'] ?? ''),
-                'target_value' => (float) ($goal['target_value'] ?? 0),
+                'target_type' => (string) ($goal['type_label'] ?? $goal['target_type'] ?? $goal['type'] ?? ''),
+                'current_value' => (float) ($goal['current'] ?? $goal['current_value'] ?? 0),
+                'current_label' => (string) ($goal['current_label'] ?? ''),
+                'target_value' => (float) ($goal['target'] ?? $goal['target_value'] ?? 0),
+                'target_label' => (string) ($goal['target_label'] ?? ''),
+                'progress_pct' => (float) ($goal['progress_pct'] ?? 0),
                 'status' => (string) ($goal['status'] ?? 'active'),
+                'status_label' => (string) ($goal['status_label'] ?? $goal['status'] ?? 'active'),
                 'due_date' => (string) ($goal['due_date'] ?? ''),
             ];
         },
-        (array) ($personalGoals ?? [])
+        (array) ($profileGoalCards ?? $personalGoals ?? [])
     ),
     'achievements' => array_map(
         static function (array $achievement): array {
@@ -228,17 +362,14 @@ $profileExportPayload = [
         },
         (array) ($userAchievements ?? [])
     ),
-    'recent_activity' => array_map(
-        static function (array $item): array {
-            return [
-                'summary' => (string) ($item['summary'] ?? ''),
-                'action' => (string) ($item['action'] ?? ''),
-                'created_at' => (string) ($item['created_at'] ?? ''),
-            ];
-        },
-        (array) ($recentActivity ?? [])
-    ),
 ];
+$profileExportJson = json_encode(
+    $profileExportPayload,
+    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+);
+if (!is_string($profileExportJson)) {
+    $profileExportJson = '{}';
+}
 $latestWeight = null;
 if ($profileWeightChart !== []) {
     $latestWeightRow = $profileWeightChart[count($profileWeightChart) - 1];
@@ -269,6 +400,61 @@ if (($profileUser['calorie_consumed_max'] ?? null) !== null) {
 if ($calorieConfigParts !== []) {
     $profileDataCards[] = ['label' => t('profile.calorie_config'), 'value' => (string) count($calorieConfigParts), 'meta' => implode(' / ', $calorieConfigParts)];
 }
+$primaryGoalOptions = [
+    ['value' => 'steps', 'label' => (string) t('metric.steps'), 'step' => '1', 'placeholder' => '13000'],
+    ['value' => 'km', 'label' => (string) t('metric.distance_km'), 'step' => '0.1', 'placeholder' => '8'],
+    ['value' => 'workouts', 'label' => (string) t('metric.workouts'), 'step' => '1', 'placeholder' => '3'],
+];
+$primaryGoalLabels = [];
+foreach ($primaryGoalOptions as $option) {
+    $primaryGoalLabels[(string) $option['value']] = (string) $option['label'];
+}
+$formatPrimarySetupValue = static function (float $value, string $type): string {
+    if ($value <= 0) {
+        return '-';
+    }
+
+    if (in_array($type, ['steps', 'workouts'], true)) {
+        return number_format((int) round($value), 0, '.', '');
+    }
+
+    return rtrim(rtrim(number_format($value, 2, '.', ''), '0'), '.') . ' km';
+};
+$profilePrimaryGoalType = strtolower((string) ($profileUser['primary_goal_type'] ?? 'steps'));
+if (!in_array($profilePrimaryGoalType, allowed_primary_goal_types(), true)) {
+    $profilePrimaryGoalType = 'steps';
+}
+$profilePrimaryGoalValueSource = $profileUser['primary_goal_value'] ?? null;
+if ($profilePrimaryGoalType === 'steps' && ($profilePrimaryGoalValueSource === null || $profilePrimaryGoalValueSource === '')) {
+    $profilePrimaryGoalValueSource = $profileUser['step_goal'] ?? null;
+}
+$profilePrimaryGoalValue = is_numeric($profilePrimaryGoalValueSource) ? (float) $profilePrimaryGoalValueSource : 0.0;
+$profilePrimaryGoalLabel = $primaryGoalLabels[$profilePrimaryGoalType] ?? $profilePrimaryGoalType;
+$profilePrimaryGoalValueDisplay = $formatPrimarySetupValue($profilePrimaryGoalValue, $profilePrimaryGoalType);
+$profilePrimaryGoalsParsed = $primaryGoalsSpec !== '' ? parse_primary_goals_spec($primaryGoalsSpec, false) : [];
+$profilePrimaryGoalsSpecValue = $profilePrimaryGoalsParsed !== [] ? format_primary_goals_spec($profilePrimaryGoalsParsed) : '';
+$profileCurrentGoalRows = $profilePrimaryGoalsParsed !== []
+    ? $profilePrimaryGoalsParsed
+    : [[
+        'type' => $profilePrimaryGoalType,
+        'value' => $profilePrimaryGoalValue,
+    ]];
+$profileCurrentGoalChips = array_values(array_filter(array_map(
+    static function (array $goal) use ($primaryGoalLabels, $formatPrimarySetupValue): ?array {
+        $type = strtolower((string) ($goal['type'] ?? ''));
+        $value = is_numeric($goal['value'] ?? null) ? (float) $goal['value'] : 0.0;
+        if ($type === '' || $value <= 0) {
+            return null;
+        }
+
+        return [
+            'label' => $primaryGoalLabels[$type] ?? $type,
+            'value' => $formatPrimarySetupValue($value, $type),
+        ];
+    },
+    $profileCurrentGoalRows
+)));
+$profileCalorieConfigDisplay = $calorieConfigParts !== [] ? implode(' / ', $calorieConfigParts) : '-';
 $featuredGoal = $activeGoals[0] ?? null;
 $featuredGoalCurrent = is_array($featuredGoal) ? $goalCurrentValue($featuredGoal) : 0.0;
 $featuredGoalProgress = is_array($featuredGoal) ? $goalProgressPercent($featuredGoal, $featuredGoalCurrent) : 0.0;
@@ -277,10 +463,10 @@ $latestAchievements = array_slice(array_values((array) ($userAchievements ?? [])
 $latestActivity = array_slice(array_values((array) ($recentActivity ?? [])), 0, 5);
 $profileSetupRows = [
     ['label' => t('common.username'), 'value' => '@' . (string) ($profileUser['username'] ?? '')],
-    ['label' => t('settings.primary_goal'), 'value' => (string) ($profileUser['primary_goal_type'] ?? 'steps') . ' ' . (string) ($profileUser['primary_goal_value'] ?? $profileUser['step_goal'] ?? '')],
+    ['label' => t('settings.primary_goal'), 'value' => $profilePrimaryGoalLabel . ' ' . $profilePrimaryGoalValueDisplay],
     ['label' => t('profile.workout_target'), 'value' => (string) ($profileUser['workout_target'] ?? 0) . '/' . strtolower(t('common.week'))],
     ['label' => t('metric.ideal_weight'), 'value' => ($profileUser['ideal_weight'] ?? null) !== null ? (string) $profileUser['ideal_weight'] . ' kg' : '-'],
-    ['label' => t('profile.calorie_config'), 'value' => $calorieConfigParts !== [] ? implode(' / ', $calorieConfigParts) : '-'],
+    ['label' => t('profile.calorie_config'), 'value' => $profileCalorieConfigDisplay],
 ];
 ?>
 <section class="screen stack-lg spa-shell" data-spa-page="profile">
@@ -298,23 +484,33 @@ $profileSetupRows = [
                 <p class="muted">@<?= e((string) $profileUser['username']) ?> &middot; <?= e($profileHeroMessage) ?><?php if (!$isOwnProfile): ?> &middot; <?= e(t('profile.read_only')) ?><?php endif; ?></p>
             </div>
         </div>
-        <?php if ($isOwnProfile): ?>
-            <details class="profile-tagline-editor">
-                <summary class="btn btn-ghost icon-btn profile-tagline-edit" aria-label="<?= e(t('profile.edit_tagline')) ?>">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.7-1.2L19 8.5 15.5 5 5.2 15.3 4 20Z"/><path d="m14 6 4 4"/></svg>
-                </summary>
-                <form method="post" action="<?= e($profileUrl()) ?>" class="profile-tagline-form">
-                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                    <input type="hidden" name="action" value="update_profile_tagline">
-                    <label>
-                        <?= e(t('profile.custom_message')) ?>
-                        <input type="text" name="profile_tagline" maxlength="160" value="<?= e($profileTagline) ?>" placeholder="<?= e(t('profile.subtitle')) ?>">
-                    </label>
-                    <div class="profile-tagline-actions">
-                        <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
-                    </div>
-                </form>
-            </details>
+        <?php if ($isOwnProfile || !empty($canExportProfilePdf)): ?>
+            <div class="profile-hero-actions">
+                <?php if (!empty($canExportProfilePdf)): ?>
+                    <button class="btn btn-primary profile-pdf-export-btn" type="button" data-profile-pdf-export>
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg>
+                        <span data-profile-pdf-export-label><?= e(t('profile.export_pdf')) ?></span>
+                    </button>
+                <?php endif; ?>
+                <?php if ($isOwnProfile): ?>
+                    <details class="profile-tagline-editor">
+                        <summary class="btn btn-ghost icon-btn profile-tagline-edit" aria-label="<?= e(t('profile.edit_tagline')) ?>">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.7-1.2L19 8.5 15.5 5 5.2 15.3 4 20Z"/><path d="m14 6 4 4"/></svg>
+                        </summary>
+                        <form method="post" action="<?= e($profileUrl()) ?>" class="profile-tagline-form">
+                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                            <input type="hidden" name="action" value="update_profile_tagline">
+                            <label>
+                                <?= e(t('profile.custom_message')) ?>
+                                <input type="text" name="profile_tagline" maxlength="160" value="<?= e($profileTagline) ?>" placeholder="<?= e(t('profile.subtitle')) ?>">
+                            </label>
+                            <div class="profile-tagline-actions">
+                                <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
+                            </div>
+                        </form>
+                    </details>
+                <?php endif; ?>
+            </div>
         <?php endif; ?>
     </div>
 
@@ -397,7 +593,7 @@ $profileSetupRows = [
             <?php endif; ?>
         </article>
 
-        <article class="panel profile-home-card">
+        <article class="panel profile-home-card profile-current-setup-card">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow"><?= e(t('profile.current_config')) ?></p>
@@ -406,6 +602,25 @@ $profileSetupRows = [
                 <?php if ($canEditProfile): ?>
                     <a class="btn btn-ghost small" href="<?= e($profileUrl('config', ['edit' => 1])) ?>" data-spa-link><?= e(t('common.edit')) ?></a>
                 <?php endif; ?>
+            </div>
+            <div class="profile-current-primary">
+                <span><?= e(t('settings.primary_goal')) ?></span>
+                <strong>
+                    <span><?= e($profilePrimaryGoalLabel) ?></span>
+                    <b><?= e($profilePrimaryGoalValueDisplay) ?></b>
+                </strong>
+                <small><?= e(count($profilePrimaryGoalsParsed) > 0 ? t('settings.primary_goals_spec') : t('settings.no_extra_goals')) ?></small>
+            </div>
+            <div class="profile-current-goals">
+                <span><?= e(t('settings.primary_goals_spec')) ?></span>
+                <div class="profile-current-goal-chips">
+                    <?php foreach ($profileCurrentGoalChips as $goalChip): ?>
+                        <span><strong><?= e((string) $goalChip['value']) ?></strong><?= e((string) $goalChip['label']) ?></span>
+                    <?php endforeach; ?>
+                    <?php if ($profileCurrentGoalChips === []): ?>
+                        <span class="is-empty"><?= e(t('settings.no_extra_goals')) ?></span>
+                    <?php endif; ?>
+                </div>
             </div>
             <dl class="profile-home-facts">
                 <?php foreach ($profileSetupRows as $row): ?>
@@ -670,38 +885,103 @@ $profileSetupRows = [
         </div>
 
         <div class="profile-config" data-config-editor>
-            <ul class="facts" data-config-readonly data-spa-show-when-no-param="edit" <?= $configEditMode ? 'hidden' : '' ?>>
-                <li><strong><?= e(t('common.username')) ?>:</strong> <?= e((string) $profileUser['username']) ?></li>
-                <li><strong><?= e(t('settings.primary_goal')) ?>:</strong> <?= e((string) ($profileUser['primary_goal_type'] ?? 'steps')) ?> <?= e((string) ($profileUser['primary_goal_value'] ?? $profileUser['step_goal'])) ?></li>
-                <li><strong><?= e(t('settings.primary_goals_spec')) ?>:</strong> <?= e($primaryGoalsSpec !== '' ? $primaryGoalsSpec : '-') ?></li>
-                <li><strong><?= e(t('profile.workout_target')) ?>:</strong> <?= e((string) $profileUser['workout_target']) ?>/<?= e(strtolower(t('common.week'))) ?></li>
-                <li><strong><?= e(t('profile.maintenance_calories')) ?>:</strong> <?= $profileUser['maintenance_calories'] !== null ? e((string) $profileUser['maintenance_calories']) . ' kcal' : '-' ?></li>
-                <li><strong><?= e(t('settings.calorie_burn_goal')) ?>:</strong> <?= $profileUser['calorie_burn_goal'] !== null ? e((string) $profileUser['calorie_burn_goal']) . ' kcal' : '-' ?></li>
-                <li><strong><?= e(t('settings.calorie_consumed_max')) ?>:</strong> <?= $profileUser['calorie_consumed_max'] !== null ? e((string) $profileUser['calorie_consumed_max']) . ' kcal' : '-' ?></li>
-                <li><strong><?= e(t('metric.ideal_weight')) ?>:</strong> <?= $profileUser['ideal_weight'] !== null ? e((string) $profileUser['ideal_weight']) . ' kg' : '-' ?></li>
-            </ul>
+            <div class="profile-config-readonly" data-config-readonly data-spa-show-when-no-param="edit" <?= $configEditMode ? 'hidden' : '' ?>>
+                <div class="profile-current-primary">
+                    <span><?= e(t('settings.primary_goal')) ?></span>
+                    <strong>
+                        <span><?= e($profilePrimaryGoalLabel) ?></span>
+                        <b><?= e($profilePrimaryGoalValueDisplay) ?></b>
+                    </strong>
+                    <small><?= e(count($profilePrimaryGoalsParsed) > 0 ? t('settings.primary_goals_spec') : t('settings.no_extra_goals')) ?></small>
+                </div>
+                <div class="profile-current-goals">
+                    <span><?= e(t('settings.primary_goals_spec')) ?></span>
+                    <div class="profile-current-goal-chips">
+                        <?php foreach ($profileCurrentGoalChips as $goalChip): ?>
+                            <span><strong><?= e((string) $goalChip['value']) ?></strong><?= e((string) $goalChip['label']) ?></span>
+                        <?php endforeach; ?>
+                        <?php if ($profileCurrentGoalChips === []): ?>
+                            <span class="is-empty"><?= e(t('settings.no_extra_goals')) ?></span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <dl class="profile-home-facts profile-config-facts">
+                    <?php foreach ($profileSetupRows as $row): ?>
+                        <div>
+                            <dt><?= e((string) $row['label']) ?></dt>
+                            <dd><?= e((string) $row['value']) ?></dd>
+                        </div>
+                    <?php endforeach; ?>
+                </dl>
+            </div>
 
             <?php if ($canEditProfile): ?>
-                <form method="post" action="<?= e($profileUrl('config')) ?>" class="stack" data-config-form data-spa-param-show="edit" data-spa-value="1" <?= $configEditMode ? '' : 'hidden' ?>>
+                <form method="post" action="<?= e($profileUrl('config')) ?>" class="stack profile-config-form" data-config-form data-spa-param-show="edit" data-spa-value="1" <?= $configEditMode ? '' : 'hidden' ?>>
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="update_profile_config">
                     <input type="hidden" name="profile_user_id" value="<?= (int) $profileUser['id'] ?>">
-                    <div class="grid-inline two">
+                    <div class="grid-inline two profile-config-editor-grid">
                         <label><?= e(t('common.username')) ?><input type="text" value="<?= e((string) $profileUser['username']) ?>" disabled></label>
                         <label>
                             <?= e(t('settings.primary_goal')) ?>
                             <select name="primary_goal_type">
-                                <option value="steps" <?= ($profileUser['primary_goal_type'] ?? 'steps') === 'steps' ? 'selected' : '' ?>><?= e(t('metric.steps')) ?></option>
-                                <option value="km" <?= ($profileUser['primary_goal_type'] ?? 'steps') === 'km' ? 'selected' : '' ?>><?= e(t('metric.distance_km')) ?></option>
-                                <option value="workouts" <?= ($profileUser['primary_goal_type'] ?? 'steps') === 'workouts' ? 'selected' : '' ?>><?= e(t('metric.workouts')) ?></option>
+                                <?php foreach ($primaryGoalOptions as $option): ?>
+                                    <option value="<?= e((string) $option['value']) ?>" <?= $profilePrimaryGoalType === (string) $option['value'] ? 'selected' : '' ?>><?= e((string) $option['label']) ?></option>
+                                <?php endforeach; ?>
                             </select>
                         </label>
                         <label><?= e(t('settings.primary_goal_value')) ?><input type="number" step="0.1" name="primary_goal_value" value="<?= e((string) ($profileUser['primary_goal_value'] ?? '')) ?>"></label>
-                        <label>
-                            <?= e(t('settings.primary_goals_spec')) ?>
-                            <input type="text" name="primary_goals_spec" value="<?= e($primaryGoalsSpec) ?>" placeholder="<?= e(t('settings.primary_goals_spec_placeholder')) ?>">
-                            <small class="muted"><?= e(t('settings.primary_goals_spec_hint')) ?></small>
-                        </label>
+                        <div class="profile-primary-goals-field">
+                            <div class="profile-field-head">
+                                <span><?= e(t('settings.primary_goals_spec')) ?></span>
+                                <small class="muted"><?= e(t('settings.primary_goals_spec_hint')) ?></small>
+                            </div>
+                            <input type="hidden" name="primary_goals_spec" value="<?= e($profilePrimaryGoalsSpecValue) ?>" data-primary-goals-spec-input>
+                            <div class="primary-goals-editor" data-primary-goals-editor>
+                                <div class="primary-goals-list" data-primary-goals-list>
+                                    <?php foreach ($profilePrimaryGoalsParsed as $goal): ?>
+                                        <?php
+                                        $goalType = strtolower((string) ($goal['type'] ?? 'steps'));
+                                        $goalValue = is_numeric($goal['value'] ?? null) ? (float) $goal['value'] : 0.0;
+                                        ?>
+                                        <div class="primary-goal-row" data-primary-goal-row>
+                                            <label>
+                                                <span><?= e(t('settings.primary_goal')) ?></span>
+                                                <select data-primary-goal-type aria-label="<?= e(t('settings.primary_goal')) ?>">
+                                                    <?php foreach ($primaryGoalOptions as $option): ?>
+                                                        <option value="<?= e((string) $option['value']) ?>" data-step="<?= e((string) $option['step']) ?>" data-placeholder="<?= e((string) $option['placeholder']) ?>" <?= $goalType === (string) $option['value'] ? 'selected' : '' ?>><?= e((string) $option['label']) ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                            </label>
+                                            <label>
+                                                <span><?= e(t('settings.primary_goal_value')) ?></span>
+                                                <input type="number" min="0" step="<?= e($goalType === 'km' ? '0.1' : '1') ?>" value="<?= e($goalType === 'km' ? rtrim(rtrim(number_format($goalValue, 2, '.', ''), '0'), '.') : (string) (int) round($goalValue)) ?>" data-primary-goal-value aria-label="<?= e(t('settings.primary_goal_value')) ?>">
+                                            </label>
+                                            <button class="btn btn-ghost small primary-goal-remove" type="button" data-primary-goal-remove aria-label="<?= e(t('settings.remove_primary_goal')) ?>">&times;</button>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                                <p class="muted small primary-goals-empty" data-primary-goals-empty <?= $profilePrimaryGoalsParsed === [] ? '' : 'hidden' ?>><?= e(t('settings.no_extra_goals')) ?></p>
+                                <button class="btn btn-ghost primary-goal-add" type="button" data-primary-goal-add><?= e(t('settings.add_primary_goal')) ?></button>
+                                <template data-primary-goal-template>
+                                    <div class="primary-goal-row" data-primary-goal-row>
+                                        <label>
+                                            <span><?= e(t('settings.primary_goal')) ?></span>
+                                            <select data-primary-goal-type aria-label="<?= e(t('settings.primary_goal')) ?>">
+                                                <?php foreach ($primaryGoalOptions as $option): ?>
+                                                    <option value="<?= e((string) $option['value']) ?>" data-step="<?= e((string) $option['step']) ?>" data-placeholder="<?= e((string) $option['placeholder']) ?>"><?= e((string) $option['label']) ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </label>
+                                        <label>
+                                            <span><?= e(t('settings.primary_goal_value')) ?></span>
+                                            <input type="number" min="0" step="1" data-primary-goal-value aria-label="<?= e(t('settings.primary_goal_value')) ?>">
+                                        </label>
+                                        <button class="btn btn-ghost small primary-goal-remove" type="button" data-primary-goal-remove aria-label="<?= e(t('settings.remove_primary_goal')) ?>">&times;</button>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
                         <label><?= e(t('profile.workout_target')) ?><input type="number" min="0" name="workout_target" value="<?= e((string) ($profileUser['workout_target'] ?? 0)) ?>"></label>
                         <label><?= e(t('profile.maintenance_calories')) ?><input type="number" min="0" step="1" name="maintenance_calories" value="<?= e((string) ($profileUser['maintenance_calories'] ?? '')) ?>"></label>
                         <label><?= e(t('settings.calorie_burn_goal')) ?><input type="number" min="0" step="1" name="calorie_burn_goal" value="<?= e((string) ($profileUser['calorie_burn_goal'] ?? '')) ?>"></label>
@@ -721,9 +1001,6 @@ $profileSetupRows = [
         <div class="panel-head">
             <h2><?= e(t('profile.recent_activity')) ?></h2>
             <div class="inline-actions-mini">
-                <?php if (!empty($canExportProfilePdf)): ?>
-                    <button class="btn btn-primary" type="button" data-profile-pdf-export><?= e(t('profile.export_pdf')) ?></button>
-                <?php endif; ?>
                 <a class="btn btn-ghost" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
             </div>
         </div>
@@ -736,5 +1013,5 @@ $profileSetupRows = [
     </article>
 </section>
 <?php if (!empty($canExportProfilePdf)): ?>
-<script id="profile-pdf-data" type="application/json"><?= e(json_encode($profileExportPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}') ?></script>
+<script id="profile-pdf-data" type="application/json"><?= $profileExportJson ?></script>
 <?php endif; ?>

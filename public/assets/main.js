@@ -16,6 +16,8 @@
     const bottomNav = document.querySelector('.bottom-nav');
     const floatingLog = document.querySelector('.floating-log');
     if (bottomNav || floatingLog) {
+        const pinnedBottomNavPages = new Set(['gallery', 'photo']);
+        const isPinnedBottomNavPage = () => pinnedBottomNavPages.has(String(document.body?.dataset?.page || ''));
         const syncMobileBottomNavHeight = () => {
             const navHeight = bottomNav instanceof HTMLElement
                 ? Math.ceil(bottomNav.getBoundingClientRect().height)
@@ -31,6 +33,17 @@
         let navHidden = false;
         let ticking = false;
         const toggleNav = () => {
+            if (isPinnedBottomNavPage()) {
+                [bottomNav, floatingLog].forEach((element) => {
+                    if (!element) {
+                        return;
+                    }
+                    element.classList.remove('nav-hidden', 'is-hidden');
+                });
+                navHidden = false;
+                ticking = false;
+                return;
+            }
             const currentY = Math.max(0, window.scrollY);
             const goingDown = currentY > lastY + 6;
             const goingUp = currentY < lastY - 1;
@@ -250,6 +263,15 @@
             return [...workoutRows.querySelectorAll('[data-workout-row]')];
         };
 
+        const syncWorkoutSubfieldsState = (row, container, hasFields = null) => {
+            if (!(row instanceof HTMLElement) || !(container instanceof HTMLElement)) {
+                return;
+            }
+            const visible = hasFields === null ? container.children.length > 0 : Boolean(hasFields);
+            container.hidden = !visible;
+            row.classList.toggle('has-workout-data', visible);
+        };
+
         const updateWorkoutIndexes = () => {
             getWorkoutRows().forEach((row, index) => {
                 row.querySelectorAll('[data-name-template]').forEach((input) => {
@@ -271,6 +293,7 @@
                 return;
             }
             if (!force && container.children.length > 0) {
+                syncWorkoutSubfieldsState(row, container, true);
                 return;
             }
             const typeId = String(select.value || '').trim();
@@ -291,6 +314,7 @@
                     </label>
                 `;
             }).join('');
+            syncWorkoutSubfieldsState(row, container, fields.length > 0);
         };
 
         const sumWorkoutFieldValues = (dataKey) => {
@@ -333,8 +357,8 @@
                 });
             }
             if (workoutAddButton instanceof HTMLButtonElement) {
-                workoutAddButton.hidden = !enabled;
-                workoutAddButton.disabled = !enabled;
+                workoutAddButton.hidden = false;
+                workoutAddButton.disabled = false;
             }
         };
 
@@ -1453,6 +1477,8 @@
         const periodCount = periodPanel?.querySelector('[data-meal-calendar-period-count]');
         const selectedDateLabel = photosPanel?.querySelector('.eyebrow');
         const visiblePeriodLabels = document.querySelectorAll('[data-meal-calendar-visible-period]');
+        const visiblePeriodInputs = document.querySelectorAll('[data-meal-calendar-visible-period-input]');
+        const visiblePeriodTriggers = document.querySelectorAll('[data-meal-calendar-visible-period-trigger]');
         const galleryUrl = String(root.dataset.galleryUrl || '/?page=gallery');
 
         if (!(form instanceof HTMLFormElement) || !(dateInput instanceof HTMLInputElement) || !(viewSelect instanceof HTMLInputElement) || !(daysGrid instanceof HTMLElement)) {
@@ -1584,6 +1610,22 @@
                 return;
             }
             periodInput.value = String(payload.date || dateInput.value || '');
+        };
+        const updateVisiblePeriodInputs = (payload) => {
+            const view = String(payload.calendar_view || viewSelect.value || 'week');
+            const monthValue = view === 'month'
+                ? String(payload.calendar_month || String(payload.date || dateInput.value || '').slice(0, 7))
+                : String(payload.date || dateInput.value || '').slice(0, 7);
+            if (!/^\d{4}-\d{2}$/.test(monthValue)) {
+                return;
+            }
+            visiblePeriodInputs.forEach((input) => {
+                if (input instanceof HTMLInputElement) {
+                    input.value = monthValue;
+                    input.disabled = view !== 'month';
+                    input.hidden = view !== 'month';
+                }
+            });
         };
         const appendText = (parent, tagName, text, className = '') => {
             const node = document.createElement(tagName);
@@ -1796,6 +1838,7 @@
             dateInput.value = String(payload.date || dateInput.value || '');
             viewSelect.value = String(payload.calendar_view || viewSelect.value || 'week');
             updatePeriodInput(payload);
+            updateVisiblePeriodInputs(payload);
             viewOptions.forEach((option) => {
                 if (!(option instanceof HTMLElement)) {
                     return;
@@ -1870,6 +1913,59 @@
                 viewSelect.value = nextView;
                 setPeriodInputForView(nextView, dateInput.value);
                 loadCalendar(true);
+            });
+        });
+        visiblePeriodInputs.forEach((input) => {
+            if (!(input instanceof HTMLInputElement)) {
+                return;
+            }
+            input.addEventListener('change', () => {
+                if (!/^\d{4}-\d{2}$/.test(input.value)) {
+                    return;
+                }
+                viewSelect.value = 'month';
+                if (periodInput instanceof HTMLInputElement) {
+                    configurePeriodInput('month');
+                    periodInput.value = input.value;
+                }
+                loadCalendar(true);
+            });
+        });
+        visiblePeriodTriggers.forEach((trigger) => {
+            if (!(trigger instanceof HTMLElement)) {
+                return;
+            }
+            const openPicker = () => {
+                if (viewSelect.value !== 'month') {
+                    return;
+                }
+                const input = trigger.querySelector('[data-meal-calendar-visible-period-input]');
+                if (!(input instanceof HTMLInputElement)) {
+                    return;
+                }
+                input.focus({ preventScroll: true });
+                if (typeof input.showPicker === 'function') {
+                    try {
+                        input.showPicker();
+                    } catch (error) {
+                        input.click();
+                    }
+                } else {
+                    input.click();
+                }
+            };
+            trigger.addEventListener('click', (event) => {
+                if (event.target instanceof HTMLInputElement) {
+                    return;
+                }
+                openPicker();
+            });
+            trigger.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') {
+                    return;
+                }
+                event.preventDefault();
+                openPicker();
             });
         });
         window.addEventListener('popstate', () => {
@@ -2016,6 +2112,19 @@
                 const nextTopbarContext = doc.querySelector('.topbar-actions .topbar-context');
                 if (currentTopbarContext instanceof HTMLElement && nextTopbarContext instanceof HTMLElement) {
                     currentTopbarContext.replaceWith(nextTopbarContext);
+                }
+                const currentEditButton = document.querySelector('.topbar-actions .analytics-edit-layout-button');
+                const nextEditButton = doc.querySelector('.topbar-actions .analytics-edit-layout-button');
+                if (currentEditButton instanceof HTMLElement && nextEditButton instanceof HTMLElement) {
+                    currentEditButton.replaceWith(nextEditButton);
+                } else if (currentEditButton instanceof HTMLElement) {
+                    currentEditButton.remove();
+                } else if (nextEditButton instanceof HTMLElement) {
+                    const topbarActions = document.querySelector('.topbar-actions');
+                    const addMenu = topbarActions?.querySelector('.topbar-add-menu');
+                    if (topbarActions instanceof HTMLElement) {
+                        topbarActions.insertBefore(nextEditButton, addMenu instanceof HTMLElement ? addMenu : null);
+                    }
                 }
                 root.replaceWith(nextPage);
                 history.pushState({}, '', url.toString());
@@ -2240,19 +2349,152 @@
         });
     };
 
+    const initPrimaryGoalsSelector = (editor) => {
+        const widget = editor.querySelector('[data-primary-goals-editor]');
+        if (!(widget instanceof HTMLElement) || widget.dataset.primaryGoalsReady === '1') {
+            return;
+        }
+
+        const form = widget.closest('form');
+        const input = form?.querySelector('[data-primary-goals-spec-input]');
+        const list = widget.querySelector('[data-primary-goals-list]');
+        const template = widget.querySelector('template[data-primary-goal-template]');
+        const addButton = widget.querySelector('[data-primary-goal-add]');
+        const empty = widget.querySelector('[data-primary-goals-empty]');
+        if (!(form instanceof HTMLFormElement)
+            || !(input instanceof HTMLInputElement)
+            || !(list instanceof HTMLElement)
+            || !(template instanceof HTMLTemplateElement)
+            || !(addButton instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const rows = () => Array.from(list.querySelectorAll('[data-primary-goal-row]'))
+            .filter((row) => row instanceof HTMLElement);
+
+        const formatGoalValue = (type, value) => {
+            if (type === 'km') {
+                return value.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+            }
+
+            return String(Math.round(value));
+        };
+
+        const configureRow = (row) => {
+            if (!(row instanceof HTMLElement)) {
+                return;
+            }
+            const select = row.querySelector('[data-primary-goal-type]');
+            const valueInput = row.querySelector('[data-primary-goal-value]');
+            if (!(select instanceof HTMLSelectElement) || !(valueInput instanceof HTMLInputElement)) {
+                return;
+            }
+
+            const selectedOption = select.selectedOptions[0];
+            const step = selectedOption?.dataset.step || (select.value === 'km' ? '0.1' : '1');
+            const placeholder = selectedOption?.dataset.placeholder || '';
+            valueInput.step = step;
+            valueInput.placeholder = placeholder;
+            valueInput.inputMode = select.value === 'km' ? 'decimal' : 'numeric';
+        };
+
+        const updateEmptyState = () => {
+            if (empty instanceof HTMLElement) {
+                empty.hidden = rows().length > 0;
+            }
+        };
+
+        const serialize = () => {
+            const order = [];
+            const goals = new Map();
+            rows().forEach((row) => {
+                const select = row.querySelector('[data-primary-goal-type]');
+                const valueInput = row.querySelector('[data-primary-goal-value]');
+                if (!(select instanceof HTMLSelectElement) || !(valueInput instanceof HTMLInputElement)) {
+                    return;
+                }
+                const type = String(select.value || '').trim();
+                const value = Number.parseFloat(String(valueInput.value || '').replace(',', '.'));
+                if (!type || !Number.isFinite(value) || value <= 0) {
+                    return;
+                }
+                if (!goals.has(type)) {
+                    order.push(type);
+                }
+                goals.set(type, formatGoalValue(type, value));
+            });
+
+            input.value = order
+                .filter((type) => goals.has(type))
+                .map((type) => `${type}:${goals.get(type)}`)
+                .join(';');
+            updateEmptyState();
+        };
+
+        const addRow = () => {
+            const row = template.content.firstElementChild?.cloneNode(true);
+            if (!(row instanceof HTMLElement)) {
+                return;
+            }
+            list.appendChild(row);
+            configureRow(row);
+            updateEmptyState();
+            serialize();
+
+            const select = row.querySelector('[data-primary-goal-type]');
+            if (select instanceof HTMLSelectElement) {
+                select.focus();
+            }
+        };
+
+        rows().forEach(configureRow);
+        updateEmptyState();
+        serialize();
+
+        addButton.addEventListener('click', addRow);
+        list.addEventListener('click', (event) => {
+            const target = event.target instanceof Element ? event.target.closest('[data-primary-goal-remove]') : null;
+            if (!(target instanceof HTMLElement)) {
+                return;
+            }
+            target.closest('[data-primary-goal-row]')?.remove();
+            serialize();
+        });
+        list.addEventListener('input', (event) => {
+            const row = event.target instanceof Element ? event.target.closest('[data-primary-goal-row]') : null;
+            if (row instanceof HTMLElement) {
+                serialize();
+            }
+        });
+        list.addEventListener('change', (event) => {
+            const row = event.target instanceof Element ? event.target.closest('[data-primary-goal-row]') : null;
+            if (row instanceof HTMLElement) {
+                configureRow(row);
+                serialize();
+            }
+        });
+        form.addEventListener('submit', serialize);
+        widget.dataset.primaryGoalsReady = '1';
+    };
+
     const initProfileConfigEditor = () => {
         const editors = document.querySelectorAll('[data-config-editor]');
         if (editors.length === 0) {
             return;
         }
         editors.forEach((editor) => {
+            if (!(editor instanceof HTMLElement)) {
+                return;
+            }
+            initPrimaryGoalsSelector(editor);
             const readonly = editor.querySelector('[data-config-readonly]');
             const form = editor.querySelector('[data-config-form]');
             const editLink = editor.closest('.panel')?.querySelector('[data-config-edit-link]');
             const cancelLink = editor.querySelector('[data-config-cancel-link]');
-            if (!readonly || !form || !(editLink instanceof HTMLAnchorElement)) {
+            if (!readonly || !form || !(editLink instanceof HTMLAnchorElement) || editor.dataset.configEditorReady === '1') {
                 return;
             }
+            editor.dataset.configEditorReady = '1';
 
             const applyMode = (editing) => {
                 readonly.hidden = editing;
@@ -2629,6 +2871,973 @@
         if (!(button instanceof HTMLButtonElement) || !(payloadNode instanceof HTMLScriptElement)) {
             return;
         }
+        if (button.dataset.profilePdfReady === '1') {
+            return;
+        }
+        button.dataset.profilePdfReady = '1';
+
+        let payload = {};
+        try {
+            payload = JSON.parse(payloadNode.textContent || '{}');
+        } catch {
+            payload = {};
+        }
+
+        const localDeps = {
+            jspdf: '/assets/vendor/jspdf.umd.min.js?v=2.5.1',
+            autoTable: '/assets/vendor/jspdf.plugin.autotable.min.js?v=3.8.4',
+            chart: '/assets/vendor/chart.umd.min.js?v=4.4.3',
+        };
+        const loadScript = (src) => new Promise((resolve, reject) => {
+            const absoluteSrc = new URL(src, window.location.origin).href;
+            const existing = Array.from(document.scripts).find((script) => script.src === absoluteSrc || script.getAttribute('src') === src);
+            if (existing) {
+                resolve();
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = src;
+            script.async = true;
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error(`Failed to load ${src}`));
+            document.head.appendChild(script);
+        });
+        const ensureDeps = async () => {
+            if (!window.jspdf || !window.jspdf.jsPDF) {
+                await loadScript(localDeps.jspdf);
+            }
+            const jsPDF = window.jspdf?.jsPDF;
+            if (!jsPDF) {
+                throw new Error('jsPDF is not available.');
+            }
+            if (!jsPDF.API || !jsPDF.API.autoTable) {
+                await loadScript(localDeps.autoTable);
+            }
+            if (!window.Chart) {
+                await loadScript(localDeps.chart);
+            }
+        };
+
+        const asObject = (value) => (value && typeof value === 'object' ? value : {});
+        const i18n = asObject(payload.i18n);
+        const labels = asObject(payload.labels);
+        const text = (key, fallback) => {
+            const value = i18n[key] ?? labels[key];
+            const normalized = String(value ?? '').trim();
+            if (normalized === '' || normalized === key || normalized.includes('.')) {
+                return fallback;
+            }
+            return normalized;
+        };
+        const label = (key, fallback) => text(key, fallback);
+        const noDataLabel = text('pdf_no_data', 'No data available.');
+        const asNumber = (value, fallback = 0) => {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : fallback;
+        };
+        const hasValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
+        const cleanText = (value, fallback = '-') => {
+            const normalized = String(value ?? '').replace(/\s+/g, ' ').trim();
+            return normalized === '' ? fallback : normalized;
+        };
+        const formatNumber = (value, decimals = 0) => asNumber(value, 0).toLocaleString(undefined, {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        });
+        const formatValue = (value, decimals = 0, unit = '') => {
+            if (!hasValue(value)) {
+                return '-';
+            }
+            const suffix = unit === '' ? '' : ` ${unit}`;
+            return `${formatNumber(value, decimals)}${suffix}`;
+        };
+        const formatPercent = (value, decimals = 0) => `${formatNumber(value, decimals)}%`;
+        const formatCurrency = (value) => `EUR ${formatNumber(value, 2)}`;
+        const hasPositiveNumber = (value) => asNumber(value, 0) > 0;
+        const formatDate = (value) => {
+            const raw = String(value || '').trim();
+            if (raw === '') {
+                return '-';
+            }
+            const normalized = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00` : raw.replace(' ', 'T');
+            const date = new Date(normalized);
+            if (Number.isNaN(date.getTime())) {
+                return raw;
+            }
+            return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
+        };
+        const formatDateRange = (start, end) => {
+            const from = formatDate(start);
+            const to = formatDate(end);
+            if (from === '-' && to === '-') {
+                return '-';
+            }
+            if (from === '-') {
+                return to;
+            }
+            if (to === '-' || to === from) {
+                return from;
+            }
+            return `${from} - ${to}`;
+        };
+        const normalizeStatus = (value) => {
+            const status = String(value || '').trim();
+            if (status === '') {
+                return '-';
+            }
+            return status.charAt(0).toUpperCase() + status.slice(1).replaceAll('_', ' ');
+        };
+        const hexToRgba = (hex, alpha) => {
+            const normalized = String(hex || '').replace('#', '');
+            if (!/^[0-9a-f]{6}$/i.test(normalized)) {
+                return `rgba(20, 163, 139, ${alpha})`;
+            }
+            const red = parseInt(normalized.slice(0, 2), 16);
+            const green = parseInt(normalized.slice(2, 4), 16);
+            const blue = parseInt(normalized.slice(4, 6), 16);
+            return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+        };
+
+        const buildChartImage = async ({ title, rows, color, type = 'line', beginAtZero = true }) => {
+            if (!Array.isArray(rows) || rows.length === 0 || !window.Chart) {
+                return null;
+            }
+            const chartRows = rows.filter((row) => row && typeof row === 'object');
+            if (chartRows.length === 0) {
+                return null;
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = 1200;
+            canvas.height = 430;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                return null;
+            }
+            const backgroundPlugin = {
+                id: 'profilePdfCanvasBackground',
+                beforeDraw(chart) {
+                    const { ctx: chartCtx, width, height } = chart;
+                    chartCtx.save();
+                    chartCtx.fillStyle = '#ffffff';
+                    chartCtx.fillRect(0, 0, width, height);
+                    chartCtx.restore();
+                },
+            };
+            const chart = new window.Chart(ctx, {
+                type,
+                data: {
+                    labels: chartRows.map((row) => cleanText(row.label, '')),
+                    datasets: [{
+                        label: title,
+                        data: chartRows.map((row) => asNumber(row.value, 0)),
+                        borderColor: color,
+                        backgroundColor: hexToRgba(color, type === 'bar' ? 0.48 : 0.16),
+                        borderWidth: 3,
+                        fill: type !== 'bar',
+                        tension: 0.28,
+                        pointRadius: type === 'bar' ? 0 : 2,
+                    }],
+                },
+                options: {
+                    responsive: false,
+                    animation: false,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        title: {
+                            display: true,
+                            text: title,
+                            color: '#17212b',
+                            font: { size: 22, weight: 'bold' },
+                            padding: { top: 12, bottom: 18 },
+                        },
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#65727e', maxRotation: 55, minRotation: 0, autoSkip: true },
+                            grid: { display: false },
+                        },
+                        y: {
+                            beginAtZero,
+                            ticks: { color: '#65727e' },
+                            grid: { color: 'rgba(101, 114, 126, 0.16)' },
+                        },
+                    },
+                },
+                plugins: [backgroundPlugin],
+            });
+            await new Promise((resolve) => window.requestAnimationFrame(resolve));
+            const imageData = canvas.toDataURL('image/png');
+            chart.destroy();
+            return imageData;
+        };
+
+        button.addEventListener('click', async () => {
+            if (button.disabled) {
+                return;
+            }
+            const labelNode = button.querySelector('[data-profile-pdf-export-label]');
+            const previousLabel = labelNode instanceof HTMLElement ? labelNode.textContent : button.textContent;
+            const setButtonLabel = (value) => {
+                if (labelNode instanceof HTMLElement) {
+                    labelNode.textContent = value;
+                } else {
+                    button.textContent = value;
+                }
+            };
+
+            button.disabled = true;
+            button.setAttribute('aria-busy', 'true');
+            setButtonLabel(text('pdf_generating', 'Generating PDF...'));
+
+            try {
+                await ensureDeps();
+
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
+                if (typeof pdf.autoTable !== 'function') {
+                    throw new Error('jspdf-autotable is not available.');
+                }
+
+                const pageWidth = pdf.internal.pageSize.getWidth();
+                const pageHeight = pdf.internal.pageSize.getHeight();
+                const margin = 36;
+                const topMargin = 62;
+                const bottomMargin = 46;
+                const contentWidth = pageWidth - margin * 2;
+                const colors = {
+                    ink: [23, 33, 43],
+                    muted: [101, 114, 126],
+                    line: [217, 226, 221],
+                    primary: [20, 163, 139],
+                    primaryDark: [13, 125, 108],
+                    navy: [17, 33, 51],
+                    success: [22, 133, 91],
+                    warning: [217, 119, 6],
+                    danger: [190, 18, 60],
+                    coral: [255, 107, 74],
+                    soft: [238, 248, 246],
+                    alt: [248, 251, 250],
+                    paper: [253, 252, 249],
+                };
+                let y = margin;
+                const username = cleanText(payload.username, cleanText(payload.display_name, 'user')).replace(/^@/, '');
+                const displayName = cleanText(payload.display_name, username);
+                const generatedAt = formatDate(payload.generated_at || new Date().toISOString());
+                const challengeRange = asObject(payload.challenge_range);
+                const challengeRangeLabel = `${formatDate(challengeRange.start)} - ${formatDate(challengeRange.end)}`;
+                const config = asObject(payload.config);
+                const totals = asObject(payload.totals);
+                const totalSummary = { ...totals, ...asObject(payload.total_summary) };
+                const charts = asObject(payload.charts);
+                const weeklySummary = Array.isArray(payload.weekly_summary) ? payload.weekly_summary : [];
+                const monthlySummary = Array.isArray(payload.monthly_summary) ? payload.monthly_summary : [];
+                const allDailyDetails = Array.isArray(payload.daily_details) ? payload.daily_details : [];
+                const allDailyNutrition = Array.isArray(payload.daily_photo_nutrition) ? payload.daily_photo_nutrition : [];
+                const habitGoalCodes = new Set((Array.isArray(payload.habit_goal_codes) ? payload.habit_goal_codes : []).map((code) => String(code)));
+                const pdfTitle = text('pdf_title', 'Challenge report');
+                const sectionOverview = text('pdf_section_overview', 'Configuration and totals');
+                const sectionWeekly = text('pdf_section_weekly', 'Weekly progress');
+                const sectionMonthly = text('pdf_section_monthly', 'Monthly review');
+                const sectionTotal = text('pdf_section_total', 'Total summary');
+                const sectionDaily = text('pdf_section_daily', 'Daily details');
+                const sectionNutrition = text('pdf_section_nutrition', 'Nutrition and photos');
+                const sectionGoals = text('pdf_section_goals', 'Goals');
+                const sectionAchievements = text('pdf_section_achievements', 'Achievements');
+
+                const addPageIfNeeded = (needed = 24) => {
+                    if (y + needed <= pageHeight - bottomMargin) {
+                        return;
+                    }
+                    pdf.addPage();
+                    y = topMargin;
+                };
+                const addSectionTitle = (title) => {
+                    addPageIfNeeded(42);
+                    pdf.setFillColor(...colors.soft);
+                    pdf.setDrawColor(...colors.line);
+                    pdf.roundedRect(margin, y, contentWidth, 30, 6, 6, 'FD');
+                    pdf.setFont('helvetica', 'bold');
+                    pdf.setFontSize(12);
+                    pdf.setTextColor(...colors.ink);
+                    pdf.text(String(title), margin + 12, y + 20);
+                    y += 42;
+                };
+                const addTableCaption = (title, subtitle = '') => {
+                    const caption = cleanText(title, '');
+                    const hint = cleanText(subtitle, '');
+                    if (caption === '') {
+                        return;
+                    }
+                    addPageIfNeeded(hint === '' ? 22 : 36);
+                    pdf.setFont('helvetica', 'bold');
+                    pdf.setFontSize(9.4);
+                    pdf.setTextColor(...colors.navy);
+                    pdf.text(caption, margin, y);
+                    y += 12;
+                    if (hint !== '') {
+                        pdf.setFont('helvetica', 'normal');
+                        pdf.setFontSize(7.4);
+                        pdf.setTextColor(...colors.muted);
+                        const wrapped = pdf.splitTextToSize(hint, contentWidth);
+                        pdf.text(wrapped, margin, y);
+                        y += wrapped.length * 9 + 4;
+                    }
+                };
+                const addAutoTable = (head, body, options = {}) => {
+                    if (options.caption) {
+                        addTableCaption(options.caption, options.captionHint || '');
+                    }
+                    addPageIfNeeded(72);
+                    const headCells = Array.isArray(head[0]) ? head[0].length : 1;
+                    const tableBody = Array.isArray(body) && body.length > 0
+                        ? body
+                        : [[{ content: noDataLabel, colSpan: headCells, styles: { halign: 'center', textColor: colors.muted } }]];
+                    pdf.autoTable({
+                        startY: y,
+                        head,
+                        body: tableBody,
+                        margin: { top: topMargin, right: margin, bottom: bottomMargin, left: margin },
+                        theme: options.theme || 'striped',
+                        showHead: 'everyPage',
+                        styles: {
+                            font: 'helvetica',
+                            fontSize: options.fontSize ?? 8,
+                            cellPadding: options.cellPadding ?? 4,
+                            overflow: 'linebreak',
+                            lineColor: colors.line,
+                            lineWidth: 0.45,
+                            textColor: colors.ink,
+                            valign: 'top',
+                        },
+                        headStyles: {
+                            fillColor: options.headColor ?? colors.navy,
+                            textColor: [255, 255, 255],
+                            fontStyle: 'bold',
+                            fontSize: options.headFontSize ?? 7.6,
+                        },
+                        alternateRowStyles: { fillColor: options.alternateFill ?? colors.alt },
+                        bodyStyles: { fillColor: colors.paper },
+                        columnStyles: options.columnStyles || {},
+                        didParseCell: options.didParseCell,
+                        didDrawCell: options.didDrawCell,
+                    });
+                    y = (pdf.lastAutoTable?.finalY || y) + (options.afterSpacing ?? 16);
+                };
+                const drawMetricCards = (cards) => {
+                    const columns = 3;
+                    const gap = 10;
+                    const cardWidth = (contentWidth - gap * (columns - 1)) / columns;
+                    const cardHeight = 60;
+                    addPageIfNeeded(Math.ceil(cards.length / columns) * (cardHeight + gap) + 10);
+                    cards.forEach((card, index) => {
+                        const col = index % columns;
+                        const row = Math.floor(index / columns);
+                        const cardX = margin + col * (cardWidth + gap);
+                        const cardY = y + row * (cardHeight + gap);
+                        pdf.setFillColor(255, 255, 255);
+                        pdf.setDrawColor(...colors.line);
+                        pdf.roundedRect(cardX, cardY, cardWidth, cardHeight, 7, 7, 'FD');
+                        pdf.setFont('helvetica', 'bold');
+                        pdf.setFontSize(7.6);
+                        pdf.setTextColor(...colors.primaryDark);
+                        pdf.text(String(card.label).toUpperCase(), cardX + 10, cardY + 17, { maxWidth: cardWidth - 20 });
+                        pdf.setFontSize(14);
+                        pdf.setTextColor(...colors.ink);
+                        const valueLines = pdf.splitTextToSize(String(card.value), cardWidth - 20).slice(0, 2);
+                        pdf.text(valueLines, cardX + 10, cardY + 39);
+                    });
+                    y += Math.ceil(cards.length / columns) * (cardHeight + gap) - gap + 22;
+                };
+                const addTextBlock = (lines, options = {}) => {
+                    const lineHeight = options.lineHeight ?? 12;
+                    pdf.setFont('helvetica', options.font || 'normal');
+                    pdf.setFontSize(options.fontSize ?? 9);
+                    pdf.setTextColor(...(options.color || colors.ink));
+                    lines.forEach((line) => {
+                        const wrapped = pdf.splitTextToSize(String(line), contentWidth);
+                        wrapped.forEach((chunk) => {
+                            addPageIfNeeded(lineHeight);
+                            pdf.text(chunk, margin, y);
+                            y += lineHeight;
+                        });
+                    });
+                };
+                const addChartPanel = async (chartDef) => {
+                    const rows = Array.isArray(chartDef.rows) ? chartDef.rows : [];
+                    const image = await buildChartImage({ ...chartDef, rows });
+                    if (!image) {
+                        return false;
+                    }
+                    if (chartDef.caption) {
+                        addTableCaption(chartDef.caption);
+                    }
+                    addPageIfNeeded(212);
+                    pdf.setDrawColor(...colors.line);
+                    pdf.setFillColor(255, 255, 255);
+                    pdf.roundedRect(margin, y, contentWidth, 188, 7, 7, 'FD');
+                    pdf.addImage(image, 'PNG', margin + 7, y + 8, contentWidth - 14, 171);
+                    y += 204;
+                    return true;
+                };
+                const addDocumentChrome = () => {
+                    const pageCount = pdf.internal.getNumberOfPages();
+                    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+                        pdf.setPage(pageNumber);
+                        pdf.setDrawColor(...colors.line);
+                        pdf.setTextColor(...colors.muted);
+                        pdf.setFont('helvetica', 'normal');
+                        pdf.setFontSize(8);
+                        if (pageNumber > 1) {
+                            pdf.text(pdfTitle, margin, 28);
+                            pdf.text(`${displayName} (@${username})`, pageWidth - margin, 28, { align: 'right' });
+                            pdf.line(margin, 38, pageWidth - margin, 38);
+                        }
+                        pdf.line(margin, pageHeight - 34, pageWidth - margin, pageHeight - 34);
+                        pdf.text(`${displayName} (@${username})`, margin, pageHeight - 18, { maxWidth: contentWidth * 0.7 });
+                        pdf.text(`${pageNumber} / ${pageCount}`, pageWidth - margin, pageHeight - 18, { align: 'right' });
+                    }
+                };
+
+                const progressBar = (value) => {
+                    const pct = Math.max(0, Math.min(100, asNumber(value, 0)));
+                    const filled = Math.round(pct / 10);
+                    return `[${'#'.repeat(filled)}${'.'.repeat(10 - filled)}] ${formatPercent(pct, 0)}`;
+                };
+                const approvalSummary = (day) => {
+                    const rows = [];
+                    const pushApproval = (title, status, detail) => {
+                        if (!hasValue(status) && !hasValue(detail)) {
+                            return;
+                        }
+                        const detailParts = [
+                            hasValue(status) ? normalizeStatus(status) : '',
+                            hasValue(detail) ? cleanText(detail, '') : '',
+                        ].filter(Boolean);
+                        rows.push(`${title}: ${detailParts.join(' - ')}`);
+                    };
+                    pushApproval(label('steps', 'Steps'), day.approval_step_status, day.approval_step_detail);
+                    pushApproval(label('workouts', 'Workouts'), day.approval_workout_status, day.approval_workout_detail);
+                    pushApproval(label('extra_workout', 'Extra workout'), day.approval_extra_status, day.approval_extra_detail);
+                    return rows.join('\n');
+                };
+                const habitSummary = (day) => {
+                    const habits = Array.isArray(day.habits) ? day.habits : [];
+                    return habits.map((habit) => {
+                        const code = String(habit.code || '');
+                        const habitLabel = cleanText(habit.label || code, '');
+                        if (habitLabel === '') {
+                            return '';
+                        }
+                        if (Number(habit.value) === 1) {
+                            return habitLabel;
+                        }
+                        return habitGoalCodes.has(code) ? `${habitLabel}: 0` : '';
+                    }).filter(Boolean).join(', ');
+                };
+                const flagSummary = (day) => [
+                    Number(day.junk_food) === 1 ? label('junk_food', 'Junk food') : '',
+                    Number(day.extra_workout) === 1 ? label('extra_workout', 'Extra workout') : '',
+                ].filter(Boolean).join('\n');
+                const noteSummary = (day) => {
+                    const habits = habitSummary(day);
+                    return [
+                        hasValue(day.missing_reason) ? `${text('pdf_missing_reason', 'Missing reason')}: ${cleanText(day.missing_reason)}` : '',
+                        hasValue(day.junk_food_reason) ? `${label('junk_food', 'Junk food')}: ${cleanText(day.junk_food_reason)}` : '',
+                        hasValue(day.notes) ? cleanText(day.notes) : '',
+                        habits !== '' ? `${text('pdf_habits', 'Habits')}: ${habits}` : '',
+                    ].filter(Boolean).join('\n');
+                };
+                const dailyHasReportInput = (day) => {
+                    const workouts = Array.isArray(day.workout_types) ? day.workout_types : [];
+                    const habits = Array.isArray(day.habits) ? day.habits : [];
+                    return hasPositiveNumber(day.steps)
+                        || hasPositiveNumber(day.distance_km)
+                        || hasPositiveNumber(day.workout_count)
+                        || hasPositiveNumber(day.workout_counted)
+                        || workouts.length > 0
+                        || hasPositiveNumber(day.training_calories_burned)
+                        || hasValue(day.weight)
+                        || Number(day.junk_food) === 1
+                        || Number(day.extra_workout) === 1
+                        || hasValue(day.missing_reason)
+                        || hasValue(day.junk_food_reason)
+                        || hasValue(day.notes)
+                        || approvalSummary(day) !== ''
+                        || habits.some((habit) => Number(habit.value) === 1 || habitGoalCodes.has(String(habit.code || '')));
+                };
+                const nutritionHasReportInput = (day) => {
+                    const dayTotals = asObject(day.totals);
+                    return hasPositiveNumber(day.photo_count)
+                        || (Array.isArray(day.items) && day.items.length > 0)
+                        || Object.values(dayTotals).some((value) => hasPositiveNumber(value));
+                };
+                const dailyDetails = allDailyDetails.filter(dailyHasReportInput);
+                const dailyNutrition = allDailyNutrition.filter(nutritionHasReportInput);
+                const totalNutrition = asObject(totalSummary.nutrition);
+
+                pdf.setFillColor(...colors.navy);
+                pdf.rect(0, 0, pageWidth, 134, 'F');
+                pdf.setFillColor(...colors.primary);
+                pdf.rect(0, 0, 9, 134, 'F');
+                pdf.setFillColor(...colors.coral);
+                pdf.rect(9, 0, 4, 134, 'F');
+                pdf.setTextColor(255, 255, 255);
+                pdf.setFont('helvetica', 'bold');
+                pdf.setFontSize(23);
+                pdf.text(pdfTitle, margin, 44, { maxWidth: contentWidth * 0.62 });
+                pdf.setFontSize(15);
+                pdf.text(displayName, margin, 75, { maxWidth: contentWidth * 0.62 });
+                pdf.setFont('helvetica', 'normal');
+                pdf.setFontSize(10);
+                pdf.text(`@${username}`, margin, 96);
+                pdf.setFontSize(9);
+                pdf.text(`${text('pdf_generated', 'Generated')}: ${generatedAt}`, pageWidth - margin, 54, { align: 'right' });
+                pdf.text(`${text('pdf_challenge_range', 'Challenge range')}: ${challengeRangeLabel}`, pageWidth - margin, 78, { align: 'right' });
+                y = 160;
+
+                drawMetricCards([
+                    { label: label('input_days', 'Input days'), value: formatNumber(totalSummary.input_days ?? dailyDetails.length, 0) },
+                    { label: label('steps', 'Steps'), value: formatNumber(totalSummary.steps ?? totals.steps, 0) },
+                    { label: label('distance', 'Distance'), value: formatValue(totalSummary.distance_km ?? totals.distance_km, 2, 'km') },
+                    { label: label('workouts', 'Workouts'), value: formatNumber(totalSummary.workouts ?? totals.workouts, 0) },
+                    { label: label('progress', 'Progress'), value: formatPercent(totalSummary.avg_progress_pct ?? 0, 0) },
+                    { label: label('penalty', 'Penalty'), value: formatCurrency(totalSummary.penalty ?? totals.penalty) },
+                ]);
+
+                addTableCaption(text('pdf_executive_summary', 'Executive summary'));
+                addTextBlock([
+                    `${displayName} (@${username}) - ${text('pdf_challenge_range', 'Challenge range')}: ${challengeRangeLabel}.`,
+                    `${label('input_days', 'Input days')}: ${formatNumber(totalSummary.input_days ?? dailyDetails.length, 0)}. ${label('photo_days', 'Photo days')}: ${formatNumber(totalSummary.photo_days ?? dailyNutrition.length, 0)}. ${label('progress', 'Progress')}: ${formatPercent(totalSummary.avg_progress_pct ?? 0, 0)}.`,
+                    `${label('steps', 'Steps')}: ${formatNumber(totalSummary.steps ?? totals.steps, 0)}. ${label('distance', 'Distance')}: ${formatValue(totalSummary.distance_km ?? totals.distance_km, 2, 'km')}. ${label('workouts', 'Workouts')}: ${formatNumber(totalSummary.workouts ?? totals.workouts, 0)}.`,
+                    hasValue(totalSummary.weight_change) ? `${label('weight_change', 'Weight change')}: ${formatValue(totalSummary.weight_change, 1, 'kg')}.` : '',
+                ].filter(Boolean), { color: colors.ink, fontSize: 8.8, lineHeight: 12 });
+                y += 8;
+
+                addSectionTitle(`1. ${sectionOverview}`);
+                addAutoTable(
+                    [[text('pdf_current_setup', 'Current setup'), '']],
+                    [
+                        [label('primary_goal', 'Primary daily goal'), cleanText(config.primary_goal_type)],
+                        [label('primary_goal_value', 'Goal value'), formatValue(config.primary_goal_value, 2)],
+                        [label('primary_goals_spec', 'Multi-goals'), cleanText(config.primary_goals_spec)],
+                        [label('workout_target', 'Workout target'), formatValue(config.workout_target, 0)],
+                        [label('maintenance_calories', 'Maintenance calories'), formatValue(config.maintenance_calories, 0, 'kcal')],
+                        [label('calorie_burn_goal', 'Daily burn goal'), formatValue(config.calorie_burn_goal, 0, 'kcal')],
+                        [label('calorie_consumed_max', 'Daily max consumed'), formatValue(config.calorie_consumed_max, 0, 'kcal')],
+                        [label('ideal_weight', 'Ideal weight'), formatValue(config.ideal_weight, 1, 'kg')],
+                    ],
+                    {
+                        caption: text('pdf_current_setup', 'Current setup'),
+                        fontSize: 8.4,
+                        columnStyles: { 0: { cellWidth: 178, fontStyle: 'bold' }, 1: { cellWidth: contentWidth - 178 } },
+                    }
+                );
+
+                addSectionTitle(`2. ${sectionWeekly}`);
+                addAutoTable(
+                    [[
+                        label('week', 'Week'),
+                        label('status', 'Status'),
+                        label('steps', 'Steps'),
+                        'Km',
+                        label('workouts', 'Workouts'),
+                        label('compliance', 'Compliance'),
+                        label('progress', 'Progress'),
+                        label('failures', 'Failures'),
+                        label('penalty', 'Penalty'),
+                    ]],
+                    weeklySummary.map((week) => [
+                        formatDateRange(week.week_start, week.week_end),
+                        normalizeStatus(week.status),
+                        formatNumber(week.steps, 0),
+                        formatNumber(week.distance_km, 2),
+                        formatNumber(week.workouts, 0),
+                        `${label('steps', 'Steps')}: ${formatNumber(week.step_success, 0)} / ${formatNumber(week.step_required, 0)}\n${label('workouts', 'Workouts')}: ${formatNumber(week.workout_success, 0)} / ${formatNumber(week.workout_target, 0)}\n${label('strikes', 'Strikes')}: ${formatNumber(week.strikes_after_week, 0)}`,
+                        progressBar(week.progress_pct),
+                        formatNumber(week.failures, 0),
+                        formatCurrency(week.penalty),
+                    ]),
+                    {
+                        caption: text('pdf_weekly_progress_table', 'Weekly compliance table'),
+                        fontSize: 6.7,
+                        cellPadding: 3,
+                        columnStyles: {
+                            0: { cellWidth: 74 },
+                            1: { cellWidth: 48 },
+                            2: { cellWidth: 50, halign: 'right' },
+                            3: { cellWidth: 38, halign: 'right' },
+                            4: { cellWidth: 38, halign: 'right' },
+                            5: { cellWidth: 96 },
+                            6: { cellWidth: 86 },
+                            7: { cellWidth: 38, halign: 'right' },
+                            8: { cellWidth: 55, halign: 'right' },
+                        },
+                    }
+                );
+                let renderedWeeklyCharts = 0;
+                if (await addChartPanel({
+                    title: text('pdf_chart_weekly_progress', 'Weekly progress'),
+                    caption: text('pdf_chart_weekly_progress', 'Weekly progress'),
+                    rows: Array.isArray(charts.weekly_progress) ? charts.weekly_progress : [],
+                    color: '#14a38b',
+                    type: 'bar',
+                    beginAtZero: true,
+                })) {
+                    renderedWeeklyCharts += 1;
+                }
+                if (await addChartPanel({
+                    title: label('score', 'Score'),
+                    caption: label('score', 'Score'),
+                    rows: Array.isArray(charts.score) ? charts.score : [],
+                    color: '#0f766e',
+                    type: 'line',
+                    beginAtZero: true,
+                })) {
+                    renderedWeeklyCharts += 1;
+                }
+                if (renderedWeeklyCharts === 0) {
+                    addTextBlock([noDataLabel], { color: colors.muted });
+                    y += 8;
+                }
+
+                addSectionTitle(`3. ${sectionMonthly}`);
+                addAutoTable(
+                    [[
+                        label('month', 'Month'),
+                        label('input_days', 'Input days'),
+                        label('photo_days', 'Photo days'),
+                        label('steps', 'Steps'),
+                        'Km',
+                        label('workouts', 'Workouts'),
+                        label('calories_consumed', 'Calories'),
+                        label('average_weight', 'Avg weight'),
+                        label('weight_change', 'Change'),
+                        label('progress', 'Progress'),
+                    ]],
+                    monthlySummary.map((month) => [
+                        cleanText(month.label || month.month),
+                        formatNumber(month.input_days, 0),
+                        formatNumber(month.photo_days, 0),
+                        formatNumber(month.steps, 0),
+                        formatNumber(month.distance_km, 2),
+                        formatNumber(month.workouts, 0),
+                        formatNumber(month.calories, 0),
+                        formatValue(month.avg_weight, 1, 'kg'),
+                        formatValue(month.weight_change, 1, 'kg'),
+                        progressBar(month.progress_pct),
+                    ]),
+                    {
+                        caption: text('pdf_monthly_summary_table', 'Monthly summary table'),
+                        fontSize: 6.5,
+                        cellPadding: 3,
+                        columnStyles: {
+                            0: { cellWidth: 78 },
+                            1: { cellWidth: 40, halign: 'right' },
+                            2: { cellWidth: 40, halign: 'right' },
+                            3: { cellWidth: 54, halign: 'right' },
+                            4: { cellWidth: 44, halign: 'right' },
+                            5: { cellWidth: 44, halign: 'right' },
+                            6: { cellWidth: 54, halign: 'right' },
+                            7: { cellWidth: 54, halign: 'right' },
+                            8: { cellWidth: 50, halign: 'right' },
+                            9: { cellWidth: 65 },
+                        },
+                    }
+                );
+                const monthlyChartDefs = [
+                    { title: text('pdf_chart_monthly_progress', 'Monthly progress'), caption: text('pdf_chart_monthly_progress', 'Monthly progress'), rows: charts.monthly_progress, color: '#14a38b', type: 'bar', beginAtZero: true },
+                    { title: text('pdf_chart_monthly_steps', 'Monthly steps'), caption: text('pdf_chart_monthly_steps', 'Monthly steps'), rows: charts.monthly_steps, color: '#2563eb', type: 'bar', beginAtZero: true },
+                    { title: text('pdf_chart_monthly_workouts', 'Monthly workouts'), caption: text('pdf_chart_monthly_workouts', 'Monthly workouts'), rows: charts.monthly_workouts, color: '#be185d', type: 'bar', beginAtZero: true },
+                    { title: text('pdf_chart_nutrition_calories', 'Nutrition calories'), caption: text('pdf_chart_nutrition_calories', 'Nutrition calories'), rows: charts.nutrition_calories, color: '#d97706', type: 'bar', beginAtZero: true },
+                ];
+                for (const chartDef of monthlyChartDefs) {
+                    await addChartPanel(chartDef);
+                }
+                monthlySummary.forEach((month) => {
+                    addAutoTable(
+                        [[label('category', 'Category'), label('total', 'Total'), label('category', 'Category'), label('total', 'Total')]],
+                        [
+                            [label('input_days', 'Input days'), formatNumber(month.input_days, 0), label('photo_days', 'Photo days'), formatNumber(month.photo_days, 0)],
+                            [label('steps', 'Steps'), formatNumber(month.steps, 0), label('distance', 'Distance'), formatValue(month.distance_km, 2, 'km')],
+                            [label('workouts', 'Workouts'), formatNumber(month.workouts, 0), label('training_calories_burned', 'Burned'), formatValue(month.training_calories_burned, 0, 'kcal')],
+                            [label('photos', 'Photos'), formatNumber(month.photo_count, 0), label('calories_consumed', 'Calories'), formatValue(month.calories, 0, 'kcal')],
+                            [label('average_weight', 'Avg weight'), formatValue(month.avg_weight, 1, 'kg'), label('weight_change', 'Change'), formatValue(month.weight_change, 1, 'kg')],
+                            [label('progress', 'Progress'), progressBar(month.progress_pct), '', ''],
+                        ],
+                        {
+                            caption: `${cleanText(month.label || month.month)} ${text('pdf_monthly_summary_table', 'monthly summary')}`,
+                            fontSize: 7,
+                            cellPadding: 3,
+                            afterSpacing: 10,
+                            columnStyles: {
+                                0: { cellWidth: 126, fontStyle: 'bold' },
+                                1: { cellWidth: 136 },
+                                2: { cellWidth: 126, fontStyle: 'bold' },
+                                3: { cellWidth: contentWidth - 388 },
+                            },
+                        }
+                    );
+                });
+
+                addSectionTitle(`4. ${sectionTotal}`);
+                addAutoTable(
+                    [[label('category', 'Category'), label('total', 'Total')]],
+                    [
+                        [label('input_days', 'Input days'), formatNumber(totalSummary.input_days ?? dailyDetails.length, 0)],
+                        [label('photo_days', 'Photo days'), formatNumber(totalSummary.photo_days ?? dailyNutrition.length, 0)],
+                        [label('photos', 'Photos'), formatNumber(totalSummary.photo_count ?? 0, 0)],
+                        [label('steps', 'Steps'), formatNumber(totalSummary.steps ?? totals.steps, 0)],
+                        [label('distance', 'Distance'), formatValue(totalSummary.distance_km ?? totals.distance_km, 2, 'km')],
+                        [label('workouts', 'Workouts'), formatNumber(totalSummary.workouts ?? totals.workouts, 0)],
+                        [label('training_calories_burned', 'Burned'), formatValue(totalSummary.training_calories_burned, 0, 'kcal')],
+                        [label('calories_consumed', 'Calories'), formatValue(totalNutrition.calories, 0, 'kcal')],
+                        [label('protein', 'Protein'), formatValue(totalNutrition.protein_g, 1, 'g')],
+                        [label('carbs', 'Carbs'), formatValue(totalNutrition.carbs_g, 1, 'g')],
+                        [label('fat', 'Fat'), formatValue(totalNutrition.fat_g, 1, 'g')],
+                        [label('average_weight', 'Avg weight'), formatValue(totalSummary.avg_weight, 1, 'kg')],
+                        [label('weight_change', 'Weight change'), formatValue(totalSummary.weight_change, 1, 'kg')],
+                        [label('progress', 'Progress'), progressBar(totalSummary.avg_progress_pct ?? 0)],
+                        [label('failures', 'Failures'), formatNumber(totalSummary.failures, 0)],
+                        [label('strikes', 'Strikes'), formatNumber(totalSummary.strikes ?? totals.strikes, 0)],
+                        [label('penalty', 'Penalty'), formatCurrency(totalSummary.penalty ?? totals.penalty)],
+                    ],
+                    {
+                        caption: text('pdf_total_summary_table', 'Total summary table'),
+                        fontSize: 8,
+                        columnStyles: { 0: { cellWidth: 208, fontStyle: 'bold' }, 1: { cellWidth: contentWidth - 208 } },
+                    }
+                );
+                const totalChartDefs = [
+                    { title: label('steps', 'Steps'), caption: label('steps', 'Steps'), rows: charts.steps, color: '#14a38b', type: 'line', beginAtZero: true },
+                    { title: label('distance', 'Distance'), caption: label('distance', 'Distance'), rows: charts.distance, color: '#2563eb', type: 'line', beginAtZero: true },
+                    { title: label('workouts', 'Workouts'), caption: label('workouts', 'Workouts'), rows: charts.workouts, color: '#be185d', type: 'bar', beginAtZero: true },
+                    { title: label('weight', 'Weight'), caption: label('weight', 'Weight'), rows: charts.weight, color: '#334155', type: 'line', beginAtZero: false },
+                ];
+                for (const chartDef of totalChartDefs) {
+                    await addChartPanel(chartDef);
+                }
+
+                addSectionTitle(`5. ${sectionDaily}`);
+                addAutoTable(
+                    [[
+                        label('date', 'Date'),
+                        label('steps', 'Steps'),
+                        'Km',
+                        label('workouts', 'Workouts'),
+                        label('training_calories_burned', 'Burned'),
+                        label('weight', 'Weight'),
+                        text('pdf_flags_notes', 'Flags, approvals and notes'),
+                    ]],
+                    dailyDetails.map((day) => {
+                        const workoutTypes = Array.isArray(day.workout_types) ? day.workout_types.map((workout) => cleanText(workout, '')).filter(Boolean) : [];
+                        const workoutSummary = [
+                            hasPositiveNumber(day.workout_count) || hasPositiveNumber(day.workout_counted)
+                                ? `${formatNumber(day.workout_count, 0)} / ${formatNumber(day.workout_counted, 0)}`
+                                : '',
+                            workoutTypes.join(', '),
+                        ].filter(Boolean).join('\n');
+                        const flagsNotes = [flagSummary(day), approvalSummary(day), noteSummary(day)].filter(Boolean).join('\n');
+                        return [
+                            formatDate(day.date),
+                            formatNumber(day.steps, 0),
+                            formatNumber(day.distance_km, 2),
+                            workoutSummary,
+                            formatValue(day.training_calories_burned, 0, 'kcal'),
+                            formatValue(day.weight, 1, 'kg'),
+                            flagsNotes,
+                        ];
+                    }),
+                    {
+                        caption: text('pdf_daily_input_table', 'Daily input table'),
+                        fontSize: 6.8,
+                        cellPadding: 3,
+                        columnStyles: {
+                            0: { cellWidth: 58 },
+                            1: { cellWidth: 50, halign: 'right' },
+                            2: { cellWidth: 38, halign: 'right' },
+                            3: { cellWidth: 88 },
+                            4: { cellWidth: 54, halign: 'right' },
+                            5: { cellWidth: 44, halign: 'right' },
+                            6: { cellWidth: contentWidth - 332 },
+                        },
+                    }
+                );
+
+                addSectionTitle(`6. ${sectionNutrition}`);
+                addAutoTable(
+                    [[
+                        label('date', 'Date'),
+                        label('photos', 'Photos'),
+                        label('calories', 'Calories'),
+                        label('protein', 'Protein'),
+                        label('carbs', 'Carbs'),
+                        label('fat', 'Fat'),
+                        label('fiber', 'Fiber'),
+                        label('sugar', 'Sugar'),
+                        label('sodium', 'Sodium'),
+                    ]],
+                    dailyNutrition.map((day) => {
+                        const totalsByDay = asObject(day.totals);
+                        return [
+                            formatDate(day.date),
+                            formatNumber(day.photo_count, 0),
+                            formatNumber(totalsByDay.calories, 0),
+                            formatValue(totalsByDay.protein_g, 1, 'g'),
+                            formatValue(totalsByDay.carbs_g, 1, 'g'),
+                            formatValue(totalsByDay.fat_g, 1, 'g'),
+                            formatValue(totalsByDay.fiber_g, 1, 'g'),
+                            formatValue(totalsByDay.sugar_g, 1, 'g'),
+                            formatValue(totalsByDay.sodium_mg, 0, 'mg'),
+                        ];
+                    }),
+                    {
+                        caption: text('pdf_nutrition_day_table', 'Nutrition day table'),
+                        fontSize: 6.9,
+                        cellPadding: 3,
+                        columnStyles: {
+                            0: { cellWidth: 56 },
+                            1: { cellWidth: 42, halign: 'right' },
+                            2: { cellWidth: 46, halign: 'right' },
+                            3: { cellWidth: 56, halign: 'right' },
+                            4: { cellWidth: 56, halign: 'right' },
+                            5: { cellWidth: 52, halign: 'right' },
+                            6: { cellWidth: 52, halign: 'right' },
+                            7: { cellWidth: 52, halign: 'right' },
+                            8: { cellWidth: contentWidth - 412, halign: 'right' },
+                        },
+                    }
+                );
+                const foodRows = [];
+                dailyNutrition.forEach((day) => {
+                    const items = Array.isArray(day.items) ? day.items : [];
+                    items.forEach((item) => {
+                        foodRows.push([
+                            formatDate(day.date),
+                            cleanText(item.category),
+                            cleanText(item.caption),
+                            formatValue(item.calories, 0),
+                            formatValue(item.protein_g, 1, 'g'),
+                            formatValue(item.carbs_g, 1, 'g'),
+                            formatValue(item.fat_g, 1, 'g'),
+                            formatValue(item.fiber_g, 1, 'g'),
+                            formatValue(item.sugar_g, 1, 'g'),
+                            formatValue(item.sodium_mg, 0, 'mg'),
+                        ]);
+                    });
+                });
+                addAutoTable(
+                    [[
+                        label('date', 'Date'),
+                        label('category', 'Category'),
+                        label('caption', 'Caption'),
+                        label('calories', 'Calories'),
+                        label('protein', 'Protein'),
+                        label('carbs', 'Carbs'),
+                        label('fat', 'Fat'),
+                        label('fiber', 'Fiber'),
+                        label('sugar', 'Sugar'),
+                        label('sodium', 'Sodium'),
+                    ]],
+                    foodRows,
+                    {
+                        caption: text('pdf_food_items', 'Food items'),
+                        fontSize: 6.6,
+                        cellPadding: 3,
+                        columnStyles: {
+                            0: { cellWidth: 50 },
+                            1: { cellWidth: 54 },
+                            2: { cellWidth: contentWidth - 388 },
+                            3: { cellWidth: 38, halign: 'right' },
+                            4: { cellWidth: 42, halign: 'right' },
+                            5: { cellWidth: 42, halign: 'right' },
+                            6: { cellWidth: 38, halign: 'right' },
+                            7: { cellWidth: 40, halign: 'right' },
+                            8: { cellWidth: 40, halign: 'right' },
+                            9: { cellWidth: 44, halign: 'right' },
+                        },
+                    }
+                );
+
+                addSectionTitle(`7. ${sectionGoals}`);
+                const goals = Array.isArray(payload.goals) ? payload.goals : [];
+                addAutoTable(
+                    [[
+                        label('goal_name', 'Goal name'),
+                        label('type', 'Type'),
+                        label('current', 'Current'),
+                        label('target', 'Target'),
+                        label('progress', 'Progress'),
+                        label('status', 'Status'),
+                        label('due_date', 'Due date'),
+                    ]],
+                    goals.map((goal) => [
+                        cleanText(goal.title),
+                        cleanText(goal.target_type),
+                        cleanText(goal.current_label, formatValue(goal.current_value, 1)),
+                        cleanText(goal.target_label, formatValue(goal.target_value, 1)),
+                        progressBar(goal.progress_pct),
+                        cleanText(goal.status_label, normalizeStatus(goal.status || 'active')),
+                        formatDate(goal.due_date || ''),
+                    ]),
+                    {
+                        caption: text('pdf_goals_table', 'Goals table'),
+                        fontSize: 6.9,
+                        columnStyles: {
+                            0: { cellWidth: 124 },
+                            1: { cellWidth: 70 },
+                            2: { cellWidth: 60, halign: 'right' },
+                            3: { cellWidth: 60, halign: 'right' },
+                            4: { cellWidth: 80 },
+                            5: { cellWidth: 62 },
+                            6: { cellWidth: contentWidth - 456 },
+                        },
+                    }
+                );
+
+                addSectionTitle(`8. ${sectionAchievements}`);
+                const achievements = Array.isArray(payload.achievements) ? payload.achievements : [];
+                addAutoTable(
+                    [[label('achievement_name', 'Name'), label('description', 'Description'), label('reward', 'Reward'), label('date', 'Date')]],
+                    achievements.map((achievement) => [
+                        cleanText(achievement.name),
+                        cleanText(achievement.description),
+                        cleanText(achievement.reward_text),
+                        formatDate(achievement.awarded_at || ''),
+                    ]),
+                    {
+                        caption: text('pdf_achievements_table', 'Achievements table'),
+                        fontSize: 7.1,
+                        columnStyles: {
+                            0: { cellWidth: 122 },
+                            1: { cellWidth: contentWidth - 318 },
+                            2: { cellWidth: 98 },
+                            3: { cellWidth: 98 },
+                        },
+                    }
+                );
+
+                addDocumentChrome();
+                const safeUsername = username.replace(/[^a-z0-9_-]/gi, '-').toLowerCase() || 'user';
+                const today = new Date().toISOString().slice(0, 10);
+                pdf.save(`challenge-report-${safeUsername}-${today}.pdf`);
+            } catch (error) {
+                console.error('PDF export failed', error);
+                window.alert(text('pdf_export_failed', 'Could not generate the PDF right now.'));
+            } finally {
+                button.disabled = false;
+                button.removeAttribute('aria-busy');
+                setButtonLabel(previousLabel || text('export_pdf', 'Export user data to PDF'));
+            }
+        });
+    };
+
+    const initProfilePdfExportLegacy = () => {
+        const button = document.querySelector('[data-profile-pdf-export]');
+        const payloadNode = document.getElementById('profile-pdf-data');
+        if (!(button instanceof HTMLButtonElement) || !(payloadNode instanceof HTMLScriptElement)) {
+            return;
+        }
 
         let payload = {};
         try {
@@ -2652,10 +3861,10 @@
 
         const ensureDeps = async () => {
             if (!window.jspdf) {
-                await loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
+                await loadScript('/assets/vendor/jspdf.umd.min.js?v=2.5.1');
             }
             if (!window.Chart) {
-                await loadScript('https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js');
+                await loadScript('/assets/vendor/chart.umd.min.js?v=4.4.3');
             }
         };
 
@@ -2920,18 +4129,11 @@
                 const achievementLines = Array.isArray(payload.achievements)
                     ? payload.achievements.map((achievement) => `- ${achievement.name || '-'}${achievement.reward_text ? ` | ${achievement.reward_text}` : ''} | ${formatDate(achievement.awarded_at || '')}`)
                     : [];
-                const activityLines = Array.isArray(payload.recent_activity)
-                    ? payload.recent_activity.map((item) => `- ${item.summary || '-'} | ${item.action || '-'} | ${formatDate(item.created_at || '')}`)
-                    : [];
-
                 addLines(['Goals:'], { font: 'bold', size: 10, lineHeight: 12 });
                 addLines(goalLines.length > 0 ? goalLines : ['- No goals.'], { size: 9, lineHeight: 11 });
                 y += 4;
                 addLines(['Achievements:'], { font: 'bold', size: 10, lineHeight: 12 });
                 addLines(achievementLines.length > 0 ? achievementLines : ['- No achievements.'], { size: 9, lineHeight: 11 });
-                y += 4;
-                addLines(['Recent activity:'], { font: 'bold', size: 10, lineHeight: 12 });
-                addLines(activityLines.length > 0 ? activityLines : ['- No recent activity.'], { size: 9, lineHeight: 11 });
 
                 const safeUsername = username.replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
                 const today = new Date().toISOString().slice(0, 10);
@@ -2947,24 +4149,30 @@
     };
 
     const initTeamLayoutEditor = () => {
-        document.querySelectorAll('[data-team-layout-list], [data-dashboard-layout-list]').forEach((list) => {
+        document.querySelectorAll('[data-team-layout-list], [data-dashboard-layout-list], [data-analytics-layout-list]').forEach((list) => {
             if (!(list instanceof HTMLElement)) {
                 return;
             }
 
             let dragged = null;
             const isDashboardLayout = list.hasAttribute('data-dashboard-layout-list');
-            const itemSelector = isDashboardLayout ? '[data-dashboard-layout-item]' : '[data-team-layout-item]';
+            const isAnalyticsLayout = list.hasAttribute('data-analytics-layout-list');
+            const itemSelector = isDashboardLayout
+                ? '[data-dashboard-layout-item]'
+                : (isAnalyticsLayout ? '[data-analytics-layout-item]' : '[data-team-layout-item]');
+            const orderInputSelector = isDashboardLayout
+                ? '[data-dashboard-order-input]'
+                : (isAnalyticsLayout ? '[data-analytics-order-input]' : '');
 
             const refreshOrderInputs = () => {
-                if (!isDashboardLayout) {
+                if (orderInputSelector === '') {
                     return;
                 }
                 list.querySelectorAll(itemSelector).forEach((item, index) => {
                     if (!(item instanceof HTMLElement)) {
                         return;
                     }
-                    item.querySelectorAll('[data-dashboard-order-input]').forEach((input) => {
+                    item.querySelectorAll(orderInputSelector).forEach((input) => {
                         if (input instanceof HTMLInputElement) {
                             input.value = String(index + 1);
                         }

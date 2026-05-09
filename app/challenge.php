@@ -220,7 +220,11 @@ function counted_workout_total(?array $log, array $approvalsByDate, string $date
         return 0;
     }
 
-    return max(1, (int) ($log['workout_entry_count'] ?? 1));
+    if (array_key_exists('workout_entry_count', (array) $log) && $log['workout_entry_count'] !== null) {
+        return max(0, (int) $log['workout_entry_count']);
+    }
+
+    return 1;
 }
 
 function compute_user_metrics(

@@ -1930,6 +1930,112 @@ function fetch_user_calorie_stats(PDO $pdo, int $userId, string $startDate, stri
     ];
 }
 
+function fetch_user_food_stats(PDO $pdo, int $userId, string $startDate, string $endDate): array
+{
+    $emptyTotals = [
+        'calories' => 0.0,
+        'protein_g' => 0.0,
+        'carbs_g' => 0.0,
+        'fat_g' => 0.0,
+        'fiber_g' => 0.0,
+        'sugar_g' => 0.0,
+        'sodium_mg' => 0.0,
+    ];
+    $empty = [
+        'photo_count' => 0,
+        'meal_days' => 0,
+        'junk_days' => 0,
+        'logged_days' => 0,
+        'training_calories_burned' => 0.0,
+        'totals' => $emptyTotals,
+        'categories' => [],
+    ];
+
+    if ($userId <= 0) {
+        return $empty;
+    }
+
+    $start = new DateTimeImmutable($startDate);
+    $end = new DateTimeImmutable($endDate);
+    if ($end < $start) {
+        $end = $start;
+    }
+    $startKey = $start->format('Y-m-d');
+    $endKey = $end->format('Y-m-d');
+
+    $photoTotals = db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS photo_count,
+                COUNT(DISTINCT log_date) AS meal_days,
+                SUM(COALESCE(calories, 0)) AS calories,
+                SUM(COALESCE(protein_g, 0)) AS protein_g,
+                SUM(COALESCE(carbs_g, 0)) AS carbs_g,
+                SUM(COALESCE(fat_g, 0)) AS fat_g,
+                SUM(COALESCE(fiber_g, 0)) AS fiber_g,
+                SUM(COALESCE(sugar_g, 0)) AS sugar_g,
+                SUM(COALESCE(sodium_mg, 0)) AS sodium_mg
+         FROM photo_entries
+         WHERE user_id = :user_id
+           AND log_date BETWEEN :start_date AND :end_date',
+        [':user_id' => $userId, ':start_date' => $startKey, ':end_date' => $endKey]
+    ) ?? [];
+
+    $logTotals = db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS logged_days,
+                SUM(CASE WHEN COALESCE(junk_food, 0) = 1 THEN 1 ELSE 0 END) AS junk_days,
+                SUM(COALESCE(training_calories_burned, 0)) AS training_calories_burned
+         FROM daily_logs
+         WHERE user_id = :user_id
+           AND log_date BETWEEN :start_date AND :end_date',
+        [':user_id' => $userId, ':start_date' => $startKey, ':end_date' => $endKey]
+    ) ?? [];
+
+    $categoryRows = db_fetch_all(
+        $pdo,
+        'SELECT category,
+                COUNT(*) AS photo_count,
+                SUM(COALESCE(calories, 0)) AS calories
+         FROM photo_entries
+         WHERE user_id = :user_id
+           AND log_date BETWEEN :start_date AND :end_date
+         GROUP BY category
+         ORDER BY photo_count DESC, category ASC',
+        [':user_id' => $userId, ':start_date' => $startKey, ':end_date' => $endKey]
+    );
+
+    $categories = [];
+    foreach ($categoryRows as $row) {
+        $category = trim((string) ($row['category'] ?? ''));
+        if ($category === '') {
+            $category = 'other';
+        }
+        $categories[] = [
+            'category' => $category,
+            'photo_count' => (int) ($row['photo_count'] ?? 0),
+            'calories' => round((float) ($row['calories'] ?? 0), 2),
+        ];
+    }
+
+    return [
+        'photo_count' => (int) ($photoTotals['photo_count'] ?? 0),
+        'meal_days' => (int) ($photoTotals['meal_days'] ?? 0),
+        'junk_days' => (int) ($logTotals['junk_days'] ?? 0),
+        'logged_days' => (int) ($logTotals['logged_days'] ?? 0),
+        'training_calories_burned' => round((float) ($logTotals['training_calories_burned'] ?? 0), 2),
+        'totals' => [
+            'calories' => round((float) ($photoTotals['calories'] ?? 0), 2),
+            'protein_g' => round((float) ($photoTotals['protein_g'] ?? 0), 2),
+            'carbs_g' => round((float) ($photoTotals['carbs_g'] ?? 0), 2),
+            'fat_g' => round((float) ($photoTotals['fat_g'] ?? 0), 2),
+            'fiber_g' => round((float) ($photoTotals['fiber_g'] ?? 0), 2),
+            'sugar_g' => round((float) ($photoTotals['sugar_g'] ?? 0), 2),
+            'sodium_mg' => round((float) ($photoTotals['sodium_mg'] ?? 0), 2),
+        ],
+        'categories' => $categories,
+    ];
+}
+
 function upload_error_message(int $errorCode): string
 {
     return match ($errorCode) {
@@ -2797,6 +2903,52 @@ function normalize_team_layout_widgets(mixed $rawLayout): array
     return $normalized;
 }
 
+function analytics_layout_sections_default(): array
+{
+    return [
+        'summary',
+        'activity',
+        'nutrition',
+        'food',
+        'body',
+        'comparison',
+    ];
+}
+
+function normalize_analytics_layout_sections(mixed $rawLayout): array
+{
+    $allowed = analytics_layout_sections_default();
+    $posted = [];
+    $hasExplicitLayout = false;
+
+    if (is_string($rawLayout)) {
+        if (trim($rawLayout) !== '') {
+            $decoded = json_decode($rawLayout, true);
+            if (is_array($decoded)) {
+                $posted = $decoded;
+                $hasExplicitLayout = true;
+            }
+        }
+    } elseif (is_array($rawLayout)) {
+        $posted = $rawLayout;
+        $hasExplicitLayout = true;
+    }
+
+    if (!$hasExplicitLayout) {
+        return $allowed;
+    }
+
+    $normalized = [];
+    foreach ($posted as $section) {
+        $sectionKey = trim((string) $section);
+        if ($sectionKey !== '' && in_array($sectionKey, $allowed, true) && !in_array($sectionKey, $normalized, true)) {
+            $normalized[] = $sectionKey;
+        }
+    }
+
+    return $normalized;
+}
+
 function change_password(PDO $pdo, int $userId, string $currentPassword, string $newPassword): bool
 {
     $user = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => $userId]);
@@ -3600,10 +3752,12 @@ function goal_window_metric_value_for_team(PDO $pdo, array $goal, array $teamUse
     $endAt = $bounds['end'];
     $startDate = $startAt->format('Y-m-d');
     $endDate = $endAt->format('Y-m-d');
+    $endAtSql = $endAt->format('Y-m-d H:i:s');
 
     $params = [
         ':start_date' => $startDate,
         ':end_date' => $endDate,
+        ':end_at' => $endAtSql,
     ];
     $placeholders = [];
     foreach (array_keys($userIds) as $index => $userId) {
@@ -3615,10 +3769,25 @@ function goal_window_metric_value_for_team(PDO $pdo, array $goal, array $teamUse
     $logRows = db_fetch_all(
         $pdo,
         'SELECT dl.user_id, dl.log_date, dl.log_time, dl.steps, dl.distance_km, dl.workout_done, dl.junk_food, dl.extra_workout, dl.training_calories_burned,
-                COALESCE(w.workout_entry_count, CASE WHEN dl.workout_done = 1 THEN 1 ELSE 0 END) AS workout_entry_count
+                COALESCE(
+                    w.workout_entry_count,
+                    CASE
+                        WHEN dl.workout_done = 1
+                         AND datetime(COALESCE(dl.updated_at, dl.created_at, dl.log_date || " 00:00:00")) <= datetime(:end_at)
+                        THEN 1
+                        ELSE 0
+                    END
+                ) AS workout_entry_count
          FROM daily_logs dl
          LEFT JOIN (
-            SELECT log_id, COUNT(*) AS workout_entry_count
+            SELECT log_id,
+                   SUM(
+                       CASE
+                           WHEN datetime(COALESCE(created_at, updated_at, "0000-01-01 00:00:00")) <= datetime(:end_at)
+                           THEN 1
+                           ELSE 0
+                       END
+                   ) AS workout_entry_count
             FROM daily_log_workouts
             GROUP BY log_id
          ) w ON w.log_id = dl.id

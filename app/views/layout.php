@@ -25,12 +25,17 @@ if ($appIconPath !== '' && resolve_media_storage_path($config, $appIconPath) !==
 }
 $desktopNavItems = [
     'dashboard' => ['label' => t('nav.dashboard'), 'href' => '/?page=dashboard', 'icon' => 'home'],
-    'calendar' => ['label' => t('nav.calendar'), 'href' => '/?page=entries&mode=calendar&calendar_view=month', 'icon' => 'calendar'],
+    'gallery' => ['label' => t('gallery.title'), 'href' => '/?page=gallery&gallery_view=recent', 'icon' => 'gallery'],
     'analytics' => ['label' => t('nav.analytics'), 'href' => '/?page=analytics', 'icon' => 'analytics'],
     'team' => ['label' => t('nav.team'), 'href' => '/?page=team', 'icon' => 'users'],
     'profile' => ['label' => t('nav.profile'), 'href' => '/?page=profile', 'icon' => 'user'],
 ];
-$mobileNavItems = array_intersect_key($desktopNavItems, array_flip(['dashboard', 'calendar', 'analytics', 'team']));
+$mobileNavItems = [
+    'dashboard' => $desktopNavItems['dashboard'],
+    'gallery' => ['label' => t('gallery.title'), 'href' => '/?page=gallery&gallery_view=recent', 'icon' => 'gallery'],
+    'analytics' => $desktopNavItems['analytics'],
+    'team' => $desktopNavItems['team'],
+];
 $topbarControls = $topbarControls ?? '';
 $unreadNotificationsCount = $loggedIn ? user_unread_notifications_count($GLOBALS['pdo'], (int) ($currentUser['id'] ?? 0)) : 0;
 $themeMode = $loggedIn ? (string) ($currentUser['theme_mode'] ?? 'auto') : 'auto';
@@ -41,6 +46,9 @@ $isNavActive = static function (string $pageKey) use ($currentPage): bool {
     if ($pageKey === 'calendar') {
         return $currentPage === 'entries' && (string) ($_GET['mode'] ?? '') === 'calendar';
     }
+    if ($pageKey === 'gallery') {
+        return in_array($currentPage, ['gallery', 'photo'], true);
+    }
 
     return $currentPage === $pageKey;
 };
@@ -49,6 +57,7 @@ $renderMobileIcon = static function (string $icon): string {
     return match ($icon) {
         'home' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h5v-5h4v5h5v-9.5"/></svg>',
         'calendar' => '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>',
+        'gallery' => '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="m21 16-4.5-4.5L9 19"/></svg>',
         'analytics' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h17"/><rect x="7" y="11" width="3" height="5" rx="1"/><rect x="12" y="7" width="3" height="9" rx="1"/><rect x="17" y="9" width="3" height="7" rx="1"/></svg>',
         'users' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
         default => '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>',
@@ -71,7 +80,7 @@ $renderMobileIcon = static function (string $icon): string {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/styles.css?v=43">
+    <link rel="stylesheet" href="/assets/styles.css?v=75">
 </head>
 <?php
 $bodyClasses = [];
@@ -200,6 +209,6 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     </nav>
 <?php endif; ?>
 
-<script src="/assets/main.js?v=34"></script>
+<script src="/assets/main.js?v=41"></script>
 </body>
 </html>

@@ -10,6 +10,28 @@ $analyticsWeek = (string) ($dashboardAnalyticsWeek ?? $selectedWeekStart ?? to_d
 $analyticsMonth = (string) ($dashboardAnalyticsMonth ?? substr((string) ($analyticsWeek ?: to_date(null)), 0, 7));
 $analyticsRangeText = t('common.from_to', ['start' => format_date_eu($rangeStartDate), 'end' => format_date_eu($rangeEndDate)]);
 
+$analyticsLayout = normalize_analytics_layout_sections((string) ($currentUser['analytics_layout_json'] ?? ''));
+$analyticsLayoutIndex = array_flip($analyticsLayout);
+$analyticsLayoutEditMode = (string) ($_GET['layout_edit'] ?? '') === '1';
+$analyticsLayoutSections = analytics_layout_sections_default();
+$analyticsLayoutEditorSections = array_values(array_unique(array_merge($analyticsLayout, $analyticsLayoutSections)));
+$showAnalyticsSection = static fn(string $section): bool => in_array($section, $analyticsLayout, true);
+$analyticsSectionStyle = static function (string $section) use ($analyticsLayoutIndex): string {
+    if (!isset($analyticsLayoutIndex[$section])) {
+        return 'display:none; order:999;';
+    }
+
+    return 'order:' . (string) (((int) $analyticsLayoutIndex[$section] + 1) * 10) . ';';
+};
+$analyticsSectionLabels = [
+    'summary' => t('analytics.section_summary'),
+    'activity' => t('dashboard.analytics_activity'),
+    'nutrition' => t('analytics.section_nutrition'),
+    'food' => t('analytics.section_food'),
+    'body' => t('analytics.section_body'),
+    'comparison' => t('dashboard.analytics_comparison'),
+];
+
 $stepsSeries = array_values((array) ($selectedMetric['steps_series'] ?? []));
 usort($stepsSeries, static fn(array $left, array $right): int => strcmp((string) ($left['date'] ?? ''), (string) ($right['date'] ?? '')));
 $stepsTail = [];
@@ -66,6 +88,7 @@ $weightSeries = array_values(array_filter(
 ));
 $weightLabels = array_map(static fn(array $row): string => format_date_eu((string) $row['date']), $weightSeries);
 $weightValues = array_map(static fn(array $row): float => (float) $row['weight'], $weightSeries);
+$latestWeight = $weightValues !== [] ? (float) $weightValues[count($weightValues) - 1] : (float) ($selectedMetric['latest_weight'] ?? 0);
 
 $viewSnapshot = is_array($selectedMetricSnapshot ?? null) ? (array) $selectedMetricSnapshot : [];
 $compareSnapshot = is_array($compareMetricSnapshot ?? null) ? (array) $compareMetricSnapshot : [];
@@ -107,9 +130,52 @@ $calorieConsumedValues = array_map(static fn(array $row): float => (float) ($row
 $calorieBurnedValues = array_map(static fn(array $row): float => (float) ($row['burned'] ?? 0), $calorieSeries);
 $calorieDeficitValues = array_map(static fn(array $row): float => (float) ($row['deficit'] ?? 0), $calorieSeries);
 $formatCalories = static fn(float $value): string => number_format($value, 0, '.', '');
+$formatDecimal = static function (float $value, int $decimals = 1): string {
+    $formatted = number_format($value, $decimals, '.', '');
+    $formatted = rtrim(rtrim($formatted, '0'), '.');
+
+    return $formatted === '' ? '0' : $formatted;
+};
 $calorieRangeText = t('common.from_to', ['start' => format_date_eu((string) ($dashboardCalorieRangeStart ?? $rangeStartDate)), 'end' => format_date_eu((string) ($dashboardCalorieRangeEnd ?? $rangeEndDate))]);
 $calorieMaintenanceTotal = (float) ($calorieStats['maintenance_total'] ?? 0);
+$calorieConsumedTotal = (float) ($calorieStats['total_consumed'] ?? 0);
+$calorieBurnedTotal = (float) ($calorieStats['total_burned'] ?? 0);
 $calorieDeficitTotal = (float) ($calorieStats['deficit'] ?? 0);
+
+$foodStats = is_array($analyticsFoodStats ?? null) ? (array) $analyticsFoodStats : [];
+$foodTotals = is_array($foodStats['totals'] ?? null) ? (array) $foodStats['totals'] : [];
+$foodCategoryRows = array_values((array) ($foodStats['categories'] ?? []));
+$categoryLabels = [
+    'breakfast' => t('entries.breakfast'),
+    'lunch' => t('entries.lunch'),
+    'dinner' => t('entries.dinner'),
+    'other' => t('common.other'),
+    'meal' => t('entries.lunch'),
+    'workout' => t('entries.workout'),
+];
+$macroValues = [
+    round((float) ($foodTotals['protein_g'] ?? 0), 1),
+    round((float) ($foodTotals['carbs_g'] ?? 0), 1),
+    round((float) ($foodTotals['fat_g'] ?? 0), 1),
+    round((float) ($foodTotals['fiber_g'] ?? 0), 1),
+    round((float) ($foodTotals['sugar_g'] ?? 0), 1),
+];
+$macroLabels = [
+    t('entries.photo_protein'),
+    t('entries.photo_carbs'),
+    t('entries.photo_fat'),
+    t('entries.photo_fiber'),
+    t('entries.photo_sugar'),
+];
+$foodCategoryLabels = array_map(
+    static function (array $row) use ($categoryLabels): string {
+        $category = (string) ($row['category'] ?? 'other');
+
+        return (string) ($categoryLabels[$category] ?? $category);
+    },
+    $foodCategoryRows
+);
+$foodCategoryCounts = array_map(static fn(array $row): int => (int) ($row['photo_count'] ?? 0), $foodCategoryRows);
 
 $analyticsBaseQuery = [
     'page' => 'analytics',
@@ -118,6 +184,8 @@ $analyticsBaseQuery = [
     'analytics_week' => $analyticsWeek,
     'analytics_month' => $analyticsMonth,
 ];
+$analyticsEditLayoutUrl = '/?' . http_build_query($analyticsBaseQuery + ['layout_edit' => '1']);
+$analyticsCancelEditLayoutUrl = '/?' . http_build_query($analyticsBaseQuery);
 $analyticsPeriodLabels = [
     'current_week' => t('dashboard.analytics_current_week'),
     'week' => t('dashboard.analytics_specific_week'),
@@ -189,6 +257,22 @@ $analyticsChartPayload = [
             ],
         ],
         [
+            'id' => 'macroChart',
+            'type' => 'bar',
+            'labels' => $macroLabels,
+            'datasets' => [
+                ['label' => t('analytics.macros'), 'data' => $macroValues, 'backgroundColor' => ['rgba(20, 163, 139, 0.55)', 'rgba(59, 130, 246, 0.5)', 'rgba(245, 158, 11, 0.55)', 'rgba(132, 204, 22, 0.5)', 'rgba(236, 72, 153, 0.45)']],
+            ],
+        ],
+        [
+            'id' => 'foodCategoryChart',
+            'type' => 'bar',
+            'labels' => $foodCategoryLabels,
+            'datasets' => [
+                ['label' => t('analytics.food_photos'), 'data' => $foodCategoryCounts, 'backgroundColor' => 'rgba(34, 197, 94, 0.42)', 'borderColor' => '#16a34a', 'borderWidth' => 1],
+            ],
+        ],
+        [
             'id' => 'weightChart',
             'type' => 'line',
             'labels' => $weightLabels,
@@ -204,9 +288,30 @@ $analyticsChartPayload = [
     ],
 ];
 
+$workoutValue = max(0, (int) ($viewSnapshot['workouts'] ?? 0));
+$workoutTarget = max(0, (int) ($viewSnapshot['workout_target'] ?? 0));
+$analyticsSummaryCards = [
+    ['label' => t('metric.steps'), 'value' => number_format($stepsCumulativeTotal, 0, '.', ''), 'meta' => t('metric.current_value')],
+    ['label' => t('metric.distance_km'), 'value' => $formatDecimal((float) $distanceRangeTotal, 2) . ' km', 'meta' => t('dashboard.distance_walked_chart')],
+    ['label' => t('metric.workouts'), 'value' => $workoutTarget > 0 ? (string) $workoutValue . ' / ' . (string) $workoutTarget : (string) $workoutValue, 'meta' => t('metric.progress')],
+    ['label' => t('analytics.food_photos'), 'value' => (string) ((int) ($foodStats['photo_count'] ?? 0)), 'meta' => t('analytics.meal_days') . ': ' . (string) ((int) ($foodStats['meal_days'] ?? 0))],
+    ['label' => t('dashboard.calories_consumed'), 'value' => $formatCalories($calorieConsumedTotal) . ' kcal', 'meta' => t('dashboard.calories_title')],
+    ['label' => t('dashboard.calories_burned'), 'value' => $formatCalories($calorieBurnedTotal) . ' kcal', 'meta' => t('entries.training_calories_burned')],
+    ['label' => t('dashboard.calories_deficit'), 'value' => $formatCalories($calorieDeficitTotal) . ' kcal', 'meta' => t('dashboard.calories_hint_label')],
+    ['label' => t('entries.photo_protein'), 'value' => $formatDecimal((float) ($foodTotals['protein_g'] ?? 0), 1) . 'g', 'meta' => t('analytics.macros')],
+    ['label' => t('entries.photo_carbs'), 'value' => $formatDecimal((float) ($foodTotals['carbs_g'] ?? 0), 1) . 'g', 'meta' => t('analytics.macros')],
+    ['label' => t('entries.photo_fat'), 'value' => $formatDecimal((float) ($foodTotals['fat_g'] ?? 0), 1) . 'g', 'meta' => t('analytics.macros')],
+    ['label' => t('analytics.junk_days'), 'value' => (string) ((int) ($foodStats['junk_days'] ?? 0)), 'meta' => t('entries.junk_food')],
+    ['label' => t('metric.weight'), 'value' => $latestWeight > 0 ? $formatDecimal($latestWeight, 1) . ' kg' : t('common.none'), 'meta' => t('dashboard.weight_chart')],
+];
+
 ob_start();
 ?>
-<details class="topbar-context">
+<?php if ($analyticsLayoutEditMode): ?>
+<button class="btn btn-primary btn-topbar" type="submit" form="analytics-layout-edit-form"><?= e(t('common.save')) ?></button>
+<a class="btn btn-ghost btn-topbar" href="<?= e($analyticsCancelEditLayoutUrl) ?>"><?= e(t('common.back')) ?></a>
+<?php else: ?>
+<details class="topbar-context analytics-view-menu">
     <summary class="btn btn-ghost btn-topbar">View</summary>
     <div class="topbar-context-panel analytics-view-panel">
         <form method="get" action="/" class="analytics-controls analytics-filter-panel analytics-filter-panel-topbar" data-analytics-filter>
@@ -256,13 +361,71 @@ ob_start();
             </div>
             <button class="btn btn-primary small analytics-apply-btn" type="submit"><?= e(t('audit.filter')) ?></button>
         </form>
+        <div class="analytics-view-panel-actions">
+            <a class="btn btn-ghost btn-block analytics-layout-link" href="<?= e($analyticsEditLayoutUrl) ?>"><?= e(t('dashboard.edit_layout')) ?></a>
+        </div>
     </div>
 </details>
+<?php endif; ?>
 <?php
 $topbarControls = ob_get_clean();
 ?>
 <section class="screen stack-lg analytics-page" data-analytics-page>
-    <section class="analytics-section">
+    <?php if ($analyticsLayoutEditMode): ?>
+        <article class="panel analytics-layout-edit-mode-panel">
+            <form id="analytics-layout-edit-form" method="post" action="/?page=analytics" class="team-layout-editor analytics-layout-editor analytics-layout-editor-mobile" data-analytics-layout-editor>
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="save_analytics_layout">
+                <input type="hidden" name="redirect_user_id" value="<?= (int) ($selectedUser['id'] ?? 0) ?>">
+                <input type="hidden" name="analytics_period" value="<?= e($analyticsPeriod) ?>">
+                <input type="hidden" name="analytics_week" value="<?= e($analyticsWeek) ?>">
+                <input type="hidden" name="analytics_month" value="<?= e($analyticsMonth) ?>">
+                <div class="team-layout-editor-head">
+                    <strong><?= e(t('dashboard.edit_layout')) ?></strong>
+                    <small><?= e(t('analytics.layout_hint')) ?></small>
+                </div>
+                <div class="team-layout-editor-list analytics-layout-editor-list" data-analytics-layout-list>
+                    <?php foreach ($analyticsLayoutEditorSections as $idx => $section): ?>
+                        <div class="team-layout-editor-item analytics-layout-editor-item analytics-layout-edit-card" draggable="true" data-analytics-layout-item>
+                            <span class="team-layout-drag-handle" aria-hidden="true">::</span>
+                            <label class="dashboard-layout-toggle">
+                                <input type="checkbox" name="analytics_sections[]" value="<?= e($section) ?>" <?= $showAnalyticsSection((string) $section) ? 'checked' : '' ?>>
+                                <span><?= e((string) ($analyticsSectionLabels[$section] ?? $section)) ?></span>
+                            </label>
+                            <div class="dashboard-layout-mobile-actions analytics-layout-mobile-actions">
+                                <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="<?= e(t('common.previous')) ?>">&uarr;</button>
+                                <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="<?= e(t('common.next')) ?>">&darr;</button>
+                            </div>
+                            <input type="hidden" name="analytics_order[<?= e($section) ?>]" value="<?= e((string) ($idx + 1)) ?>" data-analytics-order-input>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <div class="team-layout-editor-actions">
+                    <a class="btn btn-ghost small" href="<?= e($analyticsCancelEditLayoutUrl) ?>"><?= e(t('common.back')) ?></a>
+                    <button class="btn btn-ghost small" type="submit" name="reset_analytics_layout" value="1"><?= e(t('dashboard.reset_layout')) ?></button>
+                    <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
+                </div>
+            </form>
+        </article>
+    <?php endif; ?>
+
+    <section class="analytics-section analytics-summary-section analytics-layout-item" style="<?= e($analyticsSectionStyle('summary')) ?>">
+        <div class="analytics-section-title">
+            <h2><?= e(t('analytics.section_summary')) ?></h2>
+            <span class="badge"><?= e($analyticsRangeText) ?></span>
+        </div>
+        <div class="analytics-stat-grid">
+            <?php foreach ($analyticsSummaryCards as $card): ?>
+                <article class="metric-card analytics-stat-card">
+                    <span><?= e((string) ($card['label'] ?? '')) ?></span>
+                    <strong><?= e((string) ($card['value'] ?? '')) ?></strong>
+                    <p><?= e((string) ($card['meta'] ?? '')) ?></p>
+                </article>
+            <?php endforeach; ?>
+        </div>
+    </section>
+
+    <section class="analytics-section analytics-layout-item" style="<?= e($analyticsSectionStyle('activity')) ?>">
         <div class="analytics-section-title">
             <h2><?= e(t('dashboard.analytics_activity')) ?></h2>
             <span class="badge"><?= e(t('metric.steps')) ?> / <?= e(t('metric.distance_km')) ?></span>
@@ -288,9 +451,9 @@ $topbarControls = ob_get_clean();
         </div>
     </section>
 
-    <section class="analytics-section">
+    <section class="analytics-section analytics-layout-item" style="<?= e($analyticsSectionStyle('nutrition')) ?>">
         <div class="analytics-section-title">
-            <h2><?= e(t('dashboard.analytics_calories_body')) ?></h2>
+            <h2><?= e(t('analytics.section_nutrition')) ?></h2>
             <span class="badge"><?= e((string) ($calorieStats['tracked_days'] ?? 0)) ?> <?= e(t('dashboard.calories_tracked_days')) ?></span>
         </div>
         <div class="analytics-grid">
@@ -308,6 +471,58 @@ $topbarControls = ob_get_clean();
                 <?php if ($calorieSeries === []): ?><p class="muted"><?= e(t('dashboard.no_calorie_data')) ?></p><?php else: ?><canvas id="calorieChart" height="150"></canvas><?php endif; ?>
             </article>
             <article class="chart-card analytics-chart-card">
+                <h3><?= e(t('analytics.macros')) ?></h3>
+                <?php if (array_sum($macroValues) <= 0): ?>
+                    <p class="muted"><?= e(t('analytics.no_food_data')) ?></p>
+                <?php else: ?>
+                    <canvas id="macroChart" height="150"></canvas>
+                    <p class="muted small"><?= e(t('entries.photo_sodium')) ?>: <?= e($formatDecimal((float) ($foodTotals['sodium_mg'] ?? 0), 0)) ?> mg</p>
+                <?php endif; ?>
+            </article>
+        </div>
+    </section>
+
+    <section class="analytics-section analytics-layout-item" style="<?= e($analyticsSectionStyle('food')) ?>">
+        <div class="analytics-section-title">
+            <h2><?= e(t('analytics.section_food')) ?></h2>
+            <span class="badge"><?= e((string) ((int) ($foodStats['photo_count'] ?? 0))) ?> <?= e(t('entries.photo_plural')) ?></span>
+        </div>
+        <div class="analytics-grid">
+            <article class="chart-card analytics-chart-card">
+                <h3><?= e(t('analytics.food_categories')) ?></h3>
+                <?php if ($foodCategoryRows === []): ?>
+                    <p class="muted"><?= e(t('analytics.no_food_data')) ?></p>
+                <?php else: ?>
+                    <canvas id="foodCategoryChart" height="150"></canvas>
+                <?php endif; ?>
+            </article>
+            <article class="chart-card analytics-chart-card analytics-food-breakdown">
+                <h3><?= e(t('analytics.food_breakdown')) ?></h3>
+                <div class="analytics-food-list">
+                    <?php if ($foodCategoryRows === []): ?>
+                        <p class="muted"><?= e(t('analytics.no_food_data')) ?></p>
+                    <?php else: ?>
+                        <?php foreach ($foodCategoryRows as $row): ?>
+                            <?php $category = (string) ($row['category'] ?? 'other'); ?>
+                            <div>
+                                <span><?= e((string) ($categoryLabels[$category] ?? $category)) ?></span>
+                                <strong><?= e((string) ((int) ($row['photo_count'] ?? 0))) ?></strong>
+                                <small><?= e($formatCalories((float) ($row['calories'] ?? 0))) ?> kcal</small>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </article>
+        </div>
+    </section>
+
+    <section class="analytics-section analytics-layout-item" style="<?= e($analyticsSectionStyle('body')) ?>">
+        <div class="analytics-section-title">
+            <h2><?= e(t('analytics.section_body')) ?></h2>
+            <span class="badge"><?= e(t('metric.weight')) ?></span>
+        </div>
+        <div class="analytics-grid analytics-grid-single">
+            <article class="chart-card analytics-chart-card analytics-chart-wide">
                 <h3><?= e(t('dashboard.weight_chart')) ?></h3>
                 <?php if ($weightValues === []): ?>
                     <p class="muted"><?= e(t('dashboard.no_weight')) ?></p>
@@ -321,7 +536,7 @@ $topbarControls = ob_get_clean();
         </div>
     </section>
 
-    <section class="analytics-section">
+    <section class="analytics-section analytics-layout-item" style="<?= e($analyticsSectionStyle('comparison')) ?>">
         <div class="analytics-section-title">
             <h2><?= e(t('dashboard.analytics_comparison')) ?></h2>
             <a class="btn btn-ghost small" href="<?= e($comparisonDetailHref) ?>"><?= e(t('dashboard.view_full_breakdown')) ?></a>

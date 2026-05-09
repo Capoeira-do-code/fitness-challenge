@@ -130,7 +130,7 @@ $memberUser = is_array($teamMemberDetail['user'] ?? null) ? (array) $teamMemberD
 $memberMetric = is_array($teamMemberDetail['metric'] ?? null) ? (array) $teamMemberDetail['metric'] : [];
 $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)] ?? null) : null;
 ?>
-<section class="screen stack-lg">
+<section class="screen stack-lg<?= $teamSection === 'member' ? ' team-member-detail-screen' : '' ?>">
     <div class="hero-panel">
         <div>
             <p class="eyebrow"><?= e(t('nav.team')) ?></p>
@@ -357,7 +357,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
     <?php endif; ?>
 
     <?php if ($teamSection === 'member' && $teamMemberDetail !== null && $memberUser !== [] && $memberMetric !== []): ?>
-        <article class="panel">
+        <article class="panel team-member-detail-panel">
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('team.member_detail')) ?></p>
@@ -390,7 +390,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             </div>
         </article>
 
-        <div class="grid-two" style="order: 50">
+        <div class="grid-two team-member-chart-grid" style="order: 50">
             <article class="panel chart-card">
                 <h2><?= e(t('metric.steps')) ?></h2>
                 <canvas id="memberStepsChart" height="170"></canvas>
@@ -401,7 +401,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             </article>
         </div>
 
-        <div class="grid-two" style="order: 50">
+        <div class="grid-two team-member-chart-grid" style="order: 50">
             <article class="panel chart-card">
                 <h2><?= e(t('team.workouts_by_week')) ?></h2>
                 <canvas id="memberWorkoutChart" height="170"></canvas>
@@ -412,8 +412,8 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             </article>
         </div>
 
-        <div class="grid-two">
-            <article class="panel">
+        <div class="grid-two team-member-secondary-grid">
+            <article class="panel team-member-activity-panel">
                 <div class="panel-head">
                     <h2><?= e(t('profile.recent_activity')) ?></h2>
                 </div>
@@ -430,12 +430,12 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 </div>
             </article>
 
-            <article class="panel">
+            <article class="panel team-member-achievements-panel">
                 <div class="panel-head">
                     <h2><?= e(t('profile.achievements')) ?></h2>
                     <span class="badge"><?= count((array) ($teamMemberDetail['achievements'] ?? [])) ?></span>
                 </div>
-                <div class="achievement-grid">
+                <div class="achievement-grid team-member-achievement-grid">
                     <?php foreach ((array) ($teamMemberDetail['achievements'] ?? []) as $achievement): ?>
                         <article class="achievement-card" <?= achievement_modal_attrs($achievement) ?>>
                             <?= achievement_visual_html($achievement, 'achievement-visual') ?>
@@ -678,6 +678,18 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                             $progressDebug = is_array($goal['progress_debug'] ?? null) ? (array) $goal['progress_debug'] : [];
                             ?>
                             <article class="mini-card team-goal-card">
+                                <button
+                                    class="team-goal-mobile-preview<?= $rewardText !== '' ? ' has-reward' : '' ?>"
+                                    type="button"
+                                    data-team-goal-detail-trigger
+                                    aria-label="<?= e(t('team.challenge_detail')) ?>: <?= e((string) $goal['title']) ?>"
+                                >
+                                    <strong class="team-goal-mobile-preview-title"><?= e((string) $goal['title']) ?></strong>
+                                    <span class="team-goal-mobile-preview-progress"><?= e($formatPercent($progressRaw)) ?>%</span>
+                                    <?php if ($rewardText !== ''): ?>
+                                        <small class="team-goal-mobile-preview-reward"><?= e(t('achievements.reward')) ?>: <?= e($rewardText) ?></small>
+                                    <?php endif; ?>
+                                </button>
                                 <div class="team-goal-main">
                                     <div class="team-goal-head">
                                         <strong><?= e((string) $goal['title']) ?></strong>
@@ -1004,6 +1016,14 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                         <button class="btn btn-primary" type="submit" data-team-goal-submit data-label-create="<?= e(t('common.create')) ?>" data-label-save="<?= e(t('common.save')) ?>"><?= e(t('common.create')) ?></button>
                     </div>
                 </form>
+            </div>
+        </div>
+
+        <div class="confirm-modal team-goal-detail-modal" hidden aria-hidden="true" data-team-goal-detail-modal>
+            <div class="confirm-modal-backdrop" data-team-goal-detail-close></div>
+            <div class="confirm-modal-card team-goal-detail-card" role="dialog" aria-modal="true" aria-label="<?= e(t('team.challenge_detail')) ?>">
+                <button class="achievement-info-close" type="button" aria-label="<?= e(t('common.close_action')) ?>" data-team-goal-detail-close>&times;</button>
+                <div class="team-goal-detail-content" data-team-goal-detail-content></div>
             </div>
         </div>
 
@@ -1476,6 +1496,57 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && !challengeDetailModal.hidden) {
                 closeChallengeDetail();
+            }
+        });
+    }
+
+    const goalDetailModal = document.querySelector('[data-team-goal-detail-modal]');
+    if (goalDetailModal instanceof HTMLElement) {
+        if (goalDetailModal.parentElement !== document.body) {
+            document.body.appendChild(goalDetailModal);
+        }
+        const goalDetailContent = goalDetailModal.querySelector('[data-team-goal-detail-content]');
+        const goalDetailTriggers = document.querySelectorAll('[data-team-goal-detail-trigger]');
+        const goalDetailCloseButtons = goalDetailModal.querySelectorAll('[data-team-goal-detail-close]');
+        let goalDetailOpener = null;
+
+        const closeGoalDetail = () => {
+            goalDetailModal.hidden = true;
+            goalDetailModal.setAttribute('aria-hidden', 'true');
+            goalDetailModal.classList.remove('is-open');
+            if (goalDetailOpener instanceof HTMLElement) {
+                goalDetailOpener.focus();
+            }
+            goalDetailOpener = null;
+        };
+
+        const openGoalDetail = (trigger) => {
+            const card = trigger instanceof HTMLElement ? trigger.closest('.team-goal-card') : null;
+            const main = card instanceof HTMLElement ? card.querySelector('.team-goal-main') : null;
+            if (!(goalDetailContent instanceof HTMLElement) || !(main instanceof HTMLElement)) {
+                return;
+            }
+            goalDetailOpener = trigger instanceof HTMLElement ? trigger : null;
+            goalDetailContent.replaceChildren(main.cloneNode(true));
+            goalDetailModal.hidden = false;
+            goalDetailModal.setAttribute('aria-hidden', 'false');
+            window.requestAnimationFrame(() => goalDetailModal.classList.add('is-open'));
+        };
+
+        goalDetailTriggers.forEach((trigger) => {
+            trigger.addEventListener('click', () => openGoalDetail(trigger));
+        });
+        goalDetailCloseButtons.forEach((button) => {
+            button.addEventListener('click', closeGoalDetail);
+        });
+        goalDetailModal.addEventListener('click', (event) => {
+            if (event.target === goalDetailModal) {
+                closeGoalDetail();
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !goalDetailModal.hidden) {
+                closeGoalDetail();
             }
         });
     }
