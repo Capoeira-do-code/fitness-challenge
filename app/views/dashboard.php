@@ -535,7 +535,7 @@ $topbarControls = ob_get_clean();
                                 <span><?= e((string) $approval['owner_name']) ?> · <?= e(format_date_eu((string) $approval['log_date'])) ?></span>
                             </div>
                             <p class="muted"><?= e((string) ($approval['detail'] ?: t('dashboard.no_detail'))) ?></p>
-                            <p class="small muted"><?= e(t('dashboard.requested_by')) ?>: <?= e((string) $approval['requested_by_name']) ?></p>
+                            <p class="small muted pending-requested-by"><?= e(t('dashboard.requested_by')) ?>: <?= e((string) $approval['requested_by_name']) ?></p>
 
                             <label>
                                 <?= e(t('common.optional_comment')) ?>

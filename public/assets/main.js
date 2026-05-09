@@ -32,10 +32,10 @@
         let ticking = false;
         const toggleNav = () => {
             const currentY = Math.max(0, window.scrollY);
-            const goingDown = currentY > lastY + 4;
-            const goingUp = currentY < lastY - 6;
+            const goingDown = currentY > lastY + 6;
+            const goingUp = currentY < lastY - 1;
             const shouldHide = !navHidden && goingDown && currentY > 120 && currentY - lastToggleY > 28;
-            const shouldShow = navHidden && (currentY < 48 || (goingUp && lastToggleY - currentY > 18));
+            const shouldShow = navHidden && (currentY < 48 || goingUp);
 
             if (shouldHide || shouldShow) {
                 if (shouldHide && floatingLog instanceof HTMLDetailsElement) {
@@ -63,6 +63,51 @@
             }
         }, { passive: true });
     }
+
+    let pageLoadingCount = 0;
+    const syncPageLoadingClass = () => {
+        document.body.classList.toggle('is-transitioning', pageLoadingCount > 0);
+    };
+    const beginPageLoading = () => {
+        pageLoadingCount += 1;
+        syncPageLoadingClass();
+    };
+    const endPageLoading = () => {
+        pageLoadingCount = Math.max(0, pageLoadingCount - 1);
+        syncPageLoadingClass();
+    };
+
+    const pjaxSafePages = new Set([
+        'dashboard',
+        'entries',
+        'photo',
+        'gallery',
+        'notifications',
+        'challenges',
+        'settings',
+        'profile',
+        'achievements',
+        'admin',
+        'team_settings',
+        'team',
+        'metric',
+        'comparison_detail',
+        'strikes_detail',
+        'penalties',
+        'analytics',
+        'table',
+        'week_editor',
+    ]);
+    const isSafePjaxPageUrl = (url) => {
+        if (!(url instanceof URL)) {
+            return false;
+        }
+        if (url.origin !== window.location.origin || url.pathname !== '/') {
+            return false;
+        }
+        const page = (url.searchParams.get('page') || 'dashboard').trim().toLowerCase();
+        return pjaxSafePages.has(page);
+    };
 
     const initFlashNotifications = () => {
         document.querySelectorAll('.flash').forEach((flash) => {
@@ -138,6 +183,12 @@
             }
             const nextUrl = new URL(target.href, window.location.origin);
             if (nextUrl.origin !== window.location.origin) {
+                return;
+            }
+            if (target.closest('[data-spa-link], [data-spa-back], [data-analytics-filter], [data-dashboard-control-form], [data-calendar-view-option], [data-no-pjax]')) {
+                return;
+            }
+            if (isSafePjaxPageUrl(nextUrl)) {
                 return;
             }
             document.body.classList.add('is-transitioning');
@@ -1781,7 +1832,7 @@
         const loadCalendar = async (pushState = true) => {
             try {
                 root.classList.add('is-loading');
-                document.body.classList.add('is-transitioning');
+                beginPageLoading();
                 const response = await fetch(endpointUrl().toString(), {
                     headers: { 'Accept': 'application/json' },
                     credentials: 'same-origin',
@@ -1796,7 +1847,7 @@
                 submitFallback();
             } finally {
                 root.classList.remove('is-loading');
-                document.body.classList.remove('is-transitioning');
+                endPageLoading();
             }
         };
 
@@ -1947,7 +1998,7 @@
         const replaceAnalyticsPage = async (url) => {
             try {
                 root.classList.add('is-loading');
-                document.body.classList.add('is-transitioning');
+                beginPageLoading();
                 const response = await fetch(url.toString(), {
                     headers: { 'Accept': 'text/html' },
                     credentials: 'same-origin',
@@ -1974,7 +2025,7 @@
                 console.error('Analytics update failed:', error);
                 window.location.href = url.toString();
             } finally {
-                document.body.classList.remove('is-transitioning');
+                endPageLoading();
             }
         };
 
@@ -2022,7 +2073,7 @@
         const replaceDashboardPage = async (url) => {
             try {
                 root.classList.add('is-loading');
-                document.body.classList.add('is-transitioning');
+                beginPageLoading();
                 const response = await fetch(url.toString(), {
                     headers: { 'Accept': 'text/html' },
                     credentials: 'same-origin',
@@ -2049,7 +2100,7 @@
                 console.error('Dashboard update failed:', error);
                 window.location.href = url.toString();
             } finally {
-                document.body.classList.remove('is-transitioning');
+                endPageLoading();
             }
         };
 
@@ -3031,7 +3082,7 @@
             event.preventDefault();
             try {
                 root.classList.add('is-loading');
-                document.body.classList.add('is-transitioning');
+                beginPageLoading();
                 const response = await fetch(form.action || window.location.href, {
                     method: 'POST',
                     body: new FormData(form),
@@ -3054,7 +3105,7 @@
                 console.error('Notification action failed:', error);
                 HTMLFormElement.prototype.submit.call(form);
             } finally {
-                document.body.classList.remove('is-transitioning');
+                endPageLoading();
             }
         });
     };
@@ -3081,20 +3132,7 @@
         };
 
         const isPjaxPageUrl = (url) => {
-            if (!(url instanceof URL)) {
-                return false;
-            }
-            if (url.origin !== window.location.origin) {
-                return false;
-            }
-            if (url.pathname !== '/') {
-                return false;
-            }
-            const page = (url.searchParams.get('page') || 'dashboard').trim().toLowerCase();
-            if (page === '' || page === 'dashboard' || page === 'gallery' || page === 'analytics' || page === 'team' || page === 'profile' || page === 'settings' || page === 'admin' || page === 'notifications') {
-                return true;
-            }
-            return page === 'entries' && (url.searchParams.get('mode') || '').trim().toLowerCase() === 'calendar';
+            return isSafePjaxPageUrl(url);
         };
 
         const shouldSkipLink = (link, event) => {
@@ -3114,7 +3152,7 @@
             if (href === '' || href.startsWith('#') || href.startsWith('javascript:')) {
                 return true;
             }
-            if (link.closest('[data-spa-link], [data-spa-back], [data-analytics-page], [data-dashboard-page], [data-calendar-view-option], [data-no-pjax]')) {
+            if (link.closest('[data-spa-link], [data-spa-back], [data-analytics-filter], [data-dashboard-control-form], [data-calendar-view-option], [data-no-pjax]')) {
                 return true;
             }
             return false;
@@ -3142,6 +3180,7 @@
                     document.body.setAttribute(attribute.name, attribute.value);
                 }
             });
+            syncPageLoadingClass();
         };
 
         const syncBottomNav = (doc) => {
@@ -3223,7 +3262,7 @@
                 return;
             }
             window.__fcPjaxBusy = true;
-            document.body.classList.add('is-transitioning');
+            beginPageLoading();
             document.dispatchEvent(new CustomEvent('fc:beforePageSwap', {
                 detail: {
                     from: window.location.href,
@@ -3291,7 +3330,7 @@
                 return;
             } finally {
                 window.__fcPjaxBusy = false;
-                document.body.classList.remove('is-transitioning');
+                endPageLoading();
             }
         };
 
