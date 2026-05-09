@@ -956,7 +956,17 @@ if ($page === 'entries') {
     if (!in_array($calendarView, ['month', 'week', 'day'], true)) {
         $calendarView = 'month';
     }
-    $selectedDate = calendar_date_from_request($_GET, $calendarView);
+    $hasExplicitCalendarDate = trim((string) ($_GET['date'] ?? '')) !== ''
+        || trim((string) ($_GET['calendar_month'] ?? '')) !== ''
+        || trim((string) ($_GET['calendar_week'] ?? '')) !== '';
+    $calendarDateFallback = null;
+    if ($entryMode === 'calendar' && !$hasExplicitCalendarDate) {
+        $latestMealPhoto = fetch_latest_meal_photo($pdo, $selectedUserId);
+        $calendarDateFallback = is_array($latestMealPhoto ?? null) && !empty($latestMealPhoto['log_date'])
+            ? (string) $latestMealPhoto['log_date']
+            : null;
+    }
+    $selectedDate = calendar_date_from_request($_GET, $calendarView, $calendarDateFallback);
     $currentLog = fetch_log($pdo, $selectedUserId, $selectedDate);
     $recentPhotos = fetch_recent_photos($pdo, 20, $selectedUserId);
     $workoutTypes = list_workout_types($pdo, true);
@@ -1182,7 +1192,6 @@ if ($page === 'gallery') {
     if (!in_array($calendarView, ['month', 'week', 'day'], true)) {
         $calendarView = 'month';
     }
-    $selectedDate = calendar_date_from_request($_GET, $calendarView);
     $users = is_admin($currentUser) ? list_active_users($pdo) : [$currentUser];
     $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
     if (!is_admin($currentUser) || $selectedUserId <= 0) {
@@ -1194,6 +1203,18 @@ if ($page === 'gallery') {
         $selectedUser = $currentUser;
         $selectedUserId = (int) $currentUser['id'];
     }
+
+    $hasExplicitCalendarDate = trim((string) ($_GET['date'] ?? '')) !== ''
+        || trim((string) ($_GET['calendar_month'] ?? '')) !== ''
+        || trim((string) ($_GET['calendar_week'] ?? '')) !== '';
+    $calendarDateFallback = null;
+    if (!$hasExplicitCalendarDate) {
+        $latestMealPhoto = fetch_latest_meal_photo($pdo, $selectedUserId);
+        $calendarDateFallback = is_array($latestMealPhoto ?? null) && !empty($latestMealPhoto['log_date'])
+            ? (string) $latestMealPhoto['log_date']
+            : null;
+    }
+    $selectedDate = calendar_date_from_request($_GET, $calendarView, $calendarDateFallback);
 
     $galleryPhotos = $galleryView === 'recent'
         ? fetch_gallery_photos($pdo, 5000, 0, $selectedUserId)
