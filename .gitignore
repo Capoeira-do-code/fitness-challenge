@@ -1,4 +1,5 @@
 .tools/
+.env.live
 
 # Runtime storage artifacts (keep directory scaffold)
 storage/

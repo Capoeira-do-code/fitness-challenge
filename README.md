@@ -34,11 +34,20 @@ docker compose up -d --build
 
 App en: `http://IP_DEL_SERVIDOR:8080`
 
+Puertos publicados por defecto:
+
+- `HTTP_PORT=8080`
+- `HTTPS_PORT=8443`
+
+Para LIVE (80/443), usa `.env.live` y `bin/live_manager.py`.
+
 ## Variables importantes
 
 En `docker-compose.yml`:
 
 - `DB_PATH`
+- `HTTP_PORT`
+- `HTTPS_PORT`
 - `CHALLENGE_START`
 - `CHALLENGE_END`
 - `SEED_PASSWORD`
@@ -47,6 +56,7 @@ En `docker-compose.yml`:
 
 `DB_PATH` permite usar una base alterna (por ejemplo, para E2E local).
 `APP_DEFAULT_LOCALE` acepta `en`, `es` o `it` (por defecto `en`).
+`HTTP_PORT` y `HTTPS_PORT` controlan los puertos publicados por Docker.
 
 ## Usuarios iniciales
 
@@ -90,8 +100,31 @@ Se persisten en host:
 
 El script hace:
 
-1. `git pull --rebase`
-2. `docker compose up -d --build`
+1. Si existen `bin/live_manager.py` y `.env.live`, delega a `python bin/live_manager.py deploy --env-file .env.live`
+2. Fallback legacy: `git pull --rebase` + `docker compose up -d --build`
+
+## Live Manager (provision + deploy + verify)
+
+Script para operacion live estandar con Docker Nginx + PHP-FPM:
+
+```bash
+python bin/live_manager.py provision
+python bin/live_manager.py deploy
+python bin/live_manager.py verify
+```
+
+Flujo recomendado en live:
+
+1. `python bin/live_manager.py provision` (genera `.env.live`, valida Docker/Compose)
+2. `python bin/live_manager.py deploy` (pull + build + up + healthcheck + verify)
+
+Ejemplo de `.env.live`:
+
+```bash
+HTTP_PORT=80
+HTTPS_PORT=443
+DB_PATH=/var/www/storage/fitness.sqlite
+```
 
 ## Script local (arranque UI + checks)
 

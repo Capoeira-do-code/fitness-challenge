@@ -238,8 +238,8 @@ ob_start();
                                 <span><?= e(t('dashboard.widget_' . $widget)) ?></span>
                             </label>
                             <div class="dashboard-layout-mobile-actions">
-                                <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="<?= e(t('common.previous')) ?>">&uarr;</button>
-                                <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="<?= e(t('common.next')) ?>">&darr;</button>
+                                <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="Move up">&uarr;</button>
+                                <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="Move down">&darr;</button>
                             </div>
                             <input type="hidden" name="dashboard_order[<?= e($widget) ?>]" value="<?= e((string) ($idx + 1)) ?>" data-dashboard-order-input>
                         </div>
@@ -278,8 +278,8 @@ $topbarControls = ob_get_clean();
                 <?php foreach ($dashboardEditorWidgets as $idx => $widget): ?>
                     <div class="team-layout-editor-item dashboard-layout-editor-item dashboard-layout-edit-card" data-dashboard-layout-item>
                         <div class="dashboard-layout-mobile-actions">
-                            <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="<?= e(t('common.previous')) ?>">&uarr;</button>
-                            <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="<?= e(t('common.next')) ?>">&darr;</button>
+                            <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="Move up">&uarr;</button>
+                            <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="Move down">&darr;</button>
                         </div>
                         <label class="dashboard-layout-toggle">
                             <input type="checkbox" name="dashboard_widgets[]" value="<?= e($widget) ?>" <?= in_array($widget, $visibleWidgets, true) ? 'checked' : '' ?>>

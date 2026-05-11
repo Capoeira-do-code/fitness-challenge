@@ -10,6 +10,12 @@ $galleryView = in_array((string) ($galleryView ?? 'recent'), ['recent', 'calenda
 $calendarView = in_array((string) ($calendarView ?? 'month'), ['month', 'week', 'day'], true) ? (string) $calendarView : 'month';
 $selectedDate = to_date((string) ($selectedDate ?? null));
 $mealCalendar = is_array($mealCalendar ?? null) ? (array) $mealCalendar : [];
+$galleryPage = max(1, (int) ($galleryPage ?? 1));
+$galleryPerPage = max(24, min(240, (int) ($galleryPerPage ?? 120)));
+$galleryHasMore = !empty($galleryHasMore);
+$galleryNextPage = isset($galleryNextPage) && $galleryNextPage !== null ? (int) $galleryNextPage : null;
+$galleryMonthSeed = trim((string) ($galleryMonthSeed ?? ''));
+$galleryApiUrl = trim((string) ($galleryApiUrl ?? '/?page=api_gallery_recent'));
 $baseParams = [
     'page' => 'gallery',
     'user_id' => $selectedUserId,
@@ -180,32 +186,47 @@ $topbarControls = ob_get_clean();
             <a class="btn btn-primary" href="/?page=entries&mode=meal"><?= e(t('entries.create_entry')) ?></a>
         </div>
     <?php else: ?>
-        <div class="gallery-month-floating" data-gallery-month-floating hidden></div>
-        <div class="photos-gallery-grid photos-gallery-grid-continuous">
-            <?php $currentMonth = ''; ?>
-            <?php foreach ($photos as $photo): ?>
-                <?php
-                $photoId = (int) ($photo['id'] ?? 0);
-                $photoPath = (string) ($photo['file_path'] ?? '');
-                $photoUrl = media_thumbnail_url($photoPath, 400);
-                $date = (string) ($photo['log_date'] ?? '');
-                $dateLabel = format_date_eu($date);
-                $monthKey = substr($date, 0, 7);
-                $monthLabel = localized_month_label($date);
-                $isFirstInMonth = $monthKey !== $currentMonth;
-                if ($isFirstInMonth) {
-                    $currentMonth = $monthKey;
-                }
-                ?>
-                <a class="photos-gallery-tile" href="/?page=photo&photo_id=<?= $photoId ?>" aria-label="<?= e(t('common.photo')) ?> <?= e($dateLabel) ?>" data-month-label="<?= e($monthLabel) ?>"<?= $isFirstInMonth ? ' data-month-start="1"' : '' ?>>
-                    <?php if ($photoUrl !== ''): ?>
-                        <img src="<?= e($photoUrl) ?>" srcset="<?= e(media_thumbnail_srcset($photoPath, [200, 400, 800])) ?>" sizes="(max-width: 700px) 33vw, 180px" width="400" height="400" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
-                    <?php else: ?>
-                        <span class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></span>
-                    <?php endif; ?>
-                    <span class="photos-gallery-date"><?= e($dateLabel) ?></span>
-                </a>
-            <?php endforeach; ?>
+        <div
+            class="gallery-recent-root"
+            data-gallery-recent-root
+            data-gallery-recent-api="<?= e($galleryApiUrl) ?>"
+            data-gallery-user-id="<?= (int) $selectedUserId ?>"
+            data-gallery-page="<?= (int) $galleryPage ?>"
+            data-gallery-per-page="<?= (int) $galleryPerPage ?>"
+            data-gallery-next-page="<?= $galleryNextPage !== null ? (int) $galleryNextPage : '' ?>"
+            data-gallery-has-more="<?= $galleryHasMore ? '1' : '0' ?>"
+            data-gallery-no-photo-label="<?= e(t('entries.no_photo')) ?>"
+            data-gallery-photo-label="<?= e(t('common.photo')) ?>"
+        >
+            <div class="gallery-month-floating" data-gallery-month-floating hidden></div>
+            <div class="photos-gallery-grid photos-gallery-grid-continuous" data-gallery-recent-grid>
+                <?php $currentMonth = $galleryMonthSeed; ?>
+                <?php foreach ($photos as $photo): ?>
+                    <?php
+                    $photoId = (int) ($photo['id'] ?? 0);
+                    $photoPath = (string) ($photo['file_path'] ?? '');
+                    $photoUrl = media_thumbnail_url($photoPath, 400);
+                    $date = (string) ($photo['log_date'] ?? '');
+                    $dateLabel = format_date_eu($date);
+                    $monthKey = substr($date, 0, 7);
+                    $monthLabel = localized_month_label($date);
+                    $isFirstInMonth = $monthKey !== '' && $monthKey !== $currentMonth;
+                    if ($monthKey !== '') {
+                        $currentMonth = $monthKey;
+                    }
+                    ?>
+                    <a class="photos-gallery-tile" href="/?page=photo&photo_id=<?= $photoId ?>" aria-label="<?= e(t('common.photo')) ?> <?= e($dateLabel) ?>" data-month-label="<?= e($monthLabel) ?>"<?= $isFirstInMonth ? ' data-month-start="1"' : '' ?>>
+                        <?php if ($photoUrl !== ''): ?>
+                            <img src="<?= e($photoUrl) ?>" srcset="<?= e(media_thumbnail_srcset($photoPath, [200, 400, 800])) ?>" sizes="(max-width: 700px) 33vw, 180px" width="400" height="400" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
+                        <?php else: ?>
+                            <span class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></span>
+                        <?php endif; ?>
+                        <span class="photos-gallery-date"><?= e($dateLabel) ?></span>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+            <button class="btn btn-ghost gallery-load-more" type="button" data-gallery-recent-load-more<?= $galleryHasMore ? '' : ' hidden' ?>><?= e(t('gallery.load_more')) ?></button>
+            <div class="gallery-recent-sentinel" data-gallery-recent-sentinel aria-hidden="true"></div>
         </div>
     <?php endif; ?>
 </section>

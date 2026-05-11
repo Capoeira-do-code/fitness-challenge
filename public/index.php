@@ -22,7 +22,7 @@ if ($page === 'users') {
     $page = 'admin';
 }
 
-if ($currentUser !== null && !in_array($page, ['app_icon', 'login_background', 'media', 'media_thumb', 'api_meal_calendar'], true)) {
+if ($currentUser !== null && !in_array($page, ['app_icon', 'login_background', 'media', 'media_thumb', 'api_meal_calendar', 'api_gallery_recent'], true)) {
     run_system_backup_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
 }
 
@@ -502,6 +502,80 @@ if ($page === 'media_thumb') {
 }
 
 $currentUser = require_login($pdo);
+
+if ($page === 'api_gallery_recent') {
+    $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
+    if (is_admin($currentUser) && $selectedUserId < 0) {
+        $selectedUserId = 0;
+    }
+    if (!is_admin($currentUser) && $selectedUserId !== (int) $currentUser['id']) {
+        $selectedUserId = (int) $currentUser['id'];
+    }
+    if (!is_admin($currentUser) && $selectedUserId <= 0) {
+        $selectedUserId = (int) $currentUser['id'];
+    }
+    if ($selectedUserId > 0) {
+        $targetUser = db_fetch_one($pdo, 'SELECT id FROM users WHERE id = :id AND active = 1', [':id' => $selectedUserId]);
+        if ($targetUser === null) {
+            json_response(['ok' => false, 'message' => t('flash.invalid_user')], 404);
+        }
+    }
+    $galleryUserFilter = $selectedUserId > 0 ? $selectedUserId : null;
+    $galleryPage = max(1, (int) ($_GET['gallery_page'] ?? 1));
+    $galleryPerPage = max(24, min(240, (int) ($_GET['gallery_per_page'] ?? 120)));
+    $galleryOffset = ($galleryPage - 1) * $galleryPerPage;
+
+    $rows = fetch_gallery_photos($pdo, $galleryPerPage + 1, $galleryOffset, $galleryUserFilter);
+    $hasMore = count($rows) > $galleryPerPage;
+    if ($hasMore) {
+        array_pop($rows);
+    }
+
+    $previousMonth = '';
+    if ($galleryOffset > 0) {
+        $previousRows = fetch_gallery_photos($pdo, 1, $galleryOffset - 1, $galleryUserFilter);
+        if ($previousRows !== []) {
+            $previousMonth = substr((string) ($previousRows[0]['log_date'] ?? ''), 0, 7);
+        }
+    }
+
+    $items = [];
+    foreach ($rows as $photo) {
+        $photoId = (int) ($photo['id'] ?? 0);
+        $photoPath = (string) ($photo['file_path'] ?? '');
+        $date = (string) ($photo['log_date'] ?? '');
+        $monthKey = substr($date, 0, 7);
+        $isMonthStart = $monthKey !== '' && $monthKey !== $previousMonth;
+        if ($monthKey !== '') {
+            $previousMonth = $monthKey;
+        }
+
+        $items[] = [
+            'id' => $photoId,
+            'href' => '/?page=photo&photo_id=' . $photoId,
+            'date_label' => format_date_eu($date),
+            'month_label' => localized_month_label($date),
+            'month_start' => $isMonthStart,
+            'thumb_url' => media_thumbnail_url($photoPath, 400),
+            'thumb_srcset' => media_thumbnail_srcset($photoPath, [200, 400, 800]),
+            'thumb_sizes' => '(max-width: 700px) 33vw, 180px',
+        ];
+    }
+
+    json_response([
+        'ok' => true,
+        'page' => $galleryPage,
+        'per_page' => $galleryPerPage,
+        'has_more' => $hasMore,
+        'next_page' => $hasMore ? $galleryPage + 1 : null,
+        'user_id' => $selectedUserId,
+        'items' => $items,
+        'labels' => [
+            'no_photo' => t('entries.no_photo'),
+            'photo' => t('common.photo'),
+        ],
+    ]);
+}
 
 if ($page === 'api_meal_calendar') {
     $calendarView = (string) ($_GET['calendar_view'] ?? 'month');
@@ -1227,9 +1301,28 @@ if ($page === 'gallery') {
     }
     $selectedDate = calendar_date_from_request($_GET, $calendarView, $calendarDateFallback);
 
-    $galleryPhotos = $galleryView === 'recent'
-        ? fetch_gallery_photos($pdo, 5000, 0, $galleryUserFilter)
-        : [];
+    $galleryPage = max(1, (int) ($_GET['gallery_page'] ?? 1));
+    $galleryPerPage = max(24, min(240, (int) ($_GET['gallery_per_page'] ?? 120)));
+    $galleryOffset = ($galleryPage - 1) * $galleryPerPage;
+    $galleryHasMore = false;
+    $galleryNextPage = null;
+    $galleryMonthSeed = '';
+    $galleryPhotos = [];
+    if ($galleryView === 'recent') {
+        $galleryRows = fetch_gallery_photos($pdo, $galleryPerPage + 1, $galleryOffset, $galleryUserFilter);
+        $galleryHasMore = count($galleryRows) > $galleryPerPage;
+        if ($galleryHasMore) {
+            array_pop($galleryRows);
+        }
+        $galleryPhotos = $galleryRows;
+        $galleryNextPage = $galleryHasMore ? $galleryPage + 1 : null;
+        if ($galleryOffset > 0) {
+            $gallerySeedRows = fetch_gallery_photos($pdo, 1, $galleryOffset - 1, $galleryUserFilter);
+            if ($gallerySeedRows !== []) {
+                $galleryMonthSeed = substr((string) ($gallerySeedRows[0]['log_date'] ?? ''), 0, 7);
+            }
+        }
+    }
     $mealCalendar = $galleryView === 'calendar'
         ? fetch_meal_calendar($pdo, $selectedDate, $galleryUserFilter, $calendarView)
         : [];
@@ -1242,6 +1335,12 @@ if ($page === 'gallery') {
         'selectedUser' => $selectedUser,
         'galleryPhotos' => $galleryPhotos,
         'galleryView' => $galleryView,
+        'galleryPage' => $galleryPage,
+        'galleryPerPage' => $galleryPerPage,
+        'galleryHasMore' => $galleryHasMore,
+        'galleryNextPage' => $galleryNextPage,
+        'galleryMonthSeed' => $galleryMonthSeed,
+        'galleryApiUrl' => '/?page=api_gallery_recent',
         'calendarView' => $calendarView,
         'selectedDate' => $selectedDate,
         'mealCalendar' => $mealCalendar,

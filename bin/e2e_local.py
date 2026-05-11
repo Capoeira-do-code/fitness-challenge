@@ -388,6 +388,13 @@ def app_url(base_url: str, path_query: str) -> str:
     return base_url.rstrip("/") + path_query
 
 
+def base_url_from_absolute(url: str) -> str:
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        raise RunnerError(f"Invalid absolute URL: {url}")
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
 def parse_base_url(base_url: str) -> tuple[str, int, str]:
     parsed = urlparse(base_url)
     if not parsed.scheme or not parsed.hostname:
@@ -866,6 +873,7 @@ def run_quick_checks(
 ) -> int:
     started_basic_proc: Optional[subprocess.Popen] = None
     live_url = ""
+    checks_base_url = ""
     rows: list[dict] = []
 
     def add_row(name: str, ok: bool, detail: str, start_ms: float) -> None:
@@ -896,22 +904,23 @@ def run_quick_checks(
                 wait_interval_ms=wait_interval_ms,
             )
         add_row("server_start", True, f"live at {live_url}", t0)
+        checks_base_url = base_url_from_absolute(live_url)
 
         t0 = time.perf_counter()
         lint_ok, lint_detail = check_php_lint(auto_install_deps)
         add_row("php_lint", lint_ok, lint_detail, t0)
 
         t0 = time.perf_counter()
-        ok, detail = check_http_status(app_url(base_url, "/?page=login"))
+        ok, detail = check_http_status(app_url(checks_base_url, "/?page=login"))
         add_row("http_login", ok, detail, t0)
 
         t0 = time.perf_counter()
-        ok, detail = check_http_status(app_url(base_url, "/?page=dashboard"))
+        ok, detail = check_http_status(app_url(checks_base_url, "/?page=dashboard"))
         add_row("http_dashboard", ok, detail, t0)
 
         t0 = time.perf_counter()
-        ok_css, detail_css = check_http_status(app_url(base_url, "/assets/styles.css"))
-        ok_js, detail_js = check_http_status(app_url(base_url, "/assets/main.js"))
+        ok_css, detail_css = check_http_status(app_url(checks_base_url, "/assets/styles.css"))
+        ok_js, detail_js = check_http_status(app_url(checks_base_url, "/assets/main.js"))
         add_row(
             "http_assets",
             ok_css and ok_js,

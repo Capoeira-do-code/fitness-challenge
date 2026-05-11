@@ -157,8 +157,8 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     <?php foreach ($teamLayoutEditorWidgets as $widget): ?>
                         <div class="team-layout-editor-item team-layout-edit-card" data-team-layout-item>
                             <div class="dashboard-layout-mobile-actions team-layout-mobile-actions">
-                                <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="<?= e(t('common.previous')) ?>">&uarr;</button>
-                                <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="<?= e(t('common.next')) ?>">&darr;</button>
+                                <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="Move up">&uarr;</button>
+                                <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="Move down">&darr;</button>
                             </div>
                             <label class="dashboard-layout-toggle">
                                 <input type="checkbox" name="team_widgets[]" value="<?= e($widget) ?>" <?= in_array($widget, $teamLayoutWidgets, true) ? 'checked' : '' ?>>
@@ -295,6 +295,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     <span><strong data-active-challenge-countdown-label><?= e($activeCountdownLabel) ?></strong><small data-active-challenge-countdown data-challenge-countdown data-countdown-mode="<?= e($activeCountdownMode) ?>" data-countdown-pending-label="<?= e(t('team.active_challenge_starts_in')) ?>" data-countdown-active-label="<?= e(t('team.active_challenge_started')) ?>" data-countdown-expired-label="<?= e(t('goals.expired')) ?>"<?= $countdownNextDeadlineIso !== '' ? ' data-countdown-next-deadline="' . e($countdownNextDeadlineIso) . '"' : '' ?><?= $countdownDeadlineIso !== '' ? ' data-deadline="' . e($countdownDeadlineIso) . '"' : '' ?>><?= e($countdownText) ?></small></span>
                 </div>
             </div>
+            <button class="btn btn-ghost small team-active-challenge-detail-btn team-active-challenge-detail-btn-mobile" type="button" data-team-challenge-detail-open><?= e(t('team.challenge_view_detail')) ?></button>
         </article>
         <div class="confirm-modal team-challenge-detail-modal" hidden aria-hidden="true" data-team-challenge-detail-modal>
             <div class="confirm-modal-backdrop" data-team-challenge-detail-close></div>
@@ -685,10 +686,12 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                     aria-label="<?= e(t('team.challenge_detail')) ?>: <?= e((string) $goal['title']) ?>"
                                 >
                                     <strong class="team-goal-mobile-preview-title"><?= e((string) $goal['title']) ?></strong>
+                                    <span class="team-goal-mobile-preview-status team-goal-status status-<?= e($statusBadgeClass) ?>"><?= e($statusBadgeText) ?></span>
                                     <span class="team-goal-mobile-preview-progress"><?= e($formatPercent($progressRaw)) ?>%</span>
                                     <?php if ($rewardText !== ''): ?>
                                         <small class="team-goal-mobile-preview-reward"><?= e(t('achievements.reward')) ?>: <?= e($rewardText) ?></small>
                                     <?php endif; ?>
+                                    <span class="team-goal-mobile-preview-bar" aria-hidden="true"><span style="width: <?= e((string) $progressVisual) ?>%"></span></span>
                                 </button>
                                 <div class="team-goal-main">
                                     <div class="team-goal-head">

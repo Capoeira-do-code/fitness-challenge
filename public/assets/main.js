@@ -81,14 +81,71 @@
     const syncPageLoadingClass = () => {
         document.body.classList.toggle('is-transitioning', pageLoadingCount > 0);
     };
+    let transitionCleanupTimer = null;
+    const clearMobileViewTransitionState = (force = false) => {
+        if (!force && pageLoadingCount > 0) {
+            return;
+        }
+        document.body.classList.remove(
+            'is-view-changing',
+            'view-changing',
+            'is-loading',
+            'mobile-view-blur',
+            'page-blur',
+            'is-transitioning'
+        );
+
+        document.querySelectorAll('.is-blurred, .view-blur, .mobile-blur').forEach((node) => {
+            if (node instanceof HTMLElement) {
+                node.classList.remove('is-blurred', 'view-blur', 'mobile-blur');
+            }
+        });
+
+        document.querySelectorAll('.view-transition-overlay, .mobile-loading-overlay').forEach((node) => {
+            if (node instanceof HTMLElement) {
+                node.remove();
+            }
+        });
+
+        document.querySelectorAll('.is-loading').forEach((node) => {
+            if (node instanceof HTMLElement && node !== document.body) {
+                node.classList.remove('is-loading');
+            }
+        });
+    };
+    const queueMobileViewTransitionStateCleanup = (delayMs = 350, force = false) => {
+        if (transitionCleanupTimer !== null) {
+            window.clearTimeout(transitionCleanupTimer);
+        }
+        transitionCleanupTimer = window.setTimeout(() => {
+            clearMobileViewTransitionState(force);
+            transitionCleanupTimer = null;
+        }, delayMs);
+    };
     const beginPageLoading = () => {
         pageLoadingCount += 1;
         syncPageLoadingClass();
+        queueMobileViewTransitionStateCleanup(350);
     };
     const endPageLoading = () => {
         pageLoadingCount = Math.max(0, pageLoadingCount - 1);
         syncPageLoadingClass();
+        if (pageLoadingCount === 0) {
+            clearMobileViewTransitionState(true);
+        } else {
+            queueMobileViewTransitionStateCleanup(350);
+        }
     };
+
+    window.addEventListener('pageshow', () => {
+        clearMobileViewTransitionState(true);
+    });
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => clearMobileViewTransitionState(true), { once: true });
+    } else {
+        clearMobileViewTransitionState(true);
+    }
+    queueMobileViewTransitionStateCleanup(350, true);
 
     const pjaxSafePages = new Set([
         'dashboard',
@@ -179,6 +236,7 @@
             const form = event.target;
             if (form instanceof HTMLFormElement && !form.hasAttribute('data-no-transition')) {
                 document.body.classList.add('is-transitioning');
+                queueMobileViewTransitionStateCleanup(350);
             }
         }, true);
 
@@ -205,7 +263,11 @@
                 return;
             }
             document.body.classList.add('is-transitioning');
-            window.setTimeout(() => document.body.classList.remove('is-transitioning'), 1800);
+            window.setTimeout(() => {
+                document.body.classList.remove('is-transitioning');
+                clearMobileViewTransitionState(true);
+            }, 240);
+            queueMobileViewTransitionStateCleanup(350, true);
         }, true);
     };
 
@@ -1127,6 +1189,8 @@
                 });
             } catch {
                 // Keep frontend locale even if sync fails.
+            } finally {
+                queueMobileViewTransitionStateCleanup(350);
             }
         };
 
@@ -1236,10 +1300,13 @@
         };
 
         const navigate = (root, href) => {
+            document.body.classList.add('is-view-changing');
             history.pushState({}, '', href);
             applyState(root, href);
             initAdminAchievementFields();
             window.scrollTo(0, 0);
+            clearMobileViewTransitionState(true);
+            queueMobileViewTransitionStateCleanup(350, true);
         };
 
         roots.forEach((root) => {
@@ -1272,6 +1339,8 @@
         window.__fcSpaPopstateHandler = () => {
             roots.forEach((root) => applyState(root, window.location.href));
             initAdminAchievementFields();
+            clearMobileViewTransitionState(true);
+            queueMobileViewTransitionStateCleanup(350, true);
         };
         window.addEventListener('popstate', window.__fcSpaPopstateHandler);
     };
@@ -1891,6 +1960,8 @@
             } finally {
                 root.classList.remove('is-loading');
                 endPageLoading();
+                clearMobileViewTransitionState(true);
+                queueMobileViewTransitionStateCleanup(350, true);
             }
         };
 
@@ -2134,7 +2205,10 @@
                 console.error('Analytics update failed:', error);
                 window.location.href = url.toString();
             } finally {
+                root.classList.remove('is-loading');
                 endPageLoading();
+                clearMobileViewTransitionState(true);
+                queueMobileViewTransitionStateCleanup(350, true);
             }
         };
 
@@ -2209,7 +2283,10 @@
                 console.error('Dashboard update failed:', error);
                 window.location.href = url.toString();
             } finally {
+                root.classList.remove('is-loading');
                 endPageLoading();
+                clearMobileViewTransitionState(true);
+                queueMobileViewTransitionStateCleanup(350, true);
             }
         };
 
@@ -2863,6 +2940,154 @@
         window.__fcGalleryMonthOverlayResizeHandler = requestUpdate;
         window.addEventListener('scroll', window.__fcGalleryMonthOverlayScrollHandler, { passive: true });
         window.addEventListener('resize', window.__fcGalleryMonthOverlayResizeHandler, { passive: true });
+    };
+
+    const initGalleryRecentInfinite = () => {
+        const root = document.querySelector('[data-gallery-recent-root]');
+        if (!(root instanceof HTMLElement) || root.dataset.galleryRecentReady === '1') {
+            return;
+        }
+
+        const grid = root.querySelector('[data-gallery-recent-grid]');
+        const loadMoreButton = root.querySelector('[data-gallery-recent-load-more]');
+        const sentinel = root.querySelector('[data-gallery-recent-sentinel]');
+        if (!(grid instanceof HTMLElement)) {
+            return;
+        }
+
+        root.dataset.galleryRecentReady = '1';
+        const endpoint = String(root.dataset.galleryRecentApi || '/?page=api_gallery_recent');
+        const userId = Number.parseInt(String(root.dataset.galleryUserId || '0'), 10);
+        const perPage = Number.parseInt(String(root.dataset.galleryPerPage || '120'), 10);
+        const noPhotoLabel = String(root.dataset.galleryNoPhotoLabel || 'No photo');
+        const photoLabel = String(root.dataset.galleryPhotoLabel || 'Photo');
+        let nextPage = Number.parseInt(String(root.dataset.galleryNextPage || ''), 10);
+        let hasMore = String(root.dataset.galleryHasMore || '0') === '1';
+        let isLoading = false;
+        let observer = null;
+
+        const setHasMore = (value) => {
+            hasMore = value;
+            root.dataset.galleryHasMore = value ? '1' : '0';
+            if (loadMoreButton instanceof HTMLElement) {
+                loadMoreButton.hidden = !value;
+            }
+            if (!value && observer instanceof IntersectionObserver) {
+                observer.disconnect();
+            }
+        };
+
+        const appendItems = (items) => {
+            if (!Array.isArray(items)) {
+                return;
+            }
+            items.forEach((item) => {
+                if (!item || typeof item !== 'object') {
+                    return;
+                }
+                const link = document.createElement('a');
+                link.className = 'photos-gallery-tile';
+                link.href = String(item.href || '#');
+                const dateLabel = String(item.date_label || '');
+                link.setAttribute('aria-label', `${photoLabel} ${dateLabel}`.trim());
+                const monthLabel = String(item.month_label || '').trim();
+                if (monthLabel !== '') {
+                    link.dataset.monthLabel = monthLabel;
+                }
+                if (item.month_start) {
+                    link.dataset.monthStart = '1';
+                }
+
+                const thumbUrl = String(item.thumb_url || '').trim();
+                if (thumbUrl !== '') {
+                    const image = document.createElement('img');
+                    image.src = thumbUrl;
+                    const thumbSrcset = String(item.thumb_srcset || '').trim();
+                    if (thumbSrcset !== '') {
+                        image.srcset = thumbSrcset;
+                    }
+                    image.sizes = String(item.thumb_sizes || '(max-width: 700px) 33vw, 180px');
+                    image.width = 400;
+                    image.height = 400;
+                    image.alt = photoLabel;
+                    image.loading = 'lazy';
+                    image.decoding = 'async';
+                    link.appendChild(image);
+                } else {
+                    const empty = document.createElement('span');
+                    empty.className = 'entries-calendar-empty';
+                    empty.textContent = noPhotoLabel;
+                    link.appendChild(empty);
+                }
+
+                const dateNode = document.createElement('span');
+                dateNode.className = 'photos-gallery-date';
+                dateNode.textContent = dateLabel;
+                link.appendChild(dateNode);
+                grid.appendChild(link);
+            });
+            initGalleryMonthOverlay();
+        };
+
+        const loadNextPage = async () => {
+            if (isLoading || !hasMore || !Number.isFinite(nextPage) || nextPage <= 0) {
+                return;
+            }
+            isLoading = true;
+            root.classList.add('is-loading');
+            try {
+                const url = new URL(endpoint, window.location.origin);
+                url.searchParams.set('user_id', String(Number.isFinite(userId) ? userId : 0));
+                url.searchParams.set('gallery_page', String(nextPage));
+                url.searchParams.set('gallery_per_page', String(Number.isFinite(perPage) && perPage > 0 ? perPage : 120));
+                const response = await fetch(url.toString(), {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin',
+                });
+                if (!response.ok) {
+                    throw new Error(`Gallery recent request failed (${response.status})`);
+                }
+                const payload = await response.json();
+                appendItems(Array.isArray(payload.items) ? payload.items : []);
+                const payloadHasMore = Boolean(payload.has_more);
+                const payloadNextPage = Number.parseInt(String(payload.next_page ?? ''), 10);
+                nextPage = Number.isFinite(payloadNextPage) ? payloadNextPage : 0;
+                root.dataset.galleryNextPage = Number.isFinite(payloadNextPage) ? String(payloadNextPage) : '';
+                setHasMore(payloadHasMore && Number.isFinite(payloadNextPage) && payloadNextPage > 0);
+            } catch (error) {
+                console.error('Gallery incremental load failed:', error);
+                setHasMore(false);
+            } finally {
+                isLoading = false;
+                root.classList.remove('is-loading');
+            }
+        };
+
+        if (loadMoreButton instanceof HTMLButtonElement) {
+            loadMoreButton.addEventListener('click', () => {
+                loadNextPage();
+            });
+        }
+
+        if (window.IntersectionObserver && sentinel instanceof HTMLElement && hasMore) {
+            observer = new IntersectionObserver((entries) => {
+                const visible = entries.some((entry) => entry.isIntersecting);
+                if (visible) {
+                    loadNextPage();
+                }
+            }, {
+                root: null,
+                rootMargin: '180px 0px',
+                threshold: 0.01,
+            });
+            observer.observe(sentinel);
+        } else {
+            setHasMore(hasMore);
+        }
     };
 
     const initProfilePdfExport = () => {
@@ -4153,6 +4378,10 @@
             if (!(list instanceof HTMLElement)) {
                 return;
             }
+            if (list.dataset.layoutEditorReady === '1') {
+                return;
+            }
+            list.dataset.layoutEditorReady = '1';
 
             let dragged = null;
             const isDashboardLayout = list.hasAttribute('data-dashboard-layout-list');
@@ -4164,6 +4393,8 @@
                 ? '[data-dashboard-order-input]'
                 : (isAnalyticsLayout ? '[data-analytics-order-input]' : '');
 
+            const layoutItemMatches = (node) => node instanceof Element && node.matches(itemSelector);
+            const layoutItems = () => [...list.querySelectorAll(itemSelector)].filter((node) => node instanceof HTMLElement);
             const refreshOrderInputs = () => {
                 if (orderInputSelector === '') {
                     return;
@@ -4179,17 +4410,54 @@
                     });
                 });
             };
+            const updateLayoutMoveButtons = () => {
+                const items = layoutItems();
+                items.forEach((item, index) => {
+                    item.querySelectorAll('[data-layout-move]').forEach((button) => {
+                        if (!(button instanceof HTMLButtonElement)) {
+                            return;
+                        }
+                        const direction = String(button.dataset.layoutMove || '').toLowerCase();
+                        const disable = (direction === 'up' && index === 0)
+                            || (direction === 'down' && index === items.length - 1);
+                        button.disabled = disable;
+                        button.setAttribute('aria-disabled', disable ? 'true' : 'false');
+                    });
+                });
+            };
+            const persistLayoutOrder = () => {
+                refreshOrderInputs();
+                updateLayoutMoveButtons();
+                if (typeof window.saveLayoutOrder === 'function') {
+                    try {
+                        window.saveLayoutOrder();
+                    } catch (error) {
+                        console.warn('saveLayoutOrder failed:', error);
+                    }
+                } else if (typeof saveLayoutOrder === 'function') {
+                    try {
+                        saveLayoutOrder();
+                    } catch (error) {
+                        console.warn('saveLayoutOrder failed:', error);
+                    }
+                }
+            };
             const moveItem = (item, direction) => {
                 if (!(item instanceof HTMLElement)) {
                     return;
                 }
-                if (direction === 'up' && item.previousElementSibling) {
-                    list.insertBefore(item, item.previousElementSibling);
+                const items = layoutItems();
+                const index = items.indexOf(item);
+                if (index === -1) {
+                    return;
                 }
-                if (direction === 'down' && item.nextElementSibling) {
-                    list.insertBefore(item.nextElementSibling, item);
+                if (direction === 'up' && index > 0) {
+                    list.insertBefore(item, items[index - 1]);
                 }
-                refreshOrderInputs();
+                if (direction === 'down' && index < items.length - 1) {
+                    list.insertBefore(items[index + 1], item);
+                }
+                persistLayoutOrder();
             };
 
             const getAfterElement = (container, y) => {
@@ -4205,29 +4473,43 @@
                 }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
             };
 
-            list.querySelectorAll(itemSelector).forEach((item) => {
+            list.addEventListener('dragstart', (event) => {
+                const target = event.target;
+                const item = target instanceof Element ? target.closest(itemSelector) : null;
+                if (!layoutItemMatches(item)) {
+                    return;
+                }
+                if (item instanceof HTMLElement) {
+                    dragged = item;
+                    item.classList.add('is-dragging');
+                }
+            });
+
+            list.addEventListener('dragend', (event) => {
+                const target = event.target;
+                const item = target instanceof Element ? target.closest(itemSelector) : null;
+                if (!layoutItemMatches(item)) {
+                    return;
+                }
+                if (item instanceof HTMLElement) {
+                    item.classList.remove('is-dragging');
+                }
+                dragged = null;
+                persistLayoutOrder();
+            });
+
+            list.addEventListener('click', (event) => {
+                const target = event.target instanceof Element ? event.target.closest('[data-layout-move]') : null;
+                if (!(target instanceof HTMLButtonElement)) {
+                    return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                const item = target.closest(itemSelector);
                 if (!(item instanceof HTMLElement)) {
                     return;
                 }
-
-                item.addEventListener('dragstart', () => {
-                    dragged = item;
-                    item.classList.add('is-dragging');
-                });
-
-                item.addEventListener('dragend', () => {
-                    item.classList.remove('is-dragging');
-                    dragged = null;
-                    refreshOrderInputs();
-                });
-                item.querySelectorAll('[data-layout-move]').forEach((button) => {
-                    if (!(button instanceof HTMLButtonElement)) {
-                        return;
-                    }
-                    button.addEventListener('click', () => {
-                        moveItem(item, button.dataset.layoutMove || '');
-                    });
-                });
+                moveItem(item, String(target.dataset.layoutMove || '').toLowerCase());
             });
 
             list.addEventListener('dragover', (event) => {
@@ -4242,9 +4524,21 @@
                 } else {
                     list.insertBefore(dragged, afterElement);
                 }
-                refreshOrderInputs();
+                persistLayoutOrder();
             });
-            refreshOrderInputs();
+
+            list.querySelectorAll('[data-layout-move]').forEach((button) => {
+                if (!(button instanceof HTMLButtonElement) || button.dataset.layoutMoveTouchReady === '1') {
+                    return;
+                }
+                button.dataset.layoutMoveTouchReady = '1';
+                button.style.touchAction = 'manipulation';
+                button.addEventListener('touchstart', (event) => {
+                    event.stopPropagation();
+                }, { passive: true });
+            });
+
+            persistLayoutOrder();
         });
     };
 
@@ -4313,7 +4607,10 @@
                 console.error('Notification action failed:', error);
                 HTMLFormElement.prototype.submit.call(form);
             } finally {
+                root.classList.remove('is-loading');
                 endPageLoading();
+                clearMobileViewTransitionState(true);
+                queueMobileViewTransitionStateCleanup(350, true);
             }
         });
     };
@@ -4469,6 +4766,8 @@
             if (window.__fcPjaxBusy === true) {
                 return;
             }
+            document.body.classList.add('is-view-changing');
+            queueMobileViewTransitionStateCleanup(350, true);
             window.__fcPjaxBusy = true;
             beginPageLoading();
             document.dispatchEvent(new CustomEvent('fc:beforePageSwap', {
@@ -4539,6 +4838,8 @@
             } finally {
                 window.__fcPjaxBusy = false;
                 endPageLoading();
+                clearMobileViewTransitionState(true);
+                queueMobileViewTransitionStateCleanup(350, true);
             }
         };
 
@@ -4631,10 +4932,13 @@
         safeInit(initProfileConfigEditor);
         safeInit(initSettingsAvatarHashFallback);
         safeInit(initGalleryMonthOverlay);
+        safeInit(initGalleryRecentInfinite);
         safeInit(initImageCroppers);
         safeInit(initProfilePdfExport);
         safeInit(initTeamLayoutEditor);
         safeInit(initNotificationsAjax);
+        clearMobileViewTransitionState(true);
+        queueMobileViewTransitionStateCleanup(350, true);
     };
 
     if (document.readyState === 'loading') {

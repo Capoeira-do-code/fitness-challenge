@@ -23,6 +23,13 @@ $appIconWebUrl = '';
 if ($appIconPath !== '' && resolve_media_storage_path($config, $appIconPath) !== null) {
     $appIconWebUrl = with_cache_buster('/?page=app_icon', $appIconVersion);
 }
+$projectRoot = dirname(__DIR__, 2);
+$stylesAssetPath = $projectRoot . '/public/assets/styles.css';
+$mainJsAssetPath = $projectRoot . '/public/assets/main.js';
+$stylesAssetVersion = is_file($stylesAssetPath) ? (string) (@filemtime($stylesAssetPath) ?: '') : null;
+$mainJsAssetVersion = is_file($mainJsAssetPath) ? (string) (@filemtime($mainJsAssetPath) ?: '') : null;
+$stylesAssetUrl = with_cache_buster('/assets/styles.css', $stylesAssetVersion);
+$mainJsAssetUrl = with_cache_buster('/assets/main.js', $mainJsAssetVersion);
 $desktopNavItems = [
     'dashboard' => ['label' => t('nav.dashboard'), 'href' => '/?page=dashboard', 'icon' => 'home'],
     'gallery' => ['label' => t('gallery.title'), 'href' => '/?page=gallery&gallery_view=recent', 'icon' => 'gallery'],
@@ -80,7 +87,7 @@ $renderMobileIcon = static function (string $icon): string {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/styles.css?v=75">
+    <link rel="stylesheet" href="<?= e($stylesAssetUrl) ?>">
 </head>
 <?php
 $bodyClasses = [];
@@ -209,6 +216,6 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     </nav>
 <?php endif; ?>
 
-<script src="/assets/main.js?v=41"></script>
+<script src="<?= e($mainJsAssetUrl) ?>"></script>
 </body>
 </html>
