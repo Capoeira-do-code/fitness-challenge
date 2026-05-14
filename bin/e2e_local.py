@@ -130,13 +130,7 @@ def verify_php_bin(php_path: Path | str) -> bool:
     return completed.returncode == 0
 
 
-def php_has_sqlite_driver(php_bin: str, extra_args: Optional[list[str]] = None) -> bool:
-    probe_script = (
-        "if (!class_exists('PDO')) {fwrite(STDERR, 'pdo_missing\\n'); exit(2);} "
-        "$drivers = PDO::getAvailableDrivers(); "
-        "if (!in_array('sqlite', $drivers, true)) {fwrite(STDERR, 'pdo_sqlite_missing\\n'); exit(3);} "
-        "echo 'ok';"
-    )
+def php_probe(php_bin: str, probe_script: str, extra_args: Optional[list[str]] = None) -> bool:
     cmd = [php_bin]
     if extra_args:
         cmd.extend(extra_args)
@@ -155,8 +149,33 @@ def php_has_sqlite_driver(php_bin: str, extra_args: Optional[list[str]] = None) 
     return completed.returncode == 0
 
 
-def windows_sqlite_extension_flags(php_bin: str) -> list[str]:
+def php_has_sqlite_driver(php_bin: str, extra_args: Optional[list[str]] = None) -> bool:
+    probe_script = (
+        "if (!class_exists('PDO')) {fwrite(STDERR, 'pdo_missing\\n'); exit(2);} "
+        "$drivers = PDO::getAvailableDrivers(); "
+        "if (!in_array('sqlite', $drivers, true)) {fwrite(STDERR, 'pdo_sqlite_missing\\n'); exit(3);} "
+        "echo 'ok';"
+    )
+    return php_probe(php_bin, probe_script, extra_args)
+
+
+def php_has_thumbnail_support(php_bin: str, extra_args: Optional[list[str]] = None) -> bool:
+    probe_script = (
+        "if (!extension_loaded('gd')) {fwrite(STDERR, 'gd_missing\\n'); exit(2);} "
+        "if (!function_exists('imagecreatetruecolor')) {fwrite(STDERR, 'gd_canvas_missing\\n'); exit(3);} "
+        "if (!function_exists('imagejpeg') && !function_exists('imagewebp')) {fwrite(STDERR, 'gd_writer_missing\\n'); exit(4);} "
+        "echo 'ok';"
+    )
+    return php_probe(php_bin, probe_script, extra_args)
+
+
+def windows_runtime_extension_flags(php_bin: str) -> list[str]:
     if os.name != "nt":
+        return []
+
+    sqlite_ok = php_has_sqlite_driver(php_bin)
+    thumbs_ok = php_has_thumbnail_support(php_bin)
+    if sqlite_ok and thumbs_ok:
         return []
 
     php_dir = Path(php_bin).resolve().parent
@@ -164,19 +183,24 @@ def windows_sqlite_extension_flags(php_bin: str) -> list[str]:
     for ext_dir in ext_candidates:
         if not ext_dir.exists() or not ext_dir.is_dir():
             continue
-        required_dlls = [ext_dir / "php_pdo_sqlite.dll", ext_dir / "php_sqlite3.dll"]
+        required_dlls: list[Path] = []
+        extension_names: list[str] = []
+        if not sqlite_ok:
+            required_dlls.extend([ext_dir / "php_pdo_sqlite.dll", ext_dir / "php_sqlite3.dll"])
+            extension_names.extend(["pdo_sqlite", "sqlite3"])
+        if not thumbs_ok:
+            required_dlls.append(ext_dir / "php_gd.dll")
+            extension_names.append("gd")
         if not all(dll.exists() for dll in required_dlls):
             continue
         flags = [
             "-d",
             f"extension_dir={ext_dir.as_posix()}",
-            "-d",
-            "extension=pdo_sqlite",
-            "-d",
-            "extension=sqlite3",
         ]
-        if php_has_sqlite_driver(php_bin, flags):
-            print(f"[deps] Enabled SQLite extensions from: {ext_dir}")
+        for extension_name in extension_names:
+            flags.extend(["-d", f"extension={extension_name}"])
+        if php_has_sqlite_driver(php_bin, flags) and php_has_thumbnail_support(php_bin, flags):
+            print(f"[deps] Enabled SQLite/GD extensions from: {ext_dir}")
             return flags
     return []
 
@@ -645,19 +669,21 @@ def build_php_server_command(php_bin: str, host: str, port: int) -> tuple[list[s
         max_file_uploads = "200"
 
     runtime_flags: list[str] = []
-    if php_has_sqlite_driver(php_bin):
-        print("[deps] SQLite driver available in PHP.")
-    elif os.name == "nt":
-        runtime_flags = windows_sqlite_extension_flags(php_bin)
-        if not runtime_flags:
-            raise RunnerError(
-                "PHP found but `pdo_sqlite` is unavailable. "
-                "Use a complete Windows PHP build (with ext dir) or set PHP_WINDOWS_ZIP_URL."
-            )
-    else:
+    if os.name == "nt":
+        runtime_flags = windows_runtime_extension_flags(php_bin)
+
+    if not php_has_sqlite_driver(php_bin, runtime_flags):
         raise RunnerError(
             "PHP found but `pdo_sqlite` is unavailable. Enable `pdo_sqlite` and `sqlite3`."
         )
+    print("[deps] SQLite driver available in PHP.")
+
+    if not php_has_thumbnail_support(php_bin, runtime_flags):
+        raise RunnerError(
+            "PHP found but `gd` image support is unavailable. Enable `gd` with JPEG or WebP support "
+            "so gallery thumbnails use /?page=media_thumb instead of full-size media."
+        )
+    print("[deps] GD thumbnail support available in PHP.")
 
     cmd = [
         php_bin,

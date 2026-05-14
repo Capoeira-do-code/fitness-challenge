@@ -26,6 +26,46 @@ if ($currentUser !== null && !in_array($page, ['app_icon', 'login_background', '
     run_system_backup_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
 }
 
+function send_private_cached_file_response(string $filePath, string $mime, int $maxAge = 604800, bool $immutable = false): void
+{
+    $mtime = @filemtime($filePath) ?: time();
+    $filesize = filesize($filePath);
+    $lastModified = gmdate('D, d M Y H:i:s', $mtime) . ' GMT';
+    $etag = '"' . sha1(str_replace('\\', '/', $filePath) . '|' . (string) $mtime . '|' . (string) ($filesize === false ? '' : $filesize)) . '"';
+    $cacheControl = 'private, max-age=' . max(0, $maxAge);
+    if ($immutable) {
+        $cacheControl .= ', immutable';
+    }
+
+    $ifNoneMatch = trim((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));
+    $notModified = false;
+    if ($ifNoneMatch !== '') {
+        $clientEtags = array_map('trim', explode(',', $ifNoneMatch));
+        $notModified = $ifNoneMatch === '*' || in_array($etag, $clientEtags, true);
+    } else {
+        $ifModifiedSince = trim((string) ($_SERVER['HTTP_IF_MODIFIED_SINCE'] ?? ''));
+        $clientMtime = $ifModifiedSince !== '' ? strtotime($ifModifiedSince) : false;
+        $notModified = $clientMtime !== false && $clientMtime >= $mtime;
+    }
+
+    header('Cache-Control: ' . $cacheControl);
+    header('ETag: ' . $etag);
+    header('Last-Modified: ' . $lastModified);
+    header('X-Content-Type-Options: nosniff');
+
+    if ($notModified) {
+        http_response_code(304);
+        exit;
+    }
+
+    header('Content-Type: ' . $mime);
+    if ($filesize !== false) {
+        header('Content-Length: ' . (string) $filesize);
+    }
+    readfile($filePath);
+    exit;
+}
+
 if ($page === 'set_locale') {
     if (!is_post()) {
         redirect('/');
@@ -477,28 +517,12 @@ if ($page === 'media_thumb') {
         }
 
         $fallbackMime = detect_media_mime_type($fallbackPath);
-        $fallbackSize = filesize($fallbackPath);
-        header('Content-Type: ' . $fallbackMime);
-        if ($fallbackSize !== false) {
-            header('Content-Length: ' . (string) $fallbackSize);
-        }
-        header('Cache-Control: private, max-age=604800');
-        header('X-Content-Type-Options: nosniff');
-        readfile($fallbackPath);
-        exit;
+        send_private_cached_file_response($fallbackPath, $fallbackMime, 604800, trim((string) ($_GET['v'] ?? '')) !== '');
     }
 
     $thumbPath = (string) $thumb['path'];
     $mime = (string) ($thumb['mime'] ?? 'image/jpeg');
-    $filesize = filesize($thumbPath);
-    header('Content-Type: ' . $mime);
-    if ($filesize !== false) {
-        header('Content-Length: ' . (string) $filesize);
-    }
-    header('Cache-Control: private, max-age=604800');
-    header('X-Content-Type-Options: nosniff');
-    readfile($thumbPath);
-    exit;
+    send_private_cached_file_response($thumbPath, $mime, 604800, trim((string) ($_GET['v'] ?? '')) !== '');
 }
 
 $currentUser = require_login($pdo);
@@ -522,7 +546,7 @@ if ($page === 'api_gallery_recent') {
     }
     $galleryUserFilter = $selectedUserId > 0 ? $selectedUserId : null;
     $galleryPage = max(1, (int) ($_GET['gallery_page'] ?? 1));
-    $galleryPerPage = max(24, min(240, (int) ($_GET['gallery_per_page'] ?? 120)));
+    $galleryPerPage = max(24, min(240, (int) ($_GET['gallery_per_page'] ?? 48)));
     $galleryOffset = ($galleryPage - 1) * $galleryPerPage;
 
     $rows = fetch_gallery_photos($pdo, $galleryPerPage + 1, $galleryOffset, $galleryUserFilter);
@@ -558,7 +582,7 @@ if ($page === 'api_gallery_recent') {
             'month_start' => $isMonthStart,
             'thumb_url' => media_thumbnail_url($photoPath, 400),
             'thumb_srcset' => media_thumbnail_srcset($photoPath, [200, 400, 800]),
-            'thumb_sizes' => '(max-width: 700px) 33vw, 180px',
+            'thumb_sizes' => '(max-width: 700px) 33vw, (max-width: 1100px) 20vw, 170px',
         ];
     }
 
@@ -1302,7 +1326,7 @@ if ($page === 'gallery') {
     $selectedDate = calendar_date_from_request($_GET, $calendarView, $calendarDateFallback);
 
     $galleryPage = max(1, (int) ($_GET['gallery_page'] ?? 1));
-    $galleryPerPage = max(24, min(240, (int) ($_GET['gallery_per_page'] ?? 120)));
+    $galleryPerPage = max(24, min(240, (int) ($_GET['gallery_per_page'] ?? 48)));
     $galleryOffset = ($galleryPage - 1) * $galleryPerPage;
     $galleryHasMore = false;
     $galleryNextPage = null;

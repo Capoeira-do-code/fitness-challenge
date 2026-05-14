@@ -11,7 +11,7 @@ $calendarView = in_array((string) ($calendarView ?? 'month'), ['month', 'week', 
 $selectedDate = to_date((string) ($selectedDate ?? null));
 $mealCalendar = is_array($mealCalendar ?? null) ? (array) $mealCalendar : [];
 $galleryPage = max(1, (int) ($galleryPage ?? 1));
-$galleryPerPage = max(24, min(240, (int) ($galleryPerPage ?? 120)));
+$galleryPerPage = max(24, min(240, (int) ($galleryPerPage ?? 48)));
 $galleryHasMore = !empty($galleryHasMore);
 $galleryNextPage = isset($galleryNextPage) && $galleryNextPage !== null ? (int) $galleryNextPage : null;
 $galleryMonthSeed = trim((string) ($galleryMonthSeed ?? ''));
@@ -201,11 +201,14 @@ $topbarControls = ob_get_clean();
             <div class="gallery-month-floating" data-gallery-month-floating hidden></div>
             <div class="photos-gallery-grid photos-gallery-grid-continuous" data-gallery-recent-grid>
                 <?php $currentMonth = $galleryMonthSeed; ?>
-                <?php foreach ($photos as $photo): ?>
+                <?php foreach ($photos as $photoIndex => $photo): ?>
                     <?php
                     $photoId = (int) ($photo['id'] ?? 0);
                     $photoPath = (string) ($photo['file_path'] ?? '');
                     $photoUrl = media_thumbnail_url($photoPath, 400);
+                    $photoSrcset = media_thumbnail_srcset($photoPath, [200, 400, 800]);
+                    $photoLoading = $photoIndex < 12 ? 'eager' : 'lazy';
+                    $photoFetchPriority = $photoIndex < 6 ? 'high' : 'low';
                     $date = (string) ($photo['log_date'] ?? '');
                     $dateLabel = format_date_eu($date);
                     $monthKey = substr($date, 0, 7);
@@ -217,7 +220,7 @@ $topbarControls = ob_get_clean();
                     ?>
                     <a class="photos-gallery-tile" href="/?page=photo&photo_id=<?= $photoId ?>" aria-label="<?= e(t('common.photo')) ?> <?= e($dateLabel) ?>" data-month-label="<?= e($monthLabel) ?>"<?= $isFirstInMonth ? ' data-month-start="1"' : '' ?>>
                         <?php if ($photoUrl !== ''): ?>
-                            <img src="<?= e($photoUrl) ?>" srcset="<?= e(media_thumbnail_srcset($photoPath, [200, 400, 800])) ?>" sizes="(max-width: 700px) 33vw, 180px" width="400" height="400" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
+                            <img src="<?= e($photoUrl) ?>" srcset="<?= e($photoSrcset) ?>" sizes="(max-width: 700px) 33vw, (max-width: 1100px) 20vw, 170px" width="400" height="400" alt="<?= e(t('common.photo')) ?>" loading="<?= e($photoLoading) ?>" fetchpriority="<?= e($photoFetchPriority) ?>" decoding="async">
                         <?php else: ?>
                             <span class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></span>
                         <?php endif; ?>

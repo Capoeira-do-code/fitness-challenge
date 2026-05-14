@@ -2958,7 +2958,7 @@
         root.dataset.galleryRecentReady = '1';
         const endpoint = String(root.dataset.galleryRecentApi || '/?page=api_gallery_recent');
         const userId = Number.parseInt(String(root.dataset.galleryUserId || '0'), 10);
-        const perPage = Number.parseInt(String(root.dataset.galleryPerPage || '120'), 10);
+        const perPage = Number.parseInt(String(root.dataset.galleryPerPage || '48'), 10);
         const noPhotoLabel = String(root.dataset.galleryNoPhotoLabel || 'No photo');
         const photoLabel = String(root.dataset.galleryPhotoLabel || 'Photo');
         let nextPage = Number.parseInt(String(root.dataset.galleryNextPage || ''), 10);
@@ -3006,11 +3006,12 @@
                     if (thumbSrcset !== '') {
                         image.srcset = thumbSrcset;
                     }
-                    image.sizes = String(item.thumb_sizes || '(max-width: 700px) 33vw, 180px');
+                    image.sizes = String(item.thumb_sizes || '(max-width: 700px) 33vw, (max-width: 1100px) 20vw, 170px');
                     image.width = 400;
                     image.height = 400;
                     image.alt = photoLabel;
                     image.loading = 'lazy';
+                    image.setAttribute('fetchpriority', 'low');
                     image.decoding = 'async';
                     link.appendChild(image);
                 } else {
@@ -3039,7 +3040,7 @@
                 const url = new URL(endpoint, window.location.origin);
                 url.searchParams.set('user_id', String(Number.isFinite(userId) ? userId : 0));
                 url.searchParams.set('gallery_page', String(nextPage));
-                url.searchParams.set('gallery_per_page', String(Number.isFinite(perPage) && perPage > 0 ? perPage : 120));
+                url.searchParams.set('gallery_per_page', String(Number.isFinite(perPage) && perPage > 0 ? perPage : 48));
                 const response = await fetch(url.toString(), {
                     method: 'GET',
                     headers: {
