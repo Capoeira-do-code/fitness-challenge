@@ -364,6 +364,61 @@ try {
             <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
         </form>
 
+        <?php
+        $notion = is_array($notionSettings ?? null) ? (array) $notionSettings : [];
+        $notionConfigured = ($notion['token'] ?? '') !== '' && ($notion['database_id'] ?? '') !== '';
+        ?>
+        <div class="admin-notion-panel">
+            <h3><?= e(t('admin.notion_title')) ?></h3>
+            <p class="muted small"><?= e(t('admin.notion_hint')) ?></p>
+            <form method="post" action="/?page=admin" class="stack compact-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="update_notion_settings">
+                <div class="toggle-row">
+                    <label class="check standalone-check">
+                        <input type="checkbox" name="notion_enabled" value="1" <?= !empty($notion['enabled']) ? 'checked' : '' ?>>
+                        <?= e(t('admin.notion_enabled')) ?>
+                    </label>
+                </div>
+                <label>
+                    <?= e(t('admin.notion_token')) ?>
+                    <input type="password" name="notion_token" autocomplete="off" placeholder="<?= $notionConfigured ? '••••••••' : 'secret_...' ?>">
+                    <span class="muted small"><?= e(t('admin.notion_token_hint')) ?></span>
+                </label>
+                <label>
+                    <?= e(t('admin.notion_database')) ?>
+                    <input type="text" name="notion_database_id" value="<?= e((string) ($notion['database_id'] ?? '')) ?>" placeholder="database id">
+                </label>
+                <label>
+                    <?= e(t('admin.notion_frequency')) ?>
+                    <select name="notion_sync_frequency">
+                        <option value="off" <?= ($notion['frequency'] ?? 'off') === 'off' ? 'selected' : '' ?>><?= e(t('admin.notion_freq_off')) ?></option>
+                        <option value="daily" <?= ($notion['frequency'] ?? 'off') === 'daily' ? 'selected' : '' ?>><?= e(t('admin.notion_freq_daily')) ?></option>
+                    </select>
+                </label>
+                <label>
+                    <?= e(t('admin.notion_run_time')) ?>
+                    <input type="time" name="notion_sync_run_time" value="<?= e((string) ($notion['run_time'] ?? '03:00')) ?>">
+                </label>
+                <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+            </form>
+            <form method="post" action="/?page=admin" class="stack compact-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="notion_sync_now">
+                <button class="btn btn-ghost" type="submit" <?= $notionConfigured ? '' : 'disabled' ?>><?= e(t('admin.notion_sync_now')) ?></button>
+                <?php if (($notion['last_status'] ?? '') !== ''): ?>
+                    <p class="muted small">
+                        <?= e(t('admin.notion_last_run')) ?>:
+                        <?= e((string) ($notion['last_status'] ?? '')) ?>
+                        <?php if (($notion['last_sync_at'] ?? '') !== ''): ?>· <?= e(format_date_eu((string) $notion['last_sync_at'])) ?><?php endif; ?>
+                    </p>
+                    <?php if (($notion['last_summary'] ?? '') !== ''): ?>
+                        <p class="muted small"><?= e((string) $notion['last_summary']) ?></p>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </form>
+        </div>
+
         <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack" data-image-cropper-form>
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="upload_app_icon">

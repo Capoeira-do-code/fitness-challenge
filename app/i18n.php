@@ -2870,6 +2870,57 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
     ],
 ]);
 
+$TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
+    'en' => [
+        'admin.notion_title' => 'Notion sync',
+        'admin.notion_hint' => 'Push daily training logs to a Notion database. Create an internal integration at notion.so/my-integrations, share your database with it, and paste the token and database id below. Required database properties: a title, Date (date), User (text), Steps (number), Distance km (number), Workout (checkbox), Workout type (text), Weight (number), Notes (text), Log ID (number).',
+        'admin.notion_enabled' => 'Enable Notion sync',
+        'admin.notion_token' => 'Integration token',
+        'admin.notion_token_hint' => 'Leave blank to keep the saved token.',
+        'admin.notion_database' => 'Database ID',
+        'admin.notion_frequency' => 'Automatic sync',
+        'admin.notion_freq_off' => 'Off (manual only)',
+        'admin.notion_freq_daily' => 'Daily',
+        'admin.notion_run_time' => 'Daily run time',
+        'admin.notion_sync_now' => 'Sync now',
+        'admin.notion_last_run' => 'Last run',
+        'flash.notion_settings_updated' => 'Notion settings updated.',
+        'flash.notion_sync_done' => 'Notion sync finished.',
+    ],
+    'es' => [
+        'admin.notion_title' => 'Sincronizacion con Notion',
+        'admin.notion_hint' => 'Envia los registros diarios de training a una base de datos de Notion. Crea una integracion interna en notion.so/my-integrations, comparte tu base de datos con ella y pega el token y el id de la base abajo. Propiedades necesarias en la base: un titulo, Date (fecha), User (texto), Steps (numero), Distance km (numero), Workout (casilla), Workout type (texto), Weight (numero), Notes (texto), Log ID (numero).',
+        'admin.notion_enabled' => 'Activar sincronizacion con Notion',
+        'admin.notion_token' => 'Token de integracion',
+        'admin.notion_token_hint' => 'Dejalo en blanco para mantener el token guardado.',
+        'admin.notion_database' => 'ID de la base de datos',
+        'admin.notion_frequency' => 'Sincronizacion automatica',
+        'admin.notion_freq_off' => 'Desactivada (solo manual)',
+        'admin.notion_freq_daily' => 'Diaria',
+        'admin.notion_run_time' => 'Hora de ejecucion diaria',
+        'admin.notion_sync_now' => 'Sincronizar ahora',
+        'admin.notion_last_run' => 'Ultima ejecucion',
+        'flash.notion_settings_updated' => 'Ajustes de Notion actualizados.',
+        'flash.notion_sync_done' => 'Sincronizacion con Notion finalizada.',
+    ],
+    'it' => [
+        'admin.notion_title' => 'Sincronizzazione Notion',
+        'admin.notion_hint' => 'Invia i log giornalieri di training a un database Notion. Crea unintegrazione interna su notion.so/my-integrations, condividi il database con essa e incolla token e id del database qui sotto. Proprieta richieste nel database: un titolo, Date (data), User (testo), Steps (numero), Distance km (numero), Workout (checkbox), Workout type (testo), Weight (numero), Notes (testo), Log ID (numero).',
+        'admin.notion_enabled' => 'Abilita sincronizzazione Notion',
+        'admin.notion_token' => 'Token integrazione',
+        'admin.notion_token_hint' => 'Lascia vuoto per mantenere il token salvato.',
+        'admin.notion_database' => 'ID del database',
+        'admin.notion_frequency' => 'Sincronizzazione automatica',
+        'admin.notion_freq_off' => 'Disattivata (solo manuale)',
+        'admin.notion_freq_daily' => 'Giornaliera',
+        'admin.notion_run_time' => 'Orario esecuzione giornaliera',
+        'admin.notion_sync_now' => 'Sincronizza ora',
+        'admin.notion_last_run' => 'Ultima esecuzione',
+        'flash.notion_settings_updated' => 'Impostazioni Notion aggiornate.',
+        'flash.notion_sync_done' => 'Sincronizzazione Notion completata.',
+    ],
+]);
+
 function locale_options(): array
 {
     return [

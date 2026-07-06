@@ -24,6 +24,7 @@ if ($page === 'users') {
 
 if ($currentUser !== null && !in_array($page, ['app_icon', 'login_background', 'media', 'media_thumb', 'api_meal_calendar', 'api_gallery_recent'], true)) {
     run_system_backup_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
+    notion_run_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
 }
 
 function send_private_cached_file_response(string $filePath, string $mime, int $maxAge = 604800, bool $immutable = false): void
@@ -2836,6 +2837,18 @@ if ($page === 'admin') {
             redirect('/?page=admin&section=app');
         }
 
+        if ($action === 'update_notion_settings') {
+            notion_update_settings($pdo, $_POST, (int) $currentUser['id']);
+            flash_set('success', t('flash.notion_settings_updated'));
+            redirect('/?page=admin&section=app');
+        }
+
+        if ($action === 'notion_sync_now') {
+            $notionResult = notion_sync_push($pdo, $config, (int) $currentUser['id']);
+            flash_set($notionResult['ok'] ? 'success' : 'error', trim(t('flash.notion_sync_done') . ' ' . (string) ($notionResult['message'] ?? '')));
+            redirect('/?page=admin&section=app');
+        }
+
         if ($action === 'update_challenge_settings') {
             update_challenge_settings(
                 $pdo,
@@ -3563,6 +3576,7 @@ if ($page === 'admin') {
         'appIconVersion' => $appIconVersion,
         'appNameSetting' => app_setting($pdo, 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge Tracker')),
         'penaltiesEnabled' => penalties_enabled($pdo),
+        'notionSettings' => notion_settings($pdo),
         'loginBackgroundPath' => $loginBackgroundPath,
         'loginBackgroundLibrary' => $loginBackgroundLibrary,
         'backupSettings' => $backupSettings,

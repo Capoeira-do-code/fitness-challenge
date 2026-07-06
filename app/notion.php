@@ -1,0 +1,506 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Notion integration (Phase 1: one-way push of daily training logs app -> Notion).
+ *
+ * The app talks to the Notion REST API directly with an internal integration
+ * token stored in app_settings. This module is inert until the admin configures
+ * a token + database id and enables it, so a fresh/unconfigured install does
+ * nothing and never errors.
+ *
+ * A local notion_sync_state table maps each daily_logs row to the Notion page it
+ * produced (plus a content hash) so pushes are idempotent and unchanged rows are
+ * skipped. That mapping is also what a later Notion -> app direction will build on.
+ */
+
+const NOTION_API_BASE = 'https://api.notion.com/v1';
+const NOTION_API_VERSION = '2022-06-28';
+const NOTION_SYNC_BATCH_LIMIT = 60;
+
+/** Notion property names the app writes to (the DB must contain matching props). */
+const NOTION_PROPERTY_MAP = [
+    // field key => [notion property name, expected notion type]
+    'date' => ['Date', 'date'],
+    'user' => ['User', 'rich_text'],
+    'steps' => ['Steps', 'number'],
+    'distance_km' => ['Distance km', 'number'],
+    'workout_done' => ['Workout', 'checkbox'],
+    'workout_type' => ['Workout type', 'rich_text'],
+    'weight' => ['Weight', 'number'],
+    'notes' => ['Notes', 'rich_text'],
+    'log_id' => ['Log ID', 'number'],
+];
+
+function notion_settings(PDO $pdo): array
+{
+    return [
+        'enabled' => notion_bool((string) (app_setting($pdo, 'notion_enabled', '0') ?? '0')),
+        'token' => trim((string) (app_setting($pdo, 'notion_token', '') ?? '')),
+        'database_id' => trim((string) (app_setting($pdo, 'notion_database_id', '') ?? '')),
+        'frequency' => notion_normalize_frequency((string) (app_setting($pdo, 'notion_sync_frequency', 'off') ?? 'off')),
+        'run_time' => trim((string) (app_setting($pdo, 'notion_sync_run_time', '03:00') ?? '03:00')),
+        'last_sync_at' => trim((string) (app_setting($pdo, 'notion_last_sync_at', '') ?? '')),
+        'last_status' => trim((string) (app_setting($pdo, 'notion_last_status', '') ?? '')),
+        'last_summary' => trim((string) (app_setting($pdo, 'notion_last_summary', '') ?? '')),
+    ];
+}
+
+function notion_bool(string $value): bool
+{
+    return in_array(strtolower(trim($value)), ['1', 'true', 'yes', 'on'], true);
+}
+
+function notion_normalize_frequency(string $value): string
+{
+    $value = strtolower(trim($value));
+
+    // Scheduled runs reuse the daily backup slot pattern (a fixed run_time each
+    // day), so only off/daily are honest options here.
+    return in_array($value, ['off', 'daily'], true) ? $value : 'off';
+}
+
+function notion_is_configured(array $settings): bool
+{
+    return ($settings['token'] ?? '') !== '' && ($settings['database_id'] ?? '') !== '';
+}
+
+function notion_is_enabled(array $settings): bool
+{
+    return !empty($settings['enabled']) && notion_is_configured($settings);
+}
+
+function notion_ensure_schema(PDO $pdo): void
+{
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS notion_sync_state (
+            log_id INTEGER PRIMARY KEY,
+            user_id INTEGER,
+            notion_page_id TEXT,
+            content_hash TEXT,
+            synced_at TEXT
+        )'
+    );
+}
+
+function notion_update_settings(PDO $pdo, array $input, int $actorUserId): void
+{
+    $token = trim((string) ($input['notion_token'] ?? ''));
+    // Preserve the stored token when the field is left blank (masked in the UI).
+    if ($token === '') {
+        $token = trim((string) (app_setting($pdo, 'notion_token', '') ?? ''));
+    }
+
+    set_app_setting($pdo, 'notion_enabled', !empty($input['notion_enabled']) ? '1' : '0', $actorUserId);
+    set_app_setting($pdo, 'notion_token', $token, $actorUserId);
+    set_app_setting($pdo, 'notion_database_id', trim((string) ($input['notion_database_id'] ?? '')), $actorUserId);
+    set_app_setting($pdo, 'notion_sync_frequency', notion_normalize_frequency((string) ($input['notion_sync_frequency'] ?? 'off')), $actorUserId);
+    set_app_setting($pdo, 'notion_sync_run_time', notion_normalize_time((string) ($input['notion_sync_run_time'] ?? '03:00')), $actorUserId);
+}
+
+function notion_normalize_time(string $value): string
+{
+    $value = trim($value);
+    if (preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/', $value) === 1) {
+        return $value;
+    }
+
+    return '03:00';
+}
+
+/**
+ * Low-level Notion API call. Uses curl when available, otherwise a stream
+ * context (allow_url_fopen), so it works in the Docker image and local dev.
+ *
+ * @return array{ok:bool,status:int,data:array,error:string}
+ */
+function notion_api_request(array $settings, string $method, string $path, ?array $body = null): array
+{
+    $token = (string) ($settings['token'] ?? '');
+    if ($token === '') {
+        return ['ok' => false, 'status' => 0, 'data' => [], 'error' => 'missing_token'];
+    }
+
+    $url = NOTION_API_BASE . $path;
+    $headers = [
+        'Authorization: Bearer ' . $token,
+        'Notion-Version: ' . NOTION_API_VERSION,
+        'Accept: application/json',
+    ];
+    $payload = null;
+    if ($body !== null) {
+        $payload = json_encode($body, JSON_UNESCAPED_UNICODE);
+        $headers[] = 'Content-Type: application/json';
+    }
+
+    if (function_exists('curl_init')) {
+        $result = notion_api_request_curl($method, $url, $headers, $payload);
+    } else {
+        $result = notion_api_request_stream($method, $url, $headers, $payload);
+    }
+
+    return $result;
+}
+
+/** @return array{ok:bool,status:int,data:array,error:string} */
+function notion_api_request_curl(string $method, string $url, array $headers, ?string $payload): array
+{
+    $handle = curl_init($url);
+    curl_setopt($handle, CURLOPT_CUSTOMREQUEST, $method);
+    curl_setopt($handle, CURLOPT_HTTPHEADER, $headers);
+    curl_setopt($handle, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($handle, CURLOPT_TIMEOUT, 25);
+    if ($payload !== null) {
+        curl_setopt($handle, CURLOPT_POSTFIELDS, $payload);
+    }
+    $raw = curl_exec($handle);
+    if ($raw === false) {
+        $error = curl_error($handle);
+        curl_close($handle);
+
+        return ['ok' => false, 'status' => 0, 'data' => [], 'error' => $error !== '' ? $error : 'curl_failed'];
+    }
+    $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+    curl_close($handle);
+
+    return notion_api_finalize($status, is_string($raw) ? $raw : '');
+}
+
+/** @return array{ok:bool,status:int,data:array,error:string} */
+function notion_api_request_stream(string $method, string $url, array $headers, ?string $payload): array
+{
+    $context = stream_context_create([
+        'http' => [
+            'method' => $method,
+            'header' => implode("\r\n", $headers),
+            'content' => $payload ?? '',
+            'timeout' => 25,
+            'ignore_errors' => true,
+        ],
+    ]);
+    $raw = @file_get_contents($url, false, $context);
+    $status = 0;
+    if (isset($http_response_header) && is_array($http_response_header)) {
+        foreach ($http_response_header as $line) {
+            if (preg_match('#^HTTP/\S+\s+(\d+)#', $line, $matches) === 1) {
+                $status = (int) $matches[1];
+            }
+        }
+    }
+    if ($raw === false && $status === 0) {
+        return ['ok' => false, 'status' => 0, 'data' => [], 'error' => 'request_failed'];
+    }
+
+    return notion_api_finalize($status, is_string($raw) ? $raw : '');
+}
+
+/** @return array{ok:bool,status:int,data:array,error:string} */
+function notion_api_finalize(int $status, string $raw): array
+{
+    $data = [];
+    if ($raw !== '') {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            $data = $decoded;
+        }
+    }
+    $ok = $status >= 200 && $status < 300;
+    $error = '';
+    if (!$ok) {
+        $error = (string) ($data['message'] ?? ('http_' . $status));
+    }
+
+    return ['ok' => $ok, 'status' => $status, 'data' => $data, 'error' => $error];
+}
+
+/**
+ * Fetch the target database schema so we know the title property name and which
+ * of our mapped properties actually exist (send only those to avoid 400s).
+ *
+ * @return array{ok:bool,error:string,title_prop:string,present:array<string,string>}
+ */
+function notion_fetch_schema(array $settings): array
+{
+    $databaseId = (string) ($settings['database_id'] ?? '');
+    if ($databaseId === '') {
+        return ['ok' => false, 'error' => 'missing_database', 'title_prop' => '', 'present' => []];
+    }
+
+    $response = notion_api_request($settings, 'GET', '/databases/' . rawurlencode($databaseId));
+    if (!$response['ok']) {
+        return ['ok' => false, 'error' => $response['error'], 'title_prop' => '', 'present' => []];
+    }
+
+    $properties = is_array($response['data']['properties'] ?? null) ? $response['data']['properties'] : [];
+    $titleProp = '';
+    $present = [];
+    foreach ($properties as $name => $definition) {
+        $type = (string) ($definition['type'] ?? '');
+        if ($type === 'title' && $titleProp === '') {
+            $titleProp = (string) $name;
+        }
+        $present[(string) $name] = $type;
+    }
+
+    return ['ok' => true, 'error' => '', 'title_prop' => $titleProp, 'present' => $present];
+}
+
+function notion_rich_text(string $value): array
+{
+    $value = trim($value);
+    if ($value === '') {
+        return [];
+    }
+
+    return [['type' => 'text', 'text' => ['content' => mb_substr($value, 0, 1900)]]];
+}
+
+/**
+ * Build the Notion properties payload for a daily log, restricted to properties
+ * that exist in the target database schema.
+ */
+function notion_build_properties(array $log, array $user, array $schema): array
+{
+    $displayName = trim((string) ($user['display_name'] ?? $user['username'] ?? 'User'));
+    $date = (string) ($log['log_date'] ?? '');
+    $properties = [];
+
+    if (($schema['title_prop'] ?? '') !== '') {
+        $properties[$schema['title_prop']] = [
+            'title' => notion_rich_text(($displayName !== '' ? $displayName : 'User') . ' - ' . $date),
+        ];
+    }
+
+    $present = is_array($schema['present'] ?? null) ? $schema['present'] : [];
+    $values = [
+        'date' => $date,
+        'user' => $displayName,
+        'steps' => $log['steps'] ?? null,
+        'distance_km' => $log['distance_km'] ?? null,
+        'workout_done' => (int) ($log['workout_done'] ?? 0) === 1,
+        'workout_type' => (string) ($log['workout_type'] ?? ''),
+        'weight' => $log['weight'] ?? null,
+        'notes' => (string) ($log['notes'] ?? ''),
+        'log_id' => (int) ($log['id'] ?? 0),
+    ];
+
+    foreach (NOTION_PROPERTY_MAP as $field => [$propName, $expectedType]) {
+        if (($present[$propName] ?? null) !== $expectedType) {
+            continue;
+        }
+        $properties[$propName] = notion_property_value($expectedType, $field, $values[$field] ?? null);
+    }
+
+    return array_filter($properties, static fn($value): bool => $value !== null);
+}
+
+function notion_property_value(string $type, string $field, mixed $raw): mixed
+{
+    return match ($type) {
+        'date' => ($raw !== null && $raw !== '') ? ['date' => ['start' => (string) $raw]] : null,
+        'number' => ['number' => ($raw === null || $raw === '') ? null : (float) $raw],
+        'checkbox' => ['checkbox' => (bool) $raw],
+        'rich_text' => ['rich_text' => notion_rich_text((string) $raw)],
+        default => null,
+    };
+}
+
+function notion_content_hash(array $log): string
+{
+    return md5((string) json_encode([
+        (string) ($log['log_date'] ?? ''),
+        (string) ($log['steps'] ?? ''),
+        (string) ($log['distance_km'] ?? ''),
+        (int) ($log['workout_done'] ?? 0),
+        (string) ($log['workout_type'] ?? ''),
+        (string) ($log['weight'] ?? ''),
+        (string) ($log['notes'] ?? ''),
+    ]));
+}
+
+/**
+ * Push a single log to Notion (create or update). Returns one of:
+ * 'created', 'updated', 'skipped', 'failed'.
+ */
+function notion_upsert_log(PDO $pdo, array $settings, array $schema, array $log, array $user): string
+{
+    $logId = (int) ($log['id'] ?? 0);
+    if ($logId <= 0) {
+        return 'skipped';
+    }
+
+    $hash = notion_content_hash($log);
+    $state = db_fetch_one($pdo, 'SELECT * FROM notion_sync_state WHERE log_id = :id', [':id' => $logId]);
+    $pageId = $state !== null ? trim((string) ($state['notion_page_id'] ?? '')) : '';
+
+    if ($state !== null && $pageId !== '' && (string) ($state['content_hash'] ?? '') === $hash) {
+        return 'skipped';
+    }
+
+    $properties = notion_build_properties($log, $user, $schema);
+    if ($properties === []) {
+        return 'skipped';
+    }
+
+    if ($pageId !== '') {
+        $response = notion_api_request($settings, 'PATCH', '/pages/' . rawurlencode($pageId), ['properties' => $properties]);
+    } else {
+        $response = notion_api_request($settings, 'POST', '/pages', [
+            'parent' => ['database_id' => (string) $settings['database_id']],
+            'properties' => $properties,
+        ]);
+    }
+
+    if (!$response['ok']) {
+        return 'failed';
+    }
+
+    $newPageId = $pageId !== '' ? $pageId : (string) ($response['data']['id'] ?? '');
+    if ($newPageId === '') {
+        return 'failed';
+    }
+
+    notion_store_state($pdo, $logId, (int) ($log['user_id'] ?? ($user['id'] ?? 0)), $newPageId, $hash);
+
+    return $pageId !== '' ? 'updated' : 'created';
+}
+
+function notion_store_state(PDO $pdo, int $logId, int $userId, string $pageId, string $hash): void
+{
+    db_execute(
+        $pdo,
+        'INSERT INTO notion_sync_state (log_id, user_id, notion_page_id, content_hash, synced_at)
+         VALUES (:log_id, :user_id, :page_id, :hash, :synced_at)
+         ON CONFLICT(log_id) DO UPDATE SET
+            user_id = excluded.user_id,
+            notion_page_id = excluded.notion_page_id,
+            content_hash = excluded.content_hash,
+            synced_at = excluded.synced_at',
+        [
+            ':log_id' => $logId,
+            ':user_id' => $userId,
+            ':page_id' => $pageId,
+            ':hash' => $hash,
+            ':synced_at' => now_iso(),
+        ]
+    );
+}
+
+/**
+ * Push daily training logs for the current challenge to Notion, bounded to
+ * NOTION_SYNC_BATCH_LIMIT changed rows per run so a web request never runs long.
+ *
+ * @return array{ok:bool,status:string,created:int,updated:int,skipped:int,failed:int,remaining:int,message:string}
+ */
+function notion_sync_push(PDO $pdo, array $config, ?int $actorUserId = null, int $limit = NOTION_SYNC_BATCH_LIMIT): array
+{
+    $settings = notion_settings($pdo);
+    $summary = ['ok' => false, 'status' => 'not_configured', 'created' => 0, 'updated' => 0, 'skipped' => 0, 'failed' => 0, 'remaining' => 0, 'message' => ''];
+
+    if (!notion_is_enabled($settings)) {
+        $summary['message'] = 'Notion sync is disabled or not configured.';
+
+        return $summary;
+    }
+
+    notion_ensure_schema($pdo);
+
+    $schema = notion_fetch_schema($settings);
+    if (!$schema['ok']) {
+        $summary['status'] = 'error';
+        $summary['message'] = 'Could not read Notion database: ' . $schema['error'];
+        notion_record_run($pdo, $summary, $actorUserId);
+
+        return $summary;
+    }
+    if (($schema['title_prop'] ?? '') === '') {
+        $summary['status'] = 'error';
+        $summary['message'] = 'The Notion database has no title property.';
+        notion_record_run($pdo, $summary, $actorUserId);
+
+        return $summary;
+    }
+
+    $challenge = function_exists('challenge_settings') ? challenge_settings($pdo, $config) : [];
+    $start = to_date((string) ($challenge['challenge_start'] ?? null));
+    $end = to_date((string) ($challenge['challenge_end'] ?? null), $start);
+
+    $users = list_active_users($pdo);
+    $processed = 0;
+    $reachedLimit = false;
+
+    foreach ($users as $user) {
+        if ($reachedLimit) {
+            break;
+        }
+        $logs = fetch_logs_for_user_between($pdo, (int) ($user['id'] ?? 0), $start, $end);
+        foreach ($logs as $log) {
+            $result = notion_upsert_log($pdo, $settings, $schema, $log, $user);
+            if ($result === 'skipped') {
+                $summary['skipped']++;
+                continue;
+            }
+            $processed++;
+            if ($result === 'created') {
+                $summary['created']++;
+            } elseif ($result === 'updated') {
+                $summary['updated']++;
+            } else {
+                $summary['failed']++;
+            }
+            if ($processed >= $limit) {
+                $reachedLimit = true;
+                break;
+            }
+        }
+    }
+
+    $summary['ok'] = $summary['failed'] === 0;
+    $summary['status'] = $summary['failed'] === 0 ? 'ok' : 'partial';
+    $summary['remaining'] = $reachedLimit ? 1 : 0; // 1 = "more may remain, run again"
+    $summary['message'] = sprintf(
+        'Created %d, updated %d, skipped %d, failed %d.%s',
+        $summary['created'],
+        $summary['updated'],
+        $summary['skipped'],
+        $summary['failed'],
+        $reachedLimit ? ' Batch limit reached — run again to continue.' : ''
+    );
+
+    notion_record_run($pdo, $summary, $actorUserId);
+
+    return $summary;
+}
+
+function notion_record_run(PDO $pdo, array $summary, ?int $actorUserId): void
+{
+    $actor = $actorUserId ?? 0;
+    set_app_setting_silent($pdo, 'notion_last_sync_at', now_iso(), $actor);
+    set_app_setting_silent($pdo, 'notion_last_status', (string) ($summary['status'] ?? ''), $actor);
+    set_app_setting_silent($pdo, 'notion_last_summary', (string) ($summary['message'] ?? ''), $actor);
+}
+
+/**
+ * Scheduler tick (mirrors run_system_backup_scheduler). Runs a bounded push when
+ * the configured frequency is due. Failures are swallowed so a Notion outage
+ * never breaks page rendering.
+ */
+function notion_run_scheduler(PDO $pdo, array $config, ?int $actorUserId = null): void
+{
+    try {
+        $settings = notion_settings($pdo);
+        if (!notion_is_enabled($settings) || $settings['frequency'] === 'off') {
+            return;
+        }
+        if (!function_exists('should_run_scheduled_backup')) {
+            return;
+        }
+        if (!should_run_scheduled_backup($settings['frequency'], (string) $settings['last_sync_at'], (string) $settings['run_time'])) {
+            return;
+        }
+        notion_sync_push($pdo, $config, $actorUserId, NOTION_SYNC_BATCH_LIMIT);
+    } catch (Throwable $exception) {
+        error_log('notion_run_scheduler: ' . $exception->getMessage());
+    }
+}

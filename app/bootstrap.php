@@ -43,6 +43,7 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/services.php';
 require_once __DIR__ . '/challenge.php';
+require_once __DIR__ . '/notion.php';
 require_once __DIR__ . '/view.php';
 
 $pdo = db_connect($config);
