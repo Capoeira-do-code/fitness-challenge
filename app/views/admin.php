@@ -390,6 +390,14 @@ try {
                     <input type="text" name="notion_database_id" value="<?= e((string) ($notion['database_id'] ?? '')) ?>" placeholder="database id">
                 </label>
                 <label>
+                    <?= e(t('admin.notion_direction')) ?>
+                    <select name="notion_sync_direction">
+                        <option value="push_only" <?= ($notion['direction'] ?? 'push_only') === 'push_only' ? 'selected' : '' ?>><?= e(t('admin.notion_dir_push')) ?></option>
+                        <option value="two_way" <?= ($notion['direction'] ?? 'push_only') === 'two_way' ? 'selected' : '' ?>><?= e(t('admin.notion_dir_two_way')) ?></option>
+                    </select>
+                    <span class="muted small"><?= e(t('admin.notion_direction_hint')) ?></span>
+                </label>
+                <label>
                     <?= e(t('admin.notion_frequency')) ?>
                     <select name="notion_sync_frequency">
                         <option value="off" <?= ($notion['frequency'] ?? 'off') === 'off' ? 'selected' : '' ?>><?= e(t('admin.notion_freq_off')) ?></option>

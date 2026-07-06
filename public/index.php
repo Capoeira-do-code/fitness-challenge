@@ -2860,7 +2860,7 @@ if ($page === 'admin') {
         }
 
         if ($action === 'notion_sync_now') {
-            $notionResult = notion_sync_push($pdo, $config, (int) $currentUser['id']);
+            $notionResult = notion_sync_run($pdo, $config, (int) $currentUser['id']);
             flash_set($notionResult['ok'] ? 'success' : 'error', trim(t('flash.notion_sync_done') . ' ' . (string) ($notionResult['message'] ?? '')));
             redirect('/?page=admin&section=app');
         }
