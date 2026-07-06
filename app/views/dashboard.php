@@ -5,7 +5,9 @@ declare(strict_types=1);
 $selectedUser = $selectedMetric['user'];
 $penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
 $dashboardLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
-$dashboardWidgets = ['kpis', 'achievements', 'approvals', 'ranking', 'weekly'];
+$dashboardWidgets = $penaltiesEnabled
+    ? ['kpis', 'achievements', 'approvals', 'ranking', 'weekly']
+    : ['kpis', 'achievements', 'ranking', 'weekly'];
 $visibleWidgets = [];
 if (is_array($dashboardLayout) && $dashboardLayout !== []) {
     foreach ($dashboardLayout as $widget) {

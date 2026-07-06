@@ -379,7 +379,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                             </div>
                         </td>
                         <td class="sheet-review-cell" data-label="<?= e(t('table.excuses_section')) ?>">
-                            <details class="sheet-review-details" <?= $hasReviewDetail ? 'open' : '' ?>>
+                            <details class="sheet-review-details" <?= (!$isAllTrainingScope && $hasReviewDetail) ? 'open' : '' ?>>
                                 <summary>
                                     <span><?= e(t('table.review_short')) ?></span>
                                     <small class="muted" data-request-state-label><?= e($requestStateLabel) ?></small>

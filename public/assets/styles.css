@@ -1131,6 +1131,30 @@ body.theme-active-dark .theme-toggle-icon-moon {
     grid-template-columns: 1fr;
 }
 
+/* Summary stat tiles have no progress ring, so override the metric-card
+   two-column grid and give the grid a proper mobile-first layout.
+   Selectors are scoped to the grid so they win over .metric-card
+   regardless of source order. */
+.analytics-stat-grid {
+    display: grid;
+    gap: 0.7rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.analytics-stat-grid .analytics-stat-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    gap: 0.15rem;
+    min-height: 0;
+}
+
+.analytics-stat-grid .analytics-stat-card strong {
+    margin-top: 0.1rem;
+    font-size: 1.25rem;
+}
+
 .analytics-chart-card {
     min-width: 0;
     padding: 0.85rem;
@@ -12497,6 +12521,9 @@ body[data-theme="dark"] {
   nav.bottom-nav.mobile-liquid-nav > .liquid-nav-plus > summary {
     width: 100% !important;
     height: 100% !important;
+    /* The base rule sets min-height to --ios-nav-height (78px); reset it so the
+       summary matches the 66px circle instead of spilling below the pill. */
+    min-height: 0 !important;
 
     display: grid !important;
     place-items: center !important;
