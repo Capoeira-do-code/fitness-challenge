@@ -17,6 +17,28 @@ $goalCreateMode = (string) ($_GET['goal_new'] ?? '') === '1';
 $goalDetailId = isset($_GET['goal_id']) ? (int) $_GET['goal_id'] : 0;
 $configEditMode = $canEditProfile && (string) ($_GET['edit'] ?? '') === '1';
 $profileMetric = is_array($profileMetric ?? null) ? (array) $profileMetric : [];
+$penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
+$isPenaltyRelatedProfileItem = static function (array $item): bool {
+    $type = strtolower(trim((string) ($item['target_type'] ?? $item['type'] ?? $item['metric'] ?? '')));
+    $secondaryType = strtolower(trim((string) ($item['secondary_target_type'] ?? '')));
+    if (in_array($type, ['strikes', 'penalties', 'penalty'], true) || in_array($secondaryType, ['strikes', 'penalties', 'penalty'], true)) {
+        return true;
+    }
+
+    $text = strtolower(implode(' ', array_map('strval', [
+        $item['name'] ?? '',
+        $item['title'] ?? '',
+        $item['description'] ?? '',
+        $item['reward_text'] ?? '',
+    ])));
+
+    return str_contains($text, 'strike') || str_contains($text, 'penalt');
+};
+if (!$penaltiesEnabled) {
+    $personalGoals = array_values(array_filter((array) ($personalGoals ?? []), static fn(array $goal): bool => !$isPenaltyRelatedProfileItem($goal)));
+    $profileGoalCards = array_values(array_filter((array) ($profileGoalCards ?? []), static fn(array $goal): bool => !$isPenaltyRelatedProfileItem($goal)));
+    $userAchievements = array_values(array_filter((array) ($userAchievements ?? []), static fn(array $achievement): bool => !$isPenaltyRelatedProfileItem($achievement)));
+}
 $primaryGoalsSpec = trim((string) ($profileUser['primary_goals_spec'] ?? ''));
 $profileTagline = trim((string) ($profileUser['profile_tagline'] ?? ''));
 $profileHeroMessage = $profileTagline !== '' ? $profileTagline : (string) t('profile.subtitle');
@@ -24,6 +46,10 @@ $profileHeroMessage = $profileTagline !== '' ? $profileTagline : (string) t('pro
 $profileQueryBase = ['page' => 'profile'];
 if (!$isOwnProfile) {
     $profileQueryBase['user_id'] = (int) ($profileUser['id'] ?? 0);
+}
+$profileSelectedChallengeKey = (string) ($profileSelectedChallengeKey ?? 'current');
+if ($profileSelectedChallengeKey !== '' && $profileSelectedChallengeKey !== 'current') {
+    $profileQueryBase['challenge'] = $profileSelectedChallengeKey;
 }
 $profileUrl = static function (string $section = '', array $extra = []) use ($profileQueryBase): string {
     $query = array_merge($profileQueryBase, $extra);
@@ -159,6 +185,11 @@ $profileChallengeRange = is_array($profileChallengeRange ?? null) ? (array) $pro
     'start' => '',
     'end' => '',
 ];
+$profileChallengeOptions = is_array($profileChallengeOptions ?? null) ? array_values((array) $profileChallengeOptions) : [];
+$profileSelectedChallenge = is_array($profileSelectedChallenge ?? null) ? (array) $profileSelectedChallenge : [];
+$profileSelectedChallengeName = (string) ($profileSelectedChallenge['name'] ?? ($profileChallengeRange['name'] ?? t('challenges.unnamed')));
+$profileSelectedChallengeIsArchive = !empty($profileSelectedChallenge['is_archive'] ?? $profileChallengeRange['is_archive'] ?? false);
+$profileSelectedChallengeRangeLabel = trim(format_date_eu((string) ($profileChallengeRange['start'] ?? '')) . ' - ' . format_date_eu((string) ($profileChallengeRange['end'] ?? '')));
 $profileDailyDetails = is_array($profileDailyDetails ?? null) ? array_values((array) $profileDailyDetails) : [];
 $profileDailyPhotoNutrition = is_array($profileDailyPhotoNutrition ?? null) ? array_values((array) $profileDailyPhotoNutrition) : [];
 $profileWeeklySummary = is_array($profileWeeklySummary ?? null) ? array_values((array) $profileWeeklySummary) : [];
@@ -267,6 +298,8 @@ $profileExportPayload = [
     'challenge_range' => [
         'start' => (string) ($profileChallengeRange['start'] ?? ''),
         'end' => (string) ($profileChallengeRange['end'] ?? ''),
+        'name' => $profileSelectedChallengeName,
+        'is_archive' => $profileSelectedChallengeIsArchive,
     ],
     'config' => [
         'primary_goal_type' => (string) ($profileUser['primary_goal_type'] ?? 'steps'),
@@ -363,6 +396,14 @@ $profileExportPayload = [
         (array) ($userAchievements ?? [])
     ),
 ];
+if (!$penaltiesEnabled) {
+    unset(
+        $profileExportPayload['labels']['strikes'],
+        $profileExportPayload['labels']['penalty'],
+        $profileExportPayload['totals']['strikes'],
+        $profileExportPayload['totals']['penalty']
+    );
+}
 $profileExportJson = json_encode(
     $profileExportPayload,
     JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
@@ -381,9 +422,11 @@ $profileDataCards = [
     ['label' => t('metric.total_km'), 'value' => number_format((float) ($profileMetric['total_km'] ?? 0), 2, '.', '') . ' km', 'meta' => t('metric.distance_km')],
     ['label' => t('metric.workouts'), 'value' => (string) $profileWorkoutTotal, 'meta' => t('metric.total')],
     ['label' => t('metric.score'), 'value' => number_format((float) ($profileMetric['score'] ?? 0), 1, '.', ''), 'meta' => t('metric.current_value')],
-    ['label' => t('metric.strikes'), 'value' => (string) (int) ($profileMetric['current_strikes'] ?? 0), 'meta' => t('metric.current_value')],
-    ['label' => t('metric.penalty'), 'value' => "\u{20AC}" . number_format((float) ($profileMetric['total_penalty'] ?? 0), 2, '.', ''), 'meta' => t('metric.total')],
 ];
+if ($penaltiesEnabled) {
+    $profileDataCards[] = ['label' => t('metric.strikes'), 'value' => (string) (int) ($profileMetric['current_strikes'] ?? 0), 'meta' => t('metric.current_value')];
+    $profileDataCards[] = ['label' => t('metric.penalty'), 'value' => "\u{20AC}" . number_format((float) ($profileMetric['total_penalty'] ?? 0), 2, '.', ''), 'meta' => t('metric.total')];
+}
 if ($latestWeight !== null) {
     $profileDataCards[] = ['label' => t('profile.latest_weight'), 'value' => number_format($latestWeight, 1, '.', '') . ' kg', 'meta' => t('metric.weight')];
 }
@@ -514,13 +557,95 @@ $profileSetupRows = [
         <?php endif; ?>
     </div>
 
+    <?php if (count($profileChallengeOptions) > 1): ?>
+        <article class="panel profile-challenge-switcher">
+            <div class="profile-challenge-switcher-head">
+                <div>
+                    <p class="eyebrow"><?= e($profileSelectedChallengeIsArchive ? t('profile.challenge_archived') : t('profile.challenge_current')) ?></p>
+                    <h2><?= e($profileSelectedChallengeName) ?></h2>
+                    <p class="muted small"><?= e(t('profile.selected_challenge', ['range' => $profileSelectedChallengeRangeLabel])) ?></p>
+                </div>
+                <form method="get" class="control-strip profile-challenge-form">
+                    <input type="hidden" name="page" value="profile">
+                    <?php if (!$isOwnProfile): ?>
+                        <input type="hidden" name="user_id" value="<?= (int) ($profileUser['id'] ?? 0) ?>">
+                    <?php endif; ?>
+                    <?php if ($activeSection !== ''): ?>
+                        <input type="hidden" name="section" value="<?= e($activeSection) ?>">
+                    <?php endif; ?>
+                    <label>
+                        <?= e(t('profile.challenge_selector')) ?>
+                        <select name="challenge" onchange="this.form.submit()">
+                            <?php foreach ($profileChallengeOptions as $challengeOption): ?>
+                                <?php
+                                $challengeKey = (string) ($challengeOption['key'] ?? 'current');
+                                $challengeName = (string) ($challengeOption['name'] ?? t('challenges.unnamed'));
+                                $challengeRange = format_date_eu((string) ($challengeOption['start'] ?? '')) . ' - ' . format_date_eu((string) ($challengeOption['end'] ?? ''));
+                                $challengeStatus = !empty($challengeOption['is_archive']) ? t('profile.challenge_archived') : t('profile.challenge_current');
+                                ?>
+                                <option value="<?= e($challengeKey) ?>" <?= $challengeKey === $profileSelectedChallengeKey ? 'selected' : '' ?>>
+                                    <?= e($challengeName . ' | ' . $challengeRange . ' | ' . $challengeStatus) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                </form>
+            </div>
+            <div class="profile-challenge-history">
+                <div>
+                    <strong><?= e(t('profile.challenge_history_title')) ?></strong>
+                    <span class="muted small"><?= e(t('profile.challenge_history_hint')) ?></span>
+                </div>
+                <div class="profile-challenge-history-list" role="list">
+                    <?php foreach ($profileChallengeOptions as $challengeOption): ?>
+                        <?php
+                        $challengeKey = (string) ($challengeOption['key'] ?? 'current');
+                        $challengeName = (string) ($challengeOption['name'] ?? t('challenges.unnamed'));
+                        $challengeRange = format_date_eu((string) ($challengeOption['start'] ?? '')) . ' - ' . format_date_eu((string) ($challengeOption['end'] ?? ''));
+                        $challengeStatus = !empty($challengeOption['is_archive']) ? t('profile.challenge_archived') : t('profile.challenge_current');
+                        $challengeSummary = is_array($challengeOption['summary'] ?? null) ? (array) $challengeOption['summary'] : [];
+                        $challengeScore = number_format((float) ($challengeSummary['score'] ?? 0), 1, '.', '');
+                        $challengeSteps = number_format((int) ($challengeSummary['steps'] ?? 0), 0, '.', '');
+                        $challengeWorkouts = (int) ($challengeSummary['workouts'] ?? 0);
+                        $challengeWorkoutTarget = (int) ($challengeSummary['workout_target'] ?? 0);
+                        $challengeWorkoutText = $challengeWorkoutTarget > 0
+                            ? (string) $challengeWorkouts . '/' . (string) $challengeWorkoutTarget
+                            : (string) $challengeWorkouts;
+                        $challengeUrlQuery = ['page' => 'profile'];
+                        if (!$isOwnProfile) {
+                            $challengeUrlQuery['user_id'] = (int) ($profileUser['id'] ?? 0);
+                        }
+                        if ($activeSection !== '') {
+                            $challengeUrlQuery['section'] = $activeSection;
+                        }
+                        if ($challengeKey !== 'current') {
+                            $challengeUrlQuery['challenge'] = $challengeKey;
+                        }
+                        $challengeUrl = '/?' . http_build_query($challengeUrlQuery);
+                        ?>
+                        <a class="profile-challenge-history-card<?= $challengeKey === $profileSelectedChallengeKey ? ' active' : '' ?>" href="<?= e($challengeUrl) ?>" role="listitem" <?= $challengeKey === $profileSelectedChallengeKey ? 'aria-current="page"' : '' ?>>
+                            <span><?= e($challengeStatus) ?></span>
+                            <strong><?= e($challengeName) ?></strong>
+                            <small><?= e($challengeRange) ?></small>
+                            <div class="profile-challenge-history-metrics" aria-label="<?= e(t('profile.challenge_history_metrics')) ?>">
+                                <span><small><?= e(t('metric.score')) ?></small><strong><?= e($challengeScore) ?></strong></span>
+                                <span><small><?= e(t('metric.steps')) ?></small><strong><?= e($challengeSteps) ?></strong></span>
+                                <span><small><?= e(t('metric.workouts')) ?></small><strong><?= e($challengeWorkoutText) ?></strong></span>
+                            </div>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </article>
+    <?php endif; ?>
+
     <?php if ($isOwnProfile): ?>
     <article class="panel profile-data-overview<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-home-extra <?= $activeSection !== '' ? 'hidden' : '' ?>>
         <div class="panel-head">
             <div>
                 <p class="eyebrow"><?= e(t('profile.my_data')) ?></p>
                 <h2><?= e(t('profile.my_data')) ?></h2>
-                <p class="muted small"><?= e(t('profile.my_data_subtitle')) ?></p>
+                <p class="muted small"><?= e(t('profile.my_data_subtitle')) ?> <?= e($profileSelectedChallengeRangeLabel) ?></p>
             </div>
         </div>
         <div class="profile-data-grid">

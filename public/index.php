@@ -111,6 +111,37 @@ if ($page === 'set_locale') {
     redirect(safe_redirect_target($_POST['redirect_to'] ?? '/'));
 }
 
+if ($page === 'set_theme') {
+    if (!is_post()) {
+        redirect('/');
+    }
+
+    if ($currentUser === null) {
+        json_response(['ok' => false], 401);
+    }
+
+    if (!csrf_verify()) {
+        json_response(['ok' => false, 'error' => 'csrf'], 403);
+    }
+
+    $theme = (string) ($_POST['theme_mode'] ?? '');
+    if (!in_array($theme, ['light', 'dark'], true)) {
+        json_response(['ok' => false, 'error' => 'invalid'], 422);
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE users SET theme_mode = :theme_mode, updated_at = :updated_at WHERE id = :id',
+        [
+            ':theme_mode' => $theme,
+            ':updated_at' => now_iso(),
+            ':id' => (int) $currentUser['id'],
+        ]
+    );
+
+    json_response(['ok' => true, 'theme_mode' => $theme]);
+}
+
 if ($page === 'logout') {
     $logoutMessage = t('flash.logout');
     set_remember_me_cookie($config, false);
@@ -546,7 +577,7 @@ if ($page === 'api_gallery_recent') {
     }
     $galleryUserFilter = $selectedUserId > 0 ? $selectedUserId : null;
     $galleryPage = max(1, (int) ($_GET['gallery_page'] ?? 1));
-    $galleryPerPage = max(24, min(240, (int) ($_GET['gallery_per_page'] ?? 48)));
+    $galleryPerPage = max(24, min(240, (int) ($_GET['gallery_per_page'] ?? 96)));
     $galleryOffset = ($galleryPage - 1) * $galleryPerPage;
 
     $rows = fetch_gallery_photos($pdo, $galleryPerPage + 1, $galleryOffset, $galleryUserFilter);
@@ -1326,7 +1357,7 @@ if ($page === 'gallery') {
     $selectedDate = calendar_date_from_request($_GET, $calendarView, $calendarDateFallback);
 
     $galleryPage = max(1, (int) ($_GET['gallery_page'] ?? 1));
-    $galleryPerPage = max(24, min(240, (int) ($_GET['gallery_per_page'] ?? 48)));
+    $galleryPerPage = max(24, min(240, (int) ($_GET['gallery_per_page'] ?? 96)));
     $galleryOffset = ($galleryPage - 1) * $galleryPerPage;
     $galleryHasMore = false;
     $galleryNextPage = null;
@@ -1386,7 +1417,31 @@ if ($page === 'table' || $page === 'week_editor') {
         $selectedUserId = (int) $selectedUser['id'];
     }
 
+    $settings = challenge_settings($pdo, $config);
+    if (!challenge_is_active($settings)) {
+        flash_set('error', t('flash.challenge_inactive'));
+        redirect('/?page=admin');
+    }
+
+    $challengeStart = to_date((string) ($settings['challenge_start'] ?? null));
+    $challengeEnd = to_date((string) ($settings['challenge_end'] ?? null), $challengeStart);
+    try {
+        if ((new DateTimeImmutable($challengeEnd)) < (new DateTimeImmutable($challengeStart))) {
+            $challengeEnd = $challengeStart;
+        }
+    } catch (Throwable) {
+        $challengeEnd = $challengeStart;
+    }
+
     $defaultMonday = (new DateTimeImmutable('monday this week'))->format('Y-m-d');
+    $hasExplicitWeek = (isset($_GET['week']) && trim((string) $_GET['week']) !== '')
+        || (isset($_GET['week_start']) && trim((string) $_GET['week_start']) !== '');
+    $requestedTrainingScope = strtolower(trim((string) ($_GET['range'] ?? $_GET['scope'] ?? '')));
+    $trainingTableScope = ($requestedTrainingScope === 'week' || $hasExplicitWeek) ? 'week' : 'all';
+    if ($requestedTrainingScope === 'all') {
+        $trainingTableScope = 'all';
+    }
+
     $weekInput = isset($_GET['week']) && $_GET['week'] !== ''
         ? week_to_monday((string) $_GET['week'], $defaultMonday)
         : to_date($_GET['week_start'] ?? null, $defaultMonday);
@@ -1394,23 +1449,28 @@ if ($page === 'table' || $page === 'week_editor') {
     $weekStart = $weekStartObj->format('Y-m-d');
     $weekEnd = $weekStartObj->modify('+6 days')->format('Y-m-d');
 
+    if ($trainingTableScope === 'all') {
+        $rangeStartObj = new DateTimeImmutable($challengeStart);
+        $rangeEndObj = new DateTimeImmutable($challengeEnd);
+    } else {
+        $rangeStartObj = $weekStartObj;
+        $rangeEndObj = $weekStartObj->modify('+6 days');
+    }
+
     $weekDates = array_map(
         static fn(DateTimeImmutable $d): string => $d->format('Y-m-d'),
-        day_sequence($weekStartObj, $weekStartObj->modify('+6 days'))
+        day_sequence($rangeStartObj, $rangeEndObj)
     );
+    $trainingRangeStart = $rangeStartObj->format('Y-m-d');
+    $trainingRangeEnd = $rangeEndObj->format('Y-m-d');
 
-    $logs = fetch_logs_for_user_between($pdo, $selectedUserId, $weekStart, $weekEnd);
+    $logs = fetch_logs_for_user_between($pdo, $selectedUserId, $trainingRangeStart, $trainingRangeEnd);
     $logsByDate = [];
     foreach ($logs as $log) {
         $logsByDate[$log['log_date']] = $log;
     }
-    $approvalRequestsByDate = fetch_approval_requests_by_user_between($pdo, $selectedUserId, $weekStart, $weekEnd);
+    $approvalRequestsByDate = fetch_approval_requests_by_user_between($pdo, $selectedUserId, $trainingRangeStart, $trainingRangeEnd);
 
-    $settings = challenge_settings($pdo, $config);
-    if (!challenge_is_active($settings)) {
-        flash_set('error', t('flash.challenge_inactive'));
-        redirect('/?page=admin');
-    }
     $metrics = compute_challenge_metrics($pdo, [$selectedUser], (string) $settings['challenge_start'], (string) $settings['challenge_end']);
     $metrics = apply_strike_review_overrides_to_metrics($pdo, $metrics);
     $viewName = $page === 'week_editor' ? 'week_editor' : 'table';
@@ -1421,6 +1481,11 @@ if ($page === 'table' || $page === 'week_editor') {
         'currentUser' => $currentUser,
         'users' => $users,
         'selectedUser' => $selectedUser,
+        'trainingTableScope' => $trainingTableScope,
+        'trainingRangeStart' => $trainingRangeStart,
+        'trainingRangeEnd' => $trainingRangeEnd,
+        'challengeStart' => $challengeStart,
+        'challengeEnd' => $challengeEnd,
         'weekStart' => $weekStart,
         'weekEnd' => $weekEnd,
         'weekDates' => $weekDates,
@@ -1723,7 +1788,11 @@ if ($page === 'profile') {
     if (!$isOwnProfile) {
         $profileBaseQuery['user_id'] = (int) $profileUser['id'];
     }
-    $profileUrl = static function (?string $section = null, array $extra = []) use ($profileBaseQuery): string {
+    $requestedProfileChallengeKey = trim((string) ($_GET['challenge'] ?? 'current'));
+    if ($requestedProfileChallengeKey !== '' && $requestedProfileChallengeKey !== 'current') {
+        $profileBaseQuery['challenge'] = $requestedProfileChallengeKey;
+    }
+    $profileUrl = static function (?string $section = null, array $extra = []) use (&$profileBaseQuery): string {
         $query = array_merge($profileBaseQuery, $extra);
         if ($section !== null && $section !== '') {
             $query['section'] = $section;
@@ -1966,26 +2035,112 @@ if ($page === 'profile') {
     }
 
     $settings = challenge_settings($pdo, $config);
-    auto_complete_user_goals(
-        $pdo,
-        (int) $profileUser['id'],
-        (string) $settings['challenge_start'],
-        (string) $settings['challenge_end'],
-        null
-    );
+    $profileChallengeArchives = list_challenge_archives($pdo);
+    $profileChallengeOptions = [[
+        'key' => 'current',
+        'id' => null,
+        'name' => (string) ($settings['challenge_name'] ?? 'Fitness Challenge'),
+        'start' => (string) ($settings['challenge_start'] ?? to_date(null)),
+        'end' => (string) ($settings['challenge_end'] ?? to_date(null)),
+        'is_archive' => false,
+        'archived_at' => '',
+    ]];
+    foreach ($profileChallengeArchives as $archive) {
+        $archiveId = (int) ($archive['id'] ?? 0);
+        $archiveStart = trim((string) ($archive['challenge_start'] ?? ''));
+        $archiveEnd = trim((string) ($archive['challenge_end'] ?? ''));
+        if ($archiveId <= 0 || $archiveStart === '' || $archiveEnd === '') {
+            continue;
+        }
+        $profileChallengeOptions[] = [
+            'key' => 'archive:' . $archiveId,
+            'id' => $archiveId,
+            'name' => (string) ($archive['challenge_name'] ?? t('challenges.unnamed')),
+            'start' => $archiveStart,
+            'end' => $archiveEnd,
+            'is_archive' => true,
+            'archived_at' => (string) ($archive['archived_at'] ?? ''),
+        ];
+    }
+    $profileSelectedChallenge = $profileChallengeOptions[0];
+    foreach ($profileChallengeOptions as $challengeOption) {
+        if ((string) ($challengeOption['key'] ?? '') === $requestedProfileChallengeKey) {
+            $profileSelectedChallenge = $challengeOption;
+            break;
+        }
+    }
+    $profileSelectedChallengeKey = (string) ($profileSelectedChallenge['key'] ?? 'current');
+    if ($profileSelectedChallengeKey !== 'current') {
+        $profileBaseQuery['challenge'] = $profileSelectedChallengeKey;
+    } else {
+        unset($profileBaseQuery['challenge']);
+    }
+    $profileChallengeStart = (string) ($profileSelectedChallenge['start'] ?? (string) $settings['challenge_start']);
+    $profileChallengeEnd = (string) ($profileSelectedChallenge['end'] ?? (string) $settings['challenge_end']);
+    $profileSelectedChallengeIsArchive = !empty($profileSelectedChallenge['is_archive']);
+    if (!$profileSelectedChallengeIsArchive && challenge_is_active($settings)) {
+        auto_complete_user_goals(
+            $pdo,
+            (int) $profileUser['id'],
+            $profileChallengeStart,
+            $profileChallengeEnd,
+            null
+        );
+    }
     $metrics = compute_challenge_metrics(
         $pdo,
         [$profileUser],
-        (string) $settings['challenge_start'],
-        (string) $settings['challenge_end']
+        $profileChallengeStart,
+        $profileChallengeEnd
     );
     $metrics = apply_strike_review_overrides_to_metrics($pdo, $metrics);
     $profileMetric = array_values($metrics)[0] ?? null;
+    $profileChallengeSummaryFromMetric = static function (?array $metric): array {
+        if (!is_array($metric)) {
+            $metric = [];
+        }
+
+        return [
+            'steps' => (int) ($metric['total_steps'] ?? 0),
+            'distance_km' => round((float) ($metric['total_km'] ?? 0), 2),
+            'workouts' => (int) max((int) ($metric['workout_count'] ?? 0), (int) ($metric['workout_success'] ?? 0)),
+            'workout_target' => (int) ($metric['workout_target'] ?? 0),
+            'score' => round((float) ($metric['score'] ?? 0), 1),
+            'step_completion_pct' => round((float) ($metric['step_completion_pct'] ?? 0), 1),
+            'workout_completion_pct' => round((float) ($metric['workout_completion_pct'] ?? 0), 1),
+        ];
+    };
+    foreach ($profileChallengeOptions as $challengeOptionIndex => $challengeOption) {
+        $challengeOptionKey = (string) ($challengeOption['key'] ?? '');
+        if ($challengeOptionKey === $profileSelectedChallengeKey) {
+            $profileChallengeOptions[$challengeOptionIndex]['summary'] = $profileChallengeSummaryFromMetric(
+                is_array($profileMetric) ? $profileMetric : null
+            );
+            continue;
+        }
+
+        $challengeOptionStart = trim((string) ($challengeOption['start'] ?? ''));
+        $challengeOptionEnd = trim((string) ($challengeOption['end'] ?? ''));
+        if ($challengeOptionStart === '' || $challengeOptionEnd === '') {
+            $profileChallengeOptions[$challengeOptionIndex]['summary'] = $profileChallengeSummaryFromMetric(null);
+            continue;
+        }
+
+        $challengeOptionMetrics = compute_challenge_metrics($pdo, [$profileUser], $challengeOptionStart, $challengeOptionEnd);
+        $challengeOptionMetrics = apply_strike_review_overrides_to_metrics($pdo, $challengeOptionMetrics);
+        $profileChallengeOptions[$challengeOptionIndex]['summary'] = $profileChallengeSummaryFromMetric(
+            array_values($challengeOptionMetrics)[0] ?? null
+        );
+    }
+    foreach ($profileChallengeOptions as $challengeOption) {
+        if ((string) ($challengeOption['key'] ?? '') === $profileSelectedChallengeKey) {
+            $profileSelectedChallenge = $challengeOption;
+            break;
+        }
+    }
     $profileDistanceWeekly = [];
     $profileWorkoutWeekly = [];
     $profileScoreWeekly = [];
-    $profileChallengeStart = (string) $settings['challenge_start'];
-    $profileChallengeEnd = (string) $settings['challenge_end'];
     $profileLogs = fetch_logs_for_user_between(
         $pdo,
         (int) ($profileUser['id'] ?? 0),
@@ -2444,7 +2599,9 @@ if ($page === 'profile') {
         'weight_change' => count($weightValuesForPdf) > 1 ? round($weightValuesForPdf[count($weightValuesForPdf) - 1] - $weightValuesForPdf[0], 2) : null,
     ];
 
-    evaluate_automatic_achievements($pdo, $metrics);
+    if (!$profileSelectedChallengeIsArchive && challenge_is_active($settings)) {
+        evaluate_automatic_achievements($pdo, $metrics);
+    }
     $profileUser = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $profileUser['id']]) ?? $profileUser;
 
     $profileGoalCards = build_user_goal_view_models($personalGoals, is_array($profileMetric) ? $profileMetric : [], $habitDefinitions);
@@ -2464,7 +2621,12 @@ if ($page === 'profile') {
         'profileChallengeRange' => [
             'start' => $profileChallengeStart,
             'end' => $profileChallengeEnd,
+            'name' => (string) ($profileSelectedChallenge['name'] ?? ''),
+            'is_archive' => $profileSelectedChallengeIsArchive,
         ],
+        'profileChallengeOptions' => $profileChallengeOptions,
+        'profileSelectedChallengeKey' => $profileSelectedChallengeKey,
+        'profileSelectedChallenge' => $profileSelectedChallenge,
         'profileDailyDetails' => $profileDailyDetails,
         'profileDailyPhotoNutrition' => $profileDailyPhotoNutrition,
         'profileWeeklySummary' => $profileWeeklySummary,
@@ -2668,6 +2830,12 @@ if ($page === 'admin') {
             redirect('/?page=admin');
         }
 
+        if ($action === 'update_penalties_feature') {
+            set_app_setting($pdo, 'penalties_enabled', bool_from_form('penalties_enabled') === 1 ? '1' : '0', (int) $currentUser['id']);
+            flash_set('success', t('flash.penalties_feature_updated'));
+            redirect('/?page=admin&section=app');
+        }
+
         if ($action === 'update_challenge_settings') {
             update_challenge_settings(
                 $pdo,
@@ -2677,7 +2845,19 @@ if ($page === 'admin') {
                 (int) $currentUser['id']
             );
             flash_set('success', t('flash.challenge_updated'));
-            redirect('/?page=admin');
+            redirect('/?page=admin&section=challenge');
+        }
+
+        if ($action === 'start_new_challenge') {
+            start_new_challenge(
+                $pdo,
+                (string) ($_POST['new_challenge_name'] ?? ''),
+                (string) ($_POST['new_challenge_start'] ?? ''),
+                (string) ($_POST['new_challenge_end'] ?? ''),
+                (int) $currentUser['id']
+            );
+            flash_set('success', t('flash.challenge_started'));
+            redirect('/?page=admin&section=challenge');
         }
 
         if ($action === 'archive_challenge') {
@@ -2685,7 +2865,17 @@ if ($page === 'admin') {
                 archive_challenge($pdo, (int) $currentUser['id']);
                 flash_set('success', t('flash.challenge_archived'));
             }
-            redirect('/?page=admin');
+            redirect('/?page=admin&section=challenge');
+        }
+
+        if ($action === 'reactivate_challenge') {
+            $archiveId = (int) ($_POST['archive_id'] ?? 0);
+            if ($archiveId > 0 && reactivate_challenge($pdo, $archiveId, (int) $currentUser['id'])) {
+                flash_set('success', t('flash.challenge_reactivated'));
+            } else {
+                flash_set('error', t('flash.challenge_reactivate_failed'));
+            }
+            redirect('/?page=admin&section=challenge');
         }
 
         if ($action === 'create_user') {
@@ -3372,11 +3562,13 @@ if ($page === 'admin') {
         'appIconPath' => $appIconPath,
         'appIconVersion' => $appIconVersion,
         'appNameSetting' => app_setting($pdo, 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge Tracker')),
+        'penaltiesEnabled' => penalties_enabled($pdo),
         'loginBackgroundPath' => $loginBackgroundPath,
         'loginBackgroundLibrary' => $loginBackgroundLibrary,
         'backupSettings' => $backupSettings,
         'systemBackups' => $systemBackups,
         'challengeSettings' => $challengeSettings,
+        'challengeArchives' => list_challenge_archives($pdo),
         'auditLogs' => fetch_audit_logs($pdo, $auditFilters, 100),
         'auditFilters' => $auditFilters,
         'config' => $config,
@@ -3467,6 +3659,7 @@ if ($page === 'team_settings') {
 }
 
 if ($page === 'team') {
+    $penaltiesEnabled = penalties_enabled($pdo);
     if (is_post()) {
         if (!csrf_verify()) {
             flash_set('error', t('flash.csrf'));
@@ -3577,6 +3770,10 @@ if ($page === 'team') {
             $title = trim((string) ($_POST['title'] ?? ''));
             if ($title !== '') {
                 $goalType = normalize_goal_target_type((string) ($_POST['target_type'] ?? 'custom'));
+                if (!$penaltiesEnabled && $goalType === 'penalties') {
+                    flash_set('error', t('metric.invalid'));
+                    redirect($teamRedirectUrl);
+                }
                 $targetValue = ($_POST['target_value'] ?? '') !== '' ? (float) $_POST['target_value'] : null;
                 $rewardEnabled = bool_from_form('reward_enabled');
                 $rewardTextRaw = trim((string) ($_POST['reward_text'] ?? ''));
@@ -3592,6 +3789,10 @@ if ($page === 'team') {
                     $secondaryEnabled = false;
                     $secondaryType = 'custom';
                     $secondaryTargetValueRaw = null;
+                }
+                if (!$penaltiesEnabled && $secondaryEnabled && $secondaryType === 'penalties') {
+                    flash_set('error', t('metric.invalid'));
+                    redirect($teamRedirectUrl);
                 }
                 $secondaryCustomUnit = trim((string) ($_POST['secondary_custom_unit'] ?? ''));
                 $secondaryUnitLabel = $secondaryEnabled
@@ -3701,6 +3902,10 @@ if ($page === 'team') {
             }
             $goalType = normalize_goal_target_type((string) ($_POST['target_type'] ?? 'custom'));
             $goalTypeBefore = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
+            if (!$penaltiesEnabled && $goalType === 'penalties' && $goalTypeBefore !== 'penalties') {
+                flash_set('error', t('metric.invalid'));
+                redirect($teamRedirectUrl);
+            }
             $secondaryWasEnabledBefore = goal_has_secondary_target($goal);
             $secondaryTypeBefore = goal_secondary_target_type($goal);
             $rewardEnabled = bool_from_form('reward_enabled');
@@ -3717,6 +3922,10 @@ if ($page === 'team') {
                 $secondaryEnabled = false;
                 $secondaryType = 'custom';
                 $secondaryTargetValueRaw = null;
+            }
+            if (!$penaltiesEnabled && $secondaryEnabled && $secondaryType === 'penalties' && $secondaryTypeBefore !== 'penalties') {
+                flash_set('error', t('metric.invalid'));
+                redirect($teamRedirectUrl);
             }
             $secondaryCustomUnit = trim((string) ($_POST['secondary_custom_unit'] ?? ''));
             $secondaryUnitLabel = $secondaryEnabled
@@ -4212,6 +4421,9 @@ if ($page === 'team') {
             'chart_fill' => 'rgba(239, 68, 68, 0.12)',
         ],
     ];
+    if (!$penaltiesEnabled) {
+        unset($teamMetricConfigs['strikes'], $teamMetricConfigs['penalty']);
+    }
 
     $teamMetricKey = trim((string) ($_GET['metric'] ?? ''));
     $teamMetricDetail = null;
@@ -4783,14 +4995,17 @@ if ($page === 'metric') {
         redirect('/?page=dashboard');
     }
 
+    $penaltiesEnabled = penalties_enabled($pdo);
     $allowedMetrics = [
         'steps' => t('metric.steps'),
         'distance' => t('metric.distance_km'),
         'workouts' => t('metric.workouts'),
-        'money' => t('metric.penalty'),
-        'strikes' => t('metric.strikes'),
         'score' => t('metric.score'),
     ];
+    if ($penaltiesEnabled) {
+        $allowedMetrics['strikes'] = t('metric.strikes');
+        $allowedMetrics['money'] = t('metric.penalty');
+    }
     $metricKey = (string) ($_GET['metric'] ?? 'steps');
     if (!isset($allowedMetrics[$metricKey])) {
         flash_set('error', t('metric.invalid'));
@@ -5067,6 +5282,11 @@ if ($page === 'comparison_detail') {
 }
 
 if ($page === 'strikes_detail') {
+    if (!penalties_enabled($pdo)) {
+        flash_set('error', t('metric.invalid'));
+        redirect('/?page=dashboard');
+    }
+
     $settings = challenge_settings($pdo, $config);
     if (!challenge_is_active($settings)) {
         flash_set('error', t('flash.challenge_inactive'));
@@ -5247,6 +5467,11 @@ if ($page === 'strikes_detail') {
 }
 
 if ($page === 'penalties') {
+    if (!penalties_enabled($pdo)) {
+        flash_set('error', t('metric.invalid'));
+        redirect('/?page=dashboard');
+    }
+
     $settings = challenge_settings($pdo, $config);
     if (!challenge_is_active($settings)) {
         flash_set('error', t('flash.challenge_inactive'));

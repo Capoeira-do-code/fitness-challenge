@@ -7,12 +7,35 @@ for ($i = 0; $i < 7; $i++) {
     $weekdayNames[$i] = t('weekday.' . $i);
 }
 
+$trainingTableScope = (string) ($trainingTableScope ?? 'week');
+$isAllTrainingScope = $trainingTableScope === 'all';
+$trainingRangeStart = (string) ($trainingRangeStart ?? $weekStart ?? to_date(null));
+$trainingRangeEnd = (string) ($trainingRangeEnd ?? $weekEnd ?? $trainingRangeStart);
+$allSheetUrl = '/?' . http_build_query([
+    'page' => 'week_editor',
+    'user_id' => (int) ($selectedUser['id'] ?? 0),
+    'range' => 'all',
+]);
+$weekSheetUrl = '/?' . http_build_query([
+    'page' => 'week_editor',
+    'user_id' => (int) ($selectedUser['id'] ?? 0),
+    'range' => 'week',
+    'week' => date_to_iso_week((string) ($weekStart ?? to_date(null))),
+]);
+$summaryUrl = '/?' . http_build_query(array_filter([
+    'page' => 'table',
+    'user_id' => (int) ($selectedUser['id'] ?? 0),
+    'range' => $isAllTrainingScope ? 'all' : 'week',
+    'week' => $isAllTrainingScope ? null : date_to_iso_week((string) ($weekStart ?? to_date(null))),
+], static fn($value): bool => $value !== null && $value !== ''));
+
 $userStepGoal = max(0, (int) ($selectedUser['step_goal'] ?? 0));
 $userDistanceGoal = 0.0;
 if ((string) ($selectedUser['primary_goal_type'] ?? 'steps') === 'km') {
     $userDistanceGoal = max(0.0, (float) ($selectedUser['primary_goal_value'] ?? 0));
 }
 $approvalRequestsByDate = is_array($approvalRequestsByDate ?? null) ? (array) $approvalRequestsByDate : [];
+$canSwitchTrainingUser = is_admin($currentUser ?? []);
 $workoutTypeById = [];
 foreach ((array) ($workoutTypes ?? []) as $type) {
     $typeId = (int) ($type['id'] ?? 0);
@@ -49,157 +72,196 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
         <div>
             <p class="eyebrow"><?= e(t('nav.table')) ?></p>
             <h1><?= e(t('table.editor_title')) ?></h1>
-            <p class="muted"><?= e(t('table.subtitle')) ?></p>
+            <p class="muted">
+                <?= $isAllTrainingScope
+                    ? e(t('table.all_subtitle', ['start' => format_date_eu($trainingRangeStart), 'end' => format_date_eu($trainingRangeEnd)]))
+                    : e(t('table.subtitle')) ?>
+            </p>
         </div>
     </div>
 
-    <article class="panel">
-        <form method="get" class="control-strip wrap">
-            <input type="hidden" name="page" value="week_editor">
-            <label>
-                <?= e(t('common.user')) ?>
-                <select name="user_id" onchange="this.form.submit()">
-                    <?php foreach ($users as $user): ?>
-                        <option value="<?= (int) $user['id'] ?>" <?= (int) $selectedUser['id'] === (int) $user['id'] ? 'selected' : '' ?>>
-                            <?= e((string) $user['display_name']) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
+    <article class="panel training-sheet-panel">
+        <div class="panel-head training-sheet-head">
+            <form method="get" class="control-strip wrap training-sheet-controls">
+                <input type="hidden" name="page" value="week_editor">
+                <input type="hidden" name="range" value="<?= $isAllTrainingScope ? 'all' : 'week' ?>">
+                <?php if ($canSwitchTrainingUser): ?>
+                    <label>
+                        <?= e(t('common.user')) ?>
+                        <select name="user_id" onchange="this.form.submit()">
+                            <?php foreach ($users as $user): ?>
+                                <option value="<?= (int) $user['id'] ?>" <?= (int) $selectedUser['id'] === (int) $user['id'] ? 'selected' : '' ?>>
+                                    <?= e((string) $user['display_name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                <?php else: ?>
+                    <input type="hidden" name="user_id" value="<?= (int) $selectedUser['id'] ?>">
+                <?php endif; ?>
 
-            <label>
-                <?= e(t('common.week')) ?>
-                <input type="week" name="week" value="<?= e(date_to_iso_week($weekStart)) ?>" onchange="this.form.submit()">
-            </label>
-        </form>
+                <div class="training-sheet-view-tabs" role="group" aria-label="<?= e(t('dashboard.view_mode')) ?>">
+                    <a class="<?= $isAllTrainingScope ? 'active' : '' ?>" href="<?= e($allSheetUrl) ?>" <?= $isAllTrainingScope ? 'aria-current="page"' : '' ?>><?= e(t('dashboard.all_challenge')) ?></a>
+                    <a class="<?= !$isAllTrainingScope ? 'active' : '' ?>" href="<?= e($weekSheetUrl) ?>" <?= !$isAllTrainingScope ? 'aria-current="page"' : '' ?>><?= e(t('common.week')) ?></a>
+                </div>
 
-        <div class="week-editor-grid" id="week-editor-grid" data-step-goal="<?= $userStepGoal ?>">
-            <?php foreach ($weekDates as $idx => $date): ?>
-                <?php
-                $log = $logsByDate[$date] ?? [];
-                $logWorkouts = is_array($log['workouts'] ?? null) ? array_values((array) $log['workouts']) : [];
-                if ($logWorkouts === [] && !empty($log)) {
-                    $legacyWorkoutTypeId = !empty($log['workout_type_id']) ? (int) $log['workout_type_id'] : null;
-                    $legacyWorkoutType = trim((string) ($log['workout_type'] ?? ''));
-                    if ($legacyWorkoutTypeId !== null || $legacyWorkoutType !== '') {
-                        $logWorkouts[] = [
-                            'workout_type_id' => $legacyWorkoutTypeId,
-                            'workout_type' => $legacyWorkoutType,
-                        ];
+                <?php if (!$isAllTrainingScope): ?>
+                <label>
+                    <?= e(t('common.week')) ?>
+                    <input type="week" name="week" value="<?= e(date_to_iso_week($weekStart)) ?>" onchange="this.form.submit()">
+                </label>
+                <?php endif; ?>
+            </form>
+            <a class="btn btn-ghost small" href="<?= e($summaryUrl) ?>"><?= e($isAllTrainingScope ? t('table.all_summary') : t('table.week_summary')) ?></a>
+        </div>
+
+        <div class="training-sheet-wrap week-editor-grid" id="week-editor-grid" data-step-goal="<?= $userStepGoal ?>" data-training-scope="<?= e($trainingTableScope) ?>">
+            <table class="table compact training-sheet-table">
+                <thead>
+                <tr>
+                    <th class="sheet-day-col"><?= e(t('common.date')) ?></th>
+                    <th><?= e(t('entries.log_time')) ?></th>
+                    <th><?= e(t('metric.steps')) ?></th>
+                    <th><?= e(t('metric.distance_km')) ?></th>
+                    <th><?= e(t('table.completed_workout')) ?></th>
+                    <th><?= e(t('table.primary_workout_type')) ?></th>
+                    <th><?= e(t('table.extra_wo')) ?></th>
+                    <th><?= e(t('entries.training_calories_burned')) ?></th>
+                    <th><?= e(t('metric.weight')) ?></th>
+                    <th><?= e(t('table.junk')) ?></th>
+                    <th><?= e(t('table.habits_section')) ?></th>
+                    <th><?= e(t('table.excuses_section')) ?></th>
+                    <th><?= e(t('common.notes')) ?></th>
+                    <th><?= e(t('common.save')) ?></th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($weekDates as $idx => $date): ?>
+                    <?php
+                    try {
+                        $weekdayIndex = max(0, min(6, (int) (new DateTimeImmutable($date))->format('N') - 1));
+                    } catch (Throwable) {
+                        $weekdayIndex = $idx % 7;
                     }
-                }
-
-                $primaryWorkout = is_array($logWorkouts[0] ?? null) ? (array) $logWorkouts[0] : ['workout_type_id' => null, 'workout_type' => ''];
-                $extraWorkouts = array_values(array_slice($logWorkouts, 1));
-
-                $primaryTypeId = !empty($primaryWorkout['workout_type_id']) ? (int) $primaryWorkout['workout_type_id'] : null;
-                $primaryTypeName = trim((string) ($primaryWorkout['workout_type'] ?? ''));
-                $primarySelection = $resolveWorkoutSelection($primaryTypeId, $primaryTypeName, $workoutTypeById);
-
-                $completedWorkout = (int) ($log['workout_done'] ?? 0) === 1 || $primarySelection['is_filled'] || $extraWorkouts !== [];
-
-                $stepsRaw = isset($log['steps']) ? (string) $log['steps'] : '';
-                $stepValue = $stepsRaw === '' ? null : (int) $stepsRaw;
-                $logTimeValue = normalize_log_time($log['log_time'] ?? '', '00:00');
-                $showStepExcuse = $userStepGoal > 0 && ($stepValue === null || $stepValue < $userStepGoal);
-                $distanceRaw = isset($log['distance_km']) ? (string) $log['distance_km'] : '';
-                $distanceValue = $distanceRaw === '' ? null : (float) $distanceRaw;
-                $showDistanceExcuse = $userDistanceGoal > 0 && ($distanceValue === null || $distanceValue < $userDistanceGoal);
-                $showWorkoutExcuse = !$completedWorkout && !$primarySelection['is_filled'] && $extraWorkouts === [];
-                $dayApprovals = is_array($approvalRequestsByDate[$date] ?? null) ? (array) $approvalRequestsByDate[$date] : [];
-                $relevantApprovalTypes = [];
-                if ($showStepExcuse) {
-                    $relevantApprovalTypes[] = APPROVAL_TYPE_STEP_EXCEPTION;
-                }
-                if ($showDistanceExcuse) {
-                    $relevantApprovalTypes[] = APPROVAL_TYPE_DISTANCE_EXCEPTION;
-                }
-                if ($showWorkoutExcuse) {
-                    $relevantApprovalTypes[] = APPROVAL_TYPE_WORKOUT_EXCEPTION;
-                }
-                $requestState = 'not_sent';
-                $hasPendingRequest = false;
-                $hasResentRequest = false;
-                $hasRejectedRequest = false;
-                $hasApprovedRequest = false;
-                foreach ($relevantApprovalTypes as $approvalType) {
-                    $approvalRow = is_array($dayApprovals[$approvalType] ?? null) ? (array) $dayApprovals[$approvalType] : null;
-                    if ($approvalRow === null) {
-                        continue;
-                    }
-                    $status = (string) ($approvalRow['status'] ?? '');
-                    if ($status === APPROVAL_STATUS_PENDING) {
-                        $hasPendingRequest = true;
-                        if ((string) ($approvalRow['request_state'] ?? '') === 'resent' || (int) ($approvalRow['resent_count'] ?? 0) > 0) {
-                            $hasResentRequest = true;
+                    $log = $logsByDate[$date] ?? [];
+                    $logWorkouts = is_array($log['workouts'] ?? null) ? array_values((array) $log['workouts']) : [];
+                    if ($logWorkouts === [] && !empty($log)) {
+                        $legacyWorkoutTypeId = !empty($log['workout_type_id']) ? (int) $log['workout_type_id'] : null;
+                        $legacyWorkoutType = trim((string) ($log['workout_type'] ?? ''));
+                        if ($legacyWorkoutTypeId !== null || $legacyWorkoutType !== '') {
+                            $logWorkouts[] = [
+                                'workout_type_id' => $legacyWorkoutTypeId,
+                                'workout_type' => $legacyWorkoutType,
+                            ];
                         }
-                    } elseif ($status === APPROVAL_STATUS_REJECTED) {
-                        $hasRejectedRequest = true;
-                    } elseif ($status === APPROVAL_STATUS_APPROVED) {
-                        $hasApprovedRequest = true;
                     }
-                }
-                if ($hasPendingRequest) {
-                    $requestState = $hasResentRequest ? 'resent' : 'sent';
-                } elseif ($hasRejectedRequest) {
-                    $requestState = 'rejected';
-                } elseif ($hasApprovedRequest) {
-                    $requestState = 'approved';
-                }
-                ?>
-                <article class="week-day-card"
-                         data-date="<?= e($date) ?>"
-                         data-step-goal="<?= $userStepGoal ?>"
-                         data-distance-goal="<?= e((string) $userDistanceGoal) ?>"
-                         data-request-state="<?= e($requestState) ?>">
-                    <header class="week-day-head">
-                        <strong><?= e($weekdayNames[$idx] ?? $date) ?></strong>
-                        <span class="muted small"><?= e(format_date_eu($date)) ?></span>
-                    </header>
 
-                    <section class="week-section week-section-metrics">
-                        <div class="week-section-head">
-                            <h3><?= e(t('table.daily_metrics')) ?></h3>
-                        </div>
-                        <div class="week-section-grid week-metrics-grid">
-                            <label class="week-field">
-                                <span><?= e(t('metric.steps')) ?></span>
-                                <input type="number" min="0" name="steps" value="<?= e((string) ($log['steps'] ?? '')) ?>" data-steps-input>
-                            </label>
-                            <label class="week-field">
-                                <span><?= e(t('metric.distance_km')) ?></span>
-                                <input type="number" min="0" step="0.01" name="distance_km" value="<?= e((string) ($log['distance_km'] ?? '')) ?>">
-                            </label>
-                            <label class="week-field">
-                                <span><?= e(t('entries.log_time')) ?></span>
+                    $primaryWorkout = is_array($logWorkouts[0] ?? null) ? (array) $logWorkouts[0] : ['workout_type_id' => null, 'workout_type' => ''];
+                    $extraWorkouts = array_values(array_slice($logWorkouts, 1));
+
+                    $primaryTypeId = !empty($primaryWorkout['workout_type_id']) ? (int) $primaryWorkout['workout_type_id'] : null;
+                    $primaryTypeName = trim((string) ($primaryWorkout['workout_type'] ?? ''));
+                    $primarySelection = $resolveWorkoutSelection($primaryTypeId, $primaryTypeName, $workoutTypeById);
+
+                    $completedWorkout = (int) ($log['workout_done'] ?? 0) === 1 || $primarySelection['is_filled'] || $extraWorkouts !== [];
+
+                    $stepsRaw = isset($log['steps']) ? (string) $log['steps'] : '';
+                    $stepValue = $stepsRaw === '' ? null : (int) $stepsRaw;
+                    $logTimeValue = normalize_log_time($log['log_time'] ?? '', '00:00');
+                    $showStepExcuse = $userStepGoal > 0 && ($stepValue === null || $stepValue < $userStepGoal);
+                    $distanceRaw = isset($log['distance_km']) ? (string) $log['distance_km'] : '';
+                    $distanceValue = $distanceRaw === '' ? null : (float) $distanceRaw;
+                    $showDistanceExcuse = $userDistanceGoal > 0 && ($distanceValue === null || $distanceValue < $userDistanceGoal);
+                    $showWorkoutExcuse = !$completedWorkout && !$primarySelection['is_filled'] && $extraWorkouts === [];
+                    $dayApprovals = is_array($approvalRequestsByDate[$date] ?? null) ? (array) $approvalRequestsByDate[$date] : [];
+                    $relevantApprovalTypes = [];
+                    if ($showStepExcuse) {
+                        $relevantApprovalTypes[] = APPROVAL_TYPE_STEP_EXCEPTION;
+                    }
+                    if ($showDistanceExcuse) {
+                        $relevantApprovalTypes[] = APPROVAL_TYPE_DISTANCE_EXCEPTION;
+                    }
+                    if ($showWorkoutExcuse) {
+                        $relevantApprovalTypes[] = APPROVAL_TYPE_WORKOUT_EXCEPTION;
+                    }
+                    $requestState = 'not_sent';
+                    $hasPendingRequest = false;
+                    $hasResentRequest = false;
+                    $hasRejectedRequest = false;
+                    $hasApprovedRequest = false;
+                    foreach ($relevantApprovalTypes as $approvalType) {
+                        $approvalRow = is_array($dayApprovals[$approvalType] ?? null) ? (array) $dayApprovals[$approvalType] : null;
+                        if ($approvalRow === null) {
+                            continue;
+                        }
+                        $status = (string) ($approvalRow['status'] ?? '');
+                        if ($status === APPROVAL_STATUS_PENDING) {
+                            $hasPendingRequest = true;
+                            if ((string) ($approvalRow['request_state'] ?? '') === 'resent' || (int) ($approvalRow['resent_count'] ?? 0) > 0) {
+                                $hasResentRequest = true;
+                            }
+                        } elseif ($status === APPROVAL_STATUS_REJECTED) {
+                            $hasRejectedRequest = true;
+                        } elseif ($status === APPROVAL_STATUS_APPROVED) {
+                            $hasApprovedRequest = true;
+                        }
+                    }
+                    if ($hasPendingRequest) {
+                        $requestState = $hasResentRequest ? 'resent' : 'sent';
+                    } elseif ($hasRejectedRequest) {
+                        $requestState = 'rejected';
+                    } elseif ($hasApprovedRequest) {
+                        $requestState = 'approved';
+                    }
+                    $requestStateLabel = match ($requestState) {
+                        'sent' => t('table.request_sent'),
+                        'resent' => t('table.request_resent'),
+                        'approved' => t('table.request_approved'),
+                        'rejected' => t('table.request_rejected'),
+                        default => t('table.request_not_sent'),
+                    };
+                    $hasReviewDetail = $requestState !== 'not_sent'
+                        || trim((string) ($log['step_exception_reason'] ?? '')) !== ''
+                        || trim((string) ($log['distance_exception_reason'] ?? '')) !== ''
+                        || trim((string) ($log['workout_exception_reason'] ?? '')) !== '';
+                    ?>
+                    <tr class="week-day-card"
+                        data-date="<?= e($date) ?>"
+                        data-step-goal="<?= $userStepGoal ?>"
+                        data-distance-goal="<?= e((string) $userDistanceGoal) ?>"
+                        data-request-state="<?= e($requestState) ?>">
+                        <th scope="row" class="sheet-day-cell" data-label="<?= e(t('common.date')) ?>">
+                            <strong><?= e($weekdayNames[$weekdayIndex] ?? $date) ?></strong>
+                            <span><?= e(format_date_eu($date)) ?></span>
+                        </th>
+                        <td class="sheet-time-cell" data-label="<?= e(t('entries.log_time')) ?>">
+                            <label class="sheet-field">
+                                <span class="sr-only"><?= e(t('entries.log_time')) ?></span>
                                 <input type="time" name="log_time" value="<?= e($logTimeValue) ?>">
                             </label>
-                            <div class="week-help-wrap" data-help="<?= e(t('table.week_help_training_calories')) ?>">
-                                <label class="week-field">
-                                    <span><?= e(t('entries.training_calories_burned')) ?></span>
-                                    <input type="number" min="0" step="1" name="training_calories_burned" value="<?= e((string) ($log['training_calories_burned'] ?? '')) ?>">
-                                </label>
-                            </div>
-                            <label class="week-field">
-                                <span><?= e(t('metric.weight')) ?></span>
-                                <input type="number" step="0.1" name="weight" value="<?= e((string) ($log['weight'] ?? '')) ?>">
+                        </td>
+                        <td class="sheet-number-cell" data-label="<?= e(t('metric.steps')) ?>">
+                            <label class="sheet-field">
+                                <span class="sr-only"><?= e(t('metric.steps')) ?></span>
+                                <input type="number" min="0" name="steps" value="<?= e((string) ($log['steps'] ?? '')) ?>" data-steps-input>
                             </label>
-                        </div>
-                    </section>
-
-                    <section class="week-section week-section-workout">
-                        <div class="week-section-head">
-                            <h3><?= e(t('table.workout_section')) ?></h3>
-                        </div>
-                        <div class="week-section-grid week-workout-grid">
-                            <label class="check week-check" data-help="<?= e(t('table.week_help_workout_excuse')) ?>">
+                        </td>
+                        <td class="sheet-number-cell" data-label="<?= e(t('metric.distance_km')) ?>">
+                            <label class="sheet-field">
+                                <span class="sr-only"><?= e(t('metric.distance_km')) ?></span>
+                                <input type="number" min="0" step="0.01" name="distance_km" value="<?= e((string) ($log['distance_km'] ?? '')) ?>">
+                            </label>
+                        </td>
+                        <td class="sheet-check-cell" data-label="<?= e(t('table.completed_workout')) ?>">
+                            <label class="check week-check sheet-checkbox" data-help="<?= e(t('table.week_help_workout_excuse')) ?>">
                                 <input type="checkbox" name="workout_done" value="1" data-workout-done <?= $completedWorkout ? 'checked' : '' ?>>
-                                <?= e(t('table.completed_workout')) ?>
+                                <?= e(t('common.yes')) ?>
                             </label>
-
+                        </td>
+                        <td class="sheet-workout-cell" data-label="<?= e(t('table.primary_workout_type')) ?>">
                             <div class="week-help-wrap" data-help="<?= e(t('table.week_help_extra_workout')) ?>">
-                                <label class="week-field">
-                                    <span><?= e(t('table.primary_workout_type')) ?></span>
+                                <label class="week-field sheet-field">
+                                    <span class="sr-only"><?= e(t('table.primary_workout_type')) ?></span>
                                     <div class="workout-type-control" data-workout-control>
                                         <select name="workout_type_id" data-primary-workout-select <?= $primarySelection['is_custom'] ? 'hidden' : '' ?>>
                                             <option value=""><?= e(t('common.none')) ?></option>
@@ -215,13 +277,14 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                                     </div>
                                 </label>
                             </div>
-
-                            <div class="week-extra-toolbar week-help-wrap" data-help="<?= e(t('table.week_help_extra_workout')) ?>">
+                        </td>
+                        <td class="sheet-extra-cell" data-label="<?= e(t('table.extra_wo')) ?>">
+                            <div class="week-extra-toolbar week-help-wrap sheet-extra-toolbar" data-help="<?= e(t('table.week_help_extra_workout')) ?>">
                                 <button class="btn btn-ghost small" type="button" data-extra-toggle><?= e(t('table.add_extra_workout')) ?></button>
                                 <span class="muted small" data-extra-count></span>
                             </div>
 
-                            <div class="week-extra-panel" data-extra-panel <?= $extraWorkouts !== [] ? '' : 'hidden' ?>>
+                            <div class="week-extra-panel sheet-extra-panel" data-extra-panel <?= $extraWorkouts !== [] ? '' : 'hidden' ?>>
                                 <div class="week-extra-list" data-extra-list>
                                     <?php foreach ($extraWorkouts as $extraWorkout): ?>
                                         <?php
@@ -269,110 +332,103 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                                     <button type="button" class="btn btn-ghost small" data-extra-remove><?= e(t('entries.remove_workout')) ?></button>
                                 </div>
                             </template>
-                        </div>
-                    </section>
-
-                    <section class="week-section week-section-nutrition">
-                        <div class="week-section-head">
-                            <h3><?= e(t('table.food_nutrition_section')) ?></h3>
-                        </div>
-                        <div class="week-section-grid">
-                            <label class="check week-check">
-                                <input type="checkbox" name="junk_food" value="1" <?= !empty($log) && (int) ($log['junk_food'] ?? 0) === 1 ? 'checked' : '' ?>>
-                                <?= e(t('table.unhealthy_eating_label')) ?>
+                        </td>
+                        <td class="sheet-number-cell" data-label="<?= e(t('entries.training_calories_burned')) ?>">
+                            <div class="week-help-wrap" data-help="<?= e(t('table.week_help_training_calories')) ?>">
+                                <label class="sheet-field">
+                                    <span class="sr-only"><?= e(t('entries.training_calories_burned')) ?></span>
+                                    <input type="number" min="0" step="1" name="training_calories_burned" value="<?= e((string) ($log['training_calories_burned'] ?? '')) ?>">
+                                </label>
+                            </div>
+                        </td>
+                        <td class="sheet-number-cell" data-label="<?= e(t('metric.weight')) ?>">
+                            <label class="sheet-field">
+                                <span class="sr-only"><?= e(t('metric.weight')) ?></span>
+                                <input type="number" step="0.1" name="weight" value="<?= e((string) ($log['weight'] ?? '')) ?>">
                             </label>
-                        </div>
-                    </section>
-
-                    <section class="week-section week-section-habits">
-                        <div class="week-section-head">
-                            <h3><?= e(t('table.habits_section')) ?></h3>
-                            <button type="button" class="btn btn-ghost small" data-custom-habit-toggle><?= e(t('table.custom_habit')) ?></button>
-                        </div>
-                        <div class="week-help-wrap" data-help="<?= e(t('table.week_help_habits')) ?>">
-                            <div class="week-custom-habit" data-custom-habit-form hidden>
-                                <label class="week-field">
-                                    <span><?= e(t('table.custom_habit')) ?></span>
-                                    <input type="text" data-custom-habit-input placeholder="<?= e(t('table.custom_habit_placeholder')) ?>" maxlength="60">
-                                </label>
-                                <div class="week-custom-habit-actions">
-                                    <button type="button" class="btn btn-primary small" data-custom-habit-save><?= e(t('common.create')) ?></button>
-                                    <button type="button" class="btn btn-ghost small" data-custom-habit-cancel><?= e(t('common.cancel')) ?></button>
-                                </div>
-                                <p class="muted small" data-custom-habit-status aria-live="polite"></p>
-                            </div>
-                        </div>
-                        <div class="week-day-habits" data-habits-list>
-                            <?php foreach ((array) ($habits ?? []) as $habit): ?>
-                                <?php $code = (string) $habit['code']; ?>
-                                <label class="check">
-                                    <input type="checkbox" name="habit_<?= e($code) ?>" data-habit-code="<?= e($code) ?>" value="1" <?= !empty($log['habits'][$code]) && (int) $log['habits'][$code]['value'] === 1 ? 'checked' : '' ?>>
-                                    <?= e((string) $habit['label']) ?>
-                                </label>
-                            <?php endforeach; ?>
-                        </div>
-                    </section>
-
-                    <section class="week-section week-section-excuses">
-                        <div class="week-section-head">
-                            <h3><?= e(t('table.excuses_section')) ?></h3>
-                        </div>
-                        <div class="week-excuses-grid">
-                            <div class="week-help-wrap" data-help="<?= e(t('table.week_help_step_excuse')) ?>" data-step-excuse-wrap <?= $showStepExcuse ? '' : 'hidden' ?>>
-                                <label class="week-field week-field-secondary">
-                                    <span><?= e(t('table.step_excuse_label')) ?></span>
-                                    <input type="text" name="step_exception_reason" value="<?= e((string) ($log['step_exception_reason'] ?? '')) ?>">
-                                </label>
-                            </div>
-                            <div class="week-help-wrap" data-help="<?= e(t('table.week_help_distance_excuse')) ?>" data-distance-excuse-wrap <?= $showDistanceExcuse ? '' : 'hidden' ?>>
-                                <label class="week-field week-field-secondary">
-                                    <span><?= e(t('table.distance_excuse_label')) ?></span>
-                                    <input type="text" name="distance_exception_reason" value="<?= e((string) ($log['distance_exception_reason'] ?? '')) ?>">
-                                </label>
-                            </div>
-                            <div class="week-help-wrap" data-help="<?= e(t('table.week_help_workout_excuse')) ?>" data-workout-excuse-wrap <?= $showWorkoutExcuse ? '' : 'hidden' ?>>
-                                <label class="week-field week-field-secondary">
-                                    <span><?= e(t('table.workout_excuse_label')) ?></span>
-                                    <input type="text" name="workout_exception_reason" value="<?= e((string) ($log['workout_exception_reason'] ?? '')) ?>">
-                                </label>
-                            </div>
-                            <div class="week-request-actions" data-request-actions <?= ($showStepExcuse || $showDistanceExcuse || $showWorkoutExcuse) ? '' : 'hidden' ?>>
-                                <span class="muted small" data-request-state-label>
-                                    <?php
-                                    $requestStateLabel = match ($requestState) {
-                                        'sent' => t('table.request_sent'),
-                                        'resent' => t('table.request_resent'),
-                                        'approved' => t('table.request_approved'),
-                                        'rejected' => t('table.request_rejected'),
-                                        default => t('table.request_not_sent'),
-                                    };
-                                    ?>
-                                    <?= e($requestStateLabel) ?>
-                                </span>
-                                <div class="inline-actions-mini">
-                                    <button type="button" class="btn btn-ghost small" data-request-send <?= $requestState === 'not_sent' ? '' : 'hidden' ?>><?= e(t('table.request_review')) ?></button>
-                                    <button type="button" class="btn btn-ghost small" data-request-resend <?= in_array($requestState, ['sent', 'resent', 'rejected'], true) ? '' : 'hidden' ?>><?= e(t('table.request_resend')) ?></button>
+                        </td>
+                        <td class="sheet-check-cell" data-label="<?= e(t('table.junk')) ?>">
+                            <label class="check sheet-checkbox">
+                                <input type="checkbox" name="junk_food" value="1" <?= !empty($log) && (int) ($log['junk_food'] ?? 0) === 1 ? 'checked' : '' ?>>
+                                <?= e(t('common.yes')) ?>
+                            </label>
+                        </td>
+                        <td class="sheet-habits-cell" data-label="<?= e(t('table.habits_section')) ?>">
+                            <div class="week-help-wrap" data-help="<?= e(t('table.week_help_habits')) ?>">
+                                <button type="button" class="btn btn-ghost small sheet-custom-habit-toggle" data-custom-habit-toggle><?= e(t('table.custom_habit')) ?></button>
+                                <div class="week-custom-habit" data-custom-habit-form hidden>
+                                    <label class="week-field">
+                                        <span><?= e(t('table.custom_habit')) ?></span>
+                                        <input type="text" data-custom-habit-input placeholder="<?= e(t('table.custom_habit_placeholder')) ?>" maxlength="60">
+                                    </label>
+                                    <div class="week-custom-habit-actions">
+                                        <button type="button" class="btn btn-primary small" data-custom-habit-save><?= e(t('common.create')) ?></button>
+                                        <button type="button" class="btn btn-ghost small" data-custom-habit-cancel><?= e(t('common.cancel')) ?></button>
+                                    </div>
+                                    <p class="muted small" data-custom-habit-status aria-live="polite"></p>
                                 </div>
                             </div>
-                        </div>
-                    </section>
-
-                    <section class="week-section week-section-notes">
-                        <div class="week-section-head">
-                            <h3><?= e(t('table.notes_section')) ?></h3>
-                        </div>
-                        <label class="week-field week-day-notes">
-                            <span><?= e(t('common.notes')) ?></span>
-                            <input type="text" name="notes" value="<?= e((string) ($log['notes'] ?? '')) ?>">
-                        </label>
-                    </section>
-
-                    <div class="week-day-actions">
-                        <button class="btn small btn-primary js-save-row" type="button"><?= e(t('table.save_day')) ?></button>
-                        <span class="save-status" aria-live="polite"></span>
-                    </div>
-                </article>
-            <?php endforeach; ?>
+                            <div class="week-day-habits sheet-habits-list" data-habits-list>
+                                <?php foreach ((array) ($habits ?? []) as $habit): ?>
+                                    <?php $code = (string) $habit['code']; ?>
+                                    <label class="check">
+                                        <input type="checkbox" name="habit_<?= e($code) ?>" data-habit-code="<?= e($code) ?>" value="1" <?= !empty($log['habits'][$code]) && (int) $log['habits'][$code]['value'] === 1 ? 'checked' : '' ?>>
+                                        <?= e((string) $habit['label']) ?>
+                                    </label>
+                                <?php endforeach; ?>
+                            </div>
+                        </td>
+                        <td class="sheet-review-cell" data-label="<?= e(t('table.excuses_section')) ?>">
+                            <details class="sheet-review-details" <?= $hasReviewDetail ? 'open' : '' ?>>
+                                <summary>
+                                    <span><?= e(t('table.review_short')) ?></span>
+                                    <small class="muted" data-request-state-label><?= e($requestStateLabel) ?></small>
+                                </summary>
+                                <div class="week-excuses-grid sheet-excuses-grid">
+                                    <div class="week-help-wrap" data-help="<?= e(t('table.week_help_step_excuse')) ?>" data-step-excuse-wrap <?= $showStepExcuse ? '' : 'hidden' ?>>
+                                        <label class="week-field week-field-secondary">
+                                            <span><?= e(t('table.step_excuse_label')) ?></span>
+                                            <input type="text" name="step_exception_reason" value="<?= e((string) ($log['step_exception_reason'] ?? '')) ?>">
+                                        </label>
+                                    </div>
+                                    <div class="week-help-wrap" data-help="<?= e(t('table.week_help_distance_excuse')) ?>" data-distance-excuse-wrap <?= $showDistanceExcuse ? '' : 'hidden' ?>>
+                                        <label class="week-field week-field-secondary">
+                                            <span><?= e(t('table.distance_excuse_label')) ?></span>
+                                            <input type="text" name="distance_exception_reason" value="<?= e((string) ($log['distance_exception_reason'] ?? '')) ?>">
+                                        </label>
+                                    </div>
+                                    <div class="week-help-wrap" data-help="<?= e(t('table.week_help_workout_excuse')) ?>" data-workout-excuse-wrap <?= $showWorkoutExcuse ? '' : 'hidden' ?>>
+                                        <label class="week-field week-field-secondary">
+                                            <span><?= e(t('table.workout_excuse_label')) ?></span>
+                                            <input type="text" name="workout_exception_reason" value="<?= e((string) ($log['workout_exception_reason'] ?? '')) ?>">
+                                        </label>
+                                    </div>
+                                    <div class="week-request-actions" data-request-actions <?= ($showStepExcuse || $showDistanceExcuse || $showWorkoutExcuse) ? '' : 'hidden' ?>>
+                                        <span class="muted small" data-request-state-label><?= e($requestStateLabel) ?></span>
+                                        <div class="inline-actions-mini">
+                                            <button type="button" class="btn btn-ghost small" data-request-send <?= $requestState === 'not_sent' ? '' : 'hidden' ?>><?= e(t('table.request_review')) ?></button>
+                                            <button type="button" class="btn btn-ghost small" data-request-resend <?= in_array($requestState, ['sent', 'resent', 'rejected'], true) ? '' : 'hidden' ?>><?= e(t('table.request_resend')) ?></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </details>
+                        </td>
+                        <td class="sheet-notes-cell" data-label="<?= e(t('common.notes')) ?>">
+                            <label class="sheet-field">
+                                <span class="sr-only"><?= e(t('common.notes')) ?></span>
+                                <input type="text" name="notes" value="<?= e((string) ($log['notes'] ?? '')) ?>">
+                            </label>
+                        </td>
+                        <td class="sheet-actions-cell" data-label="<?= e(t('common.save')) ?>">
+                            <div class="week-day-actions">
+                                <button class="btn small btn-primary js-save-row" type="button"><?= e(t('table.save_day')) ?></button>
+                                <span class="save-status" aria-live="polite"></span>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
             <datalist id="workout-type-options-week">
                 <?php foreach ((array) ($workoutTypes ?? []) as $type): ?>
                     <option value="<?= e((string) $type['name']) ?>"></option>
@@ -381,7 +437,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
         </div>
 
         <div class="inline-actions week-save-all-row">
-            <button class="btn btn-primary" type="button" id="save-all-rows" data-testid="save-all-rows"><?= e(t('table.save_week')) ?></button>
+            <button class="btn btn-primary" type="button" id="save-all-rows" data-testid="save-all-rows"><?= e($isAllTrainingScope ? t('table.save_table') : t('table.save_week')) ?></button>
             <span id="save-all-status" class="save-all-status" aria-live="polite"></span>
         </div>
     </article>
@@ -396,9 +452,9 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
         saving: <?= json_encode(t('common.saving')) ?>,
         saved: <?= json_encode(t('common.saved')) ?>,
         error: <?= json_encode(t('common.error')) ?>,
-        savingWeek: <?= json_encode(t('table.saving_week')) ?>,
-        savedWeek: <?= json_encode(t('table.saved_week')) ?>,
-        savedWeekWithErrors: <?= json_encode(t('table.saved_week_with_errors')) ?>,
+        savingWeek: <?= json_encode($isAllTrainingScope ? t('table.saving_table') : t('table.saving_week')) ?>,
+        savedWeek: <?= json_encode($isAllTrainingScope ? t('table.saved_table') : t('table.saved_week')) ?>,
+        savedWeekWithErrors: <?= json_encode($isAllTrainingScope ? t('table.saved_table_with_errors') : t('table.saved_week_with_errors')) ?>,
         extraCount: <?= json_encode(t('table.extra_workout_count')) ?>,
         extraNone: <?= json_encode(t('table.extra_workout_none')) ?>,
         customHabitSaving: <?= json_encode(t('table.custom_habit_saving')) ?>,
@@ -418,7 +474,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
 
     const formatExtraCount = (count) => {
         if (count <= 0) {
-            return labels.extraNone;
+            return '';
         }
         return labels.extraCount.replace('{count}', String(count));
     };
@@ -530,10 +586,13 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
             ? String(state)
             : 'not_sent';
         card.dataset.requestState = normalized;
-        const stateLabel = card.querySelector('[data-request-state-label]');
-        if (stateLabel instanceof HTMLElement) {
+        const stateLabels = card.querySelectorAll('[data-request-state-label]');
+        stateLabels.forEach((stateLabel) => {
+            if (!(stateLabel instanceof HTMLElement)) {
+                return;
+            }
             stateLabel.textContent = requestStateLabel(normalized);
-        }
+        });
         const sendButton = card.querySelector('[data-request-send]');
         if (sendButton instanceof HTMLButtonElement) {
             sendButton.hidden = normalized !== 'not_sent';

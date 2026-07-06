@@ -13,6 +13,7 @@ $weekOptions = array_values((array) ($weekOptions ?? []));
 $backUrl = (string) ($backUrl ?? '/?page=dashboard');
 $currentUserId = (int) ($currentUser['id'] ?? 0);
 $canRequestForSelectedUser = $currentUserId === $selectedUserId;
+$penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
 
 $statusClass = static function (string $status): string {
     return match ($status) {
@@ -64,7 +65,9 @@ $statusClass = static function (string $status): string {
     <article class="panel">
         <div class="metric-grid dashboard-kpis">
             <article class="metric-card"><div><span><?= e(t('metric.strikes')) ?></span><strong><?= e((string) ((int) ($snapshot['strikes'] ?? 0))) ?></strong></div></article>
-            <article class="metric-card"><div><span><?= e(t('strikes.economic_impact')) ?></span><strong>€<?= e(number_format((float) ($snapshot['penalty'] ?? 0), 2, '.', '')) ?></strong></div></article>
+            <?php if ($penaltiesEnabled): ?>
+                <article class="metric-card penalties-only"><div><span><?= e(t('strikes.economic_impact')) ?></span><strong>&euro;<?= e(number_format((float) ($snapshot['penalty'] ?? 0), 2, '.', '')) ?></strong></div></article>
+            <?php endif; ?>
             <article class="metric-card"><div><span><?= e(t('strikes.events')) ?></span><strong><?= e((string) count($rows)) ?></strong></div></article>
         </div>
     </article>
@@ -130,7 +133,9 @@ $statusClass = static function (string $status): string {
                     <tr>
                         <th><?= e(t('common.date')) ?></th>
                         <th><?= e(t('common.category')) ?></th>
-                        <th><?= e(t('strikes.generated_amount')) ?></th>
+                        <?php if ($penaltiesEnabled): ?>
+                            <th><?= e(t('strikes.generated_amount')) ?></th>
+                        <?php endif; ?>
                         <th><?= e(t('common.status')) ?></th>
                         <th><?= e(t('common.notes')) ?></th>
                         <th><?= e(t('photo.actions')) ?></th>
@@ -146,7 +151,9 @@ $statusClass = static function (string $status): string {
                         <tr>
                             <td><?= e(format_date_eu((string) ($row['event_date'] ?? ''))) ?></td>
                             <td><?= e((string) ($row['reason_label'] ?? '')) ?></td>
-                            <td>€<?= e(number_format((float) ($row['amount'] ?? 0), 2, '.', '')) ?></td>
+                            <?php if ($penaltiesEnabled): ?>
+                                <td>&euro;<?= e(number_format((float) ($row['amount'] ?? 0), 2, '.', '')) ?></td>
+                            <?php endif; ?>
                             <td><span class="badge <?= e($statusClass($status)) ?>"><?= e((string) ($row['status_label'] ?? $status)) ?></span></td>
                             <td>
                                 <?php if (!empty($row['request_comment'])): ?>

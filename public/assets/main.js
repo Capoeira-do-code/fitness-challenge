@@ -2958,7 +2958,7 @@
         root.dataset.galleryRecentReady = '1';
         const endpoint = String(root.dataset.galleryRecentApi || '/?page=api_gallery_recent');
         const userId = Number.parseInt(String(root.dataset.galleryUserId || '0'), 10);
-        const perPage = Number.parseInt(String(root.dataset.galleryPerPage || '48'), 10);
+        const perPage = Number.parseInt(String(root.dataset.galleryPerPage || '96'), 10);
         const noPhotoLabel = String(root.dataset.galleryNoPhotoLabel || 'No photo');
         const photoLabel = String(root.dataset.galleryPhotoLabel || 'Photo');
         let nextPage = Number.parseInt(String(root.dataset.galleryNextPage || ''), 10);
@@ -2981,7 +2981,8 @@
             if (!Array.isArray(items)) {
                 return;
             }
-            items.forEach((item) => {
+            const fragment = document.createDocumentFragment();
+            items.forEach((item, itemIndex) => {
                 if (!item || typeof item !== 'object') {
                     return;
                 }
@@ -3010,8 +3011,8 @@
                     image.width = 400;
                     image.height = 400;
                     image.alt = photoLabel;
-                    image.loading = 'lazy';
-                    image.setAttribute('fetchpriority', 'low');
+                    image.loading = itemIndex < 18 ? 'eager' : 'lazy';
+                    image.setAttribute('fetchpriority', itemIndex < 8 ? 'high' : 'low');
                     image.decoding = 'async';
                     link.appendChild(image);
                 } else {
@@ -3025,8 +3026,9 @@
                 dateNode.className = 'photos-gallery-date';
                 dateNode.textContent = dateLabel;
                 link.appendChild(dateNode);
-                grid.appendChild(link);
+                fragment.appendChild(link);
             });
+            grid.appendChild(fragment);
             initGalleryMonthOverlay();
         };
 
@@ -3040,7 +3042,7 @@
                 const url = new URL(endpoint, window.location.origin);
                 url.searchParams.set('user_id', String(Number.isFinite(userId) ? userId : 0));
                 url.searchParams.set('gallery_page', String(nextPage));
-                url.searchParams.set('gallery_per_page', String(Number.isFinite(perPage) && perPage > 0 ? perPage : 48));
+                url.searchParams.set('gallery_per_page', String(Number.isFinite(perPage) && perPage > 0 ? perPage : 96));
                 const response = await fetch(url.toString(), {
                     method: 'GET',
                     headers: {
@@ -3082,7 +3084,7 @@
                 }
             }, {
                 root: null,
-                rootMargin: '180px 0px',
+                rootMargin: '900px 0px',
                 threshold: 0.01,
             });
             observer.observe(sentinel);
@@ -4904,6 +4906,67 @@
         });
     };
 
+    const initThemeToggle = () => {
+        const button = document.querySelector('[data-theme-toggle]');
+        if (!(button instanceof HTMLButtonElement) || button.dataset.themeToggleBound === '1') {
+            return;
+        }
+        button.dataset.themeToggleBound = '1';
+
+        const body = document.body;
+
+        const resolveIsDark = () => {
+            const attr = body.getAttribute('data-theme');
+            if (attr === 'dark') {
+                return true;
+            }
+            if (attr === 'light') {
+                return false;
+            }
+            return window.matchMedia('(prefers-color-scheme: dark)').matches;
+        };
+
+        const applyResolved = (isDark) => {
+            body.classList.toggle('theme-active-dark', isDark);
+            body.classList.toggle('theme-active-light', !isDark);
+            button.setAttribute('aria-pressed', String(isDark));
+            const label = button.querySelector('[data-theme-toggle-label]');
+            if (label) {
+                label.textContent = isDark
+                    ? (button.dataset.labelLight || label.textContent)
+                    : (button.dataset.labelDark || label.textContent);
+            }
+        };
+
+        applyResolved(resolveIsDark());
+
+        button.addEventListener('click', () => {
+            const nextIsDark = !resolveIsDark();
+            const nextTheme = nextIsDark ? 'dark' : 'light';
+            body.setAttribute('data-theme', nextTheme);
+            applyResolved(nextIsDark);
+
+            fetch('/?page=set_theme', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    Accept: 'application/json',
+                },
+                body: new URLSearchParams({
+                    csrf_token: button.dataset.csrf || '',
+                    theme_mode: nextTheme,
+                    async: '1',
+                }),
+                keepalive: true,
+            }).catch(() => {});
+
+            const menu = button.closest('.user-menu');
+            if (menu instanceof HTMLDetailsElement) {
+                menu.open = false;
+            }
+        });
+    };
+
     const runPageHydration = (includeOneTime = false) => {
         const safeInit = (initFn) => {
             try {
@@ -4919,6 +4982,7 @@
         }
         safeInit(initLoginLocale);
         safeInit(initFlashNotifications);
+        safeInit(initThemeToggle);
         safeInit(initSpaNavigation);
         safeInit(initAdminAchievementFields);
         safeInit(initAchievementInfoModal);

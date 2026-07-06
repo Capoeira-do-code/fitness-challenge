@@ -2,70 +2,212 @@
 
 declare(strict_types=1);
 
-$metric = $selectedMetric ?? [];
-$week = null;
-foreach (($metric['weekly'] ?? []) as $candidate) {
-    if (($candidate['week_start'] ?? '') === $weekStart) {
-        $week = $candidate;
+$metric = is_array($selectedMetric ?? null) ? (array) $selectedMetric : [];
+$penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
+$canSwitchTrainingUser = is_admin($currentUser ?? []);
+$trainingTableScope = (string) ($trainingTableScope ?? 'all');
+$isAllTrainingScope = $trainingTableScope === 'all';
+$trainingRangeStart = (string) ($trainingRangeStart ?? $weekStart ?? to_date(null));
+$trainingRangeEnd = (string) ($trainingRangeEnd ?? $weekEnd ?? $trainingRangeStart);
+$weeklyRows = array_values((array) ($metric['weekly'] ?? []));
+usort($weeklyRows, static fn(array $left, array $right): int => strcmp((string) ($right['week_start'] ?? ''), (string) ($left['week_start'] ?? '')));
+
+$selectedWeek = null;
+foreach ($weeklyRows as $candidate) {
+    if ((string) ($candidate['week_start'] ?? '') === (string) $weekStart) {
+        $selectedWeek = $candidate;
         break;
     }
 }
-$week = $week ?? ['step_failures' => 0, 'workout_failures' => 0, 'skip_warnings' => 0, 'penalty' => 0, 'status' => 'in_progress'];
+$selectedWeek = $selectedWeek ?? ['step_failures' => 0, 'workout_failures' => 0, 'skip_warnings' => 0, 'penalty' => 0, 'status' => 'in_progress'];
+
+$allSheetUrl = '/?' . http_build_query([
+    'page' => 'week_editor',
+    'user_id' => (int) ($selectedUser['id'] ?? 0),
+    'range' => 'all',
+]);
+$weekSheetUrl = '/?' . http_build_query([
+    'page' => 'week_editor',
+    'user_id' => (int) ($selectedUser['id'] ?? 0),
+    'range' => 'week',
+    'week' => date_to_iso_week((string) ($weekStart ?? to_date(null))),
+]);
+$allSummaryUrl = '/?' . http_build_query([
+    'page' => 'table',
+    'user_id' => (int) ($selectedUser['id'] ?? 0),
+    'range' => 'all',
+]);
+$weekSummaryUrl = '/?' . http_build_query([
+    'page' => 'table',
+    'user_id' => (int) ($selectedUser['id'] ?? 0),
+    'range' => 'week',
+    'week' => date_to_iso_week((string) ($weekStart ?? to_date(null))),
+]);
+$summaryEditUrl = $isAllTrainingScope ? $allSheetUrl : $weekSheetUrl;
+
+$workoutTotal = max((int) ($metric['workout_count'] ?? 0), (int) ($metric['workout_success'] ?? 0));
+$weeklyStepFailures = array_sum(array_map(static fn(array $row): int => (int) ($row['step_failures'] ?? 0), $weeklyRows));
+$weeklyWorkoutFailures = array_sum(array_map(static fn(array $row): int => (int) ($row['workout_failures'] ?? 0), $weeklyRows));
+$weeklyWarnings = array_sum(array_map(static fn(array $row): int => (int) ($row['skip_warnings'] ?? 0), $weeklyRows));
+$weeklyPenalty = array_sum(array_map(static fn(array $row): float => (float) ($row['penalty'] ?? 0), $weeklyRows));
 ?>
 <section class="screen stack-lg">
     <div class="hero-panel">
         <div>
             <p class="eyebrow"><?= e(t('nav.table')) ?></p>
-            <h1><?= e(t('table.week_summary')) ?></h1>
-            <p class="muted"><?= e(format_date_eu($weekStart)) ?> - <?= e(format_date_eu($weekEnd ?? $weekStart)) ?></p>
+            <h1><?= e($isAllTrainingScope ? t('table.all_summary') : t('table.week_summary')) ?></h1>
+            <p class="muted">
+                <?= $isAllTrainingScope
+                    ? e(t('table.all_subtitle', ['start' => format_date_eu($trainingRangeStart), 'end' => format_date_eu($trainingRangeEnd)]))
+                    : e(format_date_eu($weekStart) . ' - ' . format_date_eu($weekEnd ?? $weekStart)) ?>
+            </p>
         </div>
-        <a class="btn btn-primary" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week=<?= e(date_to_iso_week($weekStart)) ?>"><?= e(t('table.open_editor')) ?></a>
+        <a class="btn btn-primary" href="<?= e($summaryEditUrl) ?>"><?= e(t('table.open_editor')) ?></a>
     </div>
 
-    <form method="get" class="control-strip">
+    <form method="get" class="control-strip wrap training-summary-controls">
         <input type="hidden" name="page" value="table">
-        <label>
-            <?= e(t('common.user')) ?>
-            <select name="user_id" onchange="this.form.submit()">
-                <?php foreach ($users as $user): ?>
-                    <option value="<?= (int) $user['id'] ?>" <?= (int) $selectedUser['id'] === (int) $user['id'] ? 'selected' : '' ?>><?= e((string) $user['display_name']) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </label>
-        <label>
-            <?= e(t('common.week')) ?>
-            <input type="week" name="week" value="<?= e(date_to_iso_week($weekStart)) ?>" onchange="this.form.submit()">
-        </label>
+        <input type="hidden" name="range" value="<?= $isAllTrainingScope ? 'all' : 'week' ?>">
+        <?php if ($canSwitchTrainingUser): ?>
+            <label>
+                <?= e(t('common.user')) ?>
+                <select name="user_id" onchange="this.form.submit()">
+                    <?php foreach ($users as $user): ?>
+                        <option value="<?= (int) $user['id'] ?>" <?= (int) $selectedUser['id'] === (int) $user['id'] ? 'selected' : '' ?>><?= e((string) $user['display_name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+        <?php else: ?>
+            <input type="hidden" name="user_id" value="<?= (int) $selectedUser['id'] ?>">
+        <?php endif; ?>
+        <div class="training-sheet-view-tabs" role="group" aria-label="<?= e(t('dashboard.view_mode')) ?>">
+            <a class="<?= $isAllTrainingScope ? 'active' : '' ?>" href="<?= e($allSummaryUrl) ?>" <?= $isAllTrainingScope ? 'aria-current="page"' : '' ?>><?= e(t('dashboard.all_challenge')) ?></a>
+            <a class="<?= !$isAllTrainingScope ? 'active' : '' ?>" href="<?= e($weekSummaryUrl) ?>" <?= !$isAllTrainingScope ? 'aria-current="page"' : '' ?>><?= e(t('common.week')) ?></a>
+        </div>
+        <?php if (!$isAllTrainingScope): ?>
+            <label>
+                <?= e(t('common.week')) ?>
+                <input type="week" name="week" value="<?= e(date_to_iso_week($weekStart)) ?>" onchange="this.form.submit()">
+            </label>
+        <?php endif; ?>
     </form>
 
     <div class="metric-grid">
         <article class="metric-card"><div class="progress-ring" style="--value: <?= e((string) ($metric['step_completion_pct'] ?? 0)) ?>;"><span><?= e((string) ($metric['step_completion_pct'] ?? 0)) ?>%</span></div><div><span><?= e(t('metric.steps')) ?></span><strong><?= e((string) ($metric['steps_success'] ?? 0)) ?>/<?= e((string) ($metric['steps_required'] ?? 0)) ?></strong><p><?= e(t('metric.total')) ?> <?= e((string) ($metric['total_steps'] ?? 0)) ?></p></div></article>
-        <article class="metric-card"><div class="progress-ring" style="--value: <?= e((string) ($metric['workout_completion_pct'] ?? 0)) ?>;"><span><?= e((string) ($metric['workout_completion_pct'] ?? 0)) ?>%</span></div><div><span><?= e(t('metric.workouts')) ?></span><strong><?= e((string) max((int) ($metric['workout_count'] ?? 0), (int) ($metric['workout_success'] ?? 0))) ?>/<?= e((string) ($metric['workout_target'] ?? 0)) ?></strong><p><?= e(t('metric.progress')) ?></p></div></article>
-        <article class="metric-card"><div class="progress-ring" style="--value: <?= e((string) max(0, 100 - ((int) ($metric['current_strikes'] ?? 0) * 10))) ?>;"><span><?= e((string) ($metric['current_strikes'] ?? 0)) ?></span></div><div><span><?= e(t('metric.strikes')) ?></span><strong><?= e((string) ($metric['current_strikes'] ?? 0)) ?></strong><p>€<?= e((string) ($metric['total_penalty'] ?? 0)) ?></p></div></article>
+        <article class="metric-card"><div class="progress-ring" style="--value: <?= e((string) ($metric['workout_completion_pct'] ?? 0)) ?>;"><span><?= e((string) ($metric['workout_completion_pct'] ?? 0)) ?>%</span></div><div><span><?= e(t('metric.workouts')) ?></span><strong><?= e((string) $workoutTotal) ?>/<?= e((string) ($metric['workout_target'] ?? 0)) ?></strong><p><?= e(t('metric.progress')) ?></p></div></article>
         <article class="metric-card"><div class="progress-ring" style="--value: <?= e((string) min(100, (float) ($metric['total_km'] ?? 0))) ?>;"><span><?= e((string) ($metric['total_km'] ?? 0)) ?></span></div><div><span><?= e(t('metric.distance_km')) ?></span><strong><?= e((string) ($metric['total_km'] ?? 0)) ?> km</strong><p><?= e(t('metric.total')) ?></p></div></article>
+        <?php if ($penaltiesEnabled): ?>
+            <article class="metric-card"><div class="progress-ring" style="--value: <?= e((string) max(0, 100 - ((int) ($metric['current_strikes'] ?? 0) * 10))) ?>;"><span><?= e((string) ($metric['current_strikes'] ?? 0)) ?></span></div><div><span><?= e(t('metric.strikes')) ?></span><strong><?= e((string) ($metric['current_strikes'] ?? 0)) ?></strong><p><?= e(t('metric.current_value')) ?></p></div></article>
+        <?php endif; ?>
     </div>
 
-    <div class="grid-two">
-        <article class="panel">
-            <h2><?= e(t('table.week_result')) ?></h2>
-            <ul class="facts">
-                <li><strong><?= e(t('common.status')) ?>:</strong> <?= e(label_for_status((string) $week['status'])) ?></li>
-                <li><strong><?= e(t('metric.step_failures')) ?>:</strong> <?= e((string) $week['step_failures']) ?></li>
-                <li><strong><?= e(t('metric.workout_failures')) ?>:</strong> <?= e((string) $week['workout_failures']) ?></li>
-                <li><strong><?= e(t('metric.skip_warnings')) ?>:</strong> <?= e((string) $week['skip_warnings']) ?></li>
-                <li><strong><?= e(t('metric.penalty')) ?>:</strong> €<?= e((string) $week['penalty']) ?></li>
-            </ul>
-        </article>
-        <article class="panel">
-            <h2><?= e(t('goals.title')) ?></h2>
-            <div class="stat-list">
-                <?php foreach (($metric['habit_counts'] ?? []) as $code => $count): ?>
-                    <article><strong><?= e((string) $code) ?></strong><span><?= e((string) $count) ?></span></article>
-                <?php endforeach; ?>
-                <?php if (($metric['habit_counts'] ?? []) === []): ?>
-                    <p class="muted"><?= e(t('common.none')) ?></p>
-                <?php endif; ?>
+    <?php if ($isAllTrainingScope): ?>
+        <div class="grid-two">
+            <article class="panel">
+                <h2><?= e(t('table.all_result')) ?></h2>
+                <ul class="facts">
+                    <li><strong><?= e(t('metric.step_failures')) ?>:</strong> <?= e((string) $weeklyStepFailures) ?></li>
+                    <li><strong><?= e(t('metric.workout_failures')) ?>:</strong> <?= e((string) $weeklyWorkoutFailures) ?></li>
+                    <li><strong><?= e(t('metric.skip_warnings')) ?>:</strong> <?= e((string) $weeklyWarnings) ?></li>
+                    <?php if ($penaltiesEnabled): ?>
+                        <li><strong><?= e(t('metric.penalty')) ?>:</strong> &euro;<?= e(number_format($weeklyPenalty, 2, '.', '')) ?></li>
+                    <?php endif; ?>
+                </ul>
+            </article>
+            <article class="panel">
+                <h2><?= e(t('goals.title')) ?></h2>
+                <div class="stat-list">
+                    <?php foreach (($metric['habit_counts'] ?? []) as $code => $count): ?>
+                        <article><strong><?= e((string) $code) ?></strong><span><?= e((string) $count) ?></span></article>
+                    <?php endforeach; ?>
+                    <?php if (($metric['habit_counts'] ?? []) === []): ?>
+                        <p class="muted"><?= e(t('common.none')) ?></p>
+                    <?php endif; ?>
+                </div>
+            </article>
+        </div>
+
+        <article class="panel training-summary-weeks-panel">
+            <div class="panel-head">
+                <h2><?= e(t('dashboard.weekly_history')) ?></h2>
+                <a class="btn btn-ghost small" href="<?= e($allSheetUrl) ?>"><?= e(t('table.open_editor')) ?></a>
+            </div>
+            <div class="table-wrap">
+                <table class="table compact training-summary-week-table">
+                    <thead>
+                    <tr>
+                        <th><?= e(t('common.week')) ?></th>
+                        <th><?= e(t('common.status')) ?></th>
+                        <th><?= e(t('metric.steps')) ?></th>
+                        <th><?= e(t('metric.distance_km')) ?></th>
+                        <th><?= e(t('metric.workouts')) ?></th>
+                        <th><?= e(t('metric.warnings')) ?></th>
+                        <?php if ($penaltiesEnabled): ?>
+                            <th><?= e(t('dashboard.strike_reduction')) ?></th>
+                            <th><?= e(t('dashboard.strikes_after_week')) ?></th>
+                            <th><?= e(t('metric.penalty')) ?></th>
+                        <?php endif; ?>
+                        <th><?= e(t('common.actions')) ?></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($weeklyRows as $row): ?>
+                        <?php
+                        $rowWeekStart = (string) ($row['week_start'] ?? '');
+                        $rowWeekEditorHref = '/?' . http_build_query([
+                            'page' => 'week_editor',
+                            'user_id' => (int) ($selectedUser['id'] ?? 0),
+                            'range' => 'week',
+                            'week' => date_to_iso_week($rowWeekStart !== '' ? $rowWeekStart : (string) $weekStart),
+                        ]);
+                        ?>
+                        <tr>
+                            <td data-label="<?= e(t('common.week')) ?>"><?= e(format_date_eu((string) ($row['week_start'] ?? ''))) ?> - <?= e(format_date_eu((string) ($row['week_end'] ?? ''))) ?></td>
+                            <td data-label="<?= e(t('common.status')) ?>"><?= e(label_for_status((string) ($row['status'] ?? ''))) ?></td>
+                            <td data-label="<?= e(t('metric.steps')) ?>"><?= e((string) ($row['steps'] ?? 0)) ?></td>
+                            <td data-label="<?= e(t('metric.distance_km')) ?>"><?= e((string) ($row['km'] ?? 0)) ?> km</td>
+                            <td data-label="<?= e(t('metric.workouts')) ?>"><?= e((string) ($row['workouts'] ?? 0)) ?></td>
+                            <td data-label="<?= e(t('metric.warnings')) ?>"><?= e((string) ($row['skip_warnings'] ?? 0)) ?></td>
+                            <?php if ($penaltiesEnabled): ?>
+                                <td data-label="<?= e(t('dashboard.strike_reduction')) ?>"><?= (int) ($row['strike_reduction'] ?? 0) > 0 ? '-1' : '-' ?></td>
+                                <td data-label="<?= e(t('dashboard.strikes_after_week')) ?>"><?= e((string) ($row['strikes_after_week'] ?? 0)) ?></td>
+                                <td data-label="<?= e(t('metric.penalty')) ?>">&euro;<?= e(number_format((float) ($row['penalty'] ?? 0), 2, '.', '')) ?></td>
+                            <?php endif; ?>
+                            <td data-label="<?= e(t('common.actions')) ?>"><a class="btn btn-ghost small" href="<?= e($rowWeekEditorHref) ?>"><?= e(t('dashboard.edit_week')) ?></a></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    <?php if ($weeklyRows === []): ?>
+                        <tr><td colspan="<?= $penaltiesEnabled ? 10 : 7 ?>" class="muted"><?= e(t('common.none')) ?></td></tr>
+                    <?php endif; ?>
+                    </tbody>
+                </table>
             </div>
         </article>
-    </div>
+    <?php else: ?>
+        <div class="grid-two">
+            <article class="panel">
+                <h2><?= e(t('table.week_result')) ?></h2>
+                <ul class="facts">
+                    <li><strong><?= e(t('common.status')) ?>:</strong> <?= e(label_for_status((string) $selectedWeek['status'])) ?></li>
+                    <li><strong><?= e(t('metric.step_failures')) ?>:</strong> <?= e((string) $selectedWeek['step_failures']) ?></li>
+                    <li><strong><?= e(t('metric.workout_failures')) ?>:</strong> <?= e((string) $selectedWeek['workout_failures']) ?></li>
+                    <li><strong><?= e(t('metric.skip_warnings')) ?>:</strong> <?= e((string) $selectedWeek['skip_warnings']) ?></li>
+                    <?php if ($penaltiesEnabled): ?>
+                        <li><strong><?= e(t('metric.penalty')) ?>:</strong> &euro;<?= e((string) $selectedWeek['penalty']) ?></li>
+                    <?php endif; ?>
+                </ul>
+            </article>
+            <article class="panel">
+                <h2><?= e(t('goals.title')) ?></h2>
+                <div class="stat-list">
+                    <?php foreach (($metric['habit_counts'] ?? []) as $code => $count): ?>
+                        <article><strong><?= e((string) $code) ?></strong><span><?= e((string) $count) ?></span></article>
+                    <?php endforeach; ?>
+                    <?php if (($metric['habit_counts'] ?? []) === []): ?>
+                        <p class="muted"><?= e(t('common.none')) ?></p>
+                    <?php endif; ?>
+                </div>
+            </article>
+        </div>
+    <?php endif; ?>
 </section>

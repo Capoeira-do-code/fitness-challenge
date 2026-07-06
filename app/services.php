@@ -3639,7 +3639,7 @@ function goal_target_default_unit(string $targetType): string
         'workouts' => 'workouts',
         'score' => 'pts',
         'calories_burned', 'calories_consumed' => 'kcal',
-        'penalties' => '€',
+        'penalties' => 'EUR',
         'strikes' => 'strikes',
         'weight' => '%',
         default => '',
@@ -4548,6 +4548,13 @@ function set_app_setting(PDO $pdo, string $key, ?string $value, int $actorUserId
     audit_log($pdo, $actorUserId, 'app_setting_updated', 'app_setting', $key, 'App setting updated.', audit_snapshot($before), audit_snapshot($after));
 }
 
+function penalties_enabled(PDO $pdo): bool
+{
+    $value = strtolower(trim((string) (app_setting($pdo, 'penalties_enabled', '0') ?? '0')));
+
+    return in_array($value, ['1', 'true', 'yes', 'on'], true);
+}
+
 function update_challenge_settings(PDO $pdo, string $name, string $start, string $end, int $actorUserId): void
 {
     $name = trim($name) !== '' ? trim($name) : 'Fitness Challenge';
@@ -4575,10 +4582,25 @@ function update_challenge_settings(PDO $pdo, string $name, string $start, string
     audit_log($pdo, $actorUserId, 'challenge_settings_updated', 'challenge_settings', '1', 'Challenge settings updated.', audit_snapshot($before), audit_snapshot($after));
 }
 
+function start_new_challenge(PDO $pdo, string $name, string $start, string $end, int $actorUserId): void
+{
+    $current = db_fetch_one($pdo, 'SELECT * FROM challenge_settings WHERE id = 1');
+    if ($current !== null && (int) ($current['active'] ?? 1) === 1 && empty($current['deleted_at'])) {
+        archive_challenge($pdo, $actorUserId);
+    }
+
+    update_challenge_settings($pdo, $name, $start, $end, $actorUserId);
+}
+
 function backfill_challenge_archives_from_audit(PDO $pdo): void
 {
+    if (app_setting($pdo, 'challenge_archives_backfilled') === '1') {
+        return;
+    }
+
     $existingCount = (int) ((db_fetch_one($pdo, 'SELECT COUNT(*) AS total FROM challenge_archives')['total'] ?? 0));
     if ($existingCount > 0) {
+        set_app_setting_silent($pdo, 'challenge_archives_backfilled', '1');
         return;
     }
 
@@ -4589,6 +4611,7 @@ function backfill_challenge_archives_from_audit(PDO $pdo): void
          ORDER BY created_at ASC'
     );
     if ($rows === []) {
+        set_app_setting_silent($pdo, 'challenge_archives_backfilled', '1');
         return;
     }
 
@@ -4626,6 +4649,8 @@ function backfill_challenge_archives_from_audit(PDO $pdo): void
             ]
         );
     }
+
+    set_app_setting_silent($pdo, 'challenge_archives_backfilled', '1');
 }
 
 function list_challenge_archives(PDO $pdo): array
@@ -4677,6 +4702,42 @@ function archive_challenge(PDO $pdo, int $actorUserId): void
     );
     $after = db_fetch_one($pdo, 'SELECT * FROM challenge_settings WHERE id = 1');
     audit_log($pdo, $actorUserId, 'challenge_archived', 'challenge_settings', '1', 'Challenge archived.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function reactivate_challenge(PDO $pdo, int $archiveId, int $actorUserId): bool
+{
+    $archive = db_fetch_one($pdo, 'SELECT * FROM challenge_archives WHERE id = :id', [':id' => $archiveId]);
+    if ($archive === null) {
+        return false;
+    }
+
+    $current = db_fetch_one($pdo, 'SELECT * FROM challenge_settings WHERE id = 1');
+    if ($current !== null && (int) ($current['active'] ?? 1) === 1 && empty($current['deleted_at'])) {
+        archive_challenge($pdo, $actorUserId);
+    }
+
+    update_challenge_settings(
+        $pdo,
+        (string) ($archive['challenge_name'] ?? 'Fitness Challenge'),
+        (string) ($archive['challenge_start'] ?? to_date(null)),
+        (string) ($archive['challenge_end'] ?? to_date(null)),
+        $actorUserId
+    );
+
+    db_execute($pdo, 'DELETE FROM challenge_archives WHERE id = :id', [':id' => $archiveId]);
+
+    audit_log(
+        $pdo,
+        $actorUserId,
+        'challenge_reactivated',
+        'challenge_settings',
+        '1',
+        'Challenge reactivated from archive.',
+        audit_snapshot($archive),
+        audit_snapshot(db_fetch_one($pdo, 'SELECT * FROM challenge_settings WHERE id = 1'))
+    );
+
+    return true;
 }
 
 function achievement_supported_locales(): array
@@ -7545,7 +7606,7 @@ function accepted_strike_review_rows_by_user(PDO $pdo, array $userIds): array
     return $grouped;
 }
 
-function apply_strike_review_overrides_to_metric(PDO $pdo, array $metric, ?array $acceptedRows = null): array
+function apply_strike_review_overrides_to_metric(PDO $pdo, array $metric, ?array $acceptedRows = null, ?bool $penaltiesEnabled = null): array
 {
     $userId = (int) ($metric['user']['id'] ?? 0);
     if ($userId <= 0) {
@@ -7581,6 +7642,9 @@ function apply_strike_review_overrides_to_metric(PDO $pdo, array $metric, ?array
     $weekly = array_values((array) ($metric['weekly'] ?? []));
     if ($weekly === []) {
         return $metric;
+    }
+    if ($penaltiesEnabled === null) {
+        $penaltiesEnabled = penalties_enabled($pdo);
     }
     usort(
         $weekly,
@@ -7656,7 +7720,7 @@ function apply_strike_review_overrides_to_metric(PDO $pdo, array $metric, ?array
         $weekFailureDetailed = [];
         foreach ($remainingFailureEvents as $event) {
             $runningStrikes++;
-            $amount = penalty_for_strike($runningStrikes);
+            $amount = $penaltiesEnabled ? penalty_for_strike($runningStrikes) : 0;
             $totalPenalty += $amount;
             $weekPenalty += $amount;
             $weekFailureDetailed[] = [
@@ -7766,6 +7830,7 @@ function apply_strike_review_overrides_to_metrics(PDO $pdo, array $metricsByUser
         }
     }
     $acceptedRowsByUser = accepted_strike_review_rows_by_user($pdo, array_keys($userIds));
+    $penaltiesEnabled = penalties_enabled($pdo);
 
     $adjusted = [];
     foreach ($metricsByUser as $userId => $metric) {
@@ -7774,7 +7839,7 @@ function apply_strike_review_overrides_to_metrics(PDO $pdo, array $metricsByUser
         $rowsForUser = $metricUserId > 0
             ? (array) ($acceptedRowsByUser[$metricUserId] ?? [])
             : [];
-        $adjusted[$userId] = apply_strike_review_overrides_to_metric($pdo, $normalizedMetric, $rowsForUser);
+        $adjusted[$userId] = apply_strike_review_overrides_to_metric($pdo, $normalizedMetric, $rowsForUser, $penaltiesEnabled);
     }
 
     uasort(

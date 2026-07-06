@@ -233,7 +233,8 @@ function compute_user_metrics(
     array $approvalsByDate,
     DateTimeImmutable $start,
     DateTimeImmutable $end,
-    DateTimeImmutable $today
+    DateTimeImmutable $today,
+    bool $penaltiesEnabled = false
 ): array {
     $allDays = day_sequence($start, $end);
     $weeklyStarts = week_sequence($start, $end);
@@ -505,7 +506,7 @@ function compute_user_metrics(
         $failureEventsDetailed = [];
         foreach ($weekFailureEvents as $event) {
             $strikes++;
-            $penalty = penalty_for_strike($strikes);
+            $penalty = $penaltiesEnabled ? penalty_for_strike($strikes) : 0;
             $totalPenalty += $penalty;
             $weekPenalty += $penalty;
             $failureEventsDetailed[] = [
@@ -632,6 +633,7 @@ function compute_challenge_metrics(PDO $pdo, array $users, string $startDate, st
 
     $startKey = $start->format('Y-m-d');
     $endKey = $end->format('Y-m-d');
+    $penaltiesEnabled = function_exists('penalties_enabled') ? penalties_enabled($pdo) : false;
     $cacheKey = null;
     if (function_exists('app_cache_get') && function_exists('app_cache_set')) {
         $cacheKey = 'challenge_metrics:' . hash('sha256', json_encode([
@@ -639,6 +641,7 @@ function compute_challenge_metrics(PDO $pdo, array $users, string $startDate, st
             'start' => $startKey,
             'end' => $endKey,
             'today' => $today->format('Y-m-d'),
+            'penalties_enabled' => $penaltiesEnabled ? 1 : 0,
         ], JSON_UNESCAPED_SLASHES) ?: '');
         $cached = app_cache_get($cacheKey, 300);
         if (is_array($cached)) {
@@ -654,7 +657,7 @@ function compute_challenge_metrics(PDO $pdo, array $users, string $startDate, st
         $userId = (int) $user['id'];
         $userLogs = $logsByUser[$userId] ?? [];
         $userApprovals = $approvalsByUser[$userId] ?? [];
-        $results[$userId] = compute_user_metrics($user, $userLogs, $userApprovals, $start, $end, $today);
+        $results[$userId] = compute_user_metrics($user, $userLogs, $userApprovals, $start, $end, $today, $penaltiesEnabled);
     }
 
     uasort(

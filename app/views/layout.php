@@ -32,6 +32,7 @@ $stylesAssetUrl = with_cache_buster('/assets/styles.css', $stylesAssetVersion);
 $mainJsAssetUrl = with_cache_buster('/assets/main.js', $mainJsAssetVersion);
 $desktopNavItems = [
     'dashboard' => ['label' => t('nav.dashboard'), 'href' => '/?page=dashboard', 'icon' => 'home'],
+    'table' => ['label' => t('nav.table'), 'href' => '/?page=week_editor&range=all', 'icon' => 'calendar'],
     'gallery' => ['label' => t('gallery.title'), 'href' => '/?page=gallery&gallery_view=recent', 'icon' => 'gallery'],
     'analytics' => ['label' => t('nav.analytics'), 'href' => '/?page=analytics', 'icon' => 'analytics'],
     'team' => ['label' => t('nav.team'), 'href' => '/?page=team', 'icon' => 'users'],
@@ -39,6 +40,7 @@ $desktopNavItems = [
 ];
 $mobileNavItems = [
     'dashboard' => $desktopNavItems['dashboard'],
+    'table' => $desktopNavItems['table'],
     'gallery' => ['label' => t('gallery.title'), 'href' => '/?page=gallery&gallery_view=recent', 'icon' => 'gallery'],
     'analytics' => $desktopNavItems['analytics'],
     'team' => $desktopNavItems['team'],
@@ -49,6 +51,7 @@ $themeMode = $loggedIn ? (string) ($currentUser['theme_mode'] ?? 'auto') : 'auto
 if (!in_array($themeMode, ['auto', 'light', 'dark'], true)) {
     $themeMode = 'auto';
 }
+$penaltiesEnabledForLayout = $loggedIn ? penalties_enabled($GLOBALS['pdo']) : false;
 $isNavActive = static function (string $pageKey) use ($currentPage): bool {
     if ($pageKey === 'calendar') {
         return $currentPage === 'entries' && (string) ($_GET['mode'] ?? '') === 'calendar';
@@ -105,7 +108,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     $bodyStyle = "--login-bg-image:url('" . e($loginBackgroundUrl) . "');";
 }
 ?>
-<body data-page="<?= e((string) $currentPage) ?>" data-theme="<?= e($themeMode) ?>"<?= $bodyClasses !== [] ? ' class="' . e(implode(' ', $bodyClasses)) . '"' : '' ?><?= $bodyStyle !== '' ? ' style="' . $bodyStyle . '"' : '' ?>>
+<body data-page="<?= e((string) $currentPage) ?>" data-theme="<?= e($themeMode) ?>" data-penalties-enabled="<?= $penaltiesEnabledForLayout ? '1' : '0' ?>"<?= $bodyClasses !== [] ? ' class="' . e(implode(' ', $bodyClasses)) . '"' : '' ?><?= $bodyStyle !== '' ? ' style="' . $bodyStyle . '"' : '' ?>>
 <?php if ($loggedIn): ?>
     <header class="topbar">
         <a class="brand" href="/?page=dashboard">
@@ -154,6 +157,11 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                     <a href="/?page=profile"><?= e(t('nav.profile')) ?></a>
                     <a href="/?page=notifications"><?= e(t('nav.notifications')) ?><?php if ($unreadNotificationsCount > 0): ?> (<?= (int) $unreadNotificationsCount ?>)<?php endif; ?></a>
                     <a href="/?page=settings"><?= e(t('nav.settings')) ?></a>
+                    <button type="button" class="user-menu-theme-toggle" data-theme-toggle data-csrf="<?= e(csrf_token()) ?>" data-label-dark="<?= e(t('nav.theme_toggle_dark')) ?>" data-label-light="<?= e(t('nav.theme_toggle_light')) ?>" aria-pressed="<?= $themeMode === 'dark' ? 'true' : 'false' ?>">
+                        <span class="theme-toggle-icon theme-toggle-icon-sun" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg></span>
+                        <span class="theme-toggle-icon theme-toggle-icon-moon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></span>
+                        <span class="theme-toggle-label" data-theme-toggle-label><?= e($themeMode === 'dark' ? t('nav.theme_toggle_light') : t('nav.theme_toggle_dark')) ?></span>
+                    </button>
                     <?php if (is_admin($currentUser)): ?>
                         <a href="/?page=admin"><?= e(t('nav.admin')) ?></a>
                     <?php endif; ?>

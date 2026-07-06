@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 $selectedUser = $selectedMetric['user'];
+$penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
 $dashboardLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
 $dashboardWidgets = ['kpis', 'achievements', 'approvals', 'ranking', 'weekly'];
 $visibleWidgets = [];
@@ -36,6 +37,22 @@ $widgetOrder = static function (string ...$widgets) use ($visibleWidgets): int {
 };
 $contentWidgetOrder = static fn(string ...$widgets): int => 100 + $widgetOrder(...$widgets);
 $dashboardAchievementsAll = array_values((array) ($dashboardAchievements ?? []));
+if (!$penaltiesEnabled) {
+    $dashboardAchievementsAll = array_values(array_filter($dashboardAchievementsAll, static function (array $achievement): bool {
+        $metric = strtolower(trim((string) ($achievement['metric'] ?? $achievement['target_type'] ?? '')));
+        if (in_array($metric, ['strikes', 'penalties', 'penalty'], true)) {
+            return false;
+        }
+
+        $text = strtolower(implode(' ', array_map('strval', [
+            $achievement['name'] ?? '',
+            $achievement['description'] ?? '',
+            $achievement['reward_text'] ?? '',
+        ])));
+
+        return !str_contains($text, 'strike') && !str_contains($text, 'penalt');
+    }));
+}
 $dashboardUnlockedAchievements = array_values(array_filter($dashboardAchievementsAll, static fn(array $achievement): bool => !empty($achievement['is_unlocked'])));
 usort(
     $dashboardUnlockedAchievements,
@@ -146,15 +163,17 @@ $kpis = [
         'ring' => (string) $viewWorkoutCompletionPct . '%',
         'progress' => (float) $viewWorkoutCompletionPct,
     ],
-    [
+];
+if ($penaltiesEnabled) {
+    $kpis[] = [
         'key' => 'strikes',
         'label' => t('metric.strikes'),
         'value' => (string) $viewStrikes,
         'meta' => t('dashboard.accumulated_penalty', ['amount' => $viewPenaltyLabel]),
         'ring' => (string) $viewStrikes,
         'progress' => max(0, 100 - ($viewStrikes * 10)),
-    ],
-];
+    ];
+}
 $metricQueryBase = [
     'page' => 'metric',
     'user_id' => (int) ($selectedUser['id'] ?? 0),
@@ -353,7 +372,8 @@ $topbarControls = ob_get_clean();
             </div>
         </article>
 
-        <article class="panel dashboard-panel dashboard-penalty-compact" style="order: -15">
+        <?php if ($penaltiesEnabled): ?>
+        <article class="panel dashboard-panel dashboard-penalty-compact penalties-only" style="order: -15">
             <div class="panel-head dashboard-panel-head-compact dashboard-penalty-head">
                 <div>
                     <p class="eyebrow"><?= e(t('metric.penalty')) ?></p>
@@ -371,13 +391,14 @@ $topbarControls = ob_get_clean();
             </div>
             <a class="btn btn-ghost small btn-block" href="<?= e($penaltiesHref) ?>"><?= e(t('dashboard.penalty_details')) ?></a>
         </article>
+        <?php endif; ?>
 
-        <article class="panel dashboard-panel dashboard-analytics-cta" style="order: -14">
-            <div>
+        <article class="panel dashboard-panel dashboard-analytics-cta dashboard-analytics-compact" style="order: -14">
+            <div class="dashboard-analytics-compact-copy">
                 <p class="eyebrow"><?= e(t('dashboard.analytics_eyebrow')) ?></p>
                 <p class="muted small"><?= e(t('dashboard.analytics_dashboard_hint')) ?></p>
             </div>
-            <a class="btn btn-primary small btn-block" href="/?<?= e(http_build_query(['page' => 'analytics', 'user_id' => (int) ($selectedUser['id'] ?? 0), 'analytics_period' => 'week', 'analytics_week' => (string) ($selectedWeekStart ?? to_date(null))])) ?>"><?= e(t('dashboard.open_analytics')) ?></a>
+            <a class="btn btn-primary small dashboard-analytics-compact-action" href="/?<?= e(http_build_query(['page' => 'analytics', 'user_id' => (int) ($selectedUser['id'] ?? 0), 'analytics_period' => 'week', 'analytics_week' => (string) ($selectedWeekStart ?? to_date(null))])) ?>"><?= e(t('dashboard.open_analytics')) ?></a>
         </article>
 
         <?php if ($showWidget('achievements')): ?>
@@ -434,9 +455,13 @@ $topbarControls = ob_get_clean();
                         <th><?= e(t('metric.step_failures')) ?></th>
                         <th><?= e(t('metric.workout_failures')) ?></th>
                         <th><?= e(t('metric.warnings')) ?></th>
+                        <?php if ($penaltiesEnabled): ?>
                         <th><?= e(t('strikes.economic_impact')) ?></th>
+                        <?php endif; ?>
+                        <?php if ($penaltiesEnabled): ?>
                         <th><?= e(t('dashboard.strike_reduction')) ?></th>
                         <th><?= e(t('dashboard.strikes_after_week')) ?></th>
+                        <?php endif; ?>
                         <th><?= e(t('common.actions')) ?></th>
                     </tr>
                     </thead>
@@ -461,13 +486,19 @@ $topbarControls = ob_get_clean();
                             <td data-label="<?= e(t('metric.step_failures')) ?>"><?= e((string) $week['step_failures']) ?></td>
                             <td data-label="<?= e(t('metric.workout_failures')) ?>"><?= e((string) $week['workout_failures']) ?></td>
                             <td data-label="<?= e(t('metric.warnings')) ?>"><?= e((string) ($week['skip_warnings'] ?? 0)) ?></td>
+                            <?php if ($penaltiesEnabled): ?>
                             <td data-label="<?= e(t('strikes.economic_impact')) ?>"><span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) ($week['penalty'] ?? 0))) ?>">&euro;<?= e(number_format((float) ($week['penalty'] ?? 0), 2, '.', '')) ?></span></td>
+                            <?php endif; ?>
+                            <?php if ($penaltiesEnabled): ?>
                             <td data-label="<?= e(t('dashboard.strike_reduction')) ?>"><?= (int) $week['strike_reduction'] > 0 ? '-1' : '-' ?></td>
                             <td data-label="<?= e(t('dashboard.strikes_after_week')) ?>"><?= e((string) $week['strikes_after_week']) ?></td>
+                            <?php endif; ?>
                             <td data-label="<?= e(t('common.actions')) ?>">
                                 <div class="dashboard-week-actions">
                                     <a class="btn btn-ghost small" href="<?= e($weekEditorHref) ?>"><?= e(t('dashboard.edit_week')) ?></a>
+                                    <?php if ($penaltiesEnabled): ?>
                                     <a class="btn btn-ghost small" href="<?= e($weekStrikesHref) ?>"><?= e(t('dashboard.penalty_history')) ?></a>
+                                    <?php endif; ?>
                                 </div>
                             </td>
                         </tr>
@@ -493,7 +524,11 @@ $topbarControls = ob_get_clean();
                         </span>
                         <span class="dashboard-week-row-meta">
                             <span><?= e(t('metric.warnings')) ?> <?= e((string) ($week['skip_warnings'] ?? 0)) ?></span>
+                            <?php if ($penaltiesEnabled): ?>
                             <span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) $weeklyPenalty)) ?>">&euro;<?= e(number_format($weeklyPenalty, 2, '.', '')) ?></span>
+                            <?php else: ?>
+                            <span><?= e(t('metric.step_failures')) ?> <?= e((string) ($week['step_failures'] ?? 0)) ?></span>
+                            <?php endif; ?>
                         </span>
                         <span class="settings-chevron" aria-hidden="true">&gt;</span>
                     </a>

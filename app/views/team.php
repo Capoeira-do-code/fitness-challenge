@@ -10,6 +10,36 @@ $activeChallenge = is_array($teamActiveChallenge ?? null) ? (array) $teamActiveC
 $teamGoalDebugEnabled = !empty($teamGoalDebugEnabled) && !empty($canManageTeam);
 $teamSection = (string) ($teamSection ?? '');
 $teamMemberDetail = is_array($teamMemberDetail ?? null) ? (array) $teamMemberDetail : null;
+$penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
+$isPenaltyRelatedItem = static function (array $item): bool {
+    $type = strtolower(trim((string) ($item['target_type'] ?? $item['type'] ?? $item['metric'] ?? '')));
+    $secondaryType = strtolower(trim((string) ($item['secondary_target_type'] ?? '')));
+    if (in_array($type, ['strikes', 'penalties', 'penalty'], true) || in_array($secondaryType, ['strikes', 'penalties', 'penalty'], true)) {
+        return true;
+    }
+
+    $text = strtolower(implode(' ', array_map('strval', [
+        $item['name'] ?? '',
+        $item['title'] ?? '',
+        $item['description'] ?? '',
+        $item['reward_text'] ?? '',
+    ])));
+
+    return str_contains($text, 'strike') || str_contains($text, 'penalt');
+};
+if (!$penaltiesEnabled) {
+    $goals = array_values(array_filter($goals, static fn(array $goal): bool => !$isPenaltyRelatedItem($goal)));
+    $teamAchievements = array_values(array_filter((array) ($teamAchievements ?? []), static fn(array $achievement): bool => !$isPenaltyRelatedItem($achievement)));
+    if ($activeChallenge !== null && $isPenaltyRelatedItem($activeChallenge)) {
+        $activeChallenge = null;
+    }
+    if (is_array($teamMemberDetail)) {
+        $teamMemberDetail['achievements'] = array_values(array_filter(
+            (array) ($teamMemberDetail['achievements'] ?? []),
+            static fn(array $achievement): bool => !$isPenaltyRelatedItem($achievement)
+        ));
+    }
+}
 $nowDateTime = new DateTimeImmutable('now');
 
 $formatInt = static fn(float|int $value): string => number_format((int) round((float) $value), 0, '.', '');
@@ -75,15 +105,17 @@ $teamMemberUrl = static function (int $userId) use ($teamBaseParams): string {
 $leaderboardRows = (array) ($teamComparisonRows ?? []);
 usort(
     $leaderboardRows,
-    static function (array $left, array $right): int {
+    static function (array $left, array $right) use ($penaltiesEnabled): int {
         $scoreOrder = ((float) ($right['score'] ?? 0)) <=> ((float) ($left['score'] ?? 0));
         if ($scoreOrder !== 0) {
             return $scoreOrder;
         }
 
-        $penaltyOrder = ((float) ($left['penalties'] ?? 0)) <=> ((float) ($right['penalties'] ?? 0));
-        if ($penaltyOrder !== 0) {
-            return $penaltyOrder;
+        if ($penaltiesEnabled) {
+            $penaltyOrder = ((float) ($left['penalties'] ?? 0)) <=> ((float) ($right['penalties'] ?? 0));
+            if ($penaltyOrder !== 0) {
+                return $penaltyOrder;
+            }
         }
 
         return strcmp(
@@ -385,8 +417,10 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     <article class="mini-card"><div><strong><?= e(t('metric.steps')) ?></strong><span><?= e((string) ($memberMetric['total_steps'] ?? 0)) ?></span></div></article>
                     <article class="mini-card"><div><strong><?= e(t('metric.distance_km')) ?></strong><span><?= e((string) ($memberMetric['total_km'] ?? 0)) ?> km</span></div></article>
                     <article class="mini-card"><div><strong><?= e(t('metric.workouts')) ?></strong><span><?= e((string) max((int) ($memberMetric['workout_count'] ?? 0), (int) ($memberMetric['workout_success'] ?? 0))) ?></span></div></article>
+                    <?php if ($penaltiesEnabled): ?>
                     <article class="mini-card"><div><strong><?= e(t('metric.strikes')) ?></strong><span><?= e((string) ($memberMetric['current_strikes'] ?? 0)) ?></span></div></article>
-                    <article class="mini-card"><div><strong><?= e(t('metric.penalty')) ?></strong><span class="penalty-chip penalty-chip-<?= (int) ($memberMetric['total_penalty'] ?? 0) <= 0 ? 'good' : ((int) ($memberMetric['total_penalty'] ?? 0) <= 50 ? 'warn' : 'bad') ?>">€<?= e((string) ($memberMetric['total_penalty'] ?? 0)) ?></span><small class="muted"><?= e(t('team.lower_is_better')) ?></small></div></article>
+                    <article class="mini-card"><div><strong><?= e(t('metric.penalty')) ?></strong><span class="penalty-chip penalty-chip-<?= (int) ($memberMetric['total_penalty'] ?? 0) <= 0 ? 'good' : ((int) ($memberMetric['total_penalty'] ?? 0) <= 50 ? 'warn' : 'bad') ?>">&euro;<?= e((string) ($memberMetric['total_penalty'] ?? 0)) ?></span><small class="muted"><?= e(t('team.lower_is_better')) ?></small></div></article>
+                    <?php endif; ?>
                 </div>
             </div>
         </article>
@@ -407,10 +441,12 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 <h2><?= e(t('team.workouts_by_week')) ?></h2>
                 <canvas id="memberWorkoutChart" height="170"></canvas>
             </article>
+            <?php if ($penaltiesEnabled): ?>
             <article class="panel chart-card">
                 <h2><?= e(t('team.score_penalty_by_week')) ?></h2>
                 <canvas id="memberScorePenaltyChart" height="170"></canvas>
             </article>
+            <?php endif; ?>
         </div>
 
         <div class="grid-two team-member-secondary-grid">
@@ -555,14 +591,16 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 <div class="progress-ring" style="--value: <?= e((string) min(100, $summaryScore)) ?>;"><span><?= e($formatScore($summaryScore)) ?></span></div>
                 <div><span><?= e(t('metric.score')) ?></span><strong><?= e($formatScore($summaryScore)) ?></strong><p><?= e(t('team.avg_score')) ?></p></div>
             </a>
-            <a class="metric-card metric-card-link" href="<?= e($teamMetricUrl('strikes')) ?>">
+            <?php if ($penaltiesEnabled): ?>
+            <a class="metric-card metric-card-link team-metric-strikes" href="<?= e($teamMetricUrl('strikes')) ?>">
                 <div class="progress-ring" style="--value: <?= e((string) max(0, 100 - ((int) $summaryStrikes * 8))) ?>;"><span><?= e($formatInt($summaryStrikes)) ?></span></div>
                 <div>
                     <span><?= e(t('metric.strikes')) ?></span>
                     <strong><?= e($formatInt($summaryStrikes)) ?></strong>
-                    <p><?= e(t('metric.penalty')) ?>: €<?= e($formatMoney($summaryPenalty)) ?></p>
+                    <p><?= e(t('metric.penalty')) ?>: &euro;<?= e($formatMoney($summaryPenalty)) ?></p>
                 </div>
             </a>
+            <?php endif; ?>
         </div>
 
         <?php if ($activeChallengeHero !== ''): ?>
@@ -607,10 +645,12 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                             <span><strong><?= e($formatInt((float) ($row['steps'] ?? 0))) ?></strong><small><?= e(t('metric.steps')) ?></small></span>
                             <span><strong><?= e($formatKm((float) ($row['distance'] ?? 0))) ?> km</strong><small><?= e(t('metric.distance_km')) ?></small></span>
                             <span><strong><?= e($formatInt((float) ($row['workouts'] ?? 0))) ?></strong><small><?= e(t('metric.workouts')) ?></small></span>
-                            <span class="team-leaderboard-strikes">
-                                <strong><?= e($formatInt((float) ($row['strikes'] ?? 0))) ?></strong>
-                                <small><?= e(t('metric.strikes')) ?> · <span class="penalty-chip penalty-chip-<?= e($penaltyClass) ?>">€<?= e($formatMoney((float) $penaltyValue)) ?></span></small>
-                            </span>
+                            <?php if ($penaltiesEnabled): ?>
+                                <span class="team-leaderboard-strikes">
+                                    <strong><?= e($formatInt((float) ($row['strikes'] ?? 0))) ?></strong>
+                                    <small><?= e(t('metric.strikes')) ?> &middot; <span class="penalty-chip penalty-chip-<?= e($penaltyClass) ?>">&euro;<?= e($formatMoney((float) $penaltyValue)) ?></span></small>
+                                </span>
+                            <?php endif; ?>
                         </div>
                     </a>
                 <?php endforeach; ?>
@@ -876,10 +916,12 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 <h2><?= e(t('team.workouts_over_time')) ?></h2>
                 <canvas id="teamWorkoutsChart" height="170"></canvas>
             </article>
+            <?php if ($penaltiesEnabled): ?>
             <article class="panel chart-card">
                 <h2><?= e(t('team.score_strikes_penalties')) ?></h2>
                 <canvas id="teamWeeklyChart" height="170"></canvas>
             </article>
+            <?php endif; ?>
         </div>
 
         <article class="panel team-layout-item team-widget-achievements team-achievements-panel" style="<?= e($teamWidgetStyle('achievements', 100)) ?>">
@@ -948,8 +990,12 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                             <option value="score" data-goal-placeholder="40 pts" data-goal-lower-better="0"><?= e(t('metric.score')) ?></option>
                             <option value="calories_burned" data-goal-placeholder="12000 kcal" data-goal-lower-better="0"><?= e(t('dashboard.calories_burned')) ?></option>
                             <option value="calories_consumed" data-goal-placeholder="12000 kcal" data-goal-lower-better="1"><?= e(t('dashboard.calories_consumed')) ?></option>
+                            <?php if ($penaltiesEnabled): ?>
                             <option value="penalties" data-goal-placeholder="30 €" data-goal-lower-better="1"><?= e(t('metric.penalty')) ?></option>
+                            <?php endif; ?>
+                            <?php if ($penaltiesEnabled): ?>
                             <option value="strikes" data-goal-placeholder="3 strikes" data-goal-lower-better="1"><?= e(t('metric.strikes')) ?></option>
+                            <?php endif; ?>
                             <option value="weight" data-goal-placeholder="4 %" data-goal-lower-better="0"><?= e(t('metric.weight')) ?></option>
                             <option value="custom"><?= e(t('common.other')) ?></option>
                         </select>
@@ -976,8 +1022,12 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                             <option value="score" data-goal-placeholder="40 pts" data-goal-lower-better="0"><?= e(t('metric.score')) ?></option>
                             <option value="calories_burned" data-goal-placeholder="12000 kcal" data-goal-lower-better="0"><?= e(t('dashboard.calories_burned')) ?></option>
                             <option value="calories_consumed" data-goal-placeholder="12000 kcal" data-goal-lower-better="1"><?= e(t('dashboard.calories_consumed')) ?></option>
+                            <?php if ($penaltiesEnabled): ?>
                             <option value="penalties" data-goal-placeholder="30 €" data-goal-lower-better="1"><?= e(t('metric.penalty')) ?></option>
+                            <?php endif; ?>
+                            <?php if ($penaltiesEnabled): ?>
                             <option value="strikes" data-goal-placeholder="3 strikes" data-goal-lower-better="1"><?= e(t('metric.strikes')) ?></option>
+                            <?php endif; ?>
                             <option value="weight" data-goal-placeholder="4 %" data-goal-lower-better="0"><?= e(t('metric.weight')) ?></option>
                             <option value="custom"><?= e(t('common.other')) ?></option>
                         </select>
@@ -1191,6 +1241,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                         tension: 0.25,
                         yAxisID: 'y',
                     },
+                    <?php if ($penaltiesEnabled): ?>
                     {
                         label: <?= json_encode(t('metric.strikes')) ?>,
                         data: <?= json_encode($teamWeeklyStrikes ?? []) ?>,
@@ -1209,6 +1260,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                         tension: 0.25,
                         yAxisID: 'y1',
                     }
+                    <?php endif; ?>
                 ]
             },
             options: {

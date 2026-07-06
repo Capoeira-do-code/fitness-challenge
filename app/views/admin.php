@@ -26,6 +26,7 @@ foreach ((array) ($adminAchievements ?? []) as $adminAchievementCandidate) {
         break;
     }
 }
+$penaltiesEnabled = !empty($penaltiesEnabled);
 $achievementLocales = locale_options();
 $achievementIconOptions = achievement_icon_options();
 $sectionRows = [
@@ -76,6 +77,30 @@ $workoutFieldDataKeyLabels = [
     'training_calories_burned' => t('entries.training_calories_burned'),
     'steps' => t('metric.steps'),
 ];
+$challengeSettings = is_array($challengeSettings ?? null) ? (array) $challengeSettings : [];
+$challengeName = trim((string) ($challengeSettings['challenge_name'] ?? 'Fitness Challenge'));
+if ($challengeName === '') {
+    $challengeName = 'Fitness Challenge';
+}
+$challengeStart = to_date((string) ($challengeSettings['challenge_start'] ?? null), to_date(null));
+$challengeEnd = to_date((string) ($challengeSettings['challenge_end'] ?? null), $challengeStart);
+$challengeRangeLabel = format_date_eu($challengeStart) . ' - ' . format_date_eu($challengeEnd);
+$challengeIsActive = challenge_is_active($challengeSettings);
+$challengeArchiveCount = count((array) ($challengeArchives ?? []));
+$nextChallengeStart = to_date(null);
+try {
+    $candidateStart = (new DateTimeImmutable($challengeEnd))->modify('+1 day')->format('Y-m-d');
+    if ($candidateStart > $nextChallengeStart) {
+        $nextChallengeStart = $candidateStart;
+    }
+} catch (Throwable) {
+    $nextChallengeStart = to_date(null);
+}
+try {
+    $nextChallengeEnd = (new DateTimeImmutable($nextChallengeStart))->modify('+55 days')->format('Y-m-d');
+} catch (Throwable) {
+    $nextChallengeEnd = $nextChallengeStart;
+}
 ?>
 <section class="screen stack-lg spa-shell" data-spa-page="admin">
     <div class="hero-panel">
@@ -210,21 +235,56 @@ $workoutFieldDataKeyLabels = [
         <?php endforeach; ?>
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'challenge' ? ' active' : '' ?>" data-spa-section="challenge" <?= $activeSection === 'challenge' ? '' : 'hidden' ?>>
+    <article class="panel settings-panel admin-challenge-panel<?= $activeSection === 'challenge' ? ' active' : '' ?>" data-spa-section="challenge" <?= $activeSection === 'challenge' ? '' : 'hidden' ?>>
         <div class="panel-head">
-            <h2>Challenge</h2>
+            <div>
+                <p class="eyebrow"><?= e(t('admin.challenge')) ?></p>
+                <h2><?= e(t('admin.challenge_settings')) ?></h2>
+                <p class="muted small"><?= e(t('admin.start_new_challenge_hint')) ?></p>
+            </div>
             <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
         </div>
-        <form method="post" action="/?page=admin" class="stack compact-form">
-            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-            <input type="hidden" name="action" value="update_challenge_settings">
-            <label><?= e(t('admin.challenge_name')) ?><input type="text" name="challenge_name" value="<?= e((string) ($challengeSettings['challenge_name'] ?? 'Fitness Challenge')) ?>" required></label>
-            <div class="grid-inline two">
-                <label><?= e(t('audit.from')) ?><input type="date" name="challenge_start" value="<?= e((string) ($challengeSettings['challenge_start'] ?? '')) ?>" required></label>
-                <label><?= e(t('audit.to')) ?><input type="date" name="challenge_end" value="<?= e((string) ($challengeSettings['challenge_end'] ?? '')) ?>" required></label>
-            </div>
-            <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
-        </form>
+        <div class="admin-challenge-layout">
+            <form method="post" action="/?page=admin" class="stack compact-form admin-challenge-card admin-challenge-current">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="update_challenge_settings">
+                <div class="admin-challenge-card-head">
+                    <div>
+                        <h3><?= e(t('admin.challenge_current')) ?></h3>
+                        <p class="muted small"><?= e($challengeRangeLabel) ?></p>
+                    </div>
+                    <span class="badge <?= $challengeIsActive ? 'badge-ok' : 'badge-warn' ?>"><?= e($challengeIsActive ? t('common.active') : t('common.closed_week')) ?></span>
+                </div>
+                <div class="admin-challenge-meta">
+                    <span><small><?= e(t('admin.challenge')) ?></small><strong><?= e($challengeName) ?></strong></span>
+                    <span><small><?= e(t('admin.archived_challenges')) ?></small><strong><?= e((string) $challengeArchiveCount) ?></strong></span>
+                </div>
+                <label><?= e(t('admin.challenge_name')) ?><input type="text" name="challenge_name" value="<?= e($challengeName) ?>" required></label>
+                <div class="grid-inline two">
+                    <label><?= e(t('audit.from')) ?><input type="date" name="challenge_start" value="<?= e($challengeStart) ?>" required></label>
+                    <label><?= e(t('audit.to')) ?><input type="date" name="challenge_end" value="<?= e($challengeEnd) ?>" required></label>
+                </div>
+                <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+            </form>
+
+            <form method="post" action="/?page=admin" class="stack compact-form admin-challenge-card admin-challenge-new">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="start_new_challenge">
+                <div class="admin-challenge-card-head">
+                    <div>
+                        <h3><?= e(t('admin.start_new_challenge')) ?></h3>
+                        <p class="muted small"><?= e(t('admin.challenge_new_hint')) ?></p>
+                    </div>
+                    <span class="badge"><?= e(t('profile.challenge_current')) ?></span>
+                </div>
+                <label><?= e(t('admin.new_challenge_name')) ?><input type="text" name="new_challenge_name" value="" placeholder="<?= e($challengeName) ?>" required></label>
+                <div class="grid-inline two">
+                    <label><?= e(t('audit.from')) ?><input type="date" name="new_challenge_start" value="<?= e($nextChallengeStart) ?>" required></label>
+                    <label><?= e(t('audit.to')) ?><input type="date" name="new_challenge_end" value="<?= e($nextChallengeEnd) ?>" required></label>
+                </div>
+                <button class="btn btn-secondary" type="submit"><?= e(t('admin.start_new_challenge')) ?></button>
+            </form>
+        </div>
 
         <form method="post" action="/?page=admin" class="stack compact-form">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -239,12 +299,44 @@ $workoutFieldDataKeyLabels = [
             <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
         </form>
 
-        <form method="post" action="/?page=admin" class="stack">
+        <form method="post" action="/?page=admin" class="stack admin-challenge-archive">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="archive_challenge">
+            <div>
+                <h3><?= e(t('admin.archive_challenge')) ?></h3>
+                <p class="muted small"><?= e(t('admin.challenge_archive_hint')) ?></p>
+            </div>
             <label><?= e(t('admin.archive_confirm')) ?><input type="text" name="confirm_archive" placeholder="ARCHIVE"></label>
             <button class="btn btn-ghost" type="submit"><?= e(t('admin.archive_challenge')) ?></button>
         </form>
+
+        <?php if (!empty($challengeArchives)): ?>
+            <div class="admin-archived-challenges">
+                <h3><?= e(t('admin.archived_challenges')) ?></h3>
+                <ul class="card-list">
+                    <?php foreach ($challengeArchives as $archive): ?>
+                        <li class="mini-card">
+                            <div>
+                                <strong><?= e((string) ($archive['challenge_name'] ?? '')) ?></strong>
+                                <p class="muted small">
+                                    <?= e((string) ($archive['challenge_start'] ?? '')) ?> – <?= e((string) ($archive['challenge_end'] ?? '')) ?>
+                                    · <?= e(t('admin.archived_on', ['date' => (string) ($archive['archived_at'] ?? '')])) ?>
+                                </p>
+                            </div>
+                            <div class="inline-actions-mini">
+                                <a class="btn btn-ghost small" href="/?<?= e(http_build_query(['page' => 'profile', 'challenge' => 'archive:' . (int) $archive['id']])) ?>"><?= e(t('profile.open_challenge')) ?></a>
+                                <form method="post" action="/?page=admin" class="inline-form">
+                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                    <input type="hidden" name="action" value="reactivate_challenge">
+                                    <input type="hidden" name="archive_id" value="<?= (int) $archive['id'] ?>">
+                                    <button class="btn btn-ghost small" type="submit"><?= e(t('admin.reactivate_challenge')) ?></button>
+                                </form>
+                            </div>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
     </article>
 
     <article class="panel settings-panel<?= $activeSection === 'app' ? ' active' : '' ?>" data-spa-section="app" <?= $activeSection === 'app' ? '' : 'hidden' ?>>
@@ -256,6 +348,19 @@ $workoutFieldDataKeyLabels = [
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="update_app_name">
             <label><?= e(t('admin.app_name')) ?><input type="text" name="app_name" value="<?= e((string) ($appNameSetting ?? 'Fitness Challenge Tracker')) ?>" required></label>
+            <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+        </form>
+
+        <form method="post" action="/?page=admin" class="stack compact-form">
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="update_penalties_feature">
+            <div class="toggle-row">
+                <label class="check standalone-check">
+                    <input type="checkbox" name="penalties_enabled" value="1" <?= !empty($penaltiesEnabled) ? 'checked' : '' ?>>
+                    <?= e(t('admin.penalties_enabled')) ?>
+                </label>
+                <p class="muted small"><?= e(t('admin.penalties_feature_hint')) ?></p>
+            </div>
             <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
         </form>
 
@@ -791,7 +896,9 @@ $workoutFieldDataKeyLabels = [
                             <option value="workouts">Workouts</option>
                             <option value="score">Score</option>
                             <option value="strikes">Strikes</option>
+                            <?php if ($penaltiesEnabled): ?>
                             <option value="penalties">Penalties</option>
+                            <?php endif; ?>
                             <option value="weight">Weight</option>
                             <option value="habit_completion">Habit completion</option>
                         </select>
@@ -914,7 +1021,9 @@ $workoutFieldDataKeyLabels = [
                                 <option value="workouts" <?= $achievementMetric === 'workouts' ? 'selected' : '' ?>>Workouts</option>
                                 <option value="score" <?= $achievementMetric === 'score' ? 'selected' : '' ?>>Score</option>
                                 <option value="strikes" <?= $achievementMetric === 'strikes' ? 'selected' : '' ?>>Strikes</option>
+                                <?php if ($penaltiesEnabled || $achievementMetric === 'penalties'): ?>
                                 <option value="penalties" <?= $achievementMetric === 'penalties' ? 'selected' : '' ?>>Penalties</option>
+                                <?php endif; ?>
                                 <option value="weight" <?= $achievementMetric === 'weight' ? 'selected' : '' ?>>Weight</option>
                                 <option value="habit_completion" <?= $achievementMetric === 'habit_completion' ? 'selected' : '' ?>>Habit completion</option>
                             </select>
