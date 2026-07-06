@@ -2843,6 +2843,22 @@ if ($page === 'admin') {
             redirect('/?page=admin&section=app');
         }
 
+        if ($action === 'notion_load_schema') {
+            $schemaResult = notion_refresh_schema_cache($pdo, (int) $currentUser['id']);
+            if ($schemaResult['ok']) {
+                flash_set('success', t('flash.notion_schema_loaded', ['count' => (int) $schemaResult['count']]));
+            } else {
+                flash_set('error', trim(t('flash.notion_schema_failed') . ' ' . (string) $schemaResult['error']));
+            }
+            redirect('/?page=admin&section=app');
+        }
+
+        if ($action === 'update_notion_field_map') {
+            notion_save_field_map($pdo, $_POST, (int) $currentUser['id']);
+            flash_set('success', t('flash.notion_mapping_updated'));
+            redirect('/?page=admin&section=app');
+        }
+
         if ($action === 'notion_sync_now') {
             $notionResult = notion_sync_push($pdo, $config, (int) $currentUser['id']);
             flash_set($notionResult['ok'] ? 'success' : 'error', trim(t('flash.notion_sync_done') . ' ' . (string) ($notionResult['message'] ?? '')));
@@ -3577,6 +3593,9 @@ if ($page === 'admin') {
         'appNameSetting' => app_setting($pdo, 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge Tracker')),
         'penaltiesEnabled' => penalties_enabled($pdo),
         'notionSettings' => notion_settings($pdo),
+        'notionFieldLabels' => notion_field_labels(),
+        'notionFieldMap' => notion_field_map($pdo),
+        'notionSchemaCache' => notion_schema_cache($pdo),
         'loginBackgroundPath' => $loginBackgroundPath,
         'loginBackgroundLibrary' => $loginBackgroundLibrary,
         'backupSettings' => $backupSettings,

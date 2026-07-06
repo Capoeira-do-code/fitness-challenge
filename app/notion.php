@@ -33,6 +33,110 @@ const NOTION_PROPERTY_MAP = [
     'log_id' => ['Log ID', 'number'],
 ];
 
+/** App fields available for mapping, in display order, with their i18n label keys. */
+function notion_field_labels(): array
+{
+    return [
+        'date' => t('common.date'),
+        'user' => t('common.user'),
+        'steps' => t('metric.steps'),
+        'distance_km' => t('metric.distance_km'),
+        'workout_done' => t('table.completed_workout'),
+        'workout_type' => t('table.primary_workout_type'),
+        'weight' => t('metric.weight'),
+        'notes' => t('common.notes'),
+        'log_id' => t('admin.notion_field_log_id'),
+    ];
+}
+
+/** Default field -> Notion property name map (derived from NOTION_PROPERTY_MAP). */
+function notion_default_field_map(): array
+{
+    $map = [];
+    foreach (NOTION_PROPERTY_MAP as $field => [$propName]) {
+        $map[$field] = $propName;
+    }
+
+    return $map;
+}
+
+/**
+ * Configured field -> Notion property name map. Admin choices are stored as JSON
+ * in notion_field_map and merged over the defaults; a blank value means "do not
+ * sync this field".
+ */
+function notion_field_map(PDO $pdo): array
+{
+    $defaults = notion_default_field_map();
+    $stored = json_decode((string) (app_setting($pdo, 'notion_field_map', '') ?? ''), true);
+    if (!is_array($stored)) {
+        return $defaults;
+    }
+
+    $map = [];
+    foreach (array_keys($defaults) as $field) {
+        $map[$field] = array_key_exists($field, $stored) ? trim((string) $stored[$field]) : $defaults[$field];
+    }
+
+    return $map;
+}
+
+/** Subset of the field map whose target property actually exists in the schema. */
+function notion_active_field_map(array $fieldMap, array $schema): array
+{
+    $present = is_array($schema['present'] ?? null) ? $schema['present'] : [];
+    $active = [];
+    foreach ($fieldMap as $field => $propName) {
+        $propName = trim((string) $propName);
+        if ($propName !== '' && isset($present[$propName])) {
+            $active[$field] = $propName;
+        }
+    }
+
+    return $active;
+}
+
+/** Cached Notion database schema (property name => type), refreshed on demand. */
+function notion_schema_cache(PDO $pdo): array
+{
+    $cached = json_decode((string) (app_setting($pdo, 'notion_schema_cache', '') ?? ''), true);
+
+    return is_array($cached) ? $cached : [];
+}
+
+function notion_save_field_map(PDO $pdo, array $input, int $actorUserId): void
+{
+    $raw = is_array($input['notion_map'] ?? null) ? (array) $input['notion_map'] : [];
+    $map = [];
+    foreach (array_keys(notion_default_field_map()) as $field) {
+        $map[$field] = trim((string) ($raw[$field] ?? ''));
+    }
+    set_app_setting($pdo, 'notion_field_map', (string) json_encode($map, JSON_UNESCAPED_UNICODE), $actorUserId);
+}
+
+/**
+ * Fetch the target database schema and cache it (property name => type) so the
+ * mapping UI can offer the real property names without a blocking call on every
+ * admin render.
+ *
+ * @return array{ok:bool,error:string,count:int}
+ */
+function notion_refresh_schema_cache(PDO $pdo, int $actorUserId): array
+{
+    $settings = notion_settings($pdo);
+    if (!notion_is_configured($settings)) {
+        return ['ok' => false, 'error' => 'not_configured', 'count' => 0];
+    }
+    $schema = notion_fetch_schema($settings);
+    if (!$schema['ok']) {
+        return ['ok' => false, 'error' => $schema['error'], 'count' => 0];
+    }
+    $present = is_array($schema['present'] ?? null) ? $schema['present'] : [];
+    set_app_setting($pdo, 'notion_schema_cache', (string) json_encode($present, JSON_UNESCAPED_UNICODE), $actorUserId);
+
+    return ['ok' => true, 'error' => '', 'count' => count($present)];
+}
+
 function notion_settings(PDO $pdo): array
 {
     return [
@@ -246,6 +350,15 @@ function notion_fetch_schema(array $settings): array
     return ['ok' => true, 'error' => '', 'title_prop' => $titleProp, 'present' => $present];
 }
 
+function notion_truncate(string $value, int $limit): string
+{
+    if (function_exists('mb_substr')) {
+        return mb_substr($value, 0, $limit);
+    }
+
+    return substr($value, 0, $limit);
+}
+
 function notion_rich_text(string $value): array
 {
     $value = trim($value);
@@ -253,29 +366,17 @@ function notion_rich_text(string $value): array
         return [];
     }
 
-    return [['type' => 'text', 'text' => ['content' => mb_substr($value, 0, 1900)]]];
+    return [['type' => 'text', 'text' => ['content' => notion_truncate($value, 1900)]]];
 }
 
-/**
- * Build the Notion properties payload for a daily log, restricted to properties
- * that exist in the target database schema.
- */
-function notion_build_properties(array $log, array $user, array $schema): array
+/** Raw app values available for mapping, per daily log. */
+function notion_field_values(array $log, array $user): array
 {
     $displayName = trim((string) ($user['display_name'] ?? $user['username'] ?? 'User'));
-    $date = (string) ($log['log_date'] ?? '');
-    $properties = [];
 
-    if (($schema['title_prop'] ?? '') !== '') {
-        $properties[$schema['title_prop']] = [
-            'title' => notion_rich_text(($displayName !== '' ? $displayName : 'User') . ' - ' . $date),
-        ];
-    }
-
-    $present = is_array($schema['present'] ?? null) ? $schema['present'] : [];
-    $values = [
-        'date' => $date,
-        'user' => $displayName,
+    return [
+        'date' => (string) ($log['log_date'] ?? ''),
+        'user' => $displayName !== '' ? $displayName : 'User',
         'steps' => $log['steps'] ?? null,
         'distance_km' => $log['distance_km'] ?? null,
         'workout_done' => (int) ($log['workout_done'] ?? 0) === 1,
@@ -284,30 +385,73 @@ function notion_build_properties(array $log, array $user, array $schema): array
         'notes' => (string) ($log['notes'] ?? ''),
         'log_id' => (int) ($log['id'] ?? 0),
     ];
-
-    foreach (NOTION_PROPERTY_MAP as $field => [$propName, $expectedType]) {
-        if (($present[$propName] ?? null) !== $expectedType) {
-            continue;
-        }
-        $properties[$propName] = notion_property_value($expectedType, $field, $values[$field] ?? null);
-    }
-
-    return array_filter($properties, static fn($value): bool => $value !== null);
 }
 
-function notion_property_value(string $type, string $field, mixed $raw): mixed
+/**
+ * Build the Notion properties payload for a daily log using the admin-defined
+ * field map. Each field is written to its chosen property and converted to that
+ * property's actual Notion type (from the schema); missing/unmapped/blank targets
+ * are skipped. The title property is always set to a readable label unless the
+ * admin explicitly mapped a field onto it.
+ */
+function notion_build_properties(array $log, array $user, array $schema, array $fieldMap): array
 {
+    $present = is_array($schema['present'] ?? null) ? $schema['present'] : [];
+    $values = notion_field_values($log, $user);
+    $properties = [];
+
+    foreach ($fieldMap as $field => $propName) {
+        $propName = trim((string) $propName);
+        if ($propName === '' || !array_key_exists($field, $values) || !isset($present[$propName])) {
+            continue;
+        }
+        $value = notion_value_for_type((string) $present[$propName], $values[$field]);
+        if ($value !== null) {
+            $properties[$propName] = $value;
+        }
+    }
+
+    $titleProp = (string) ($schema['title_prop'] ?? '');
+    if ($titleProp !== '' && !isset($properties[$titleProp])) {
+        $displayName = (string) ($values['user'] ?? 'User');
+        $properties[$titleProp] = ['title' => notion_rich_text($displayName . ' - ' . (string) ($values['date'] ?? ''))];
+    }
+
+    return $properties;
+}
+
+/** Convert an app value to the payload shape for a given Notion property type. */
+function notion_value_for_type(string $type, mixed $raw): mixed
+{
+    $string = is_bool($raw) ? ($raw ? '1' : '0') : trim((string) ($raw ?? ''));
+
     return match ($type) {
-        'date' => ($raw !== null && $raw !== '') ? ['date' => ['start' => (string) $raw]] : null,
-        'number' => ['number' => ($raw === null || $raw === '') ? null : (float) $raw],
-        'checkbox' => ['checkbox' => (bool) $raw],
-        'rich_text' => ['rich_text' => notion_rich_text((string) $raw)],
+        'title' => ['title' => notion_rich_text($string)],
+        'rich_text' => ['rich_text' => notion_rich_text($string)],
+        'number' => ['number' => $string === '' ? null : (float) $raw],
+        'checkbox' => ['checkbox' => notion_truthy($raw)],
+        'date' => $string === '' ? null : ['date' => ['start' => $string]],
+        'select' => $string === '' ? null : ['select' => ['name' => notion_truncate($string, 100)]],
+        'url' => ['url' => $string === '' ? null : $string],
+        'email' => ['email' => $string === '' ? null : $string],
+        'phone_number' => ['phone_number' => $string === '' ? null : $string],
         default => null,
     };
 }
 
-function notion_content_hash(array $log): string
+function notion_truthy(mixed $raw): bool
 {
+    if (is_bool($raw)) {
+        return $raw;
+    }
+
+    return in_array(strtolower(trim((string) $raw)), ['1', 'true', 'yes', 'on'], true);
+}
+
+function notion_content_hash(array $log, array $fieldMap = []): string
+{
+    // Include the field map so remapping which properties receive data forces a
+    // re-push of otherwise-unchanged rows.
     return md5((string) json_encode([
         (string) ($log['log_date'] ?? ''),
         (string) ($log['steps'] ?? ''),
@@ -316,6 +460,7 @@ function notion_content_hash(array $log): string
         (string) ($log['workout_type'] ?? ''),
         (string) ($log['weight'] ?? ''),
         (string) ($log['notes'] ?? ''),
+        $fieldMap,
     ]));
 }
 
@@ -323,14 +468,14 @@ function notion_content_hash(array $log): string
  * Push a single log to Notion (create or update). Returns one of:
  * 'created', 'updated', 'skipped', 'failed'.
  */
-function notion_upsert_log(PDO $pdo, array $settings, array $schema, array $log, array $user): string
+function notion_upsert_log(PDO $pdo, array $settings, array $schema, array $fieldMap, array $log, array $user): string
 {
     $logId = (int) ($log['id'] ?? 0);
     if ($logId <= 0) {
         return 'skipped';
     }
 
-    $hash = notion_content_hash($log);
+    $hash = notion_content_hash($log, $fieldMap);
     $state = db_fetch_one($pdo, 'SELECT * FROM notion_sync_state WHERE log_id = :id', [':id' => $logId]);
     $pageId = $state !== null ? trim((string) ($state['notion_page_id'] ?? '')) : '';
 
@@ -338,7 +483,7 @@ function notion_upsert_log(PDO $pdo, array $settings, array $schema, array $log,
         return 'skipped';
     }
 
-    $properties = notion_build_properties($log, $user, $schema);
+    $properties = notion_build_properties($log, $user, $schema, $fieldMap);
     if ($properties === []) {
         return 'skipped';
     }
@@ -422,6 +567,15 @@ function notion_sync_push(PDO $pdo, array $config, ?int $actorUserId = null, int
         return $summary;
     }
 
+    $fieldMap = notion_field_map($pdo);
+    if (notion_active_field_map($fieldMap, $schema) === []) {
+        $summary['status'] = 'error';
+        $summary['message'] = 'No app fields are mapped to existing Notion properties. Configure the field mapping first.';
+        notion_record_run($pdo, $summary, $actorUserId);
+
+        return $summary;
+    }
+
     $challenge = function_exists('challenge_settings') ? challenge_settings($pdo, $config) : [];
     $start = to_date((string) ($challenge['challenge_start'] ?? null));
     $end = to_date((string) ($challenge['challenge_end'] ?? null), $start);
@@ -436,7 +590,7 @@ function notion_sync_push(PDO $pdo, array $config, ?int $actorUserId = null, int
         }
         $logs = fetch_logs_for_user_between($pdo, (int) ($user['id'] ?? 0), $start, $end);
         foreach ($logs as $log) {
-            $result = notion_upsert_log($pdo, $settings, $schema, $log, $user);
+            $result = notion_upsert_log($pdo, $settings, $schema, $fieldMap, $log, $user);
             if ($result === 'skipped') {
                 $summary['skipped']++;
                 continue;

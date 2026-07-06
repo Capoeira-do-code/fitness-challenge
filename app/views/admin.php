@@ -402,6 +402,45 @@ try {
                 </label>
                 <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
             </form>
+            <?php
+            $notionFieldLabels = is_array($notionFieldLabels ?? null) ? (array) $notionFieldLabels : [];
+            $notionFieldMap = is_array($notionFieldMap ?? null) ? (array) $notionFieldMap : [];
+            $notionSchemaCache = is_array($notionSchemaCache ?? null) ? (array) $notionSchemaCache : [];
+            $notionSchemaNames = array_keys($notionSchemaCache);
+            ?>
+            <div class="admin-notion-mapping">
+                <h4><?= e(t('admin.notion_mapping_title')) ?></h4>
+                <p class="muted small"><?= e(t('admin.notion_mapping_hint')) ?></p>
+                <form method="post" action="/?page=admin" class="stack compact-form">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="notion_load_schema">
+                    <div class="inline-actions">
+                        <button class="btn btn-ghost small" type="submit" <?= $notionConfigured ? '' : 'disabled' ?>><?= e(t('admin.notion_load_schema')) ?></button>
+                        <?php if ($notionSchemaNames !== []): ?>
+                            <span class="muted small"><?= e(t('admin.notion_schema_count', ['count' => count($notionSchemaNames)])) ?></span>
+                        <?php endif; ?>
+                    </div>
+                </form>
+                <form method="post" action="/?page=admin" class="stack compact-form">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="update_notion_field_map">
+                    <datalist id="notion-property-options">
+                        <?php foreach ($notionSchemaNames as $propName): ?>
+                            <option value="<?= e((string) $propName) ?>"><?= e((string) $propName . ' (' . (string) ($notionSchemaCache[$propName] ?? '') . ')') ?></option>
+                        <?php endforeach; ?>
+                    </datalist>
+                    <div class="notion-map-grid">
+                        <?php foreach ($notionFieldLabels as $fieldKey => $fieldLabel): ?>
+                            <label class="notion-map-row">
+                                <span><?= e((string) $fieldLabel) ?></span>
+                                <input type="text" name="notion_map[<?= e((string) $fieldKey) ?>]" list="notion-property-options" value="<?= e((string) ($notionFieldMap[$fieldKey] ?? '')) ?>" placeholder="<?= e(t('admin.notion_map_placeholder')) ?>">
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                    <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+                </form>
+            </div>
+
             <form method="post" action="/?page=admin" class="stack compact-form">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="notion_sync_now">

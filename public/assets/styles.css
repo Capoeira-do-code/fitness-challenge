@@ -1155,6 +1155,36 @@ body.theme-active-dark .theme-toggle-icon-moon {
     font-size: 1.25rem;
 }
 
+/* Notion integration admin panel */
+.admin-notion-panel,
+.admin-notion-mapping {
+    display: grid;
+    gap: 0.6rem;
+    margin-top: 0.5rem;
+}
+
+.admin-notion-mapping {
+    padding: 0.85rem;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+}
+
+.notion-map-grid {
+    display: grid;
+    gap: 0.55rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.notion-map-row {
+    display: grid;
+    gap: 0.2rem;
+    font-size: 0.82rem;
+}
+
+.notion-map-row input {
+    width: 100%;
+}
+
 .analytics-chart-card {
     min-width: 0;
     padding: 0.85rem;
