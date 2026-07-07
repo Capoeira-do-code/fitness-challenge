@@ -665,6 +665,13 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'maintenance_calories', 'REAL');
     ensure_column($pdo, 'users', 'calorie_burn_goal', 'REAL');
     ensure_column($pdo, 'users', 'calorie_consumed_max', 'REAL');
+    ensure_column($pdo, 'users', 'telegram_chat_id', 'TEXT');
+    ensure_column($pdo, 'users', 'telegram_link_code', 'TEXT');
+    ensure_column($pdo, 'users', 'telegram_reminders_enabled', 'INTEGER NOT NULL DEFAULT 0');
+    ensure_column($pdo, 'users', 'telegram_motivation_enabled', 'INTEGER NOT NULL DEFAULT 0');
+    ensure_column($pdo, 'users', 'telegram_reminder_time', "TEXT NOT NULL DEFAULT '20:00'");
+    ensure_column($pdo, 'users', 'telegram_last_reminded_on', 'TEXT');
+    ensure_column($pdo, 'users', 'telegram_last_motivation_on', 'TEXT');
 
     ensure_column($pdo, 'daily_logs', 'extra_workout', 'INTEGER NOT NULL DEFAULT 0');
     ensure_column($pdo, 'daily_logs', 'base_steps', 'INTEGER');

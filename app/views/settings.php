@@ -175,4 +175,62 @@ if ($settingsView === 'avatar') {
             <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
         </form>
     </article>
+
+    <?php
+    $telegram = is_array($telegramSettings ?? null) ? (array) $telegramSettings : [];
+    $telegramAvailable = !empty($telegram['enabled']) && ($telegram['token'] ?? '') !== '';
+    $telegramChatId = trim((string) ($currentUser['telegram_chat_id'] ?? ''));
+    $telegramLinked = $telegramChatId !== '';
+    $telegramLinkCode = trim((string) ($currentUser['telegram_link_code'] ?? ''));
+    $telegramDeepLink = telegram_deep_link($telegram, $telegramLinkCode);
+    ?>
+    <article class="panel settings-telegram-card" id="telegram">
+        <h2><?= e(t('settings.telegram_title')) ?></h2>
+        <p class="muted small"><?= e(t('settings.telegram_hint')) ?></p>
+
+        <?php if (!$telegramAvailable): ?>
+            <p class="muted"><?= e(t('settings.telegram_unavailable')) ?></p>
+        <?php elseif (!$telegramLinked): ?>
+            <?php if ($telegramLinkCode === ''): ?>
+                <form method="post" action="/?page=settings" class="stack compact-form">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="telegram_generate_link">
+                    <button class="btn btn-primary" type="submit"><?= e(t('settings.telegram_link')) ?></button>
+                </form>
+            <?php else: ?>
+                <p class="small"><?= e(t('settings.telegram_link_steps')) ?></p>
+                <?php if ($telegramDeepLink !== ''): ?>
+                    <p><a class="btn btn-primary" href="<?= e($telegramDeepLink) ?>" target="_blank" rel="noopener"><?= e(t('settings.telegram_open_bot')) ?></a></p>
+                <?php else: ?>
+                    <p class="small"><?= e(t('settings.telegram_code_label')) ?> <code>/start <?= e($telegramLinkCode) ?></code></p>
+                <?php endif; ?>
+                <p class="muted small"><?= e(t('settings.telegram_link_wait')) ?></p>
+            <?php endif; ?>
+        <?php else: ?>
+            <p class="small"><strong><?= e(t('settings.telegram_linked')) ?></strong></p>
+            <form method="post" action="/?page=settings" class="stack compact-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="telegram_update_prefs">
+                <div class="toggle-row">
+                    <label class="check standalone-check">
+                        <input type="checkbox" name="telegram_reminders_enabled" value="1" <?= (int) ($currentUser['telegram_reminders_enabled'] ?? 0) === 1 ? 'checked' : '' ?>>
+                        <?= e(t('settings.telegram_reminders')) ?>
+                    </label>
+                </div>
+                <div class="toggle-row">
+                    <label class="check standalone-check">
+                        <input type="checkbox" name="telegram_motivation_enabled" value="1" <?= (int) ($currentUser['telegram_motivation_enabled'] ?? 0) === 1 ? 'checked' : '' ?>>
+                        <?= e(t('settings.telegram_motivation')) ?>
+                    </label>
+                </div>
+                <label><?= e(t('settings.telegram_time')) ?><input type="time" name="telegram_reminder_time" value="<?= e((string) ($currentUser['telegram_reminder_time'] ?? '20:00')) ?>"></label>
+                <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+            </form>
+            <form method="post" action="/?page=settings" class="stack compact-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="telegram_unlink">
+                <button class="btn btn-ghost small" type="submit"><?= e(t('settings.telegram_unlink')) ?></button>
+            </form>
+        <?php endif; ?>
+    </article>
 </section>

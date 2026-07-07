@@ -25,6 +25,7 @@ if ($page === 'users') {
 if ($currentUser !== null && !in_array($page, ['app_icon', 'login_background', 'media', 'media_thumb', 'api_meal_calendar', 'api_gallery_recent'], true)) {
     run_system_backup_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
     notion_run_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
+    telegram_run_scheduler($pdo, $config);
 }
 
 function send_private_cached_file_response(string $filePath, string $mime, int $maxAge = 604800, bool $immutable = false): void
@@ -1647,6 +1648,24 @@ if ($page === 'settings') {
             redirect('/?page=settings');
         }
 
+        if ($action === 'telegram_generate_link') {
+            telegram_generate_link_code($pdo, (int) $currentUser['id']);
+            flash_set('success', t('flash.telegram_link_ready'));
+            redirect('/?page=settings#telegram');
+        }
+
+        if ($action === 'telegram_update_prefs') {
+            telegram_update_user_prefs($pdo, (int) $currentUser['id'], $_POST);
+            flash_set('success', t('flash.telegram_prefs_updated'));
+            redirect('/?page=settings#telegram');
+        }
+
+        if ($action === 'telegram_unlink') {
+            telegram_unlink_user($pdo, (int) $currentUser['id']);
+            flash_set('success', t('flash.telegram_unlinked'));
+            redirect('/?page=settings#telegram');
+        }
+
         if ($action === 'upload_avatar') {
             $storedPath = null;
             $persisted = false;
@@ -1741,6 +1760,7 @@ if ($page === 'settings') {
         'currentUser' => $currentUser,
         'settingsView' => $settingsView,
         'settingsGoalCards' => build_user_goal_view_models($settingsGoalRows, is_array($settingsGoalMetric) ? $settingsGoalMetric : [], $settingsHabitDefinitions),
+        'telegramSettings' => telegram_settings($pdo),
         'config' => $config,
     ]);
 }
@@ -2859,6 +2879,22 @@ if ($page === 'admin') {
             redirect('/?page=admin&section=app');
         }
 
+        if ($action === 'update_telegram_settings') {
+            telegram_update_settings($pdo, $_POST, (int) $currentUser['id']);
+            flash_set('success', t('flash.telegram_settings_updated'));
+            redirect('/?page=admin&section=app');
+        }
+
+        if ($action === 'telegram_verify_bot') {
+            $telegramVerify = telegram_verify_bot($pdo, (int) $currentUser['id']);
+            if ($telegramVerify['ok']) {
+                flash_set('success', t('flash.telegram_verified', ['username' => (string) $telegramVerify['username']]));
+            } else {
+                flash_set('error', trim(t('flash.telegram_verify_failed') . ' ' . (string) $telegramVerify['error']));
+            }
+            redirect('/?page=admin&section=app');
+        }
+
         if ($action === 'notion_sync_now') {
             $notionResult = notion_sync_run($pdo, $config, (int) $currentUser['id']);
             flash_set($notionResult['ok'] ? 'success' : 'error', trim(t('flash.notion_sync_done') . ' ' . (string) ($notionResult['message'] ?? '')));
@@ -3596,6 +3632,7 @@ if ($page === 'admin') {
         'notionFieldLabels' => notion_field_labels(),
         'notionFieldMap' => notion_field_map($pdo),
         'notionSchemaCache' => notion_schema_cache($pdo),
+        'telegramSettings' => telegram_settings($pdo),
         'loginBackgroundPath' => $loginBackgroundPath,
         'loginBackgroundLibrary' => $loginBackgroundLibrary,
         'backupSettings' => $backupSettings,

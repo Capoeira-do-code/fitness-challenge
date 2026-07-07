@@ -1155,9 +1155,10 @@ body.theme-active-dark .theme-toggle-icon-moon {
     font-size: 1.25rem;
 }
 
-/* Notion integration admin panel */
+/* Integration admin panels (Notion, Telegram) */
 .admin-notion-panel,
-.admin-notion-mapping {
+.admin-notion-mapping,
+.admin-telegram-panel {
     display: grid;
     gap: 0.6rem;
     margin-top: 0.5rem;

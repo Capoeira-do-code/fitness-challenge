@@ -466,6 +466,43 @@ try {
             </form>
         </div>
 
+        <?php
+        $telegram = is_array($telegramSettings ?? null) ? (array) $telegramSettings : [];
+        $telegramConfigured = ($telegram['token'] ?? '') !== '';
+        ?>
+        <div class="admin-telegram-panel">
+            <h3><?= e(t('admin.telegram_title')) ?></h3>
+            <p class="muted small"><?= e(t('admin.telegram_hint')) ?></p>
+            <form method="post" action="/?page=admin" class="stack compact-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="update_telegram_settings">
+                <div class="toggle-row">
+                    <label class="check standalone-check">
+                        <input type="checkbox" name="telegram_enabled" value="1" <?= !empty($telegram['enabled']) ? 'checked' : '' ?>>
+                        <?= e(t('admin.telegram_enabled')) ?>
+                    </label>
+                </div>
+                <label>
+                    <?= e(t('admin.telegram_token')) ?>
+                    <input type="password" name="telegram_bot_token" autocomplete="off" placeholder="<?= $telegramConfigured ? '••••••••' : '123456:ABC...' ?>">
+                    <span class="muted small"><?= e(t('admin.telegram_token_hint')) ?></span>
+                </label>
+                <label>
+                    <?= e(t('admin.telegram_username')) ?>
+                    <input type="text" name="telegram_bot_username" value="<?= e((string) ($telegram['username'] ?? '')) ?>" placeholder="my_fitness_bot">
+                </label>
+                <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+            </form>
+            <form method="post" action="/?page=admin" class="stack compact-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="telegram_verify_bot">
+                <button class="btn btn-ghost small" type="submit" <?= $telegramConfigured ? '' : 'disabled' ?>><?= e(t('admin.telegram_verify')) ?></button>
+                <?php if (($telegram['username'] ?? '') !== ''): ?>
+                    <span class="muted small">@<?= e((string) $telegram['username']) ?></span>
+                <?php endif; ?>
+            </form>
+        </div>
+
         <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack" data-image-cropper-form>
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="upload_app_icon">
