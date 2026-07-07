@@ -2879,6 +2879,20 @@ if ($page === 'admin') {
             redirect('/?page=admin&section=app');
         }
 
+        if ($action === 'notion_create_database') {
+            $notionParentPage = trim((string) ($_POST['notion_parent_page_id'] ?? ''));
+            set_app_setting($pdo, 'notion_parent_page_id', $notionParentPage, (int) $currentUser['id']);
+            $notionCreate = notion_create_database(notion_settings($pdo), $notionParentPage);
+            if ($notionCreate['ok']) {
+                set_app_setting($pdo, 'notion_database_id', $notionCreate['database_id'], (int) $currentUser['id']);
+                notion_refresh_schema_cache($pdo, (int) $currentUser['id']);
+                flash_set('success', t('flash.notion_db_created'));
+            } else {
+                flash_set('error', trim(t('flash.notion_db_create_failed') . ' ' . (string) $notionCreate['error']));
+            }
+            redirect('/?page=admin&section=app');
+        }
+
         if ($action === 'notion_load_schema') {
             $schemaResult = notion_refresh_schema_cache($pdo, (int) $currentUser['id']);
             if ($schemaResult['ok']) {

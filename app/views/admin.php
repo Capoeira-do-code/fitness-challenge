@@ -380,6 +380,13 @@ try {
                         <?= e(t('admin.notion_enabled')) ?>
                     </label>
                 </div>
+                <div class="toggle-row">
+                    <label class="check standalone-check">
+                        <input type="checkbox" name="notion_external_sync" value="1" <?= !empty($notion['external']) ? 'checked' : '' ?>>
+                        <?= e(t('admin.notion_external')) ?>
+                    </label>
+                    <p class="muted small"><?= e(t('admin.notion_external_hint')) ?></p>
+                </div>
                 <label>
                     <?= e(t('admin.notion_token')) ?>
                     <input type="password" name="notion_token" autocomplete="off" placeholder="<?= $notionConfigured ? '••••••••' : 'secret_...' ?>">
@@ -410,6 +417,20 @@ try {
                 </label>
                 <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
             </form>
+
+            <div class="admin-notion-create">
+                <h4><?= e(t('admin.notion_create_title')) ?></h4>
+                <p class="muted small"><?= e(t('admin.notion_create_hint')) ?></p>
+                <form method="post" action="/?page=admin" class="stack compact-form">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="notion_create_database">
+                    <label>
+                        <?= e(t('admin.notion_parent_page')) ?>
+                        <input type="text" name="notion_parent_page_id" value="<?= e((string) ($notion['parent_page_id'] ?? '')) ?>" placeholder="parent page id">
+                    </label>
+                    <button class="btn btn-ghost small" type="submit"><?= e(t('admin.notion_create_button')) ?></button>
+                </form>
+            </div>
             <?php
             $notionFieldLabels = is_array($notionFieldLabels ?? null) ? (array) $notionFieldLabels : [];
             $notionFieldMap = is_array($notionFieldMap ?? null) ? (array) $notionFieldMap : [];

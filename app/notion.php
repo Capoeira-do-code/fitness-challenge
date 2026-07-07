@@ -142,8 +142,10 @@ function notion_settings(PDO $pdo): array
 {
     return [
         'enabled' => notion_bool((string) (app_setting($pdo, 'notion_enabled', '0') ?? '0')),
+        'external' => notion_bool((string) (app_setting($pdo, 'notion_external_sync', '0') ?? '0')),
         'token' => trim((string) (app_setting($pdo, 'notion_token', '') ?? '')),
         'database_id' => trim((string) (app_setting($pdo, 'notion_database_id', '') ?? '')),
+        'parent_page_id' => trim((string) (app_setting($pdo, 'notion_parent_page_id', '') ?? '')),
         'frequency' => notion_normalize_frequency((string) (app_setting($pdo, 'notion_sync_frequency', 'off') ?? 'off')),
         'direction' => notion_normalize_direction((string) (app_setting($pdo, 'notion_sync_direction', 'push_only') ?? 'push_only')),
         'run_time' => trim((string) (app_setting($pdo, 'notion_sync_run_time', '03:00') ?? '03:00')),
@@ -212,8 +214,12 @@ function notion_update_settings(PDO $pdo, array $input, int $actorUserId): void
     }
 
     set_app_setting($pdo, 'notion_enabled', !empty($input['notion_enabled']) ? '1' : '0', $actorUserId);
+    set_app_setting($pdo, 'notion_external_sync', !empty($input['notion_external_sync']) ? '1' : '0', $actorUserId);
     set_app_setting($pdo, 'notion_token', $token, $actorUserId);
     set_app_setting($pdo, 'notion_database_id', trim((string) ($input['notion_database_id'] ?? '')), $actorUserId);
+    if (array_key_exists('notion_parent_page_id', $input)) {
+        set_app_setting($pdo, 'notion_parent_page_id', trim((string) $input['notion_parent_page_id']), $actorUserId);
+    }
     set_app_setting($pdo, 'notion_sync_frequency', notion_normalize_frequency((string) ($input['notion_sync_frequency'] ?? 'off')), $actorUserId);
     set_app_setting($pdo, 'notion_sync_direction', notion_normalize_direction((string) ($input['notion_sync_direction'] ?? 'push_only')), $actorUserId);
     set_app_setting($pdo, 'notion_sync_run_time', notion_normalize_time((string) ($input['notion_sync_run_time'] ?? '03:00')), $actorUserId);
@@ -271,6 +277,45 @@ function notion_api_request(array $settings, string $method, string $path, ?arra
 
         return $result;
     }
+}
+
+/**
+ * Create a fresh Notion database (with the app's default schema) under a parent
+ * page shared with the integration. Returns the new database id on success.
+ *
+ * @return array{ok:bool,database_id:string,error:string}
+ */
+function notion_create_database(array $settings, string $parentPageId): array
+{
+    $parentPageId = trim($parentPageId);
+    if ($parentPageId === '') {
+        return ['ok' => false, 'database_id' => '', 'error' => 'Missing Notion parent page id.'];
+    }
+
+    $emptyConfig = new stdClass();
+    $properties = [];
+    $properties['Name'] = ['title' => $emptyConfig];
+    foreach (NOTION_PROPERTY_MAP as [$propName, $propType]) {
+        if ($propName === 'Name') {
+            continue;
+        }
+        $properties[$propName] = [$propType => $emptyConfig];
+    }
+
+    $response = notion_api_request($settings, 'POST', '/databases', [
+        'parent' => ['type' => 'page_id', 'page_id' => $parentPageId],
+        'title' => [['type' => 'text', 'text' => ['content' => 'Fitness Challenge']]],
+        'properties' => $properties,
+    ]);
+    if (!$response['ok']) {
+        return ['ok' => false, 'database_id' => '', 'error' => notion_friendly_error($response)];
+    }
+    $databaseId = (string) ($response['data']['id'] ?? '');
+    if ($databaseId === '') {
+        return ['ok' => false, 'database_id' => '', 'error' => 'Notion did not return a database id.'];
+    }
+
+    return ['ok' => true, 'database_id' => $databaseId, 'error' => ''];
 }
 
 /** Turn a failed Notion response into a message that guides the admin. */
@@ -945,6 +990,10 @@ function notion_run_scheduler(PDO $pdo, array $config, ?int $actorUserId = null)
     try {
         $settings = notion_settings($pdo);
         if (!notion_is_enabled($settings) || $settings['frequency'] === 'off') {
+            return;
+        }
+        // The standalone Python sync (bin/notion_sync.py) owns scheduled syncs.
+        if (!empty($settings['external'])) {
             return;
         }
         if (!function_exists('should_run_scheduled_backup')) {
