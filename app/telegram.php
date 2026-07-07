@@ -141,6 +141,25 @@ function telegram_send_message(array $settings, string $chatId, string $text): b
     return $response['ok'];
 }
 
+/**
+ * Send a one-off test message and return the raw API result so the caller can
+ * surface the exact Telegram error.
+ *
+ * @return array{ok:bool,result:mixed,error:string}
+ */
+function telegram_send_test(array $settings, string $chatId, string $text): array
+{
+    if ($chatId === '') {
+        return ['ok' => false, 'result' => null, 'error' => 'no_chat_id'];
+    }
+
+    return telegram_api_request((string) $settings['token'], 'sendMessage', [
+        'chat_id' => $chatId,
+        'text' => $text,
+        'disable_web_page_preview' => true,
+    ]);
+}
+
 function telegram_deep_link(array $settings, string $code): string
 {
     $username = (string) ($settings['username'] ?? '');

@@ -226,11 +226,18 @@ if ($settingsView === 'avatar') {
                 <label><?= e(t('settings.telegram_time')) ?><input type="time" name="telegram_reminder_time" value="<?= e((string) ($currentUser['telegram_reminder_time'] ?? '20:00')) ?>"></label>
                 <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
             </form>
-            <form method="post" action="/?page=settings" class="stack compact-form">
-                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="telegram_unlink">
-                <button class="btn btn-ghost small" type="submit"><?= e(t('settings.telegram_unlink')) ?></button>
-            </form>
+            <div class="inline-actions">
+                <form method="post" action="/?page=settings" class="stack compact-form">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="telegram_test">
+                    <button class="btn btn-ghost small" type="submit"><?= e(t('settings.telegram_test')) ?></button>
+                </form>
+                <form method="post" action="/?page=settings" class="stack compact-form">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="telegram_unlink">
+                    <button class="btn btn-ghost small" type="submit"><?= e(t('settings.telegram_unlink')) ?></button>
+                </form>
+            </div>
         <?php endif; ?>
     </article>
 </section>

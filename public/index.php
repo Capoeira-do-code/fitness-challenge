@@ -1666,6 +1666,22 @@ if ($page === 'settings') {
             redirect('/?page=settings#telegram');
         }
 
+        if ($action === 'telegram_test') {
+            $telegramSettings = telegram_settings($pdo);
+            $telegramChatId = trim((string) ($currentUser['telegram_chat_id'] ?? ''));
+            if ($telegramChatId === '' || !telegram_is_enabled($telegramSettings)) {
+                flash_set('error', trim(t('flash.telegram_test_failed') . ' ' . t('settings.telegram_unavailable')));
+            } else {
+                $telegramTest = telegram_send_test($telegramSettings, $telegramChatId, t('telegram.msg_test'));
+                if ($telegramTest['ok']) {
+                    flash_set('success', t('flash.telegram_test_sent'));
+                } else {
+                    flash_set('error', trim(t('flash.telegram_test_failed') . ' ' . (string) $telegramTest['error']));
+                }
+            }
+            redirect('/?page=settings#telegram');
+        }
+
         if ($action === 'upload_avatar') {
             $storedPath = null;
             $persisted = false;
