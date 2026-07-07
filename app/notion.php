@@ -146,6 +146,10 @@ function notion_settings(PDO $pdo): array
         'token' => trim((string) (app_setting($pdo, 'notion_token', '') ?? '')),
         'database_id' => trim((string) (app_setting($pdo, 'notion_database_id', '') ?? '')),
         'parent_page_id' => trim((string) (app_setting($pdo, 'notion_parent_page_id', '') ?? '')),
+        'oauth_client_id' => trim((string) (app_setting($pdo, 'notion_oauth_client_id', '') ?? '')),
+        'oauth_client_secret' => trim((string) (app_setting($pdo, 'notion_oauth_client_secret', '') ?? '')),
+        'workspace_name' => trim((string) (app_setting($pdo, 'notion_workspace_name', '') ?? '')),
+        'base_url' => rtrim(trim((string) (app_setting($pdo, 'app_base_url', '') ?? '')), '/'),
         'frequency' => notion_normalize_frequency((string) (app_setting($pdo, 'notion_sync_frequency', 'off') ?? 'off')),
         'direction' => notion_normalize_direction((string) (app_setting($pdo, 'notion_sync_direction', 'push_only') ?? 'push_only')),
         'run_time' => trim((string) (app_setting($pdo, 'notion_sync_run_time', '03:00') ?? '03:00')),
@@ -220,6 +224,13 @@ function notion_update_settings(PDO $pdo, array $input, int $actorUserId): void
     if (array_key_exists('notion_parent_page_id', $input)) {
         set_app_setting($pdo, 'notion_parent_page_id', trim((string) $input['notion_parent_page_id']), $actorUserId);
     }
+    if (array_key_exists('notion_oauth_client_id', $input)) {
+        set_app_setting($pdo, 'notion_oauth_client_id', trim((string) $input['notion_oauth_client_id']), $actorUserId);
+    }
+    $oauthSecret = trim((string) ($input['notion_oauth_client_secret'] ?? ''));
+    if ($oauthSecret !== '') {
+        set_app_setting($pdo, 'notion_oauth_client_secret', $oauthSecret, $actorUserId);
+    }
     set_app_setting($pdo, 'notion_sync_frequency', notion_normalize_frequency((string) ($input['notion_sync_frequency'] ?? 'off')), $actorUserId);
     set_app_setting($pdo, 'notion_sync_direction', notion_normalize_direction((string) ($input['notion_sync_direction'] ?? 'push_only')), $actorUserId);
     set_app_setting($pdo, 'notion_sync_run_time', notion_normalize_time((string) ($input['notion_sync_run_time'] ?? '03:00')), $actorUserId);
@@ -277,6 +288,90 @@ function notion_api_request(array $settings, string $method, string $path, ?arra
 
         return $result;
     }
+}
+
+function notion_oauth_configured(array $settings): bool
+{
+    return ($settings['oauth_client_id'] ?? '') !== '' && ($settings['oauth_client_secret'] ?? '') !== '';
+}
+
+/** Callback URL Notion redirects to; must be registered in the public integration. */
+function notion_oauth_redirect_uri(array $settings): string
+{
+    $base = rtrim((string) ($settings['base_url'] ?? ''), '/');
+
+    return $base === '' ? '' : $base . '/?page=notion_oauth_callback';
+}
+
+/** Build the Notion authorize URL the admin's browser is sent to. */
+function notion_oauth_authorize_url(array $settings, string $state): string
+{
+    $redirectUri = notion_oauth_redirect_uri($settings);
+    if (!notion_oauth_configured($settings) || $redirectUri === '') {
+        return '';
+    }
+
+    return 'https://api.notion.com/v1/oauth/authorize?' . http_build_query([
+        'client_id' => (string) $settings['oauth_client_id'],
+        'response_type' => 'code',
+        'owner' => 'user',
+        'redirect_uri' => $redirectUri,
+        'state' => $state,
+    ]);
+}
+
+/**
+ * Exchange an OAuth authorization code for an access token.
+ *
+ * @return array{ok:bool,access_token:string,workspace_name:string,error:string}
+ */
+function notion_oauth_exchange_code(array $settings, string $code, string $redirectUri): array
+{
+    if (!notion_oauth_configured($settings)) {
+        return ['ok' => false, 'access_token' => '', 'workspace_name' => '', 'error' => 'OAuth is not configured.'];
+    }
+
+    $basic = base64_encode(((string) $settings['oauth_client_id']) . ':' . ((string) $settings['oauth_client_secret']));
+    $headers = [
+        'Authorization: Basic ' . $basic,
+        'Notion-Version: ' . NOTION_API_VERSION,
+        'Content-Type: application/json',
+        'Accept: application/json',
+    ];
+    $payload = (string) json_encode([
+        'grant_type' => 'authorization_code',
+        'code' => $code,
+        'redirect_uri' => $redirectUri,
+    ]);
+    $url = NOTION_API_BASE . '/oauth/token';
+
+    if (function_exists('curl_init')) {
+        $response = notion_api_request_curl('POST', $url, $headers, $payload);
+    } else {
+        $response = notion_api_request_stream('POST', $url, $headers, $payload);
+    }
+    if (!$response['ok']) {
+        return ['ok' => false, 'access_token' => '', 'workspace_name' => '', 'error' => notion_friendly_error($response)];
+    }
+    $accessToken = (string) ($response['data']['access_token'] ?? '');
+    if ($accessToken === '') {
+        return ['ok' => false, 'access_token' => '', 'workspace_name' => '', 'error' => 'Notion did not return an access token.'];
+    }
+
+    return [
+        'ok' => true,
+        'access_token' => $accessToken,
+        'workspace_name' => (string) ($response['data']['workspace_name'] ?? ''),
+        'error' => '',
+    ];
+}
+
+function notion_oauth_disconnect(PDO $pdo, int $actorUserId): void
+{
+    set_app_setting($pdo, 'notion_token', '', $actorUserId);
+    set_app_setting($pdo, 'notion_workspace_name', '', $actorUserId);
+    set_app_setting($pdo, 'notion_database_id', '', $actorUserId);
+    set_app_setting($pdo, 'notion_schema_cache', '', $actorUserId);
 }
 
 /**

@@ -371,6 +371,52 @@ try {
         <div class="admin-notion-panel">
             <h3><?= e(t('admin.notion_title')) ?></h3>
             <p class="muted small"><?= e(t('admin.notion_hint')) ?></p>
+
+            <?php
+            $notionOauthConfigured = ($notion['oauth_client_id'] ?? '') !== '' && ($notion['oauth_client_secret'] ?? '') !== '';
+            $notionBaseUrl = (string) ($notion['base_url'] ?? '');
+            $notionRedirectUri = $notionBaseUrl !== '' ? rtrim($notionBaseUrl, '/') . '/?page=notion_oauth_callback' : '';
+            $notionConnected = ($notion['token'] ?? '') !== '';
+            ?>
+            <div class="admin-notion-oauth">
+                <h4><?= e(t('admin.notion_oauth_title')) ?></h4>
+                <?php if ($notionConnected && ($notion['workspace_name'] ?? '') !== ''): ?>
+                    <p class="small">✓ <?= e(t('admin.notion_oauth_connected', ['workspace' => (string) $notion['workspace_name']])) ?></p>
+                    <form method="post" action="/?page=admin" class="stack compact-form">
+                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                        <input type="hidden" name="action" value="notion_oauth_disconnect">
+                        <button class="btn btn-ghost small" type="submit"><?= e(t('admin.notion_oauth_disconnect')) ?></button>
+                    </form>
+                <?php else: ?>
+                    <p class="muted small"><?= e(t('admin.notion_oauth_hint')) ?></p>
+                    <?php if ($notionRedirectUri !== ''): ?>
+                        <p class="muted small"><?= e(t('admin.notion_oauth_redirect')) ?>: <code><?= e($notionRedirectUri) ?></code></p>
+                    <?php else: ?>
+                        <p class="muted small"><?= e(t('admin.notion_oauth_need_base_url')) ?></p>
+                    <?php endif; ?>
+                    <?php if ($notionOauthConfigured && $notionRedirectUri !== ''): ?>
+                        <form method="post" action="/?page=admin" class="stack compact-form">
+                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                            <input type="hidden" name="action" value="notion_oauth_start">
+                            <button class="btn btn-primary" type="submit"><?= e(t('admin.notion_oauth_connect')) ?></button>
+                        </form>
+                    <?php endif; ?>
+                <?php endif; ?>
+                <form method="post" action="/?page=admin" class="stack compact-form">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="update_notion_settings">
+                    <label>
+                        <?= e(t('admin.notion_oauth_client_id')) ?>
+                        <input type="text" name="notion_oauth_client_id" value="<?= e((string) ($notion['oauth_client_id'] ?? '')) ?>" placeholder="client id">
+                    </label>
+                    <label>
+                        <?= e(t('admin.notion_oauth_client_secret')) ?>
+                        <input type="password" name="notion_oauth_client_secret" autocomplete="off" placeholder="<?= ($notion['oauth_client_secret'] ?? '') !== '' ? '•••••••• (guardado)' : 'client secret' ?>">
+                    </label>
+                    <button class="btn btn-ghost small" type="submit"><?= e(t('common.save')) ?></button>
+                </form>
+            </div>
+
             <form method="post" action="/?page=admin" class="stack compact-form">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="update_notion_settings">

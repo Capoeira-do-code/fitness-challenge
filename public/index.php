@@ -144,6 +144,39 @@ if ($page === 'set_theme') {
     json_response(['ok' => true, 'theme_mode' => $theme]);
 }
 
+if ($page === 'notion_oauth_callback') {
+    if ($currentUser === null || !is_admin($currentUser)) {
+        flash_set('error', t('flash.no_permission'));
+        redirect('/?page=login');
+    }
+    $oauthError = trim((string) ($_GET['error'] ?? ''));
+    $oauthCode = trim((string) ($_GET['code'] ?? ''));
+    $oauthState = (string) ($_GET['state'] ?? '');
+    $expectedState = (string) ($_SESSION['notion_oauth_state'] ?? '');
+    unset($_SESSION['notion_oauth_state']);
+
+    if ($oauthError !== '') {
+        flash_set('error', trim(t('flash.notion_oauth_failed') . ' ' . $oauthError));
+        redirect('/?page=admin&section=app');
+    }
+    if ($oauthCode === '' || $expectedState === '' || !hash_equals($expectedState, $oauthState)) {
+        flash_set('error', t('flash.notion_oauth_state'));
+        redirect('/?page=admin&section=app');
+    }
+
+    $notionSettings = notion_settings($pdo);
+    $exchange = notion_oauth_exchange_code($notionSettings, $oauthCode, notion_oauth_redirect_uri($notionSettings));
+    if ($exchange['ok']) {
+        set_app_setting($pdo, 'notion_token', $exchange['access_token'], (int) $currentUser['id']);
+        set_app_setting($pdo, 'notion_workspace_name', $exchange['workspace_name'], (int) $currentUser['id']);
+        set_app_setting($pdo, 'notion_enabled', '1', (int) $currentUser['id']);
+        flash_set('success', t('flash.notion_oauth_connected', ['workspace' => $exchange['workspace_name']]));
+    } else {
+        flash_set('error', trim(t('flash.notion_oauth_failed') . ' ' . (string) $exchange['error']));
+    }
+    redirect('/?page=admin&section=app');
+}
+
 if ($page === 'logout') {
     $logoutMessage = t('flash.logout');
     set_remember_me_cookie($config, false);
@@ -2876,6 +2909,23 @@ if ($page === 'admin') {
         if ($action === 'update_notion_settings') {
             notion_update_settings($pdo, $_POST, (int) $currentUser['id']);
             flash_set('success', t('flash.notion_settings_updated'));
+            redirect('/?page=admin&section=app');
+        }
+
+        if ($action === 'notion_oauth_start') {
+            $notionSettings = notion_settings($pdo);
+            if (!notion_oauth_configured($notionSettings) || notion_oauth_redirect_uri($notionSettings) === '') {
+                flash_set('error', t('flash.notion_oauth_not_configured'));
+                redirect('/?page=admin&section=app');
+            }
+            $notionOauthState = bin2hex(random_bytes(16));
+            $_SESSION['notion_oauth_state'] = $notionOauthState;
+            redirect(notion_oauth_authorize_url($notionSettings, $notionOauthState));
+        }
+
+        if ($action === 'notion_oauth_disconnect') {
+            notion_oauth_disconnect($pdo, (int) $currentUser['id']);
+            flash_set('success', t('flash.notion_oauth_disconnected'));
             redirect('/?page=admin&section=app');
         }
 
