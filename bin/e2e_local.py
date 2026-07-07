@@ -674,6 +674,60 @@ def ensure_db_mode(db_mode: str, force: bool) -> None:
         print(f"[db] Reset database file: {reset_path}")
 
 
+WINDOWS_CA_BUNDLE = TOOLS_DIR / "ca-bundle.pem"
+CA_BUNDLE_MAX_AGE_S = 7 * 24 * 3600
+
+
+def ensure_windows_ca_bundle() -> Optional[Path]:
+    """Export the Windows trusted-root store to a PEM so PHP's OpenSSL-backed curl
+    can verify HTTPS. Crucially this includes any TLS-inspection root injected by
+    antivirus/proxy software (Kaspersky, ESET, Zscaler, corporate proxies, ...),
+    which OpenSSL would otherwise reject as a self-signed cert in the chain."""
+    if os.name != "nt":
+        return None
+
+    try:
+        if WINDOWS_CA_BUNDLE.exists():
+            stat = WINDOWS_CA_BUNDLE.stat()
+            if stat.st_size > 1000 and (time.time() - stat.st_mtime) < CA_BUNDLE_MAX_AGE_S:
+                print(f"[tls] Using cached Windows CA bundle for PHP HTTPS: {WINDOWS_CA_BUNDLE}")
+                return WINDOWS_CA_BUNDLE
+    except OSError:
+        pass
+
+    TOOLS_DIR.mkdir(parents=True, exist_ok=True)
+    ps_script = (
+        "$ErrorActionPreference='SilentlyContinue';"
+        "$certs=@();"
+        "$certs+=Get-ChildItem Cert:\\LocalMachine\\Root;"
+        "$certs+=Get-ChildItem Cert:\\CurrentUser\\Root;"
+        "$seen=@{};$sb=New-Object System.Text.StringBuilder;"
+        "foreach($c in $certs){ if($seen.ContainsKey($c.Thumbprint)){continue}; $seen[$c.Thumbprint]=$true;"
+        "[void]$sb.AppendLine('-----BEGIN CERTIFICATE-----');"
+        "[void]$sb.AppendLine([Convert]::ToBase64String($c.RawData,'InsertLineBreaks'));"
+        "[void]$sb.AppendLine('-----END CERTIFICATE-----') }"
+        f"Set-Content -Path '{WINDOWS_CA_BUNDLE}' -Value $sb.ToString() -Encoding ascii"
+    )
+    try:
+        subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+            cwd=str(ROOT),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+    except Exception as exc:
+        print(f"[tls] Could not export Windows CA bundle: {exc}")
+        return None
+
+    if WINDOWS_CA_BUNDLE.exists() and WINDOWS_CA_BUNDLE.stat().st_size > 1000:
+        print(f"[tls] Using Windows trusted roots for PHP HTTPS: {WINDOWS_CA_BUNDLE}")
+        return WINDOWS_CA_BUNDLE
+    print("[tls] Could not build a CA bundle; outbound HTTPS may fail behind TLS-inspecting antivirus/proxy.")
+    return None
+
+
 def build_php_server_command(php_bin: str, host: str, port: int) -> tuple[list[str], dict]:
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
@@ -691,6 +745,14 @@ def build_php_server_command(php_bin: str, host: str, port: int) -> tuple[list[s
     runtime_flags: list[str] = []
     if os.name == "nt":
         runtime_flags = windows_runtime_extension_flags(php_bin)
+        ca_bundle = ensure_windows_ca_bundle()
+        if ca_bundle is not None:
+            runtime_flags = runtime_flags + [
+                "-d",
+                f"curl.cainfo={ca_bundle.as_posix()}",
+                "-d",
+                f"openssl.cafile={ca_bundle.as_posix()}",
+            ]
 
     if not php_has_sqlite_driver(php_bin, runtime_flags):
         raise RunnerError(
