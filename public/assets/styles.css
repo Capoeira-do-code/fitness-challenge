@@ -985,6 +985,19 @@ body.theme-active-dark .theme-toggle-icon-moon {
     font-size: 0.74rem;
     font-weight: 800;
     text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+/* Brighten the accent eyebrow on dark surfaces (primary-dark is too dim there). */
+body[data-theme="dark"] .eyebrow,
+body.theme-active-dark .eyebrow {
+    color: #4fd6bd;
+}
+
+@media (prefers-color-scheme: dark) {
+    body[data-theme="auto"] .eyebrow {
+        color: #4fd6bd;
+    }
 }
 
 .muted {
@@ -1471,7 +1484,7 @@ body.theme-active-dark .theme-toggle-icon-moon {
 label {
     display: grid;
     gap: 0.35rem;
-    color: #2c3843;
+    color: var(--ink);
     font-size: 0.9rem;
     font-weight: 700;
 }
