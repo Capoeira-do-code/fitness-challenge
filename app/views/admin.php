@@ -8,7 +8,7 @@ for ($i = 0; $i < 7; $i++) {
 }
 $entityTypes = ['daily_log', 'approval_request', 'user', 'team_membership', 'goal', 'achievement', 'workout_type', 'photo_entry', 'app_setting', 'system_backup', 'motivational_quote'];
 $activeSection = (string) ($_GET['section'] ?? '');
-$allowedSections = ['users', 'challenge', 'app', 'backups', 'habits', 'workout_types', 'achievements', 'motivational_quotes', 'audit'];
+$allowedSections = ['users', 'challenge', 'app', 'notion', 'telegram', 'backups', 'habits', 'workout_types', 'achievements', 'motivational_quotes', 'audit'];
 if (!in_array($activeSection, $allowedSections, true)) {
     $activeSection = '';
 }
@@ -33,6 +33,8 @@ $sectionRows = [
     'users' => 'Users',
     'challenge' => 'Challenge',
     'app' => 'App',
+    'notion' => 'Notion',
+    'telegram' => 'Telegram',
     'backups' => 'Backups',
     'habits' => 'Habits',
     'workout_types' => 'Workout Types',
@@ -363,7 +365,13 @@ try {
             </div>
             <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
         </form>
+    </article>
 
+    <article class="panel settings-panel<?= $activeSection === 'notion' ? ' active' : '' ?>" data-spa-section="notion" <?= $activeSection === 'notion' ? '' : 'hidden' ?>>
+        <div class="panel-head">
+            <h2>Notion</h2>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+        </div>
         <?php
         $notion = is_array($notionSettings ?? null) ? (array) $notionSettings : [];
         $notionConfigured = ($notion['token'] ?? '') !== '' && ($notion['database_id'] ?? '') !== '';
@@ -533,6 +541,13 @@ try {
             </form>
         </div>
 
+    </article>
+
+    <article class="panel settings-panel<?= $activeSection === 'telegram' ? ' active' : '' ?>" data-spa-section="telegram" <?= $activeSection === 'telegram' ? '' : 'hidden' ?>>
+        <div class="panel-head">
+            <h2>Telegram</h2>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+        </div>
         <?php
         $telegram = is_array($telegramSettings ?? null) ? (array) $telegramSettings : [];
         $telegramConfigured = ($telegram['token'] ?? '') !== '';
@@ -611,7 +626,9 @@ try {
                 <?php endif; ?>
             </div>
         </div>
+    </article>
 
+    <article class="panel settings-panel<?= $activeSection === 'app' ? ' active' : '' ?>" data-spa-section="app" <?= $activeSection === 'app' ? '' : 'hidden' ?>>
         <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack" data-image-cropper-form>
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="upload_app_icon">

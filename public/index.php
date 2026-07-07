@@ -2909,14 +2909,14 @@ if ($page === 'admin') {
         if ($action === 'update_notion_settings') {
             notion_update_settings($pdo, $_POST, (int) $currentUser['id']);
             flash_set('success', t('flash.notion_settings_updated'));
-            redirect('/?page=admin&section=app');
+            redirect('/?page=admin&section=notion');
         }
 
         if ($action === 'notion_oauth_start') {
             $notionSettings = notion_settings($pdo);
             if (!notion_oauth_configured($notionSettings) || notion_oauth_redirect_uri($notionSettings) === '') {
                 flash_set('error', t('flash.notion_oauth_not_configured'));
-                redirect('/?page=admin&section=app');
+                redirect('/?page=admin&section=notion');
             }
             $notionOauthState = bin2hex(random_bytes(16));
             $_SESSION['notion_oauth_state'] = $notionOauthState;
@@ -2926,7 +2926,7 @@ if ($page === 'admin') {
         if ($action === 'notion_oauth_disconnect') {
             notion_oauth_disconnect($pdo, (int) $currentUser['id']);
             flash_set('success', t('flash.notion_oauth_disconnected'));
-            redirect('/?page=admin&section=app');
+            redirect('/?page=admin&section=notion');
         }
 
         if ($action === 'notion_create_database') {
@@ -2940,7 +2940,7 @@ if ($page === 'admin') {
             } else {
                 flash_set('error', trim(t('flash.notion_db_create_failed') . ' ' . (string) $notionCreate['error']));
             }
-            redirect('/?page=admin&section=app');
+            redirect('/?page=admin&section=notion');
         }
 
         if ($action === 'notion_load_schema') {
@@ -2950,19 +2950,19 @@ if ($page === 'admin') {
             } else {
                 flash_set('error', trim(t('flash.notion_schema_failed') . ' ' . (string) $schemaResult['error']));
             }
-            redirect('/?page=admin&section=app');
+            redirect('/?page=admin&section=notion');
         }
 
         if ($action === 'update_notion_field_map') {
             notion_save_field_map($pdo, $_POST, (int) $currentUser['id']);
             flash_set('success', t('flash.notion_mapping_updated'));
-            redirect('/?page=admin&section=app');
+            redirect('/?page=admin&section=notion');
         }
 
         if ($action === 'update_telegram_settings') {
             telegram_update_settings($pdo, $_POST, (int) $currentUser['id']);
             flash_set('success', t('flash.telegram_settings_updated'));
-            redirect('/?page=admin&section=app');
+            redirect('/?page=admin&section=telegram');
         }
 
         if ($action === 'telegram_verify_bot') {
@@ -2972,7 +2972,7 @@ if ($page === 'admin') {
             } else {
                 flash_set('error', trim(t('flash.telegram_verify_failed') . ' ' . (string) $telegramVerify['error']));
             }
-            redirect('/?page=admin&section=app');
+            redirect('/?page=admin&section=telegram');
         }
 
         if ($action === 'telegram_admin_unlink') {
@@ -2981,13 +2981,13 @@ if ($page === 'admin') {
                 telegram_unlink_user($pdo, $telegramUnlinkUserId);
                 flash_set('success', t('flash.telegram_admin_unlinked'));
             }
-            redirect('/?page=admin&section=app');
+            redirect('/?page=admin&section=telegram');
         }
 
         if ($action === 'notion_sync_now') {
             $notionResult = notion_sync_run($pdo, $config, (int) $currentUser['id']);
             flash_set($notionResult['ok'] ? 'success' : 'error', trim(t('flash.notion_sync_done') . ' ' . (string) ($notionResult['message'] ?? '')));
-            redirect('/?page=admin&section=app');
+            redirect('/?page=admin&section=notion');
         }
 
         if ($action === 'update_challenge_settings') {
