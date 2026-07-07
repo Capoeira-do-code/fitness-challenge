@@ -671,6 +671,8 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'telegram_motivation_enabled', 'INTEGER NOT NULL DEFAULT 0');
     ensure_column($pdo, 'users', 'telegram_reminder_time', "TEXT NOT NULL DEFAULT '20:00'");
     ensure_column($pdo, 'users', 'telegram_last_reminded_on', 'TEXT');
+    ensure_column($pdo, 'users', 'telegram_last_reminded_at', 'TEXT');
+    ensure_column($pdo, 'users', 'telegram_reminder_count', 'INTEGER NOT NULL DEFAULT 0');
     ensure_column($pdo, 'users', 'telegram_last_motivation_on', 'TEXT');
 
     ensure_column($pdo, 'daily_logs', 'extra_workout', 'INTEGER NOT NULL DEFAULT 0');

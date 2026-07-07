@@ -1047,6 +1047,21 @@ def run_quick_checks(
     return 1 if failed else 0
 
 
+def start_telegram_bot() -> Optional[subprocess.Popen]:
+    bot_script = ROOT / "bin" / "telegram_bot.py"
+    if not bot_script.exists():
+        return None
+    env = os.environ.copy()
+    env["DB_PATH"] = str(STORAGE_DIR / "fitness.sqlite")
+    cmd = [sys.executable, str(bot_script)]
+    print("[telegram] Launching Telegram bot alongside the app (Ctrl+C stops both).")
+    try:
+        return subprocess.Popen(cmd, cwd=str(ROOT), env=env)
+    except Exception as exc:
+        print(f"[telegram] Could not start the bot: {exc}")
+        return None
+
+
 def serve_basic_ui(
     base_url: str,
     *,
@@ -1057,6 +1072,7 @@ def serve_basic_ui(
     window_pos: Optional[tuple[int, int]],
     wait_timeout_s: int,
     wait_interval_ms: int,
+    launch_telegram_bot: bool = True,
 ) -> int:
     live_url, proc = start_basic_server(
         base_url,
@@ -1074,12 +1090,14 @@ def serve_basic_ui(
     )
     if proc is None:
         return 0
+    bot_proc = start_telegram_bot() if launch_telegram_bot else None
     print("[serve] Press Ctrl+C to stop.")
     try:
         proc.wait()
     except KeyboardInterrupt:
         print("\n[serve] Stopping local PHP server...")
     finally:
+        stop_process(bot_proc)
         stop_process(proc)
     return 0
 
@@ -1222,6 +1240,12 @@ def main() -> int:
         action="store_true",
         help="Launch php_runtime_manager wizard.",
     )
+    parser.add_argument(
+        "--telegram-bot",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Also run the Telegram bot (bin/telegram_bot.py) alongside the app in basic mode.",
+    )
 
     args = parser.parse_args()
 
@@ -1283,6 +1307,7 @@ def main() -> int:
                 window_pos=window_pos,
                 wait_timeout_s=max(10, int(args.wait_timeout_s)),
                 wait_interval_ms=max(50, int(args.wait_interval_ms)),
+                launch_telegram_bot=bool(args.telegram_bot),
             )
 
     except RunnerError as exc:

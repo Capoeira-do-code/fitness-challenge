@@ -31,7 +31,8 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime
+import math
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -41,22 +42,58 @@ TELEGRAM_API_BASE = "https://api.telegram.org"
 POLL_TIMEOUT = 20           # long-poll seconds
 REMINDER_INTERVAL = 60      # seconds between reminder passes
 MAX_SENDS_PER_PASS = 25
+MAX_REMINDERS_PER_DAY = 3   # first nudge + up to 2 follow-ups while still unlogged
+FOLLOWUP_MINUTES = 90       # gap between follow-up nudges
+ADD_DATA_PATH = "/?page=entries&mode=data"
 
 MESSAGES = {
-    "linked": {
-        "en": "Linked! You will get reminders and motivation here. Manage this in Settings.",
-        "es": "Vinculado! Recibiras recordatorios y motivacion aqui. Gestionalo en Ajustes.",
-        "it": "Collegato! Riceverai promemoria e motivazione qui. Gestisci tutto in Impostazioni.",
+    "en": {
+        "linked": "Linked! You will get reminders and motivation here.\nType /progress anytime to see how you are doing.",
+        "not_linked": "Your Telegram is not linked yet. Open Settings in the app and press Link Telegram.",
+        "no_challenge": "There is no active challenge right now.",
+        "rem1": "{name}, you have not logged your day yet. One minute and you are done.",
+        "rem2": "{name}, your log for today is still pending. Do not let it slip.",
+        "rem3": "{name}, last nudge today: keep your streak alive.",
+        "cta": "Log now:",
+        "progress_head": "Your progress, {name}",
+        "motivation": "Motivation for today: {quote}",
+        "motivation_progress": "You are at {pct}% consistency. Keep going!",
+        "help": "Commands:\n/progress - see your progress\n/help - this help",
+        "l_streak": "Streak", "l_logged": "Days logged", "l_steps": "Steps",
+        "l_workouts": "Workouts", "l_stepgoal": "Step goal", "l_remaining": "Remaining",
+        "u_days": "days", "u_avg": "avg", "u_perday": "/day",
     },
-    "reminder": {
-        "en": "{name}, you have not logged your training today. Open the app and note your day.",
-        "es": "{name}, todavia no registraste tu entreno de hoy. Abre la app y anota tu dia.",
-        "it": "{name}, non hai ancora registrato il tuo allenamento di oggi. Apri l'app e annota la giornata.",
+    "es": {
+        "linked": "Vinculado! Recibiras recordatorios y motivacion aqui.\nEscribe /progress cuando quieras ver como vas.",
+        "not_linked": "Tu Telegram no esta vinculado. Ve a Ajustes en la app y pulsa Vincular Telegram.",
+        "no_challenge": "No hay un challenge activo ahora mismo.",
+        "rem1": "{name}, aun no registraste tu dia. Un minuto y listo.",
+        "rem2": "{name}, sigue pendiente tu registro de hoy. No lo dejes pasar.",
+        "rem3": "{name}, ultimo aviso de hoy: no rompas tu racha.",
+        "cta": "Registrar ahora:",
+        "progress_head": "Tu progreso, {name}",
+        "motivation": "Motivacion de hoy: {quote}",
+        "motivation_progress": "Vas al {pct}% de constancia. Sigue asi!",
+        "help": "Comandos:\n/progress - ver tu progreso\n/help - esta ayuda",
+        "l_streak": "Racha", "l_logged": "Dias registrados", "l_steps": "Pasos",
+        "l_workouts": "Entrenos", "l_stepgoal": "Meta de pasos", "l_remaining": "Quedan",
+        "u_days": "dias", "u_avg": "media", "u_perday": "/dia",
     },
-    "motivation": {
-        "en": "Motivation for today: {quote}",
-        "es": "Motivacion de hoy: {quote}",
-        "it": "Motivazione di oggi: {quote}",
+    "it": {
+        "linked": "Collegato! Riceverai promemoria e motivazione qui.\nScrivi /progress per vedere come stai andando.",
+        "not_linked": "Il tuo Telegram non e collegato. Apri Impostazioni nell'app e premi Collega Telegram.",
+        "no_challenge": "Non c'e una challenge attiva al momento.",
+        "rem1": "{name}, non hai ancora registrato la giornata. Un minuto e hai finito.",
+        "rem2": "{name}, la registrazione di oggi e ancora in sospeso. Non lasciarla perdere.",
+        "rem3": "{name}, ultimo promemoria di oggi: non spezzare la tua striscia.",
+        "cta": "Registra ora:",
+        "progress_head": "I tuoi progressi, {name}",
+        "motivation": "Motivazione di oggi: {quote}",
+        "motivation_progress": "Sei al {pct}% di costanza. Continua cosi!",
+        "help": "Comandi:\n/progress - vedi i tuoi progressi\n/help - questo aiuto",
+        "l_streak": "Striscia", "l_logged": "Giorni registrati", "l_steps": "Passi",
+        "l_workouts": "Allenamenti", "l_stepgoal": "Obiettivo passi", "l_remaining": "Restano",
+        "u_days": "giorni", "u_avg": "media", "u_perday": "/giorno",
     },
 }
 
@@ -85,13 +122,20 @@ def log(message: str) -> None:
     print(f"[{now_iso()}] {message}", flush=True)
 
 
-def message_for(locale: str, key: str, **params) -> str:
+def T(locale: str, key: str, **params) -> str:
     locale = (locale or "en").lower()
-    table = MESSAGES.get(key, {})
-    template = table.get(locale) or table.get("en", "")
+    table = MESSAGES.get(locale) or MESSAGES["en"]
+    template = table.get(key) or MESSAGES["en"].get(key, key)
     for name, value in params.items():
         template = template.replace("{" + name + "}", str(value))
     return template
+
+
+def fmt_int(value) -> str:
+    try:
+        return f"{int(round(float(value))):,}".replace(",", ".")
+    except (TypeError, ValueError):
+        return "0"
 
 
 class BotDB:
@@ -124,6 +168,7 @@ class BotDB:
             "username": self.setting("telegram_bot_username", "").strip(),
             "external": self.setting("telegram_external_bot", "0") in ("1", "true", "yes", "on"),
             "offset": int(self.setting("telegram_update_offset", "0") or "0"),
+            "base_url": self.setting("app_base_url", "").strip().rstrip("/"),
         }
 
     def user_by_link_code(self, code: str) -> Optional[sqlite3.Row]:
@@ -177,6 +222,38 @@ class BotDB:
         )
         self.conn.commit()
 
+    def mark_reminder_sent(self, user_id: int, when: str, count: int, date: str) -> None:
+        self.conn.execute(
+            "UPDATE users SET telegram_last_reminded_at = ?, telegram_reminder_count = ?, "
+            "telegram_last_reminded_on = ? WHERE id = ?",
+            (when, count, date, user_id),
+        )
+        self.conn.commit()
+
+    def user_by_chat_id(self, chat_id: str) -> Optional[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM users WHERE telegram_chat_id = ? AND active = 1", (chat_id,)
+        ).fetchone()
+
+    def challenge_range(self) -> Optional[tuple[str, str]]:
+        row = self.conn.execute(
+            "SELECT challenge_start, challenge_end FROM challenge_settings WHERE id = 1"
+        ).fetchone()
+        if row is None:
+            return None
+        start = str(row["challenge_start"] or "").strip()
+        end = str(row["challenge_end"] or "").strip()
+        if not start or not end:
+            return None
+        return start, end
+
+    def logs_between(self, user_id: int, start: str, end: str) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM daily_logs WHERE user_id = ? AND log_date BETWEEN ? AND ? "
+            "ORDER BY log_date ASC",
+            (user_id, start, end),
+        ).fetchall()
+
 
 def api_call(token: str, method: str, params: Optional[dict] = None, timeout: int = 25):
     if not token:
@@ -219,6 +296,174 @@ def ensure_no_webhook(token: str) -> None:
         log(f"deleteWebhook failed: {error}")
 
 
+def claim_ownership(db: BotDB, settings: dict) -> None:
+    """Verify the configured bot token and cache its username for deep links."""
+    token = str(settings.get("token") or "").strip()
+    if not token:
+        return
+
+    info, error = api_call(token, "getMe")
+    if error is not None:
+        log(f"bot ownership check failed: {error}")
+        return
+    if not isinstance(info, dict):
+        log("bot ownership check returned an unexpected response")
+        return
+
+    username = str(info.get("username") or "").strip()
+    if username:
+        db.set_setting("telegram_bot_username", username)
+        settings["username"] = username
+        log(f"connected to Telegram bot @{username}")
+    else:
+        log("connected to Telegram bot but no username was returned")
+
+
+def rget(row, key, default=None):
+    try:
+        return row[key] if key in row.keys() else default
+    except Exception:
+        return default
+
+
+def _parse_date(value):
+    try:
+        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_dt(value):
+    try:
+        return datetime.strptime(str(value)[:19], "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return None
+
+
+def _log_is_meaningful(row) -> bool:
+    return (
+        int(rget(row, "steps", 0) or 0) > 0
+        or int(rget(row, "workout_done", 0) or 0) == 1
+        or float(rget(row, "distance_km", 0) or 0) > 0
+        or rget(row, "weight") is not None
+        or str(rget(row, "notes", "") or "").strip() != ""
+    )
+
+
+def compute_stats(db: BotDB, user: sqlite3.Row) -> Optional[dict]:
+    rng = db.challenge_range()
+    if rng is None:
+        return None
+    start, end = _parse_date(rng[0]), _parse_date(rng[1])
+    if start is None or end is None:
+        return None
+    today = now().date()
+    if today < start:
+        return {"not_started": True, "days_total": (end - start).days + 1,
+                "days_remaining": (end - today).days}
+    eff_end = min(today, end)
+    days_total = (end - start).days + 1
+    days_elapsed = (eff_end - start).days + 1
+    days_remaining = max(0, (end - today).days) if today <= end else 0
+
+    user_id = int(user["id"])
+    step_goal = int(rget(user, "step_goal", 0) or 0)
+    workout_target = int(rget(user, "workout_target", 0) or 0)
+
+    total_steps = 0
+    total_km = 0.0
+    total_workouts = 0
+    step_goal_hits = 0
+    logged_dates = set()
+    for row in db.logs_between(user_id, rng[0], eff_end.strftime("%Y-%m-%d")):
+        if not _log_is_meaningful(row):
+            continue
+        d = _parse_date(row["log_date"])
+        if d:
+            logged_dates.add(d)
+        steps = int(rget(row, "steps", 0) or 0)
+        total_steps += steps
+        total_km += float(rget(row, "distance_km", 0) or 0)
+        if int(rget(row, "workout_done", 0) or 0) == 1:
+            total_workouts += 1
+        if step_goal > 0 and steps >= step_goal:
+            step_goal_hits += 1
+
+    days_logged = len(logged_dates)
+    consistency = round(days_logged / days_elapsed * 100) if days_elapsed else 0
+    avg_steps = round(total_steps / days_elapsed) if days_elapsed else 0
+
+    streak = 0
+    cursor = today if today in logged_dates else today - timedelta(days=1)
+    while cursor in logged_dates and cursor >= start:
+        streak += 1
+        cursor -= timedelta(days=1)
+
+    weeks = max(1, math.ceil(days_elapsed / 7))
+    expected_workouts = workout_target * weeks
+    step_goal_pct = round(step_goal_hits / days_elapsed * 100) if (step_goal > 0 and days_elapsed) else None
+
+    return {
+        "not_started": False,
+        "days_total": days_total, "days_elapsed": days_elapsed, "days_remaining": days_remaining,
+        "days_logged": days_logged, "consistency": consistency, "streak": streak,
+        "total_steps": total_steps, "avg_steps": avg_steps, "total_km": round(total_km, 1),
+        "total_workouts": total_workouts, "expected_workouts": expected_workouts,
+        "step_goal": step_goal, "step_goal_hits": step_goal_hits, "step_goal_pct": step_goal_pct,
+    }
+
+
+def stats_block(stats: Optional[dict], locale: str) -> str:
+    if not stats or stats.get("not_started"):
+        return ""
+    days = T(locale, "u_days")
+    lines = [
+        f"\U0001F525 {T(locale, 'l_streak')}: {stats['streak']} {days}",
+        f"\U0001F4C5 {T(locale, 'l_logged')}: {stats['days_logged']}/{stats['days_elapsed']} ({stats['consistency']}%)",
+        f"\U0001F45F {T(locale, 'l_steps')}: {fmt_int(stats['total_steps'])} ({T(locale, 'u_avg')} {fmt_int(stats['avg_steps'])}{T(locale, 'u_perday')})",
+    ]
+    if stats["expected_workouts"] > 0:
+        lines.append(f"\U0001F3CB️ {T(locale, 'l_workouts')}: {stats['total_workouts']}/{stats['expected_workouts']}")
+    else:
+        lines.append(f"\U0001F3CB️ {T(locale, 'l_workouts')}: {stats['total_workouts']}")
+    if stats["step_goal_pct"] is not None:
+        lines.append(f"\U0001F3AF {T(locale, 'l_stepgoal')}: {stats['step_goal_hits']}/{stats['days_elapsed']} {days} ({stats['step_goal_pct']}%)")
+    lines.append(f"⏳ {T(locale, 'l_remaining')}: {stats['days_remaining']} {days}")
+    return "\n".join(lines)
+
+
+def add_data_url(settings: dict) -> str:
+    base = str(settings.get("base_url") or "").strip().rstrip("/")
+    return base + ADD_DATA_PATH if base else ""
+
+
+def build_reminder(user: sqlite3.Row, stats: Optional[dict], settings: dict, attempt: int) -> str:
+    locale = user["locale"]
+    head = T(locale, f"rem{min(max(attempt, 1), 3)}", name=str(user["display_name"] or ""))
+    parts = [head]
+    block = stats_block(stats, locale)
+    if block:
+        parts.append(block)
+    url = add_data_url(settings)
+    if url:
+        parts.append(f"{T(locale, 'cta')} {url}")
+    return "\n\n".join(parts)
+
+
+def build_progress(user: sqlite3.Row, stats: Optional[dict], locale: str) -> str:
+    if not stats or stats.get("not_started"):
+        return T(locale, "no_challenge")
+    head = T(locale, "progress_head", name=str(user["display_name"] or ""))
+    return head + "\n\n" + stats_block(stats, locale)
+
+
+def build_motivation(user: sqlite3.Row, stats: Optional[dict], quote: str, locale: str) -> str:
+    text = T(locale, "motivation", quote=quote)
+    if stats and not stats.get("not_started"):
+        text += "\n" + T(locale, "motivation_progress", pct=stats["consistency"])
+    return text
+
+
 def process_update(db: BotDB, settings: dict, update: dict) -> None:
     message = update.get("message") or {}
     text = str(message.get("text") or "").strip()
@@ -226,16 +471,31 @@ def process_update(db: BotDB, settings: dict, update: dict) -> None:
     chat_id = str(chat.get("id") or "")
     if not text or not chat_id:
         return
+
+    # /start <code> links a Telegram chat to an app user.
     match = re.match(r"^/start\s+(\S+)", text)
-    if not match:
+    if match:
+        user = db.user_by_link_code(match.group(1))
+        if user is None:
+            return
+        db.link_user(int(user["id"]), chat_id)
+        ok, error = send_message(settings["token"], chat_id, T(user["locale"], "linked"))
+        log(f"linked user #{user['id']} ({user['username']}) chat={chat_id}"
+            + ("" if ok else f" (confirmation send failed: {error})"))
         return
-    user = db.user_by_link_code(match.group(1))
+
+    # Any other command needs an already-linked user.
+    command = text.split()[0].lower().lstrip("/").split("@")[0]
+    user = db.user_by_chat_id(chat_id)
     if user is None:
+        send_message(settings["token"], chat_id, T("es", "not_linked"))
         return
-    db.link_user(int(user["id"]), chat_id)
-    ok, error = send_message(settings["token"], chat_id, message_for(user["locale"], "linked"))
-    log(f"linked user #{user['id']} ({user['username']}) chat={chat_id}"
-        + ("" if ok else f" (confirmation send failed: {error})"))
+
+    locale = user["locale"]
+    if command in ("progress", "stats", "start"):
+        send_message(settings["token"], chat_id, build_progress(user, compute_stats(db, user), locale))
+    else:
+        send_message(settings["token"], chat_id, T(locale, "help"))
 
 
 def poll_once(db: BotDB, settings: dict, timeout: int) -> None:
@@ -263,6 +523,7 @@ def poll_once(db: BotDB, settings: dict, timeout: int) -> None:
 
 def run_reminders(db: BotDB, settings: dict) -> None:
     current = now()
+    current_naive = current.replace(tzinfo=None)
     today = current.strftime("%Y-%m-%d")
     now_hm = current.strftime("%H:%M")
     sends = 0
@@ -276,23 +537,32 @@ def run_reminders(db: BotDB, settings: dict) -> None:
         user_id = int(user["id"])
         logged = db.logged_today(user_id, today)
 
-        if (int(user["telegram_reminders_enabled"] or 0) == 1
-                and str(user["telegram_last_reminded_on"] or "") != today
-                and not logged):
-            text = message_for(user["locale"], "reminder", name=str(user["display_name"] or ""))
-            ok, error = send_message(settings["token"], chat_id, text)
-            if ok:
-                sends += 1
-                db.mark_reminded(user_id, today)
-                log(f"reminder -> #{user_id} ({user['username']})")
-            else:
-                log(f"reminder send failed -> #{user_id}: {error}")
+        # Escalating reminders: a first nudge, then follow-ups while still unlogged,
+        # up to MAX_REMINDERS_PER_DAY, spaced by FOLLOWUP_MINUTES.
+        if int(user["telegram_reminders_enabled"] or 0) == 1 and not logged:
+            last_at_raw = str(rget(user, "telegram_last_reminded_at", "") or "")
+            count_today = int(rget(user, "telegram_reminder_count", 0) or 0) if last_at_raw[:10] == today else 0
+            last_at = _parse_dt(last_at_raw)
+            due = count_today == 0 or (
+                last_at is not None and (current_naive - last_at) >= timedelta(minutes=FOLLOWUP_MINUTES)
+            )
+            if count_today < MAX_REMINDERS_PER_DAY and due:
+                attempt = count_today + 1
+                text = build_reminder(user, compute_stats(db, user), settings, attempt)
+                ok, error = send_message(settings["token"], chat_id, text)
+                if ok:
+                    sends += 1
+                    db.mark_reminder_sent(user_id, current.strftime("%Y-%m-%d %H:%M:%S"), attempt, today)
+                    log(f"reminder #{attempt}/{MAX_REMINDERS_PER_DAY} -> #{user_id} ({user['username']})")
+                else:
+                    log(f"reminder send failed -> #{user_id}: {error}")
 
+        # Motivation: once per day, with a progress nudge.
         if (int(user["telegram_motivation_enabled"] or 0) == 1
                 and str(user["telegram_last_motivation_on"] or "") != today):
             quote = db.pick_quote(user)
             if quote:
-                text = message_for(user["locale"], "motivation", quote=quote)
+                text = build_motivation(user, compute_stats(db, user), quote, user["locale"])
                 ok, error = send_message(settings["token"], chat_id, text)
                 if ok:
                     sends += 1
@@ -306,10 +576,14 @@ def run_forever(db_path: Path, verbose: bool) -> int:
     log(f"Fitness Challenge Telegram bot starting. DB: {db_path}")
     log(f"Timezone: {TZ if TZ is not None else 'system local (zoneinfo unavailable)'}")
     last_reminder = 0.0
-    warned_external = False
-    webhook_checked = False
+    started = False
     while True:
         try:
+            if not db_path.exists():
+                if verbose:
+                    log(f"waiting for the database at {db_path} (start the app first)...")
+                time.sleep(5)
+                continue
             db = BotDB(db_path)
             settings = db.settings()
             if not settings["enabled"] or not settings["token"]:
@@ -318,14 +592,17 @@ def run_forever(db_path: Path, verbose: bool) -> int:
                 db.conn.close()
                 time.sleep(10)
                 continue
-            if not webhook_checked:
+            if not started:
                 ensure_no_webhook(settings["token"])
+                claim_ownership(db, settings)
+                if not settings["external"]:
+                    # Claim ownership of Telegram I/O so the PHP scheduler defers
+                    # and there is no double polling/sending while this bot runs.
+                    db.set_setting("telegram_external_bot", "1")
+                    settings["external"] = True
+                    log("enabled external-bot mode so the web app defers to this process")
                 log("polling for Telegram updates... (link users from Settings, then press Start)")
-                webhook_checked = True
-            if not settings["external"] and not warned_external:
-                log("WARNING: 'Use the standalone Python bot' is OFF in Admin > App. "
-                    "Enable it so the PHP app stops polling and does not double-send.")
-                warned_external = True
+                started = True
 
             poll_once(db, settings, POLL_TIMEOUT)
 
@@ -350,6 +627,10 @@ def run_once(db_path: Path, verbose: bool) -> int:
         db.conn.close()
         return 0
     ensure_no_webhook(settings["token"])
+    claim_ownership(db, settings)
+    if not settings["external"]:
+        db.set_setting("telegram_external_bot", "1")
+        settings["external"] = True
     poll_once(db, settings, 0)
     run_reminders(db, settings)
     db.conn.close()
@@ -357,6 +638,14 @@ def run_once(db_path: Path, verbose: bool) -> int:
 
 
 def main() -> int:
+    # Logs may include accented names/quotes; avoid crashing on a legacy Windows
+    # console code page.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     parser = argparse.ArgumentParser(description="Standalone Telegram bot for Fitness Challenge Tracker.")
     parser.add_argument("--once", action="store_true", help="Run one poll + reminder pass, then exit (cron-friendly).")
     parser.add_argument("--db", default="", help="Path to the SQLite database (default: DB_PATH env or storage/fitness.sqlite).")
@@ -364,12 +653,13 @@ def main() -> int:
     args = parser.parse_args()
 
     db_path = Path(args.db).resolve() if args.db else Path(os.environ.get("DB_PATH", str(DEFAULT_DB))).resolve()
-    if not db_path.exists():
-        log(f"Database not found: {db_path}. Start the app once to create it, or pass --db.")
-        return 2
 
     if args.once:
+        if not db_path.exists():
+            log(f"Database not found: {db_path}. Start the app once to create it, or pass --db.")
+            return 2
         return run_once(db_path, args.verbose)
+    # Loop mode tolerates a missing DB so it can be co-launched with the app.
     return run_forever(db_path, args.verbose)
 
 

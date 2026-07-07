@@ -2911,6 +2911,15 @@ if ($page === 'admin') {
             redirect('/?page=admin&section=app');
         }
 
+        if ($action === 'telegram_admin_unlink') {
+            $telegramUnlinkUserId = (int) ($_POST['user_id'] ?? 0);
+            if ($telegramUnlinkUserId > 0) {
+                telegram_unlink_user($pdo, $telegramUnlinkUserId);
+                flash_set('success', t('flash.telegram_admin_unlinked'));
+            }
+            redirect('/?page=admin&section=app');
+        }
+
         if ($action === 'notion_sync_now') {
             $notionResult = notion_sync_run($pdo, $config, (int) $currentUser['id']);
             flash_set($notionResult['ok'] ? 'success' : 'error', trim(t('flash.notion_sync_done') . ' ' . (string) ($notionResult['message'] ?? '')));
@@ -3649,6 +3658,7 @@ if ($page === 'admin') {
         'notionFieldMap' => notion_field_map($pdo),
         'notionSchemaCache' => notion_schema_cache($pdo),
         'telegramSettings' => telegram_settings($pdo),
+        'telegramLinkedUsers' => telegram_linked_users($pdo),
         'loginBackgroundPath' => $loginBackgroundPath,
         'loginBackgroundLibrary' => $loginBackgroundLibrary,
         'backupSettings' => $backupSettings,

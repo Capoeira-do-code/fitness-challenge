@@ -492,6 +492,11 @@ try {
                     <?= e(t('admin.telegram_username')) ?>
                     <input type="text" name="telegram_bot_username" value="<?= e((string) ($telegram['username'] ?? '')) ?>" placeholder="my_fitness_bot">
                 </label>
+                <label>
+                    <?= e(t('admin.telegram_base_url')) ?>
+                    <input type="text" name="app_base_url" value="<?= e((string) ($telegram['base_url'] ?? '')) ?>" placeholder="http://localhost:8080">
+                    <span class="muted small"><?= e(t('admin.telegram_base_url_hint')) ?></span>
+                </label>
                 <div class="toggle-row">
                     <label class="check standalone-check">
                         <input type="checkbox" name="telegram_external_bot" value="1" <?= !empty($telegram['external_bot']) ? 'checked' : '' ?>>
@@ -509,6 +514,35 @@ try {
                     <span class="muted small">@<?= e((string) $telegram['username']) ?></span>
                 <?php endif; ?>
             </form>
+
+            <?php $telegramLinkedUsers = is_array($telegramLinkedUsers ?? null) ? (array) $telegramLinkedUsers : []; ?>
+            <div class="admin-telegram-linked">
+                <h4><?= e(t('admin.telegram_linked_title')) ?></h4>
+                <?php if ($telegramLinkedUsers === []): ?>
+                    <p class="muted small"><?= e(t('admin.telegram_no_linked')) ?></p>
+                <?php else: ?>
+                    <ul class="admin-telegram-user-list">
+                        <?php foreach ($telegramLinkedUsers as $linkedUser): ?>
+                            <li class="admin-telegram-user-row">
+                                <span>
+                                    <strong><?= e((string) ($linkedUser['display_name'] ?? $linkedUser['username'] ?? '')) ?></strong>
+                                    <span class="muted small">
+                                        · <?= e((string) ($linkedUser['telegram_reminder_time'] ?? '')) ?>
+                                        <?= (int) ($linkedUser['telegram_reminders_enabled'] ?? 0) === 1 ? '🔔' : '' ?>
+                                        <?= (int) ($linkedUser['telegram_motivation_enabled'] ?? 0) === 1 ? '💪' : '' ?>
+                                    </span>
+                                </span>
+                                <form method="post" action="/?page=admin" class="inline-form">
+                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                    <input type="hidden" name="action" value="telegram_admin_unlink">
+                                    <input type="hidden" name="user_id" value="<?= (int) ($linkedUser['id'] ?? 0) ?>">
+                                    <button class="btn btn-ghost small" type="submit"><?= e(t('admin.telegram_unlink_user')) ?></button>
+                                </form>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
         </div>
 
         <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack" data-image-cropper-form>

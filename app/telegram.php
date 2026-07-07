@@ -25,7 +25,21 @@ function telegram_settings(PDO $pdo): array
         'username' => trim((string) (app_setting($pdo, 'telegram_bot_username', '') ?? '')),
         'offset' => (int) (app_setting($pdo, 'telegram_update_offset', '0') ?? '0'),
         'last_poll_at' => trim((string) (app_setting($pdo, 'telegram_last_poll_at', '') ?? '')),
+        'base_url' => rtrim(trim((string) (app_setting($pdo, 'app_base_url', '') ?? '')), '/'),
     ];
+}
+
+/** Users linked to Telegram, for the admin management list. */
+function telegram_linked_users(PDO $pdo): array
+{
+    return db_fetch_all(
+        $pdo,
+        "SELECT id, username, display_name, telegram_chat_id, telegram_reminders_enabled,
+                telegram_motivation_enabled, telegram_reminder_time
+         FROM users
+         WHERE telegram_chat_id IS NOT NULL AND TRIM(telegram_chat_id) <> ''
+         ORDER BY display_name COLLATE NOCASE ASC"
+    );
 }
 
 function telegram_bool(string $value): bool
@@ -53,6 +67,9 @@ function telegram_update_settings(PDO $pdo, array $input, int $actorUserId): voi
     set_app_setting($pdo, 'telegram_external_bot', !empty($input['telegram_external_bot']) ? '1' : '0', $actorUserId);
     set_app_setting($pdo, 'telegram_bot_token', $token, $actorUserId);
     set_app_setting($pdo, 'telegram_bot_username', ltrim(trim((string) ($input['telegram_bot_username'] ?? '')), '@'), $actorUserId);
+    if (array_key_exists('app_base_url', $input)) {
+        set_app_setting($pdo, 'app_base_url', rtrim(trim((string) $input['app_base_url']), '/'), $actorUserId);
+    }
 }
 
 /**
