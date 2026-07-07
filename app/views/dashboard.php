@@ -456,7 +456,9 @@ $topbarControls = ob_get_clean();
                         <th><?= e(t('common.status')) ?></th>
                         <th><?= e(t('metric.step_failures')) ?></th>
                         <th><?= e(t('metric.workout_failures')) ?></th>
+                        <?php if ($penaltiesEnabled): ?>
                         <th><?= e(t('metric.warnings')) ?></th>
+                        <?php endif; ?>
                         <?php if ($penaltiesEnabled): ?>
                         <th><?= e(t('strikes.economic_impact')) ?></th>
                         <?php endif; ?>
@@ -487,7 +489,9 @@ $topbarControls = ob_get_clean();
                             <td data-label="<?= e(t('common.status')) ?>"><?= e(label_for_status((string) $week['status'])) ?></td>
                             <td data-label="<?= e(t('metric.step_failures')) ?>"><?= e((string) $week['step_failures']) ?></td>
                             <td data-label="<?= e(t('metric.workout_failures')) ?>"><?= e((string) $week['workout_failures']) ?></td>
+                            <?php if ($penaltiesEnabled): ?>
                             <td data-label="<?= e(t('metric.warnings')) ?>"><?= e((string) ($week['skip_warnings'] ?? 0)) ?></td>
+                            <?php endif; ?>
                             <?php if ($penaltiesEnabled): ?>
                             <td data-label="<?= e(t('strikes.economic_impact')) ?>"><span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) ($week['penalty'] ?? 0))) ?>">&euro;<?= e(number_format((float) ($week['penalty'] ?? 0), 2, '.', '')) ?></span></td>
                             <?php endif; ?>
@@ -525,7 +529,9 @@ $topbarControls = ob_get_clean();
                             <small><?= e(label_for_status((string) $week['status'])) ?></small>
                         </span>
                         <span class="dashboard-week-row-meta">
+                            <?php if ($penaltiesEnabled): ?>
                             <span><?= e(t('metric.warnings')) ?> <?= e((string) ($week['skip_warnings'] ?? 0)) ?></span>
+                            <?php endif; ?>
                             <?php if ($penaltiesEnabled): ?>
                             <span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) $weeklyPenalty)) ?>">&euro;<?= e(number_format($weeklyPenalty, 2, '.', '')) ?></span>
                             <?php else: ?>
@@ -602,7 +608,9 @@ $topbarControls = ob_get_clean();
                             <?php endif; ?>
                             <span class="leaderboard-name-text">
                                 <strong><?= e($leaderboardName) ?></strong>
-                                <span><?= e(t('metric.warnings')) ?>: <?= e((string) ($metric['skip_warning_events'] ?? 0)) ?></span>
+                                <?php if ($penaltiesEnabled): ?>
+                                    <span><?= e(t('metric.warnings')) ?>: <?= e((string) ($metric['skip_warning_events'] ?? 0)) ?></span>
+                                <?php endif; ?>
                             </span>
                         </div>
                         <div class="leaderboard-stats">

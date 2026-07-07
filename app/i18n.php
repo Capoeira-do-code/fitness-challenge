@@ -1939,6 +1939,7 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'challenges.empty' => 'No archived challenges yet.',
         'challenges.unnamed' => 'Unnamed challenge',
         'challenges.archived_at' => 'Archived on',
+        'challenges.view_details' => 'View details',
         'challenges.archived_by' => 'Archived by {name}',
     ],
     'es' => [
@@ -1954,6 +1955,7 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'challenges.empty' => 'Aún no hay challenges archivados.',
         'challenges.unnamed' => 'Challenge sin nombre',
         'challenges.archived_at' => 'Archivado el',
+        'challenges.view_details' => 'Ver detalles',
         'challenges.archived_by' => 'Archivado por {name}',
     ],
     'it' => [
@@ -1969,6 +1971,7 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'challenges.empty' => 'Nessuna challenge archiviata al momento.',
         'challenges.unnamed' => 'Challenge senza nome',
         'challenges.archived_at' => 'Archiviata il',
+        'challenges.view_details' => 'Vedi dettagli',
         'challenges.archived_by' => 'Archiviata da {name}',
     ],
 ]);

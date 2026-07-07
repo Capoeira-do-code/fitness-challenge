@@ -20,14 +20,19 @@ $archives = is_array($archives ?? null) ? array_values((array) $archives) : [];
             <div class="card-list">
                 <?php foreach ($archives as $archive): ?>
                     <?php
+                    $archiveId = (int) ($archive['id'] ?? 0);
                     $start = (string) ($archive['challenge_start'] ?? '');
                     $end = (string) ($archive['challenge_end'] ?? '');
                     $archivedAt = trim((string) ($archive['archived_at'] ?? ''));
                     $archivedBy = trim((string) ($archive['archived_by_name'] ?? ''));
                     $archivedAtDate = $archivedAt !== '' ? format_date_eu(substr($archivedAt, 0, 10)) : '';
                     $archivedAtTime = strlen($archivedAt) >= 16 ? substr($archivedAt, 11, 5) : '';
+                    $archiveHref = $archiveId > 0
+                        ? '/?' . http_build_query(['page' => 'profile', 'challenge' => 'archive:' . $archiveId])
+                        : '';
+                    $archiveTag = $archiveHref !== '' ? 'a' : 'article';
                     ?>
-                    <article class="mini-card">
+                    <<?= $archiveTag ?> class="mini-card<?= $archiveHref !== '' ? ' mini-card-link' : '' ?>"<?= $archiveHref !== '' ? ' href="' . e($archiveHref) . '"' : '' ?>>
                         <div>
                             <strong><?= e((string) ($archive['challenge_name'] ?? t('challenges.unnamed'))) ?></strong>
                             <span>
@@ -43,7 +48,10 @@ $archives = is_array($archives ?? null) ? array_values((array) $archives) : [];
                                 <?php endif; ?>
                             </small>
                         </div>
-                    </article>
+                        <?php if ($archiveHref !== ''): ?>
+                            <span class="mini-card-cta"><?= e(t('challenges.view_details')) ?> →</span>
+                        <?php endif; ?>
+                    </<?= $archiveTag ?>>
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>

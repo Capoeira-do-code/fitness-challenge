@@ -3718,6 +3718,26 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     padding: 0.75rem;
 }
 
+a.mini-card-link {
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+
+a.mini-card-link:hover,
+a.mini-card-link:focus-visible {
+    border-color: var(--accent, #34d399);
+    transform: translateY(-1px);
+}
+
+.mini-card-cta {
+    flex: 0 0 auto;
+    color: var(--accent, #34d399);
+    font-weight: 700;
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+
 .mini-card > div,
 .stat-list article,
 .audit-list article {
