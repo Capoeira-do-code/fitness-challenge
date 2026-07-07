@@ -169,13 +169,26 @@ def php_has_thumbnail_support(php_bin: str, extra_args: Optional[list[str]] = No
     return php_probe(php_bin, probe_script, extra_args)
 
 
+def php_has_https_support(php_bin: str, extra_args: Optional[list[str]] = None) -> bool:
+    # Outbound HTTPS (Telegram, Notion) needs either curl or the openssl-backed
+    # https:// stream wrapper. The Windows builds ship both extensions disabled.
+    probe_script = (
+        "$curl = function_exists('curl_init'); "
+        "$https = in_array('https', stream_get_wrappers(), true); "
+        "if (!$curl && !$https) {fwrite(STDERR, 'no_https\\n'); exit(2);} "
+        "echo 'ok';"
+    )
+    return php_probe(php_bin, probe_script, extra_args)
+
+
 def windows_runtime_extension_flags(php_bin: str) -> list[str]:
     if os.name != "nt":
         return []
 
     sqlite_ok = php_has_sqlite_driver(php_bin)
     thumbs_ok = php_has_thumbnail_support(php_bin)
-    if sqlite_ok and thumbs_ok:
+    https_ok = php_has_https_support(php_bin)
+    if sqlite_ok and thumbs_ok and https_ok:
         return []
 
     php_dir = Path(php_bin).resolve().parent
@@ -191,6 +204,9 @@ def windows_runtime_extension_flags(php_bin: str) -> list[str]:
         if not thumbs_ok:
             required_dlls.append(ext_dir / "php_gd.dll")
             extension_names.append("gd")
+        if not https_ok:
+            required_dlls.extend([ext_dir / "php_openssl.dll", ext_dir / "php_curl.dll"])
+            extension_names.extend(["openssl", "curl"])
         if not all(dll.exists() for dll in required_dlls):
             continue
         flags = [
@@ -199,8 +215,12 @@ def windows_runtime_extension_flags(php_bin: str) -> list[str]:
         ]
         for extension_name in extension_names:
             flags.extend(["-d", f"extension={extension_name}"])
-        if php_has_sqlite_driver(php_bin, flags) and php_has_thumbnail_support(php_bin, flags):
-            print(f"[deps] Enabled SQLite/GD extensions from: {ext_dir}")
+        if (
+            php_has_sqlite_driver(php_bin, flags)
+            and php_has_thumbnail_support(php_bin, flags)
+            and php_has_https_support(php_bin, flags)
+        ):
+            print(f"[deps] Enabled SQLite/GD/HTTPS (openssl+curl) extensions from: {ext_dir}")
             return flags
     return []
 
