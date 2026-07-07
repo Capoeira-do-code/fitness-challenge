@@ -3751,6 +3751,102 @@ a.mini-card-link:focus-visible {
     white-space: nowrap;
 }
 
+/* Friends + comparison */
+.friends-row {
+    align-items: center;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+}
+
+.friends-row-id {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+}
+
+.friends-row-id strong {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.friends-add-select {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+.friends-compare-head {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.4rem 0 0.9rem;
+}
+
+.friends-compare-person {
+    display: grid;
+    justify-items: center;
+    gap: 0.4rem;
+    text-align: center;
+}
+
+.friends-compare-person .member-avatar {
+    width: 54px;
+    height: 54px;
+    font-size: 1.1rem;
+}
+
+.friends-compare-vs {
+    font-weight: 900;
+    color: var(--muted);
+    text-transform: uppercase;
+    font-size: 0.82rem;
+}
+
+.friends-compare-grid {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.friends-compare-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface-2);
+}
+
+.friends-compare-metric {
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.friends-compare-val {
+    font-weight: 800;
+    font-size: 1.05rem;
+}
+
+.friends-compare-val:first-child {
+    text-align: right;
+}
+
+.friends-compare-val:last-child {
+    text-align: left;
+}
+
+.friends-compare-val.is-win {
+    color: var(--accent, #34d399);
+}
+
 .mini-card > div,
 .stat-list article,
 .audit-list article {

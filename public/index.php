@@ -7,7 +7,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 $page = $_GET['page'] ?? null;
 if ($page === null) {
     $pathPage = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/');
-    if (in_array($pathPage, ['dashboard', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'login', 'login_background'], true)) {
+    if (in_array($pathPage, ['dashboard', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'login', 'login_background'], true)) {
         $page = $pathPage;
     }
 }
@@ -1589,6 +1589,88 @@ if ($page === 'challenges') {
         'currentPage' => 'team',
         'currentUser' => $currentUser,
         'archives' => $archives,
+        'config' => $config,
+    ]);
+}
+
+if ($page === 'friends') {
+    friends_ensure_schema($pdo);
+    $meId = (int) $currentUser['id'];
+
+    if (is_post()) {
+        if (!csrf_verify()) {
+            flash_set('error', t('flash.csrf'));
+            redirect('/?page=friends');
+        }
+        $friendAction = (string) ($_POST['action'] ?? '');
+        $friendTargetId = (int) ($_POST['user_id'] ?? 0);
+        if ($friendAction === 'friend_request') {
+            $friendSent = friends_send_request($pdo, $meId, $friendTargetId);
+            flash_set($friendSent ? 'success' : 'error', $friendSent ? t('flash.friend_request_sent') : t('flash.friend_action_failed'));
+            redirect('/?page=friends');
+        }
+        if ($friendAction === 'friend_accept') {
+            friends_respond($pdo, $meId, $friendTargetId, true);
+            flash_set('success', t('flash.friend_accepted'));
+            redirect('/?page=friends');
+        }
+        if ($friendAction === 'friend_reject') {
+            friends_respond($pdo, $meId, $friendTargetId, false);
+            flash_set('success', t('flash.friend_rejected'));
+            redirect('/?page=friends');
+        }
+        if ($friendAction === 'friend_remove') {
+            friends_remove($pdo, $meId, $friendTargetId);
+            flash_set('success', t('flash.friend_removed'));
+            redirect('/?page=friends');
+        }
+        redirect('/?page=friends');
+    }
+
+    $friendsList = friends_list($pdo, $meId);
+    $friendsIncoming = friends_incoming($pdo, $meId);
+    $friendsOutgoing = friends_outgoing($pdo, $meId);
+    $friendsAddable = friends_addable_users($pdo, $meId);
+
+    $friendsSettings = challenge_settings($pdo, $config);
+    $friendsChallengeStart = (string) ($friendsSettings['challenge_start'] ?? to_date(null));
+    $friendsChallengeEnd = (string) ($friendsSettings['challenge_end'] ?? to_date(null));
+
+    // Optional side-by-side comparison with one friend.
+    $compareId = (int) ($_GET['compare'] ?? 0);
+    $friendCompare = null;
+    if ($compareId > 0 && friends_status($pdo, $meId, $compareId) === 'friends') {
+        $compareUser = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id AND active = 1', [':id' => $compareId]);
+        if ($compareUser !== null) {
+            $compareMetrics = compute_challenge_metrics($pdo, [$currentUser, $compareUser], $friendsChallengeStart, $friendsChallengeEnd);
+            $compareMetrics = apply_strike_review_overrides_to_metrics($pdo, $compareMetrics);
+            $myMetric = null;
+            $friendMetric = null;
+            foreach ($compareMetrics as $cm) {
+                $cmUserId = (int) ($cm['user']['id'] ?? 0);
+                if ($cmUserId === $meId) {
+                    $myMetric = $cm;
+                } elseif ($cmUserId === $compareId) {
+                    $friendMetric = $cm;
+                }
+            }
+            $friendCompare = [
+                'user' => $compareUser,
+                'me' => friends_metric_summary($myMetric),
+                'friend' => friends_metric_summary($friendMetric),
+            ];
+        }
+    }
+
+    render_view('friends', [
+        'title' => t('friends.title'),
+        'currentPage' => 'friends',
+        'currentUser' => $currentUser,
+        'friendsList' => $friendsList,
+        'friendsIncoming' => $friendsIncoming,
+        'friendsOutgoing' => $friendsOutgoing,
+        'friendsAddable' => $friendsAddable,
+        'friendCompare' => $friendCompare,
         'config' => $config,
     ]);
 }

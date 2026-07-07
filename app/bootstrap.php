@@ -45,6 +45,7 @@ require_once __DIR__ . '/services.php';
 require_once __DIR__ . '/challenge.php';
 require_once __DIR__ . '/notion.php';
 require_once __DIR__ . '/telegram.php';
+require_once __DIR__ . '/friends.php';
 require_once __DIR__ . '/view.php';
 
 $pdo = db_connect($config);
