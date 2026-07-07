@@ -18,6 +18,7 @@ declare(strict_types=1);
 const NOTION_API_BASE = 'https://api.notion.com/v1';
 const NOTION_API_VERSION = '2022-06-28';
 const NOTION_SYNC_BATCH_LIMIT = 60;
+const NOTION_PULL_MAX_PAGES = 25; // up to 2500 Notion rows scanned per pull run
 
 /** Notion property names the app writes to (the DB must contain matching props). */
 const NOTION_PROPERTY_MAP = [
@@ -253,13 +254,40 @@ function notion_api_request(array $settings, string $method, string $path, ?arra
         $headers[] = 'Content-Type: application/json';
     }
 
-    if (function_exists('curl_init')) {
-        $result = notion_api_request_curl($method, $url, $headers, $payload);
-    } else {
-        $result = notion_api_request_stream($method, $url, $headers, $payload);
-    }
+    // Retry once on rate-limit / transient upstream errors.
+    $attempt = 0;
+    while (true) {
+        if (function_exists('curl_init')) {
+            $result = notion_api_request_curl($method, $url, $headers, $payload);
+        } else {
+            $result = notion_api_request_stream($method, $url, $headers, $payload);
+        }
+        $status = (int) ($result['status'] ?? 0);
+        if ($attempt < 1 && in_array($status, [429, 502, 503, 504], true)) {
+            $attempt++;
+            usleep(1300000);
+            continue;
+        }
 
-    return $result;
+        return $result;
+    }
+}
+
+/** Turn a failed Notion response into a message that guides the admin. */
+function notion_friendly_error(array $response): string
+{
+    $status = (int) ($response['status'] ?? 0);
+    $message = trim((string) ($response['error'] ?? ''));
+
+    return match (true) {
+        $status === 401 => 'Unauthorized: check the Notion integration token.',
+        $status === 404 => 'Not found: open the database in Notion, use ••• → Connections to add your integration, and verify the database id.',
+        $status === 429 => 'Rate limited by Notion: wait a moment and run the sync again.',
+        $status === 0 => in_array($message, ['', 'request_failed', 'curl_failed'], true)
+            ? 'Could not reach Notion (check your network/proxy).'
+            : $message,
+        default => $message !== '' ? $message : ('HTTP ' . $status),
+    };
 }
 
 /** @return array{ok:bool,status:int,data:array,error:string} */
@@ -348,7 +376,7 @@ function notion_fetch_schema(array $settings): array
 
     $response = notion_api_request($settings, 'GET', '/databases/' . rawurlencode($databaseId));
     if (!$response['ok']) {
-        return ['ok' => false, 'error' => $response['error'], 'title_prop' => '', 'present' => []];
+        return ['ok' => false, 'error' => notion_friendly_error($response), 'title_prop' => '', 'present' => []];
     }
 
     $properties = is_array($response['data']['properties'] ?? null) ? $response['data']['properties'] : [];
@@ -483,7 +511,7 @@ function notion_content_hash(array $log, array $fieldMap = []): string
  * Push a single log to Notion (create or update). Returns one of:
  * 'created', 'updated', 'skipped', 'failed'.
  */
-function notion_upsert_log(PDO $pdo, array $settings, array $schema, array $fieldMap, array $log, array $user): string
+function notion_upsert_log(PDO $pdo, array $settings, array $schema, array $fieldMap, array $log, array $user, ?string &$error = null): string
 {
     $logId = (int) ($log['id'] ?? 0);
     if ($logId <= 0) {
@@ -513,11 +541,13 @@ function notion_upsert_log(PDO $pdo, array $settings, array $schema, array $fiel
     }
 
     if (!$response['ok']) {
+        $error = notion_friendly_error($response);
         return 'failed';
     }
 
     $newPageId = $pageId !== '' ? $pageId : (string) ($response['data']['id'] ?? '');
     if ($newPageId === '') {
+        $error = 'Notion did not return a page id.';
         return 'failed';
     }
 
@@ -711,7 +741,7 @@ function notion_pull_page(PDO $pdo, array $page, array $state, array $pullFields
  */
 function notion_pull(PDO $pdo, array $settings, array $schema, array $fieldMap, int $limit): array
 {
-    $result = ['pulled' => 0, 'checked' => 0, 'failed' => 0, 'reached_limit' => false];
+    $result = ['pulled' => 0, 'checked' => 0, 'failed' => 0, 'reached_limit' => false, 'first_error' => ''];
     $present = is_array($schema['present'] ?? null) ? $schema['present'] : [];
     $active = notion_active_field_map($fieldMap, $schema);
     $pullFields = array_intersect_key($active, array_flip(notion_pull_updatable_fields()));
@@ -721,7 +751,15 @@ function notion_pull(PDO $pdo, array $settings, array $schema, array $fieldMap, 
 
     $databaseId = (string) ($settings['database_id'] ?? '');
     $cursor = null;
+    $pagesScanned = 0;
     do {
+        // Safety cap so a very large external database cannot make one sync run
+        // scan forever; anything beyond this is picked up on the next run.
+        if ($pagesScanned >= NOTION_PULL_MAX_PAGES) {
+            $result['reached_limit'] = true;
+            break;
+        }
+        $pagesScanned++;
         $body = ['page_size' => 100];
         if ($cursor !== null && $cursor !== '') {
             $body['start_cursor'] = $cursor;
@@ -729,6 +767,7 @@ function notion_pull(PDO $pdo, array $settings, array $schema, array $fieldMap, 
         $response = notion_api_request($settings, 'POST', '/databases/' . rawurlencode($databaseId) . '/query', $body);
         if (!$response['ok']) {
             $result['failed']++;
+            $result['first_error'] = notion_friendly_error($response);
             break;
         }
         $pages = is_array($response['data']['results'] ?? null) ? $response['data']['results'] : [];
@@ -768,7 +807,7 @@ function notion_pull(PDO $pdo, array $settings, array $schema, array $fieldMap, 
  */
 function notion_push(PDO $pdo, array $config, array $settings, array $schema, array $fieldMap, int $limit): array
 {
-    $result = ['created' => 0, 'updated' => 0, 'skipped' => 0, 'failed' => 0, 'reached_limit' => false];
+    $result = ['created' => 0, 'updated' => 0, 'skipped' => 0, 'failed' => 0, 'reached_limit' => false, 'first_error' => ''];
 
     $challenge = function_exists('challenge_settings') ? challenge_settings($pdo, $config) : [];
     $start = to_date((string) ($challenge['challenge_start'] ?? null));
@@ -778,13 +817,17 @@ function notion_push(PDO $pdo, array $config, array $settings, array $schema, ar
     foreach (list_active_users($pdo) as $user) {
         $logs = fetch_logs_for_user_between($pdo, (int) ($user['id'] ?? 0), $start, $end);
         foreach ($logs as $log) {
-            $outcome = notion_upsert_log($pdo, $settings, $schema, $fieldMap, $log, $user);
+            $error = null;
+            $outcome = notion_upsert_log($pdo, $settings, $schema, $fieldMap, $log, $user, $error);
             if ($outcome === 'skipped') {
                 $result['skipped']++;
                 continue;
             }
             $processed++;
             $result[$outcome] = ($result[$outcome] ?? 0) + 1;
+            if ($outcome === 'failed' && $result['first_error'] === '' && (string) $error !== '') {
+                $result['first_error'] = (string) $error;
+            }
             if ($processed >= $limit) {
                 $result['reached_limit'] = true;
 
@@ -842,6 +885,7 @@ function notion_sync_run(PDO $pdo, array $config, ?int $actorUserId = null, int 
     }
 
     $reachedLimit = false;
+    $firstError = '';
 
     // Pull first so Notion edits land before we push app state back.
     if (($settings['direction'] ?? 'push_only') === 'two_way') {
@@ -849,6 +893,9 @@ function notion_sync_run(PDO $pdo, array $config, ?int $actorUserId = null, int 
         $summary['pulled'] = $pull['pulled'];
         $summary['failed'] += $pull['failed'];
         $reachedLimit = $reachedLimit || $pull['reached_limit'];
+        if ($firstError === '' && (string) ($pull['first_error'] ?? '') !== '') {
+            $firstError = (string) $pull['first_error'];
+        }
     }
 
     $push = notion_push($pdo, $config, $settings, $schema, $fieldMap, $limit);
@@ -857,18 +904,22 @@ function notion_sync_run(PDO $pdo, array $config, ?int $actorUserId = null, int 
     $summary['skipped'] = $push['skipped'];
     $summary['failed'] += $push['failed'];
     $reachedLimit = $reachedLimit || $push['reached_limit'];
+    if ($firstError === '' && (string) ($push['first_error'] ?? '') !== '') {
+        $firstError = (string) $push['first_error'];
+    }
 
     $summary['ok'] = $summary['failed'] === 0;
     $summary['status'] = $summary['failed'] === 0 ? 'ok' : 'partial';
     $summary['remaining'] = $reachedLimit ? 1 : 0;
     $summary['message'] = sprintf(
-        'Pulled %d, created %d, updated %d, skipped %d, failed %d.%s',
+        'Pulled %d, created %d, updated %d, skipped %d, failed %d.%s%s',
         $summary['pulled'],
         $summary['created'],
         $summary['updated'],
         $summary['skipped'],
         $summary['failed'],
-        $reachedLimit ? ' Batch limit reached - run again to continue.' : ''
+        $reachedLimit ? ' Batch limit reached - run again to continue.' : '',
+        $firstError !== '' ? ' First error: ' . $firstError : ''
     );
 
     notion_record_run($pdo, $summary, $actorUserId);
