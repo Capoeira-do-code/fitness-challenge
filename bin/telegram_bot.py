@@ -206,6 +206,19 @@ def send_message(token: str, chat_id: str, text: str) -> tuple[bool, Optional[st
     return (error is None), error
 
 
+def ensure_no_webhook(token: str) -> None:
+    """getUpdates and webhooks are mutually exclusive; drop any stale webhook so
+    long-polling works."""
+    info, error = api_call(token, "getWebhookInfo")
+    if error is None and isinstance(info, dict) and str(info.get("url") or "") == "":
+        return
+    _, error = api_call(token, "deleteWebhook", {"drop_pending_updates": False})
+    if error is None:
+        log("cleared an active webhook so getUpdates polling can work")
+    else:
+        log(f"deleteWebhook failed: {error}")
+
+
 def process_update(db: BotDB, settings: dict, update: dict) -> None:
     message = update.get("message") or {}
     text = str(message.get("text") or "").strip()
@@ -294,6 +307,7 @@ def run_forever(db_path: Path, verbose: bool) -> int:
     log(f"Timezone: {TZ if TZ is not None else 'system local (zoneinfo unavailable)'}")
     last_reminder = 0.0
     warned_external = False
+    webhook_checked = False
     while True:
         try:
             db = BotDB(db_path)
@@ -304,6 +318,10 @@ def run_forever(db_path: Path, verbose: bool) -> int:
                 db.conn.close()
                 time.sleep(10)
                 continue
+            if not webhook_checked:
+                ensure_no_webhook(settings["token"])
+                log("polling for Telegram updates... (link users from Settings, then press Start)")
+                webhook_checked = True
             if not settings["external"] and not warned_external:
                 log("WARNING: 'Use the standalone Python bot' is OFF in Admin > App. "
                     "Enable it so the PHP app stops polling and does not double-send.")
@@ -331,6 +349,7 @@ def run_once(db_path: Path, verbose: bool) -> int:
         log("bot disabled or no token; nothing to do.")
         db.conn.close()
         return 0
+    ensure_no_webhook(settings["token"])
     poll_once(db, settings, 0)
     run_reminders(db, settings)
     db.conn.close()
