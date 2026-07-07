@@ -484,13 +484,21 @@ try {
                 </div>
                 <label>
                     <?= e(t('admin.telegram_token')) ?>
-                    <input type="password" name="telegram_bot_token" autocomplete="off" placeholder="<?= $telegramConfigured ? '••••••••' : '123456:ABC...' ?>">
+                    <?php if ($telegramConfigured): ?><span class="muted small">✓ <?= e(t('admin.telegram_token_saved')) ?></span><?php endif; ?>
+                    <input type="password" name="telegram_bot_token" autocomplete="off" placeholder="<?= $telegramConfigured ? '•••••••• (guardado)' : '123456:ABC...' ?>">
                     <span class="muted small"><?= e(t('admin.telegram_token_hint')) ?></span>
                 </label>
                 <label>
                     <?= e(t('admin.telegram_username')) ?>
                     <input type="text" name="telegram_bot_username" value="<?= e((string) ($telegram['username'] ?? '')) ?>" placeholder="my_fitness_bot">
                 </label>
+                <div class="toggle-row">
+                    <label class="check standalone-check">
+                        <input type="checkbox" name="telegram_external_bot" value="1" <?= !empty($telegram['external_bot']) ? 'checked' : '' ?>>
+                        <?= e(t('admin.telegram_external')) ?>
+                    </label>
+                    <p class="muted small"><?= e(t('admin.telegram_external_hint')) ?></p>
+                </div>
                 <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
             </form>
             <form method="post" action="/?page=admin" class="stack compact-form">

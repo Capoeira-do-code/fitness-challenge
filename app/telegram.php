@@ -20,6 +20,7 @@ function telegram_settings(PDO $pdo): array
 {
     return [
         'enabled' => telegram_bool((string) (app_setting($pdo, 'telegram_enabled', '0') ?? '0')),
+        'external_bot' => telegram_bool((string) (app_setting($pdo, 'telegram_external_bot', '0') ?? '0')),
         'token' => trim((string) (app_setting($pdo, 'telegram_bot_token', '') ?? '')),
         'username' => trim((string) (app_setting($pdo, 'telegram_bot_username', '') ?? '')),
         'offset' => (int) (app_setting($pdo, 'telegram_update_offset', '0') ?? '0'),
@@ -49,6 +50,7 @@ function telegram_update_settings(PDO $pdo, array $input, int $actorUserId): voi
         $token = trim((string) (app_setting($pdo, 'telegram_bot_token', '') ?? ''));
     }
     set_app_setting($pdo, 'telegram_enabled', !empty($input['telegram_enabled']) ? '1' : '0', $actorUserId);
+    set_app_setting($pdo, 'telegram_external_bot', !empty($input['telegram_external_bot']) ? '1' : '0', $actorUserId);
     set_app_setting($pdo, 'telegram_bot_token', $token, $actorUserId);
     set_app_setting($pdo, 'telegram_bot_username', ltrim(trim((string) ($input['telegram_bot_username'] ?? '')), '@'), $actorUserId);
 }
@@ -408,6 +410,12 @@ function telegram_run_scheduler(PDO $pdo, array $config): void
     try {
         $settings = telegram_settings($pdo);
         if (!telegram_is_enabled($settings)) {
+            return;
+        }
+        // When the standalone Python bot (bin/telegram_bot.py) runs, it owns all
+        // Telegram I/O — the PHP app must not poll or send, to avoid double
+        // reminders and getUpdates offset conflicts.
+        if (!empty($settings['external_bot'])) {
             return;
         }
         telegram_poll_updates($pdo, $settings);
