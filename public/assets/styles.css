@@ -6973,6 +6973,36 @@ body[data-theme="dark"] .training-sheet-table thead th {
         rgba(255, 255, 255, 0.82);
 }
 
+/* In dark mode the panel must be a dark surface, otherwise the (light) labels
+   render white-on-white and the whole editor looks blank. */
+body[data-theme="dark"] .dashboard-layout-edit-mode-panel,
+body[data-theme="dark"] .team-layout-edit-mode-panel,
+body.theme-active-dark .dashboard-layout-edit-mode-panel,
+body.theme-active-dark .team-layout-edit-mode-panel {
+    background: linear-gradient(180deg, var(--surface-2), var(--surface));
+    border-color: var(--line);
+}
+
+body[data-theme="dark"] .dashboard-layout-edit-mode-panel .team-layout-editor-actions,
+body[data-theme="dark"] .team-layout-edit-mode-panel .team-layout-editor-actions,
+body.theme-active-dark .dashboard-layout-edit-mode-panel .team-layout-editor-actions,
+body.theme-active-dark .team-layout-edit-mode-panel .team-layout-editor-actions {
+    background: linear-gradient(180deg, transparent, var(--surface) 35%);
+}
+
+@media (prefers-color-scheme: dark) {
+    body[data-theme="auto"] .dashboard-layout-edit-mode-panel,
+    body[data-theme="auto"] .team-layout-edit-mode-panel {
+        background: linear-gradient(180deg, var(--surface-2), var(--surface));
+        border-color: var(--line);
+    }
+
+    body[data-theme="auto"] .dashboard-layout-edit-mode-panel .team-layout-editor-actions,
+    body[data-theme="auto"] .team-layout-edit-mode-panel .team-layout-editor-actions {
+        background: linear-gradient(180deg, transparent, var(--surface) 35%);
+    }
+}
+
 .dashboard-layout-edit-mode-panel .dashboard-layout-editor,
 .team-layout-edit-mode-panel .team-layout-editor {
     display: grid;
@@ -13237,6 +13267,14 @@ body[data-theme="dark"][data-page="gallery"] .gallery-month-label {
     visibility: visible !important;
     opacity: 1 !important;
     pointer-events: auto !important;
+  }
+
+  body.layout-edit-active.theme-active-dark .dashboard-layout-edit-mode-panel,
+  body.layout-edit-active.theme-active-dark .team-layout-edit-mode-panel,
+  body.layout-edit-active[data-theme="dark"] .dashboard-layout-edit-mode-panel,
+  body.layout-edit-active[data-theme="dark"] .team-layout-edit-mode-panel {
+    background: var(--dark-ui-surface-strong, #16222e) !important;
+    border: 1px solid var(--dark-ui-border, rgba(170, 193, 204, 0.2)) !important;
   }
 }
 
