@@ -58,10 +58,17 @@ MESSAGES = {
         "progress_head": "Your progress, {name}",
         "motivation": "Motivation for today: {quote}",
         "motivation_progress": "You are at {pct}% consistency. Keep going!",
-        "help": "Commands:\n/progress - see your progress\n/help - this help",
+        "help": "Commands:\n/progress - your challenge progress\n/week - this week so far\n/streak - your current streak\n/today - is today logged?\n/ranking - team ranking\n/help - this help",
         "l_streak": "Streak", "l_logged": "Days logged", "l_steps": "Steps",
         "l_workouts": "Workouts", "l_stepgoal": "Step goal", "l_remaining": "Remaining",
         "u_days": "days", "u_avg": "avg", "u_perday": "/day",
+        "week_head": "This week, {name}", "l_week": "This week",
+        "streak_msg": "{name}, your streak is {streak} days. {tip}",
+        "streak_tip_on": "Keep it alive!", "streak_tip_off": "Log today to start a new one.",
+        "today_logged": "Today is logged. Nice work, {name}.",
+        "today_not_logged": "Today is NOT logged yet, {name}.",
+        "ranking_head": "Team ranking", "ranking_empty": "No data to rank yet.",
+        "milestone": "{name}, {streak}-day streak! You are on fire. Keep going!",
     },
     "es": {
         "linked": "Vinculado! Recibiras recordatorios y motivacion aqui.\nEscribe /progress cuando quieras ver como vas.",
@@ -74,10 +81,17 @@ MESSAGES = {
         "progress_head": "Tu progreso, {name}",
         "motivation": "Motivacion de hoy: {quote}",
         "motivation_progress": "Vas al {pct}% de constancia. Sigue asi!",
-        "help": "Comandos:\n/progress - ver tu progreso\n/help - esta ayuda",
+        "help": "Comandos:\n/progress - tu progreso del challenge\n/week - tu semana hasta ahora\n/streak - tu racha actual\n/today - has registrado hoy?\n/ranking - ranking del equipo\n/help - esta ayuda",
         "l_streak": "Racha", "l_logged": "Dias registrados", "l_steps": "Pasos",
         "l_workouts": "Entrenos", "l_stepgoal": "Meta de pasos", "l_remaining": "Quedan",
         "u_days": "dias", "u_avg": "media", "u_perday": "/dia",
+        "week_head": "Tu semana, {name}", "l_week": "Esta semana",
+        "streak_msg": "{name}, tu racha es de {streak} dias. {tip}",
+        "streak_tip_on": "Mantenla viva!", "streak_tip_off": "Registra hoy para empezar una nueva.",
+        "today_logged": "Hoy ya esta registrado. Bien hecho, {name}.",
+        "today_not_logged": "Hoy AUN no esta registrado, {name}.",
+        "ranking_head": "Ranking del equipo", "ranking_empty": "Aun no hay datos para el ranking.",
+        "milestone": "{name}, racha de {streak} dias! Imparable. Sigue asi!",
     },
     "it": {
         "linked": "Collegato! Riceverai promemoria e motivazione qui.\nScrivi /progress per vedere come stai andando.",
@@ -90,7 +104,14 @@ MESSAGES = {
         "progress_head": "I tuoi progressi, {name}",
         "motivation": "Motivazione di oggi: {quote}",
         "motivation_progress": "Sei al {pct}% di costanza. Continua cosi!",
-        "help": "Comandi:\n/progress - vedi i tuoi progressi\n/help - questo aiuto",
+        "help": "Comandi:\n/progress - i tuoi progressi\n/week - la tua settimana\n/streak - la tua striscia\n/today - hai registrato oggi?\n/ranking - classifica del team\n/help - questo aiuto",
+        "week_head": "La tua settimana, {name}", "l_week": "Questa settimana",
+        "streak_msg": "{name}, la tua striscia e di {streak} giorni. {tip}",
+        "streak_tip_on": "Tienila viva!", "streak_tip_off": "Registra oggi per iniziarne una nuova.",
+        "today_logged": "Oggi e registrato. Ottimo, {name}.",
+        "today_not_logged": "Oggi NON e ancora registrato, {name}.",
+        "ranking_head": "Classifica del team", "ranking_empty": "Ancora nessun dato per la classifica.",
+        "milestone": "{name}, striscia di {streak} giorni! Inarrestabile. Continua!",
         "l_streak": "Striscia", "l_logged": "Giorni registrati", "l_steps": "Passi",
         "l_workouts": "Allenamenti", "l_stepgoal": "Obiettivo passi", "l_remaining": "Restano",
         "u_days": "giorni", "u_avg": "media", "u_perday": "/giorno",
@@ -143,6 +164,28 @@ class BotDB:
         self.conn = sqlite3.connect(str(path), timeout=10)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA busy_timeout = 5000")
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS telegram_progress ("
+            "user_id INTEGER PRIMARY KEY, last_streak_milestone INTEGER DEFAULT 0)"
+        )
+        self.conn.commit()
+
+    def milestone(self, user_id: int) -> int:
+        row = self.conn.execute(
+            "SELECT last_streak_milestone FROM telegram_progress WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        return int(row["last_streak_milestone"]) if row else 0
+
+    def set_milestone(self, user_id: int, value: int) -> None:
+        self.conn.execute(
+            "INSERT INTO telegram_progress (user_id, last_streak_milestone) VALUES (?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET last_streak_milestone = excluded.last_streak_milestone",
+            (user_id, value),
+        )
+        self.conn.commit()
+
+    def all_active_users(self) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM users WHERE active = 1").fetchall()
 
     def setting(self, key: str, default: str = "") -> str:
         row = self.conn.execute(
@@ -464,6 +507,93 @@ def build_motivation(user: sqlite3.Row, stats: Optional[dict], quote: str, local
     return text
 
 
+STREAK_MILESTONES = (7, 14, 30, 60, 100)
+
+
+def compute_week(db: BotDB, user: sqlite3.Row) -> dict:
+    today = now().date()
+    monday = today - timedelta(days=today.weekday())
+    steps = 0
+    workouts = 0
+    dist = 0.0
+    logged = set()
+    for row in db.logs_between(int(user["id"]), monday.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d")):
+        if not _log_is_meaningful(row):
+            continue
+        d = _parse_date(row["log_date"])
+        if d:
+            logged.add(d)
+        steps += int(rget(row, "steps", 0) or 0)
+        dist += float(rget(row, "distance_km", 0) or 0)
+        if int(rget(row, "workout_done", 0) or 0) == 1:
+            workouts += 1
+    return {"steps": steps, "workouts": workouts, "distance": round(dist, 1),
+            "days_logged": len(logged), "days_elapsed": (today - monday).days + 1}
+
+
+def build_week(user: sqlite3.Row, wk: dict, locale: str) -> str:
+    days = T(locale, "u_days")
+    return "\n".join([
+        T(locale, "week_head", name=str(user["display_name"] or "")),
+        "",
+        f"\U0001F4C5 {T(locale, 'l_logged')}: {wk['days_logged']}/{wk['days_elapsed']} {days}",
+        f"\U0001F45F {T(locale, 'l_steps')}: {fmt_int(wk['steps'])}",
+        f"\U0001F3CB️ {T(locale, 'l_workouts')}: {wk['workouts']}",
+    ])
+
+
+def build_streak(user: sqlite3.Row, stats: Optional[dict], locale: str) -> str:
+    streak = stats["streak"] if stats and not stats.get("not_started") else 0
+    tip = T(locale, "streak_tip_on" if streak > 0 else "streak_tip_off")
+    return T(locale, "streak_msg", name=str(user["display_name"] or ""), streak=streak, tip=tip)
+
+
+def build_today(db: BotDB, user: sqlite3.Row, settings: dict, locale: str) -> str:
+    if db.logged_today(int(user["id"]), now().strftime("%Y-%m-%d")):
+        return T(locale, "today_logged", name=str(user["display_name"] or ""))
+    url = add_data_url(settings)
+    msg = T(locale, "today_not_logged", name=str(user["display_name"] or ""))
+    return msg + (f"\n{T(locale, 'cta')} {url}" if url else "")
+
+
+def build_ranking(db: BotDB, locale: str) -> str:
+    rows = []
+    for user in db.all_active_users():
+        st = compute_stats(db, user)
+        if not st or st.get("not_started"):
+            continue
+        rows.append((str(user["display_name"] or user["username"] or "?"), st["consistency"], st["total_steps"]))
+    if not rows:
+        return T(locale, "ranking_empty")
+    rows.sort(key=lambda r: (r[1], r[2]), reverse=True)
+    medals = ["\U0001F947", "\U0001F948", "\U0001F949"]
+    lines = [T(locale, "ranking_head"), ""]
+    for i, (name, cons, steps) in enumerate(rows):
+        prefix = medals[i] if i < 3 else f"{i + 1}."
+        lines.append(f"{prefix} {name} - {cons}% - {fmt_int(steps)} {T(locale, 'l_steps').lower()}")
+    return "\n".join(lines)
+
+
+def check_streak_milestone(db: BotDB, user: sqlite3.Row, stats: Optional[dict], settings: dict) -> bool:
+    if not stats or stats.get("not_started"):
+        return False
+    streak = int(stats["streak"])
+    stored = db.milestone(int(user["id"]))
+    if streak < STREAK_MILESTONES[0]:
+        if stored != 0:
+            db.set_milestone(int(user["id"]), 0)
+        return False
+    reached = max(m for m in STREAK_MILESTONES if m <= streak)
+    if stored >= reached:
+        return False
+    text = T(user["locale"], "milestone", name=str(user["display_name"] or ""), streak=reached)
+    ok, _ = send_message(settings["token"], str(user["telegram_chat_id"]), text)
+    if ok:
+        db.set_milestone(int(user["id"]), reached)
+        log(f"milestone {reached}d -> #{user['id']} ({user['username']})")
+    return ok
+
+
 def process_update(db: BotDB, settings: dict, update: dict) -> None:
     message = update.get("message") or {}
     text = str(message.get("text") or "").strip()
@@ -494,6 +624,14 @@ def process_update(db: BotDB, settings: dict, update: dict) -> None:
     locale = user["locale"]
     if command in ("progress", "stats", "start"):
         send_message(settings["token"], chat_id, build_progress(user, compute_stats(db, user), locale))
+    elif command == "week":
+        send_message(settings["token"], chat_id, build_week(user, compute_week(db, user), locale))
+    elif command == "streak":
+        send_message(settings["token"], chat_id, build_streak(user, compute_stats(db, user), locale))
+    elif command == "today":
+        send_message(settings["token"], chat_id, build_today(db, user, settings, locale))
+    elif command == "ranking":
+        send_message(settings["token"], chat_id, build_ranking(db, locale))
     else:
         send_message(settings["token"], chat_id, T(locale, "help"))
 
@@ -536,6 +674,10 @@ def run_reminders(db: BotDB, settings: dict) -> None:
         chat_id = str(user["telegram_chat_id"])
         user_id = int(user["id"])
         logged = db.logged_today(user_id, today)
+
+        # Celebrate streak milestones once each (progressions).
+        if check_streak_milestone(db, user, compute_stats(db, user), settings):
+            sends += 1
 
         # Escalating reminders: a first nudge, then follow-ups while still unlogged,
         # up to MAX_REMINDERS_PER_DAY, spaced by FOLLOWUP_MINUTES.
