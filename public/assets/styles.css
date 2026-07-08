@@ -4072,6 +4072,76 @@ a.mini-card-link:focus-visible {
     background: linear-gradient(135deg, #14a38b, #0f8d78);
 }
 
+/* Training overview: result stats + habit chips */
+.training-result-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.6rem;
+}
+
+.training-result-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.8rem 0.9rem;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--surface-2, rgba(148, 163, 184, 0.08));
+}
+
+.training-result-stat.is-warn {
+    border-color: rgba(239, 68, 68, 0.35);
+    background: color-mix(in srgb, #ef4444 8%, var(--surface));
+}
+
+.training-result-value {
+    font-size: 1.5rem;
+    font-weight: 900;
+    color: var(--ink);
+    line-height: 1.1;
+}
+
+.training-result-stat.is-warn .training-result-value {
+    color: #dc2626;
+}
+
+.training-result-label {
+    font-size: 0.78rem;
+    color: var(--muted);
+}
+
+.training-habit-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.training-habit-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.4rem 0.35rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface-2, rgba(148, 163, 184, 0.08));
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.training-habit-chip-count {
+    display: inline-grid;
+    place-items: center;
+    min-width: 26px;
+    height: 26px;
+    padding: 0 0.4rem;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #14a38b, #0f8d78);
+    color: #fff;
+    font-weight: 800;
+    font-size: 0.8rem;
+}
+
 /* Admin settings subsections */
 .admin-subsection {
     padding: 1rem 0;

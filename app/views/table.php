@@ -45,6 +45,20 @@ $weekSummaryUrl = '/?' . http_build_query([
 ]);
 $summaryEditUrl = $isAllTrainingScope ? $allSheetUrl : $weekSheetUrl;
 
+$habitLabelMap = [];
+if (function_exists('list_habit_definitions')) {
+    foreach (list_habit_definitions($GLOBALS['pdo'], false) as $habitDef) {
+        $habitLabelMap[(string) ($habitDef['code'] ?? '')] = (string) ($habitDef['label'] ?? '');
+    }
+}
+$habitLabelFor = static function (string $code) use ($habitLabelMap): string {
+    $label = trim((string) ($habitLabelMap[$code] ?? ''));
+    if ($label !== '') {
+        return $label;
+    }
+    return ucwords(str_replace(['_', '-'], ' ', $code));
+};
+
 $workoutTotal = max((int) ($metric['workout_count'] ?? 0), (int) ($metric['workout_success'] ?? 0));
 $weeklyStepFailures = array_sum(array_map(static fn(array $row): int => (int) ($row['step_failures'] ?? 0), $weeklyRows));
 $weeklyWorkoutFailures = array_sum(array_map(static fn(array $row): int => (int) ($row['workout_failures'] ?? 0), $weeklyRows));
@@ -105,20 +119,35 @@ $weeklyPenalty = array_sum(array_map(static fn(array $row): float => (float) ($r
         <div class="grid-two">
             <article class="panel">
                 <h2><?= e(t('table.all_result')) ?></h2>
-                <ul class="facts">
-                    <li><strong><?= e(t('metric.step_failures')) ?>:</strong> <?= e((string) $weeklyStepFailures) ?></li>
-                    <li><strong><?= e(t('metric.workout_failures')) ?>:</strong> <?= e((string) $weeklyWorkoutFailures) ?></li>
-                    <li><strong><?= e(t('metric.skip_warnings')) ?>:</strong> <?= e((string) $weeklyWarnings) ?></li>
+                <div class="training-result-grid">
+                    <div class="training-result-stat<?= $weeklyStepFailures > 0 ? ' is-warn' : ' is-ok' ?>">
+                        <span class="training-result-value"><?= e((string) $weeklyStepFailures) ?></span>
+                        <span class="training-result-label"><?= e(t('metric.step_failures')) ?></span>
+                    </div>
+                    <div class="training-result-stat<?= $weeklyWorkoutFailures > 0 ? ' is-warn' : ' is-ok' ?>">
+                        <span class="training-result-value"><?= e((string) $weeklyWorkoutFailures) ?></span>
+                        <span class="training-result-label"><?= e(t('metric.workout_failures')) ?></span>
+                    </div>
+                    <div class="training-result-stat<?= $weeklyWarnings > 0 ? ' is-warn' : ' is-ok' ?>">
+                        <span class="training-result-value"><?= e((string) $weeklyWarnings) ?></span>
+                        <span class="training-result-label"><?= e(t('metric.skip_warnings')) ?></span>
+                    </div>
                     <?php if ($penaltiesEnabled): ?>
-                        <li><strong><?= e(t('metric.penalty')) ?>:</strong> &euro;<?= e(number_format($weeklyPenalty, 2, '.', '')) ?></li>
+                        <div class="training-result-stat<?= $weeklyPenalty > 0 ? ' is-warn' : ' is-ok' ?>">
+                            <span class="training-result-value">&euro;<?= e(number_format($weeklyPenalty, 2, '.', '')) ?></span>
+                            <span class="training-result-label"><?= e(t('metric.penalty')) ?></span>
+                        </div>
                     <?php endif; ?>
-                </ul>
+                </div>
             </article>
             <article class="panel">
-                <h2><?= e(t('goals.title')) ?></h2>
-                <div class="stat-list">
+                <h2><?= e(t('table.habits_section')) ?></h2>
+                <div class="training-habit-chips">
                     <?php foreach (($metric['habit_counts'] ?? []) as $code => $count): ?>
-                        <article><strong><?= e((string) $code) ?></strong><span><?= e((string) $count) ?></span></article>
+                        <span class="training-habit-chip">
+                            <span class="training-habit-chip-label"><?= e($habitLabelFor((string) $code)) ?></span>
+                            <span class="training-habit-chip-count"><?= e((string) $count) ?></span>
+                        </span>
                     <?php endforeach; ?>
                     <?php if (($metric['habit_counts'] ?? []) === []): ?>
                         <p class="muted"><?= e(t('common.none')) ?></p>
