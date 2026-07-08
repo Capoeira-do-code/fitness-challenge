@@ -615,7 +615,7 @@ if ($page === 'api_gallery_recent') {
     $galleryPerPage = max(24, min(240, (int) ($_GET['gallery_per_page'] ?? 96)));
     $galleryOffset = ($galleryPage - 1) * $galleryPerPage;
 
-    $rows = fetch_gallery_photos($pdo, $galleryPerPage + 1, $galleryOffset, $galleryUserFilter);
+    $rows = fetch_gallery_photos($pdo, $galleryPerPage + 1, $galleryOffset, $galleryUserFilter, (int) $currentUser['id'], is_admin($currentUser));
     $hasMore = count($rows) > $galleryPerPage;
     if ($hasMore) {
         array_pop($rows);
@@ -623,7 +623,7 @@ if ($page === 'api_gallery_recent') {
 
     $previousMonth = '';
     if ($galleryOffset > 0) {
-        $previousRows = fetch_gallery_photos($pdo, 1, $galleryOffset - 1, $galleryUserFilter);
+        $previousRows = fetch_gallery_photos($pdo, 1, $galleryOffset - 1, $galleryUserFilter, (int) $currentUser['id'], is_admin($currentUser));
         if ($previousRows !== []) {
             $previousMonth = substr((string) ($previousRows[0]['log_date'] ?? ''), 0, 7);
         }
@@ -1044,6 +1044,15 @@ if ($page === 'entries') {
                     ]
                 );
                 flash_set('success', t('flash.photo_uploaded'));
+                // Notify friends of a meal or training post (privacy-aware, once/day).
+                if (function_exists('social_broadcast_activity')) {
+                    $activityType = $category === 'workout'
+                        ? 'training'
+                        : (in_array($category, ['breakfast', 'lunch', 'dinner', 'meal'], true) ? 'meal' : '');
+                    if ($activityType !== '') {
+                        social_broadcast_activity($pdo, $userId, $activityType);
+                    }
+                }
             } catch (Throwable $e) {
                 flash_set('error', $e->getMessage());
             }
@@ -1399,7 +1408,7 @@ if ($page === 'gallery') {
     $galleryMonthSeed = '';
     $galleryPhotos = [];
     if ($galleryView === 'recent') {
-        $galleryRows = fetch_gallery_photos($pdo, $galleryPerPage + 1, $galleryOffset, $galleryUserFilter);
+        $galleryRows = fetch_gallery_photos($pdo, $galleryPerPage + 1, $galleryOffset, $galleryUserFilter, (int) $currentUser['id'], is_admin($currentUser));
         $galleryHasMore = count($galleryRows) > $galleryPerPage;
         if ($galleryHasMore) {
             array_pop($galleryRows);
@@ -1407,7 +1416,7 @@ if ($page === 'gallery') {
         $galleryPhotos = $galleryRows;
         $galleryNextPage = $galleryHasMore ? $galleryPage + 1 : null;
         if ($galleryOffset > 0) {
-            $gallerySeedRows = fetch_gallery_photos($pdo, 1, $galleryOffset - 1, $galleryUserFilter);
+            $gallerySeedRows = fetch_gallery_photos($pdo, 1, $galleryOffset - 1, $galleryUserFilter, (int) $currentUser['id'], is_admin($currentUser));
             if ($gallerySeedRows !== []) {
                 $galleryMonthSeed = substr((string) ($gallerySeedRows[0]['log_date'] ?? ''), 0, 7);
             }
@@ -1639,7 +1648,10 @@ if ($page === 'friends') {
     // Optional side-by-side comparison with one friend.
     $compareId = (int) ($_GET['compare'] ?? 0);
     $friendCompare = null;
-    if ($compareId > 0 && friends_status($pdo, $meId, $compareId) === 'friends') {
+    if ($compareId > 0
+        && friends_status($pdo, $meId, $compareId) === 'friends'
+        && can_view_user_content($pdo, $meId, $compareId, is_admin($currentUser))
+    ) {
         $compareUser = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id AND active = 1', [':id' => $compareId]);
         if ($compareUser !== null) {
             $compareMetrics = compute_challenge_metrics($pdo, [$currentUser, $compareUser], $friendsChallengeStart, $friendsChallengeEnd);
@@ -2185,6 +2197,16 @@ if ($page === 'profile') {
             );
             flash_set('success', t('flash.preferences_updated'));
             redirect($profileUrl());
+        }
+
+        if ($action === 'update_privacy') {
+            if (!$canEditProfile || !$isOwnProfile) {
+                flash_set('error', t('flash.no_permission'));
+                redirect($profileUrl('config'));
+            }
+            privacy_set_visibility($pdo, (int) $profileUser['id'], (string) ($_POST['profile_visibility'] ?? 'public'));
+            flash_set('success', t('flash.preferences_updated'));
+            redirect($profileUrl('config'));
         }
 
         if ($action === 'create_goal') {

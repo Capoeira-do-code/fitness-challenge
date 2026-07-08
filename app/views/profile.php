@@ -1040,6 +1040,30 @@ $profileSetupRows = [
                 </dl>
             </div>
 
+            <?php if ($isOwnProfile && $canEditProfile): ?>
+                <?php $currentVisibility = function_exists('privacy_normalize') ? privacy_normalize((string) ($profileUser['profile_visibility'] ?? 'public')) : 'public'; ?>
+                <form method="post" action="<?= e($profileUrl('config')) ?>" class="stack profile-privacy-form">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="update_privacy">
+                    <div class="profile-privacy-head">
+                        <h3><?= e(t('privacy.title')) ?></h3>
+                        <p class="muted"><?= e(t('privacy.subtitle')) ?></p>
+                    </div>
+                    <div class="privacy-options">
+                        <?php foreach (['public' => 'privacy.public', 'friends' => 'privacy.friends', 'private' => 'privacy.private'] as $value => $labelKey): ?>
+                            <label class="privacy-option<?= $currentVisibility === $value ? ' is-selected' : '' ?>">
+                                <input type="radio" name="profile_visibility" value="<?= e($value) ?>" <?= $currentVisibility === $value ? 'checked' : '' ?>>
+                                <span class="privacy-option-label"><?= e(t($labelKey)) ?></span>
+                                <span class="privacy-option-hint muted"><?= e(t($labelKey . '_hint')) ?></span>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                    <div class="inline-actions">
+                        <button type="submit" class="btn btn-primary"><?= e(t('common.save')) ?></button>
+                    </div>
+                </form>
+            <?php endif; ?>
+
             <?php if ($canEditProfile): ?>
                 <form method="post" action="<?= e($profileUrl('config')) ?>" class="stack profile-config-form" data-config-form data-spa-param-show="edit" data-spa-value="1" <?= $configEditMode ? '' : 'hidden' ?>>
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">

@@ -144,6 +144,17 @@ function squad_add_member(PDO $pdo, int $squadId, int $ownerId, int $userId): bo
         [':s' => $squadId, ':u' => $userId, ':now' => now_iso()]
     );
 
+    if (function_exists('social_notify')) {
+        $squad = squad_get($pdo, $squadId);
+        social_notify(
+            $pdo,
+            $userId,
+            'squad_added',
+            t('notif.squad_added_title'),
+            t('notif.squad_added_body', ['squad' => (string) ($squad['name'] ?? '')])
+        );
+    }
+
     return true;
 }
 

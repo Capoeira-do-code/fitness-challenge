@@ -2554,6 +2554,24 @@
         widget.dataset.primaryGoalsReady = '1';
     };
 
+    const initPrivacyOptions = () => {
+        const form = document.querySelector('.profile-privacy-form');
+        if (!form) {
+            return;
+        }
+        const options = Array.from(form.querySelectorAll('.privacy-option'));
+        form.addEventListener('change', (event) => {
+            const target = event.target;
+            if (!target || target.name !== 'profile_visibility') {
+                return;
+            }
+            options.forEach((option) => {
+                const input = option.querySelector('input[type="radio"]');
+                option.classList.toggle('is-selected', !!input && input.checked);
+            });
+        });
+    };
+
     const initProfileConfigEditor = () => {
         const editors = document.querySelectorAll('[data-config-editor]');
         if (editors.length === 0) {
@@ -4995,6 +5013,7 @@
         safeInit(initStrikeReviewModal);
         safeInit(initProfileGoalsSection);
         safeInit(initProfileConfigEditor);
+        safeInit(initPrivacyOptions);
         safeInit(initSettingsAvatarHashFallback);
         safeInit(initGalleryMonthOverlay);
         safeInit(initGalleryRecentInfinite);

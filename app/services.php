@@ -657,6 +657,14 @@ function upsert_daily_log_and_sync_approvals(PDO $pdo, array $payload, int $acto
         }
         sync_log_approval_requests($pdo, (int) $payload['user_id'], (string) $payload['log_date'], $actorUserId, $payload);
         $pdo->commit();
+
+        // Tell friends when a user logs their own workout (privacy-aware, once/day).
+        if (function_exists('social_broadcast_activity')
+            && (int) $payload['user_id'] === $actorUserId
+            && (int) ($payload['workout_done'] ?? 0) === 1
+        ) {
+            social_broadcast_activity($pdo, $actorUserId, 'training');
+        }
     } catch (Throwable $e) {
         $pdo->rollBack();
         throw $e;
@@ -1413,16 +1421,21 @@ function fetch_recent_photos(PDO $pdo, int $limit = 24, ?int $userId = null): ar
     );
 }
 
-function fetch_gallery_photos(PDO $pdo, int $limit = 60, int $offset = 0, ?int $userId = null): array
+function fetch_gallery_photos(PDO $pdo, int $limit = 60, int $offset = 0, ?int $userId = null, ?int $viewerId = null, bool $viewerIsAdmin = false): array
 {
     $limit = max(1, min(5000, $limit));
     $offset = max(0, $offset);
     $params = [];
-    $where = '';
+    $conditions = [];
     if ($userId !== null) {
-        $where = 'WHERE p.user_id = :user_id';
+        $conditions[] = 'p.user_id = :user_id';
         $params[':user_id'] = $userId;
     }
+    // Hide posts from users whose visibility excludes the viewer (social privacy).
+    if ($viewerId !== null && function_exists('privacy_visible_owner_sql')) {
+        $conditions[] = privacy_visible_owner_sql('u', $viewerId, $viewerIsAdmin, $params);
+    }
+    $where = $conditions !== [] ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
     return db_fetch_all(
         $pdo,
@@ -8441,8 +8454,16 @@ function resolve_notification_destination(PDO $pdo, array $notification): string
         return '/?page=duels';
     }
 
-    if (in_array($kind, ['comp_invite', 'comp_accepted', 'comp_finished'], true)) {
+    if (in_array($kind, ['comp_invite', 'comp_accepted', 'comp_finished', 'squad_added'], true)) {
         return '/?page=competitions';
+    }
+
+    if ($kind === 'friend_activity_meal') {
+        return '/?page=gallery';
+    }
+
+    if ($kind === 'friend_activity_training') {
+        return '/?page=table';
     }
 
     return '/?page=notifications';

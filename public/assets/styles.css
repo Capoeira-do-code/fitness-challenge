@@ -3999,6 +3999,64 @@ a.mini-card-link:focus-visible {
     background: linear-gradient(135deg, #14a38b, #0f8d78);
 }
 
+/* Profile privacy selector */
+.profile-privacy-form {
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border, rgba(148, 163, 184, 0.28));
+}
+
+.profile-privacy-head h3 {
+    margin: 0 0 0.15rem;
+}
+
+.privacy-options {
+    display: grid;
+    gap: 0.6rem;
+    margin: 0.9rem 0;
+}
+
+.privacy-option {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-areas: "radio label" "radio hint";
+    gap: 0.1rem 0.7rem;
+    align-items: center;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid var(--border, rgba(148, 163, 184, 0.28));
+    border-radius: 12px;
+    background: var(--surface-2, rgba(148, 163, 184, 0.08));
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.privacy-option:hover {
+    border-color: var(--accent, #14a38b);
+}
+
+.privacy-option.is-selected {
+    border-color: var(--accent, #14a38b);
+    background: color-mix(in srgb, var(--accent, #14a38b) 12%, transparent);
+}
+
+.privacy-option input[type="radio"] {
+    grid-area: radio;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent, #14a38b);
+}
+
+.privacy-option-label {
+    grid-area: label;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.privacy-option-hint {
+    grid-area: hint;
+    font-size: 0.82rem;
+}
+
 /* On desktop, keep admin settings-panel forms readable instead of stretching
    inputs and Save buttons across the full panel width. */
 @media (min-width: 900px) {
