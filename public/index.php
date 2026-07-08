@@ -4080,6 +4080,21 @@ if ($page === 'team_settings') {
             redirect('/?page=team_settings&team_id=' . (int) $team['id']);
         }
 
+        if ($action === 'transfer_admin') {
+            $ok = transfer_team_admin($pdo, (int) $team['id'], (int) ($_POST['user_id'] ?? 0), (int) $currentUser['id']);
+            flash_set($ok ? 'success' : 'error', $ok ? t('flash.team_admin_transferred') : t('flash.team_action_failed'));
+            redirect('/?page=team_settings&team_id=' . (int) $team['id']);
+        }
+
+        if ($action === 'delete_team') {
+            if (delete_team($pdo, (int) $team['id'], (int) $currentUser['id'])) {
+                flash_set('success', t('flash.team_deleted'));
+                redirect('/?page=team');
+            }
+            flash_set('error', t('flash.team_delete_blocked'));
+            redirect('/?page=team_settings&team_id=' . (int) $team['id']);
+        }
+
         if ($action === 'resolve_join_request') {
             resolve_team_join_request($pdo, (int) ($_POST['request_id'] ?? 0), (string) ($_POST['decision'] ?? '') === 'approve', (int) $currentUser['id']);
             flash_set('success', t('flash.team_updated'));
@@ -4112,6 +4127,12 @@ if ($page === 'team') {
         if ($action === 'join_team') {
             $result = request_or_join_team($pdo, (int) ($_POST['team_id'] ?? 0), (int) $currentUser['id']);
             flash_set('success', t('flash.team_' . $result));
+            redirect('/?page=team');
+        }
+
+        if ($action === 'leave_team') {
+            $leaveResult = leave_team($pdo, (int) ($_POST['team_id'] ?? 0), (int) $currentUser['id']);
+            flash_set($leaveResult === 'left' ? 'success' : 'error', t('flash.team_leave_' . $leaveResult));
             redirect('/?page=team');
         }
 
@@ -5303,6 +5324,8 @@ if ($page === 'team') {
         'currentPage' => 'team',
         'currentUser' => $currentUser,
         'team' => $team,
+        'userTeams' => $userTeams,
+        'joinableTeams' => list_joinable_teams($pdo, (int) $currentUser['id']),
         'members' => list_team_members($pdo, (int) $team['id'], true),
         'availableUsers' => list_users_not_in_active_team($pdo, (int) $team['id']),
         'metricsOrdered' => $metricsOrdered,

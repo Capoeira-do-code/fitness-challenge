@@ -87,4 +87,60 @@ declare(strict_types=1);
             <?php endforeach; ?>
         </div>
     </article>
+
+    <?php
+    $isDefaultTeam = (string) ($team['slug'] ?? '') === 'main';
+    $activeMembers = array_values(array_filter($teamMembers ?? [], static fn($m): bool => (int) ($m['active'] ?? 0) === 1));
+    $otherActiveMembers = array_values(array_filter($activeMembers, static fn($m): bool => (int) $m['user_id'] !== (int) $currentUser['id']));
+    $activeAdminCount = 0;
+    $iAmTeamAdmin = false;
+    foreach ($activeMembers as $m) {
+        $isAdminRole = in_array((string) $m['role'], ['admin', 'owner'], true);
+        if ($isAdminRole) {
+            $activeAdminCount++;
+        }
+        if ((int) $m['user_id'] === (int) $currentUser['id'] && $isAdminRole) {
+            $iAmTeamAdmin = true;
+        }
+    }
+    ?>
+    <article class="panel team-danger-zone">
+        <div class="panel-head"><div><p class="eyebrow"><?= e(t('team.danger_zone')) ?></p><h2><?= e(t('team.danger_zone')) ?></h2></div></div>
+
+        <?php if (($iAmTeamAdmin || is_admin($currentUser)) && $activeAdminCount <= 1 && $otherActiveMembers !== []): ?>
+            <div class="team-danger-row">
+                <div>
+                    <strong><?= e(t('team.transfer_admin')) ?></strong>
+                    <p class="muted"><?= e(t('team.transfer_admin_help')) ?></p>
+                </div>
+                <form method="post" action="/?page=team_settings&team_id=<?= (int) $team['id'] ?>" class="inline-actions-mini">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="transfer_admin">
+                    <select name="user_id" required>
+                        <option value=""><?= e(t('team.select_member')) ?></option>
+                        <?php foreach ($otherActiveMembers as $m): ?>
+                            <option value="<?= (int) $m['user_id'] ?>"><?= e((string) $m['display_name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button class="btn small btn-primary" type="submit"><?= e(t('team.make_admin')) ?></button>
+                </form>
+            </div>
+        <?php endif; ?>
+
+        <?php if (!$isDefaultTeam): ?>
+            <div class="team-danger-row">
+                <div>
+                    <strong><?= e(t('team.delete')) ?></strong>
+                    <p class="muted"><?= e(t('team.delete_help')) ?></p>
+                </div>
+                <form method="post" action="/?page=team_settings&team_id=<?= (int) $team['id'] ?>" onsubmit="return confirm('<?= e(t('team.delete_confirm')) ?>');">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="delete_team">
+                    <button class="btn small btn-danger" type="submit"><?= e(t('team.delete')) ?></button>
+                </form>
+            </div>
+        <?php else: ?>
+            <p class="muted"><?= e(t('team.default_no_delete')) ?></p>
+        <?php endif; ?>
+    </article>
 </section>

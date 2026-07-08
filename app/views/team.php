@@ -168,10 +168,42 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             <p class="eyebrow"><?= e(t('nav.team')) ?></p>
             <h1><?= e((string) $team['name']) ?></h1>
             <p class="muted"><?= e((string) (($team['description'] ?? '') !== '' ? $team['description'] : t('team.subtitle'))) ?></p>
+            <?php $myTeams = (array) ($userTeams ?? []); ?>
+            <?php if (count($myTeams) > 1): ?>
+                <div class="team-switcher" role="group" aria-label="<?= e(t('team.your_teams')) ?>">
+                    <?php foreach ($myTeams as $ut): ?>
+                        <a class="team-switcher-chip<?= (int) $ut['id'] === (int) $team['id'] ? ' is-active' : '' ?>" href="/?page=team&team_id=<?= (int) $ut['id'] ?>"><?= e((string) $ut['name']) ?></a>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         </div>
-        <?php if (!empty($canManageTeam)): ?>
-            <a class="btn btn-secondary icon-btn team-settings-top" href="/?page=team_settings&team_id=<?= (int) $team['id'] ?>" aria-label="<?= e(t('team.settings')) ?>"><?= e(t('team.settings_short')) ?></a>
-        <?php endif; ?>
+        <div class="team-hero-actions inline-actions-mini">
+            <?php if (!empty($canManageTeam)): ?>
+                <a class="btn btn-secondary icon-btn team-settings-top" href="/?page=team_settings&team_id=<?= (int) $team['id'] ?>" aria-label="<?= e(t('team.settings')) ?>"><?= e(t('team.settings_short')) ?></a>
+            <?php endif; ?>
+            <?php if (($joinableTeams ?? []) !== []): ?>
+                <details class="team-join-more">
+                    <summary class="btn btn-ghost small"><?= e(t('team.join_another')) ?></summary>
+                    <form method="post" action="/?page=team" class="team-join-more-form">
+                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                        <input type="hidden" name="action" value="join_team">
+                        <select name="team_id" required>
+                            <option value=""><?= e(t('team.select_team')) ?></option>
+                            <?php foreach ($joinableTeams as $jt): ?>
+                                <option value="<?= (int) $jt['id'] ?>"><?= e((string) $jt['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button class="btn small btn-primary" type="submit"><?= e(t('team.join_team')) ?></button>
+                    </form>
+                </details>
+            <?php endif; ?>
+            <form method="post" action="/?page=team" class="team-leave-form" onsubmit="return confirm('<?= e(!empty($canManageTeam) ? t('team.leave_admin_confirm') : t('team.leave_confirm')) ?>');">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="leave_team">
+                <input type="hidden" name="team_id" value="<?= (int) $team['id'] ?>">
+                <button class="btn btn-ghost small btn-danger-ghost" type="submit"><?= e(t('team.leave')) ?></button>
+            </form>
+        </div>
     </div>
 
     <?php if ($teamLayoutEditMode): ?>

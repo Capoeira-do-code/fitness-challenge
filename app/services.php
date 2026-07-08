@@ -3300,6 +3300,92 @@ function update_team_member_role(PDO $pdo, int $teamId, int $userId, string $rol
     audit_log($pdo, $actorUserId, 'team_member_role_updated', 'team_membership', (string) $before['id'], 'Team member role updated.', audit_snapshot($before), audit_snapshot($after));
 }
 
+function team_active_admin_count(PDO $pdo, int $teamId): int
+{
+    return (int) (db_fetch_one(
+        $pdo,
+        "SELECT COUNT(*) AS total FROM team_memberships
+         WHERE team_id = :team_id AND active = 1 AND role IN ('admin', 'owner')",
+        [':team_id' => $teamId]
+    )['total'] ?? 0);
+}
+
+function team_active_member_count(PDO $pdo, int $teamId): int
+{
+    return (int) (db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS total FROM team_memberships WHERE team_id = :team_id AND active = 1',
+        [':team_id' => $teamId]
+    )['total'] ?? 0);
+}
+
+function user_is_active_team_member(PDO $pdo, int $teamId, int $userId): bool
+{
+    return db_fetch_one(
+        $pdo,
+        'SELECT id FROM team_memberships WHERE team_id = :team_id AND user_id = :user_id AND active = 1',
+        [':team_id' => $teamId, ':user_id' => $userId]
+    ) !== null;
+}
+
+function user_is_team_admin(PDO $pdo, int $teamId, int $userId): bool
+{
+    return db_fetch_one(
+        $pdo,
+        "SELECT id FROM team_memberships
+         WHERE team_id = :team_id AND user_id = :user_id AND active = 1 AND role IN ('admin', 'owner')",
+        [':team_id' => $teamId, ':user_id' => $userId]
+    ) !== null;
+}
+
+/**
+ * A user leaves a team. Returns a status: 'left', 'not_member', or
+ * 'need_transfer' when the user is the last admin while other members remain
+ * (they must hand admin to someone else first).
+ */
+function leave_team(PDO $pdo, int $teamId, int $userId): string
+{
+    if (!user_is_active_team_member($pdo, $teamId, $userId)) {
+        return 'not_member';
+    }
+    if (user_is_team_admin($pdo, $teamId, $userId)
+        && team_active_admin_count($pdo, $teamId) <= 1
+        && team_active_member_count($pdo, $teamId) > 1
+    ) {
+        return 'need_transfer';
+    }
+    set_team_membership($pdo, $teamId, $userId, false, $userId);
+
+    return 'left';
+}
+
+/** Promote another active member to team admin (used to hand over ownership). */
+function transfer_team_admin(PDO $pdo, int $teamId, int $toUserId, int $actorUserId): bool
+{
+    if (!user_is_active_team_member($pdo, $teamId, $toUserId)) {
+        return false;
+    }
+    update_team_member_role($pdo, $teamId, $toUserId, 'admin', $actorUserId);
+
+    return true;
+}
+
+/** Soft-delete a team (deactivate the team and all its memberships). The
+ *  built-in default team cannot be deleted. */
+function delete_team(PDO $pdo, int $teamId, int $actorUserId): bool
+{
+    $team = db_fetch_one($pdo, 'SELECT * FROM teams WHERE id = :id', [':id' => $teamId]);
+    if ($team === null || (string) ($team['slug'] ?? '') === 'main') {
+        return false;
+    }
+    $now = now_iso();
+    db_execute($pdo, 'UPDATE team_memberships SET active = 0, removed_at = :now, updated_at = :now WHERE team_id = :id AND active = 1', [':now' => $now, ':id' => $teamId]);
+    db_execute($pdo, 'UPDATE teams SET active = 0, updated_at = :now WHERE id = :id', [':now' => $now, ':id' => $teamId]);
+    audit_log($pdo, $actorUserId, 'team_deleted', 'team', (string) $teamId, 'Team deleted.', audit_snapshot($team), null);
+
+    return true;
+}
+
 function list_user_teams(PDO $pdo, int $userId): array
 {
     return db_fetch_all(

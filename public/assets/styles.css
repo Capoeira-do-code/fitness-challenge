@@ -4044,6 +4044,104 @@ a.mini-card-link:focus-visible {
     background: linear-gradient(135deg, #14a38b, #0f8d78);
 }
 
+/* Team switcher, leave/join, and danger zone */
+.btn-danger {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    color: #fff;
+    border-color: transparent;
+}
+
+.btn-danger:hover {
+    filter: brightness(1.05);
+}
+
+.btn-danger-ghost {
+    color: #dc2626;
+}
+
+.btn-danger-ghost:hover {
+    background: rgba(220, 38, 38, 0.1);
+}
+
+.team-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.team-switcher {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.6rem;
+}
+
+.team-switcher-chip {
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface-2, rgba(148, 163, 184, 0.1));
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.team-switcher-chip.is-active {
+    color: #fff;
+    background: linear-gradient(135deg, #14a38b, #0f8d78);
+    border-color: transparent;
+}
+
+.team-join-more {
+    position: relative;
+}
+
+.team-join-more > summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+.team-join-more > summary::-webkit-details-marker {
+    display: none;
+}
+
+.team-join-more-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+    margin-top: 0.5rem;
+    padding: 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+}
+
+.team-danger-zone {
+    border: 1px solid rgba(220, 38, 38, 0.35);
+}
+
+.team-danger-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+    border-top: 1px solid var(--line);
+}
+
+.team-danger-row:first-of-type {
+    border-top: 0;
+}
+
+.team-danger-row p {
+    margin: 0.15rem 0 0;
+    max-width: 46ch;
+}
+
 /* Profile privacy selector */
 .profile-privacy-form {
     margin-top: 1.25rem;
