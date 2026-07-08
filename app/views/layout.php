@@ -157,6 +157,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                     <a href="/?page=profile"><?= e(t('nav.profile')) ?></a>
                     <a href="/?page=friends"><?= e(t('nav.friends')) ?></a>
                     <a href="/?page=duels"><?= e(t('nav.duels')) ?></a>
+                    <a href="/?page=competitions"><?= e(t('nav.competitions')) ?></a>
                     <a href="/?page=notifications"><?= e(t('nav.notifications')) ?><?php if ($unreadNotificationsCount > 0): ?> (<?= (int) $unreadNotificationsCount ?>)<?php endif; ?></a>
                     <a href="/?page=settings"><?= e(t('nav.settings')) ?></a>
                     <button type="button" class="user-menu-theme-toggle" data-theme-toggle data-csrf="<?= e(csrf_token()) ?>" data-label-dark="<?= e(t('nav.theme_toggle_dark')) ?>" data-label-light="<?= e(t('nav.theme_toggle_light')) ?>" aria-pressed="<?= $themeMode === 'dark' ? 'true' : 'false' ?>">

@@ -7,7 +7,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 $page = $_GET['page'] ?? null;
 if ($page === null) {
     $pathPage = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/');
-    if (in_array($pathPage, ['dashboard', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'login', 'login_background'], true)) {
+    if (in_array($pathPage, ['dashboard', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'competitions', 'login', 'login_background'], true)) {
         $page = $pathPage;
     }
 }
@@ -1738,6 +1738,93 @@ if ($page === 'duels') {
         'duels' => $duelViewModels,
         'duelFriends' => friends_list($pdo, $meId),
         'duelMetrics' => duels_metrics(),
+        'config' => $config,
+    ]);
+}
+
+if ($page === 'competitions') {
+    friends_ensure_schema($pdo);
+    squads_ensure_schema($pdo);
+    $meId = (int) $currentUser['id'];
+
+    if (is_post()) {
+        if (!csrf_verify()) {
+            flash_set('error', t('flash.csrf'));
+            redirect('/?page=competitions');
+        }
+        $compAction = (string) ($_POST['action'] ?? '');
+        if ($compAction === 'squad_create') {
+            $newSquadId = squad_create($pdo, $meId, (string) ($_POST['name'] ?? ''));
+            flash_set($newSquadId > 0 ? 'success' : 'error', $newSquadId > 0 ? t('flash.squad_created') : t('flash.squad_failed'));
+            redirect('/?page=competitions');
+        }
+        if ($compAction === 'squad_delete') {
+            squad_delete($pdo, (int) ($_POST['squad_id'] ?? 0), $meId);
+            flash_set('success', t('flash.squad_deleted'));
+            redirect('/?page=competitions');
+        }
+        if ($compAction === 'squad_add_member') {
+            $ok = squad_add_member($pdo, (int) ($_POST['squad_id'] ?? 0), $meId, (int) ($_POST['user_id'] ?? 0));
+            flash_set($ok ? 'success' : 'error', $ok ? t('flash.squad_member_added') : t('flash.squad_failed'));
+            redirect('/?page=competitions');
+        }
+        if ($compAction === 'squad_remove_member') {
+            squad_remove_member($pdo, (int) ($_POST['squad_id'] ?? 0), $meId, (int) ($_POST['user_id'] ?? 0));
+            flash_set('success', t('flash.squad_member_removed'));
+            redirect('/?page=competitions');
+        }
+        if ($compAction === 'comp_create') {
+            $ok = comp_create(
+                $pdo,
+                (int) ($_POST['challenger_squad_id'] ?? 0),
+                (int) ($_POST['opponent_squad_id'] ?? 0),
+                $meId,
+                (string) ($_POST['metric'] ?? ''),
+                (int) ($_POST['duration_days'] ?? 7)
+            );
+            flash_set($ok ? 'success' : 'error', $ok ? t('flash.comp_created') : t('flash.comp_failed'));
+            redirect('/?page=competitions');
+        }
+        if ($compAction === 'comp_accept' || $compAction === 'comp_decline') {
+            comp_respond($pdo, (int) ($_POST['comp_id'] ?? 0), $meId, $compAction === 'comp_accept');
+            flash_set('success', $compAction === 'comp_accept' ? t('flash.comp_accepted') : t('flash.comp_declined'));
+            redirect('/?page=competitions');
+        }
+        if ($compAction === 'comp_cancel') {
+            comp_cancel($pdo, (int) ($_POST['comp_id'] ?? 0), $meId);
+            flash_set('success', t('flash.comp_cancelled'));
+            redirect('/?page=competitions');
+        }
+        redirect('/?page=competitions');
+    }
+
+    comp_finalize_due($pdo, $config);
+
+    $mySquads = squads_owned($pdo, $meId);
+    $mySquadViews = [];
+    foreach ($mySquads as $squad) {
+        $mySquadViews[] = [
+            'squad' => $squad,
+            'members' => squad_member_users($pdo, (int) $squad['id']),
+            'member_ids' => squad_member_ids($pdo, (int) $squad['id']),
+        ];
+    }
+
+    $compRows = comp_for_user($pdo, $meId);
+    $compViews = [];
+    foreach ($compRows as $comp) {
+        $compViews[] = ['comp' => (array) $comp, 'standing' => comp_standing($pdo, $config, (array) $comp)];
+    }
+
+    render_view('competitions', [
+        'title' => t('competitions.title'),
+        'currentPage' => 'friends',
+        'currentUser' => $currentUser,
+        'mySquads' => $mySquadViews,
+        'competitions' => $compViews,
+        'compFriends' => friends_list($pdo, $meId),
+        'challengeableSquads' => squads_challengeable($pdo, $meId),
+        'compMetrics' => duels_metrics(),
         'config' => $config,
     ]);
 }

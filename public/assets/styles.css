@@ -3933,6 +3933,72 @@ a.mini-card-link:focus-visible {
     text-align: center;
 }
 
+/* Team competitions (squads) */
+.squad-card {
+    display: grid;
+    gap: 0.6rem;
+    padding: 0.85rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--surface-2);
+}
+
+.squad-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+}
+
+.squad-card-head strong {
+    font-size: 1.05rem;
+}
+
+.squad-members {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.squad-member-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.28rem 0.55rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    background: var(--surface);
+}
+
+.squad-member-x {
+    border: 0;
+    background: transparent;
+    color: var(--bad, #df4c43);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+}
+
+.squad-add-form,
+.squad-challenge-form {
+    gap: 0.45rem;
+    align-items: center;
+}
+
+.comp-squad-badge {
+    display: inline-grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    font-weight: 900;
+    color: #fff;
+    background: linear-gradient(135deg, #14a38b, #0f8d78);
+}
+
 /* On desktop, keep admin settings-panel forms readable instead of stretching
    inputs and Save buttons across the full panel width. */
 @media (min-width: 900px) {

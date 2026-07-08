@@ -1,0 +1,347 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * User-created teams (squads) and team-vs-team competitions. Separate from the
+ * single challenge-wide team: any user can create a squad, add friends to it,
+ * and challenge another squad to a competition over a chosen metric. The winner
+ * is the squad with the higher aggregate metric across its members. Self-
+ * contained (own tables); reuses the duel metric helpers.
+ */
+
+function squads_ensure_schema(PDO $pdo): void
+{
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS squads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            owner_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )'
+    );
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS squad_members (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            squad_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(squad_id, user_id)
+        )'
+    );
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS squad_competitions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            challenger_squad_id INTEGER NOT NULL,
+            opponent_squad_id INTEGER NOT NULL,
+            metric TEXT NOT NULL,
+            duration_days INTEGER NOT NULL DEFAULT 7,
+            status TEXT NOT NULL DEFAULT "pending",
+            start_date TEXT,
+            end_date TEXT,
+            winner_squad_id INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )'
+    );
+}
+
+/* ---- Squads (teams) ---- */
+
+/** Multibyte-safe truncate that degrades gracefully when mbstring is absent. */
+function squad_clip(string $value, int $limit): string
+{
+    if (function_exists('mb_substr')) {
+        return mb_substr($value, 0, $limit);
+    }
+
+    return substr($value, 0, $limit);
+}
+
+/** Two-letter uppercase badge for a squad name, mbstring-safe. */
+function squad_badge(string $name): string
+{
+    $two = squad_clip(trim($name), 2);
+
+    return function_exists('mb_strtoupper') ? mb_strtoupper($two) : strtoupper($two);
+}
+
+function squad_create(PDO $pdo, int $ownerId, string $name): int
+{
+    $name = trim($name);
+    if ($name === '' || $ownerId <= 0) {
+        return 0;
+    }
+    $now = now_iso();
+    db_execute(
+        $pdo,
+        'INSERT INTO squads (name, owner_id, created_at, updated_at) VALUES (:n, :o, :now, :now)',
+        [':n' => squad_clip($name, 60), ':o' => $ownerId, ':now' => $now]
+    );
+    $squadId = (int) $pdo->lastInsertId();
+    db_execute(
+        $pdo,
+        'INSERT OR IGNORE INTO squad_members (squad_id, user_id, created_at) VALUES (:s, :u, :now)',
+        [':s' => $squadId, ':u' => $ownerId, ':now' => $now]
+    );
+
+    return $squadId;
+}
+
+function squad_get(PDO $pdo, int $squadId): ?array
+{
+    return db_fetch_one($pdo, 'SELECT * FROM squads WHERE id = :id', [':id' => $squadId]);
+}
+
+function squad_is_owner(PDO $pdo, int $squadId, int $userId): bool
+{
+    $squad = squad_get($pdo, $squadId);
+
+    return $squad !== null && (int) $squad['owner_id'] === $userId;
+}
+
+function squad_rename(PDO $pdo, int $squadId, int $ownerId, string $name): bool
+{
+    $name = trim($name);
+    if ($name === '' || !squad_is_owner($pdo, $squadId, $ownerId)) {
+        return false;
+    }
+    db_execute($pdo, 'UPDATE squads SET name = :n, updated_at = :now WHERE id = :id', [':n' => squad_clip($name, 60), ':now' => now_iso(), ':id' => $squadId]);
+
+    return true;
+}
+
+function squad_delete(PDO $pdo, int $squadId, int $ownerId): bool
+{
+    if (!squad_is_owner($pdo, $squadId, $ownerId)) {
+        return false;
+    }
+    db_execute($pdo, 'DELETE FROM squad_members WHERE squad_id = :id', [':id' => $squadId]);
+    db_execute(
+        $pdo,
+        'UPDATE squad_competitions SET status = "cancelled", updated_at = :now
+         WHERE (challenger_squad_id = :id OR opponent_squad_id = :id) AND status IN ("pending", "active")',
+        [':now' => now_iso(), ':id' => $squadId]
+    );
+    db_execute($pdo, 'DELETE FROM squads WHERE id = :id', [':id' => $squadId]);
+
+    return true;
+}
+
+/** Owner adds one of their friends to the squad. */
+function squad_add_member(PDO $pdo, int $squadId, int $ownerId, int $userId): bool
+{
+    if (!squad_is_owner($pdo, $squadId, $ownerId) || $userId <= 0) {
+        return false;
+    }
+    if ($userId !== $ownerId && function_exists('friends_status') && friends_status($pdo, $ownerId, $userId) !== 'friends') {
+        return false;
+    }
+    db_execute(
+        $pdo,
+        'INSERT OR IGNORE INTO squad_members (squad_id, user_id, created_at) VALUES (:s, :u, :now)',
+        [':s' => $squadId, ':u' => $userId, ':now' => now_iso()]
+    );
+
+    return true;
+}
+
+function squad_remove_member(PDO $pdo, int $squadId, int $ownerId, int $userId): bool
+{
+    if (!squad_is_owner($pdo, $squadId, $ownerId) || $userId === $ownerId) {
+        return false;
+    }
+    db_execute($pdo, 'DELETE FROM squad_members WHERE squad_id = :s AND user_id = :u', [':s' => $squadId, ':u' => $userId]);
+
+    return true;
+}
+
+/** Squads owned by the user. */
+function squads_owned(PDO $pdo, int $ownerId): array
+{
+    return db_fetch_all($pdo, 'SELECT * FROM squads WHERE owner_id = :o ORDER BY name COLLATE NOCASE ASC', [':o' => $ownerId]);
+}
+
+/** Member user rows of a squad. */
+function squad_member_users(PDO $pdo, int $squadId): array
+{
+    return db_fetch_all(
+        $pdo,
+        'SELECT u.* FROM squad_members m JOIN users u ON u.id = m.user_id
+         WHERE m.squad_id = :s AND u.active = 1 ORDER BY u.display_name COLLATE NOCASE ASC',
+        [':s' => $squadId]
+    );
+}
+
+function squad_member_ids(PDO $pdo, int $squadId): array
+{
+    $rows = db_fetch_all($pdo, 'SELECT user_id FROM squad_members WHERE squad_id = :s', [':s' => $squadId]);
+
+    return array_map(static fn(array $r): int => (int) $r['user_id'], $rows);
+}
+
+/** Other squads (not owned by the user) that can be challenged. */
+function squads_challengeable(PDO $pdo, int $ownerId): array
+{
+    return db_fetch_all(
+        $pdo,
+        'SELECT s.*, u.display_name AS owner_name FROM squads s
+         LEFT JOIN users u ON u.id = s.owner_id
+         WHERE s.owner_id <> :o ORDER BY s.name COLLATE NOCASE ASC',
+        [':o' => $ownerId]
+    );
+}
+
+/* ---- Competitions ---- */
+
+function comp_create(PDO $pdo, int $challengerSquadId, int $opponentSquadId, int $ownerId, string $metric, int $days): bool
+{
+    if ($challengerSquadId === $opponentSquadId || !squad_is_owner($pdo, $challengerSquadId, $ownerId)) {
+        return false;
+    }
+    if (squad_get($pdo, $opponentSquadId) === null) {
+        return false;
+    }
+    if (!array_key_exists($metric, duels_metrics())) {
+        return false;
+    }
+    $days = max(DUEL_MIN_DAYS, min(DUEL_MAX_DAYS, $days));
+    $existing = db_fetch_one(
+        $pdo,
+        'SELECT id FROM squad_competitions
+         WHERE status IN ("pending", "active")
+           AND ((challenger_squad_id = :a AND opponent_squad_id = :b) OR (challenger_squad_id = :b AND opponent_squad_id = :a))',
+        [':a' => $challengerSquadId, ':b' => $opponentSquadId]
+    );
+    if ($existing !== null) {
+        return false;
+    }
+    $now = now_iso();
+    db_execute(
+        $pdo,
+        'INSERT INTO squad_competitions (challenger_squad_id, opponent_squad_id, metric, duration_days, status, created_at, updated_at)
+         VALUES (:c, :o, :m, :d, "pending", :now, :now)',
+        [':c' => $challengerSquadId, ':o' => $opponentSquadId, ':m' => $metric, ':d' => $days, ':now' => $now]
+    );
+
+    return true;
+}
+
+/** Opponent squad owner accepts (starts) or declines. */
+function comp_respond(PDO $pdo, int $compId, int $userId, bool $accept): bool
+{
+    $comp = db_fetch_one($pdo, 'SELECT * FROM squad_competitions WHERE id = :id AND status = "pending"', [':id' => $compId]);
+    if ($comp === null || !squad_is_owner($pdo, (int) $comp['opponent_squad_id'], $userId)) {
+        return false;
+    }
+    if (!$accept) {
+        db_execute($pdo, 'UPDATE squad_competitions SET status = "declined", updated_at = :now WHERE id = :id', [':now' => now_iso(), ':id' => $compId]);
+
+        return true;
+    }
+    $start = to_date(null);
+    $end = (new DateTimeImmutable($start))->modify('+' . (max(1, (int) $comp['duration_days']) - 1) . ' days')->format('Y-m-d');
+    db_execute(
+        $pdo,
+        'UPDATE squad_competitions SET status = "active", start_date = :s, end_date = :e, updated_at = :now WHERE id = :id',
+        [':s' => $start, ':e' => $end, ':now' => now_iso(), ':id' => $compId]
+    );
+
+    return true;
+}
+
+function comp_cancel(PDO $pdo, int $compId, int $userId): bool
+{
+    $comp = db_fetch_one($pdo, 'SELECT * FROM squad_competitions WHERE id = :id AND status IN ("pending", "active")', [':id' => $compId]);
+    if ($comp === null) {
+        return false;
+    }
+    if (!squad_is_owner($pdo, (int) $comp['challenger_squad_id'], $userId) && !squad_is_owner($pdo, (int) $comp['opponent_squad_id'], $userId)) {
+        return false;
+    }
+    db_execute($pdo, 'UPDATE squad_competitions SET status = "cancelled", updated_at = :now WHERE id = :id', [':now' => now_iso(), ':id' => $compId]);
+
+    return true;
+}
+
+/** Aggregate metric value for all members of a squad over a date range. */
+function comp_squad_value(PDO $pdo, array $config, int $squadId, string $metric, string $rangeStart, string $rangeEnd): float
+{
+    $members = squad_member_users($pdo, $squadId);
+    if ($members === []) {
+        return 0.0;
+    }
+    $metrics = compute_challenge_metrics($pdo, $members, $rangeStart, $rangeEnd);
+    if (function_exists('apply_strike_review_overrides_to_metrics')) {
+        $metrics = apply_strike_review_overrides_to_metrics($pdo, $metrics);
+    }
+    $total = 0.0;
+    foreach ($metrics as $m) {
+        $total += duels_metric_value($m, $metric);
+    }
+
+    return round($total, 2);
+}
+
+/** Competition view model: names, aggregate values, leader. */
+function comp_standing(PDO $pdo, array $config, array $comp): array
+{
+    $status = (string) $comp['status'];
+    $rangeStart = (string) ($comp['start_date'] ?? to_date(null));
+    $rangeEnd = $status === 'active' ? to_date(null) : (string) ($comp['end_date'] ?? $rangeStart);
+    $challenger = squad_get($pdo, (int) $comp['challenger_squad_id']);
+    $opponent = squad_get($pdo, (int) $comp['opponent_squad_id']);
+    $metric = (string) $comp['metric'];
+
+    $cVal = 0.0;
+    $oVal = 0.0;
+    if ($status === 'active' || $status === 'completed') {
+        $cVal = comp_squad_value($pdo, $config, (int) $comp['challenger_squad_id'], $metric, $rangeStart, $rangeEnd);
+        $oVal = comp_squad_value($pdo, $config, (int) $comp['opponent_squad_id'], $metric, $rangeStart, $rangeEnd);
+    }
+
+    return [
+        'challenger_squad' => $challenger,
+        'opponent_squad' => $opponent,
+        'challenger_value' => $cVal,
+        'opponent_value' => $oVal,
+    ];
+}
+
+function comp_finalize_due(PDO $pdo, array $config): void
+{
+    $today = to_date(null);
+    $due = db_fetch_all(
+        $pdo,
+        'SELECT * FROM squad_competitions WHERE status = "active" AND end_date IS NOT NULL AND end_date < :today',
+        [':today' => $today]
+    );
+    foreach ($due as $comp) {
+        $s = comp_standing($pdo, $config, $comp);
+        $winner = null;
+        if ($s['challenger_value'] > $s['opponent_value']) {
+            $winner = (int) $comp['challenger_squad_id'];
+        } elseif ($s['opponent_value'] > $s['challenger_value']) {
+            $winner = (int) $comp['opponent_squad_id'];
+        }
+        db_execute(
+            $pdo,
+            'UPDATE squad_competitions SET status = "completed", winner_squad_id = :w, updated_at = :now WHERE id = :id',
+            [':w' => $winner, ':now' => now_iso(), ':id' => (int) $comp['id']]
+        );
+    }
+}
+
+/** Competitions involving any squad the user owns. */
+function comp_for_user(PDO $pdo, int $userId): array
+{
+    return db_fetch_all(
+        $pdo,
+        'SELECT c.* FROM squad_competitions c
+         WHERE c.challenger_squad_id IN (SELECT id FROM squads WHERE owner_id = :u)
+            OR c.opponent_squad_id IN (SELECT id FROM squads WHERE owner_id = :u)
+         ORDER BY (c.status = "active") DESC, (c.status = "pending") DESC, c.updated_at DESC',
+        [':u' => $userId]
+    );
+}
