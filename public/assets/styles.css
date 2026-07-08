@@ -3933,6 +3933,31 @@ a.mini-card-link:focus-visible {
     text-align: center;
 }
 
+/* On desktop, keep admin settings-panel forms readable instead of stretching
+   inputs and Save buttons across the full panel width. */
+@media (min-width: 900px) {
+    .settings-panel .compact-form {
+        max-width: 640px;
+    }
+
+    .settings-panel .compact-form > button.btn,
+    .settings-panel .compact-form > .inline-actions {
+        justify-self: start;
+    }
+
+    .settings-panel .compact-form > button.btn {
+        width: auto;
+        min-width: 180px;
+        padding-inline: 1.5rem;
+    }
+
+    .admin-notion-mapping .compact-form,
+    .admin-telegram-panel .compact-form,
+    .admin-notion-oauth .compact-form {
+        max-width: none;
+    }
+}
+
 .mini-card > div,
 .stat-list article,
 .audit-list article {
