@@ -3550,21 +3550,66 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 }
 
 .mini-card.admin-quote-item {
-    display: grid;
-    align-items: flex-start;
-    grid-template-columns: minmax(0, 1fr) auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    align-items: stretch;
 }
 
-.mini-card.admin-quote-item strong {
-    line-height: 1.35;
-    overflow: visible;
-    text-overflow: initial;
-    white-space: normal;
+.admin-quote-edit-form textarea {
+    width: 100%;
+    resize: vertical;
 }
 
-.mini-card.admin-quote-item span:not(.badge) {
-    color: var(--muted);
+.admin-quote-edit-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem 1rem;
+}
+
+.admin-quote-lang {
+    min-width: 160px;
+}
+
+.admin-quote-active.checkbox-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    white-space: nowrap;
+}
+
+.admin-quote-lang-badge {
+    margin-left: auto;
+}
+
+.admin-quote-meta {
     font-size: 0.8rem;
+}
+
+.admin-quote-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.admin-quote-delete-form {
+    align-self: flex-end;
+    margin-top: -2.4rem;
+}
+
+.badge-soft {
+    background: var(--surface-2, rgba(148, 163, 184, 0.16));
+    color: var(--muted);
+}
+
+@media (max-width: 640px) {
+    .admin-quote-delete-form {
+        align-self: stretch;
+        margin-top: 0;
+    }
+    .admin-quote-lang-badge {
+        margin-left: 0;
+    }
 }
 
 .profile-chip {

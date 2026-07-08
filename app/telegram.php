@@ -347,6 +347,10 @@ function telegram_pick_quote(PDO $pdo, array $user): string
     if ($own !== '') {
         return $own;
     }
+    // Prefer a quote in the user's language (or one tagged for all languages).
+    if (function_exists('random_motivation_quote_from_db')) {
+        return random_motivation_quote_from_db($pdo, (string) ($user['locale'] ?? 'en'));
+    }
     $quotes = function_exists('list_motivational_quotes') ? list_motivational_quotes($pdo, true) : [];
     if ($quotes === []) {
         return '';

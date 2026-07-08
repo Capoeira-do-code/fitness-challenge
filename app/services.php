@@ -2814,8 +2814,30 @@ function update_user(PDO $pdo, int $userId, array $payload): void
     }
 }
 
+/** Languages a motivational quote can be tagged with. 'any' shows in all UIs. */
+function motivational_quote_locales(): array
+{
+    return ['any', 'en', 'es', 'it'];
+}
+
+function normalize_quote_locale(string $locale): string
+{
+    $locale = strtolower(trim($locale));
+
+    return in_array($locale, motivational_quote_locales(), true) ? $locale : 'any';
+}
+
+/** Lazily add the per-quote language column (self-contained migration). */
+function ensure_motivational_quote_schema(PDO $pdo): void
+{
+    if (function_exists('ensure_column')) {
+        ensure_column($pdo, 'motivational_quotes', 'locale', "TEXT NOT NULL DEFAULT 'any'");
+    }
+}
+
 function list_motivational_quotes(PDO $pdo, bool $activeOnly = false): array
 {
+    ensure_motivational_quote_schema($pdo);
     $where = $activeOnly ? 'WHERE mq.active = 1' : '';
 
     return db_fetch_all(
@@ -2828,20 +2850,22 @@ function list_motivational_quotes(PDO $pdo, bool $activeOnly = false): array
     );
 }
 
-function create_motivational_quote(PDO $pdo, string $quoteText, int $actorUserId): int
+function create_motivational_quote(PDO $pdo, string $quoteText, int $actorUserId, string $locale = 'any'): int
 {
     $quoteText = trim($quoteText);
     if ($quoteText === '') {
         throw new InvalidArgumentException('Motivational quote is required.');
     }
+    ensure_motivational_quote_schema($pdo);
 
     $now = now_iso();
     db_execute(
         $pdo,
-        'INSERT INTO motivational_quotes (quote_text, active, created_by, created_at, updated_at)
-         VALUES (:quote_text, 1, :created_by, :created_at, :updated_at)',
+        'INSERT INTO motivational_quotes (quote_text, locale, active, created_by, created_at, updated_at)
+         VALUES (:quote_text, :locale, 1, :created_by, :created_at, :updated_at)',
         [
             ':quote_text' => $quoteText,
+            ':locale' => normalize_quote_locale($locale),
             ':created_by' => $actorUserId,
             ':created_at' => $now,
             ':updated_at' => $now,
@@ -2855,13 +2879,64 @@ function create_motivational_quote(PDO $pdo, string $quoteText, int $actorUserId
     return $quoteId;
 }
 
-function random_motivation_quote_from_db(PDO $pdo): string
+function update_motivational_quote(PDO $pdo, int $quoteId, string $quoteText, string $locale, bool $active, int $actorUserId): void
 {
+    $quoteText = trim($quoteText);
+    if ($quoteId <= 0 || $quoteText === '') {
+        throw new InvalidArgumentException('Motivational quote is required.');
+    }
+    ensure_motivational_quote_schema($pdo);
+    $before = db_fetch_one($pdo, 'SELECT * FROM motivational_quotes WHERE id = :id', [':id' => $quoteId]);
+    if ($before === null) {
+        return;
+    }
+    db_execute(
+        $pdo,
+        'UPDATE motivational_quotes SET quote_text = :quote_text, locale = :locale, active = :active, updated_at = :updated_at WHERE id = :id',
+        [
+            ':quote_text' => $quoteText,
+            ':locale' => normalize_quote_locale($locale),
+            ':active' => $active ? 1 : 0,
+            ':updated_at' => now_iso(),
+            ':id' => $quoteId,
+        ]
+    );
+    $after = db_fetch_one($pdo, 'SELECT * FROM motivational_quotes WHERE id = :id', [':id' => $quoteId]);
+    audit_log($pdo, $actorUserId, 'motivational_quote_updated', 'motivational_quote', (string) $quoteId, 'Motivational quote updated.', audit_snapshot($before), audit_snapshot($after));
+}
+
+function delete_motivational_quote(PDO $pdo, int $quoteId, int $actorUserId): void
+{
+    if ($quoteId <= 0) {
+        return;
+    }
+    $before = db_fetch_one($pdo, 'SELECT * FROM motivational_quotes WHERE id = :id', [':id' => $quoteId]);
+    if ($before === null) {
+        return;
+    }
+    db_execute($pdo, 'DELETE FROM motivational_quotes WHERE id = :id', [':id' => $quoteId]);
+    audit_log($pdo, $actorUserId, 'motivational_quote_deleted', 'motivational_quote', (string) $quoteId, 'Motivational quote deleted.', audit_snapshot($before), null);
+}
+
+function random_motivation_quote_from_db(PDO $pdo, ?string $locale = null): string
+{
+    ensure_motivational_quote_schema($pdo);
+    $params = [];
+    $localeClause = '';
+    if ($locale !== null) {
+        $localeClause = " AND (locale = :locale OR locale = 'any')";
+        $params[':locale'] = normalize_quote_locale($locale);
+    }
     $row = db_fetch_one(
         $pdo,
-        'SELECT quote_text FROM motivational_quotes WHERE active = 1 ORDER BY RANDOM() LIMIT 1'
+        'SELECT quote_text FROM motivational_quotes WHERE active = 1' . $localeClause . ' ORDER BY RANDOM() LIMIT 1',
+        $params
     );
     $quote = trim((string) ($row['quote_text'] ?? ''));
+    if ($quote === '' && $locale !== null) {
+        // Fall back to any active quote before the built-in defaults.
+        return random_motivation_quote_from_db($pdo, null);
+    }
 
     return $quote !== '' ? $quote : random_motivation_quote();
 }

@@ -248,9 +248,23 @@ class BotDB:
         own = str(user["motivation_quote"] or "").strip() if "motivation_quote" in user.keys() else ""
         if own:
             return own
-        row = self.conn.execute(
-            "SELECT quote_text FROM motivational_quotes WHERE active = 1 ORDER BY RANDOM() LIMIT 1"
-        ).fetchone()
+        locale = str(user["locale"] or "en").strip().lower() if "locale" in user.keys() else "en"
+        # Prefer a quote in the user's language (or one tagged for all languages).
+        # The locale column is added lazily by the app, so degrade gracefully.
+        try:
+            row = self.conn.execute(
+                "SELECT quote_text FROM motivational_quotes WHERE active = 1 "
+                "AND (locale = ? OR locale = 'any') ORDER BY RANDOM() LIMIT 1",
+                (locale,),
+            ).fetchone()
+            if row is None:
+                row = self.conn.execute(
+                    "SELECT quote_text FROM motivational_quotes WHERE active = 1 ORDER BY RANDOM() LIMIT 1"
+                ).fetchone()
+        except sqlite3.OperationalError:
+            row = self.conn.execute(
+                "SELECT quote_text FROM motivational_quotes WHERE active = 1 ORDER BY RANDOM() LIMIT 1"
+            ).fetchone()
         return str(row["quote_text"]).strip() if row else ""
 
     def mark_reminded(self, user_id: int, date: str) -> None:

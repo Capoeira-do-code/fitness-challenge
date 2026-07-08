@@ -1347,10 +1347,21 @@ try {
             <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
         </div>
 
+        <?php
+        $quoteLocales = function_exists('motivational_quote_locales') ? motivational_quote_locales() : ['any', 'en', 'es', 'it'];
+        $quoteLocaleLabel = static fn(string $loc): string => $loc === 'any' ? t('admin.quote_lang_any') : t('admin.quote_lang_' . $loc);
+        ?>
         <form method="post" action="/?page=admin" class="stack compact-form admin-quote-form">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="create_motivational_quote">
             <label><?= e(t('admin.quote_text')) ?><textarea name="quote_text" rows="2" maxlength="280" required></textarea></label>
+            <label><?= e(t('admin.quote_language')) ?>
+                <select name="quote_locale">
+                    <?php foreach ($quoteLocales as $loc): ?>
+                        <option value="<?= e($loc) ?>"><?= e($quoteLocaleLabel($loc)) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
             <button class="btn btn-primary" type="submit"><?= e(t('common.create')) ?></button>
         </form>
 
@@ -1358,12 +1369,42 @@ try {
             <h3><?= e(t('admin.motivational_quotes_all')) ?></h3>
             <div class="card-list admin-quote-list">
                 <?php foreach (($motivationalQuotes ?? []) as $quote): ?>
+                    <?php
+                    $quoteId = (int) ($quote['id'] ?? 0);
+                    $quoteActive = (int) ($quote['active'] ?? 1) === 1;
+                    $quoteLoc = function_exists('normalize_quote_locale') ? normalize_quote_locale((string) ($quote['locale'] ?? 'any')) : 'any';
+                    ?>
                     <article class="mini-card admin-quote-item">
-                        <div>
-                            <strong><?= e((string) $quote['quote_text']) ?></strong>
-                            <span><?= e(format_date_eu((string) ($quote['created_at'] ?? ''))) ?><?php if (!empty($quote['created_by_name'])): ?> · <?= e((string) $quote['created_by_name']) ?><?php endif; ?></span>
-                        </div>
-                        <span class="badge <?= (int) ($quote['active'] ?? 1) === 1 ? 'badge-ok' : 'badge-warn' ?>"><?= (int) ($quote['active'] ?? 1) === 1 ? e(t('common.active')) : e(t('workout_types.inactive')) ?></span>
+                        <form method="post" action="/?page=admin" class="stack admin-quote-edit-form">
+                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                            <input type="hidden" name="action" value="update_motivational_quote">
+                            <input type="hidden" name="quote_id" value="<?= $quoteId ?>">
+                            <textarea name="quote_text" rows="2" maxlength="280" required><?= e((string) $quote['quote_text']) ?></textarea>
+                            <div class="admin-quote-edit-controls">
+                                <label class="admin-quote-lang"><?= e(t('admin.quote_language')) ?>
+                                    <select name="quote_locale">
+                                        <?php foreach ($quoteLocales as $loc): ?>
+                                            <option value="<?= e($loc) ?>" <?= $quoteLoc === $loc ? 'selected' : '' ?>><?= e($quoteLocaleLabel($loc)) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </label>
+                                <label class="admin-quote-active checkbox-inline">
+                                    <input type="checkbox" name="quote_active" value="1" <?= $quoteActive ? 'checked' : '' ?>>
+                                    <span><?= e(t('common.active')) ?></span>
+                                </label>
+                                <span class="badge badge-soft admin-quote-lang-badge"><?= e($quoteLoc === 'any' ? t('admin.quote_lang_any') : strtoupper($quoteLoc)) ?></span>
+                            </div>
+                            <div class="admin-quote-meta muted"><?= e(format_date_eu((string) ($quote['created_at'] ?? ''))) ?><?php if (!empty($quote['created_by_name'])): ?> · <?= e((string) $quote['created_by_name']) ?><?php endif; ?></div>
+                            <div class="admin-quote-actions">
+                                <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
+                            </div>
+                        </form>
+                        <form method="post" action="/?page=admin" class="admin-quote-delete-form" onsubmit="return confirm('<?= e(t('admin.quote_delete_confirm')) ?>');">
+                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                            <input type="hidden" name="action" value="delete_motivational_quote">
+                            <input type="hidden" name="quote_id" value="<?= $quoteId ?>">
+                            <button class="btn btn-ghost small btn-danger-ghost" type="submit"><?= e(t('common.delete')) ?></button>
+                        </form>
                     </article>
                 <?php endforeach; ?>
                 <?php if (($motivationalQuotes ?? []) === []): ?>

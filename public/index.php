@@ -3619,11 +3619,34 @@ if ($page === 'admin') {
 
         if ($action === 'create_motivational_quote') {
             try {
-                create_motivational_quote($pdo, (string) ($_POST['quote_text'] ?? ''), (int) $currentUser['id']);
+                create_motivational_quote($pdo, (string) ($_POST['quote_text'] ?? ''), (int) $currentUser['id'], (string) ($_POST['quote_locale'] ?? 'any'));
                 flash_set('success', t('flash.motivational_quote_created'));
             } catch (Throwable $e) {
                 flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : 'Motivational quote could not be created.');
             }
+            redirect('/?page=admin&section=motivational_quotes');
+        }
+
+        if ($action === 'update_motivational_quote') {
+            try {
+                update_motivational_quote(
+                    $pdo,
+                    (int) ($_POST['quote_id'] ?? 0),
+                    (string) ($_POST['quote_text'] ?? ''),
+                    (string) ($_POST['quote_locale'] ?? 'any'),
+                    bool_from_form('quote_active') === 1,
+                    (int) $currentUser['id']
+                );
+                flash_set('success', t('flash.motivational_quote_updated'));
+            } catch (Throwable $e) {
+                flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : 'Motivational quote could not be updated.');
+            }
+            redirect('/?page=admin&section=motivational_quotes');
+        }
+
+        if ($action === 'delete_motivational_quote') {
+            delete_motivational_quote($pdo, (int) ($_POST['quote_id'] ?? 0), (int) $currentUser['id']);
+            flash_set('success', t('flash.motivational_quote_deleted'));
             redirect('/?page=admin&section=motivational_quotes');
         }
 
@@ -6580,7 +6603,7 @@ if ($page === 'dashboard') {
         'dashboardCalorieRangeStart' => $calorieStartDate,
         'dashboardCalorieRangeEnd' => $calorieEndDate,
         'dashboardAchievements' => $dashboardAchievements,
-        'motivationQuote' => random_motivation_quote_from_db($pdo),
+        'motivationQuote' => random_motivation_quote_from_db($pdo, (string) ($currentUser['locale'] ?? 'en')),
         'config' => $config,
     ]);
 }
