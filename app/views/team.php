@@ -179,7 +179,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         </div>
         <div class="team-hero-actions inline-actions-mini">
             <?php if (!empty($canManageTeam)): ?>
-                <a class="btn btn-secondary icon-btn team-settings-top" href="/?page=team_settings&team_id=<?= (int) $team['id'] ?>" aria-label="<?= e(t('team.settings')) ?>"><?= e(t('team.settings_short')) ?></a>
+                <a class="btn btn-secondary small team-settings-top" href="/?page=team_settings&team_id=<?= (int) $team['id'] ?>" aria-label="<?= e(t('team.settings')) ?>"><?= e(t('team.settings_short')) ?></a>
             <?php endif; ?>
             <?php if (($joinableTeams ?? []) !== []): ?>
                 <details class="team-join-more">

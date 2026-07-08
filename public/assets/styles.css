@@ -4230,6 +4230,19 @@ a.mini-card-link:focus-visible {
     font-size: 0.8rem;
 }
 
+/* XP amount inputs stay compact so the form is not needlessly tall on mobile. */
+.xp-amounts-grid label,
+.xp-adjust-grid label {
+    min-width: 0;
+}
+
+@media (max-width: 720px) {
+    .xp-amounts-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.6rem 0.7rem;
+    }
+}
+
 /* Admin XP user list */
 .xp-user-item {
     display: flex;
@@ -8234,14 +8247,35 @@ body.theme-active-dark .team-layout-edit-mode-panel .team-layout-editor-actions 
         align-items: flex-start;
     }
 
-    .profile-tagline-editor {
-        position: absolute;
-        right: 0.75rem;
-        top: 0.75rem;
+    /* Keep the export button and the edit pencil in a clean two-column row so
+       the pencil never floats over (and truncates) the export button. */
+    .profile-hero-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 44px;
+        gap: 0.5rem;
+        width: 100%;
+        justify-self: stretch;
+        align-items: center;
     }
 
-    .profile-title {
-        padding-right: 2.4rem;
+    .profile-tagline-editor {
+        position: static;
+        justify-self: stretch;
+    }
+
+    .profile-hero-actions.has-friend-actions {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .profile-tagline-edit {
+        width: 44px;
+        height: 44px;
+        justify-content: center;
+    }
+
+    .profile-pdf-export-btn {
+        width: 100%;
+        justify-content: center;
     }
 
     .gallery-page {
@@ -11039,10 +11073,10 @@ body[data-theme="dark"] .flash-success {
 .profile-current-goal-chips span {
     display: inline-flex;
     align-items: baseline;
-    gap: 0.26rem;
+    gap: 0.4rem;
     max-width: 100%;
     min-height: 32px;
-    padding: 0.32rem 0.56rem;
+    padding: 0.32rem 0.62rem;
     border: 1px solid rgba(20, 163, 139, 0.18);
     border-radius: 999px;
     color: var(--text);
