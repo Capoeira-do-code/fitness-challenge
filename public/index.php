@@ -2105,6 +2105,7 @@ if ($page === 'profile') {
 
     $canEditProfile = $isOwnProfile || is_admin($currentUser);
     $canDeleteProfileAchievements = is_admin($currentUser) || $isOwnProfile;
+    friends_ensure_schema($pdo);
     $profileBaseQuery = ['page' => 'profile'];
     if (!$isOwnProfile) {
         $profileBaseQuery['user_id'] = (int) $profileUser['id'];
@@ -2128,6 +2129,38 @@ if ($page === 'profile') {
         }
 
         $action = (string) ($_POST['action'] ?? '');
+        if (in_array($action, ['friend_request', 'friend_accept', 'friend_reject', 'friend_remove'], true)) {
+            $friendTargetId = (int) ($_POST['user_id'] ?? 0);
+            if ($friendTargetId <= 0 || $friendTargetId === (int) $currentUser['id']) {
+                flash_set('error', t('flash.friend_action_failed'));
+                redirect($profileUrl());
+            }
+
+            if ($action === 'friend_request') {
+                $friendSent = friends_send_request($pdo, (int) $currentUser['id'], $friendTargetId);
+                flash_set($friendSent ? 'success' : 'error', $friendSent ? t('flash.friend_request_sent') : t('flash.friend_action_failed'));
+                redirect($profileUrl());
+            }
+
+            if ($action === 'friend_accept') {
+                $friendAccepted = friends_respond($pdo, (int) $currentUser['id'], $friendTargetId, true);
+                flash_set($friendAccepted ? 'success' : 'error', $friendAccepted ? t('flash.friend_accepted') : t('flash.friend_action_failed'));
+                redirect($profileUrl());
+            }
+
+            if ($action === 'friend_reject') {
+                $friendRejected = friends_respond($pdo, (int) $currentUser['id'], $friendTargetId, false);
+                flash_set($friendRejected ? 'success' : 'error', $friendRejected ? t('flash.friend_rejected') : t('flash.friend_action_failed'));
+                redirect($profileUrl());
+            }
+
+            if ($action === 'friend_remove') {
+                $friendRemoved = friends_remove($pdo, (int) $currentUser['id'], $friendTargetId);
+                flash_set($friendRemoved ? 'success' : 'error', $friendRemoved ? t('flash.friend_removed') : t('flash.friend_action_failed'));
+                redirect($profileUrl());
+            }
+        }
+
         if ($action === 'change_password') {
             if (!$canEditProfile || !$isOwnProfile) {
                 flash_set('error', t('flash.no_permission'));
@@ -2936,6 +2969,11 @@ if ($page === 'profile') {
     $profileUser = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $profileUser['id']]) ?? $profileUser;
 
     $profileGoalCards = build_user_goal_view_models($personalGoals, is_array($profileMetric) ? $profileMetric : [], $habitDefinitions);
+    $profileFriends = friends_list($pdo, (int) $profileUser['id']);
+    $profileFriendStatus = $isOwnProfile ? 'self' : friends_status($pdo, (int) $currentUser['id'], (int) $profileUser['id']);
+    $profileFriendIncoming = $isOwnProfile ? friends_incoming($pdo, (int) $currentUser['id']) : [];
+    $profileFriendOutgoing = $isOwnProfile ? friends_outgoing($pdo, (int) $currentUser['id']) : [];
+    $profileFriendAddable = $isOwnProfile ? friends_addable_users($pdo, (int) $currentUser['id']) : [];
 
     render_view('profile', [
         'title' => t('profile.title'),
@@ -2968,6 +3006,11 @@ if ($page === 'profile') {
         'profileBaseUrl' => $profileUrl(),
         'personalGoals' => $personalGoals,
         'profileGoalCards' => $profileGoalCards,
+        'profileFriends' => $profileFriends,
+        'profileFriendStatus' => $profileFriendStatus,
+        'profileFriendIncoming' => $profileFriendIncoming,
+        'profileFriendOutgoing' => $profileFriendOutgoing,
+        'profileFriendAddable' => $profileFriendAddable,
         'userAchievements' => list_awarded_achievements($pdo, (int) $profileUser['id'], null),
         'canDeleteAchievements' => $canDeleteProfileAchievements,
         'recentActivity' => fetch_audit_logs($pdo, ['actor_user_id' => (int) $profileUser['id']], 30),
@@ -3621,6 +3664,18 @@ if ($page === 'admin') {
             redirect('/?page=admin&section=achievements');
         }
 
+        if ($action === 'update_xp_amounts') {
+            xp_set_action_amounts($pdo, (array) ($_POST['xp_amounts'] ?? []), (int) $currentUser['id']);
+            flash_set('success', t('flash.xp_amounts_updated'));
+            redirect('/?page=admin&section=xp');
+        }
+
+        if ($action === 'adjust_user_xp') {
+            $applied = xp_adjust($pdo, (int) ($_POST['user_id'] ?? 0), (int) ($_POST['amount'] ?? 0), (string) ($_POST['note'] ?? ''), (int) $currentUser['id']);
+            flash_set($applied !== 0 ? 'success' : 'error', $applied !== 0 ? t('flash.xp_adjusted', ['amount' => ($applied > 0 ? '+' : '') . $applied]) : t('flash.xp_adjust_failed'));
+            redirect('/?page=admin&section=xp');
+        }
+
         if ($action === 'create_motivational_quote') {
             try {
                 create_motivational_quote($pdo, (string) ($_POST['quote_text'] ?? ''), (int) $currentUser['id'], (string) ($_POST['quote_locale'] ?? 'any'));
@@ -3998,6 +4053,17 @@ if ($page === 'admin') {
         'adminAchievementStats' => $adminAchievementStats,
         'achievementAwards' => list_recent_achievement_awards($pdo, 300),
         'motivationalQuotes' => list_motivational_quotes($pdo),
+        'xpAmounts' => xp_action_amounts($pdo),
+        'xpUsers' => array_map(static function (array $xpU) use ($pdo): array {
+            $total = xp_total($pdo, (int) $xpU['id']);
+            $info = xp_level_info($total);
+            return [
+                'id' => (int) $xpU['id'],
+                'display_name' => (string) ($xpU['display_name'] ?? ''),
+                'xp_total' => $total,
+                'level' => (int) $info['level'],
+            ];
+        }, array_values((array) $users)),
         'appIconPath' => $appIconPath,
         'appIconVersion' => $appIconVersion,
         'appNameSetting' => app_setting($pdo, 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge Tracker')),

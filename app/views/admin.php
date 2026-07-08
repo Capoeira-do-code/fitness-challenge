@@ -8,7 +8,7 @@ for ($i = 0; $i < 7; $i++) {
 }
 $entityTypes = ['daily_log', 'approval_request', 'user', 'team_membership', 'goal', 'achievement', 'workout_type', 'photo_entry', 'app_setting', 'system_backup', 'motivational_quote'];
 $activeSection = (string) ($_GET['section'] ?? '');
-$allowedSections = ['users', 'challenge', 'app', 'notion', 'telegram', 'backups', 'habits', 'workout_types', 'achievements', 'motivational_quotes', 'audit'];
+$allowedSections = ['users', 'challenge', 'app', 'notion', 'telegram', 'backups', 'habits', 'workout_types', 'achievements', 'motivational_quotes', 'xp', 'audit'];
 if (!in_array($activeSection, $allowedSections, true)) {
     $activeSection = '';
 }
@@ -40,6 +40,7 @@ $sectionRows = [
     'workout_types' => 'Workout Types',
     'achievements' => 'Achievements',
     'motivational_quotes' => t('admin.motivational_quotes'),
+    'xp' => t('admin.xp_title'),
     'audit' => 'Audit Log',
 ];
 $activeLoginBackgroundPath = trim((string) ($loginBackgroundPath ?? ''));
@@ -1425,6 +1426,83 @@ try {
                     </article>
                 <?php endforeach; ?>
                 <?php if (($motivationalQuotes ?? []) === []): ?>
+                    <p class="muted"><?= e(t('common.none')) ?></p>
+                <?php endif; ?>
+            </div>
+        </section>
+    </article>
+
+    <article class="panel settings-panel<?= $activeSection === 'xp' ? ' active' : '' ?>" data-spa-section="xp" <?= $activeSection === 'xp' ? '' : 'hidden' ?>>
+        <div class="panel-head">
+            <div>
+                <h2><?= e(t('admin.xp_title')) ?></h2>
+                <p class="muted admin-section-help"><?= e(t('admin.xp_help')) ?></p>
+            </div>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+        </div>
+
+        <?php
+        $xpAmounts = is_array($xpAmounts ?? null) ? (array) $xpAmounts : [];
+        $xpActionLabels = [
+            'daily_log' => t('admin.xp_action_daily_log'),
+            'workout' => t('admin.xp_action_workout'),
+            'photo' => t('admin.xp_action_photo'),
+            'achievement' => t('admin.xp_action_achievement'),
+            'goal' => t('admin.xp_action_goal'),
+            'duel_win' => t('admin.xp_action_duel_win'),
+        ];
+        ?>
+        <section class="admin-subsection">
+            <h3><?= e(t('admin.xp_amounts_title')) ?></h3>
+            <p class="muted small"><?= e(t('admin.xp_amounts_help')) ?></p>
+            <form method="post" action="/?page=admin" class="stack compact-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="update_xp_amounts">
+                <div class="grid-inline three xp-amounts-grid">
+                    <?php foreach ($xpActionLabels as $action => $label): ?>
+                        <label><?= e($label) ?><input type="number" name="xp_amounts[<?= e($action) ?>]" min="0" max="100000" value="<?= (int) ($xpAmounts[$action] ?? 0) ?>"></label>
+                    <?php endforeach; ?>
+                </div>
+                <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+            </form>
+        </section>
+
+        <section class="admin-subsection">
+            <h3><?= e(t('admin.xp_adjust_title')) ?></h3>
+            <p class="muted small"><?= e(t('admin.xp_adjust_help')) ?></p>
+            <form method="post" action="/?page=admin" class="stack compact-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="adjust_user_xp">
+                <div class="grid-inline three xp-adjust-grid">
+                    <label><?= e(t('common.user')) ?>
+                        <select name="user_id" required>
+                            <option value=""><?= e(t('admin.xp_select_user')) ?></option>
+                            <?php foreach ((array) ($xpUsers ?? []) as $xpUser): ?>
+                                <option value="<?= (int) $xpUser['id'] ?>"><?= e((string) $xpUser['display_name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label><?= e(t('admin.xp_amount')) ?><input type="number" name="amount" step="1" value="0" required></label>
+                    <label><?= e(t('admin.xp_note')) ?><input type="text" name="note" maxlength="120" placeholder="<?= e(t('admin.xp_note_placeholder')) ?>"></label>
+                </div>
+                <p class="muted small"><?= e(t('admin.xp_amount_hint')) ?></p>
+                <button class="btn btn-primary" type="submit"><?= e(t('admin.xp_apply')) ?></button>
+            </form>
+        </section>
+
+        <section class="admin-subsection">
+            <h3><?= e(t('admin.xp_users_title')) ?></h3>
+            <div class="card-list xp-user-list">
+                <?php foreach ((array) ($xpUsers ?? []) as $xpUser): ?>
+                    <article class="mini-card xp-user-item">
+                        <div>
+                            <strong><?= e((string) $xpUser['display_name']) ?></strong>
+                            <span class="muted small"><?= e(number_format((int) ($xpUser['xp_total'] ?? 0))) ?> <?= e(t('xp.points')) ?></span>
+                        </div>
+                        <span class="profile-level-badge"><?= e(t('xp.level_short')) ?> <?= (int) ($xpUser['level'] ?? 1) ?></span>
+                    </article>
+                <?php endforeach; ?>
+                <?php if (($xpUsers ?? []) === []): ?>
                     <p class="muted"><?= e(t('common.none')) ?></p>
                 <?php endif; ?>
             </div>
