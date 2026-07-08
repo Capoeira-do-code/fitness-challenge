@@ -8433,6 +8433,18 @@ function resolve_notification_destination(PDO $pdo, array $notification): string
         return '/?page=team';
     }
 
+    if (in_array($kind, ['friend_request', 'friend_accepted'], true)) {
+        return '/?page=friends';
+    }
+
+    if (in_array($kind, ['duel_challenge', 'duel_accepted', 'duel_finished'], true)) {
+        return '/?page=duels';
+    }
+
+    if (in_array($kind, ['comp_invite', 'comp_accepted', 'comp_finished'], true)) {
+        return '/?page=competitions';
+    }
+
     return '/?page=notifications';
 }
 

@@ -106,6 +106,19 @@ function duels_create(PDO $pdo, int $challengerId, int $opponentId, string $metr
         [':c' => $challengerId, ':o' => $opponentId, ':m' => $metric, ':d' => $days, ':now' => $now]
     );
 
+    if (function_exists('social_notify')) {
+        social_notify(
+            $pdo,
+            $opponentId,
+            'duel_challenge',
+            t('notif.duel_challenge_title'),
+            t('notif.duel_challenge_body', [
+                'name' => social_user_name($pdo, $challengerId),
+                'metric' => duels_metric_label($metric),
+            ])
+        );
+    }
+
     return true;
 }
 
@@ -132,6 +145,16 @@ function duels_respond(PDO $pdo, int $duelId, int $me, bool $accept): bool
         'UPDATE user_duels SET status = "active", start_date = :s, end_date = :e, updated_at = :now WHERE id = :id',
         [':s' => $start, ':e' => $end, ':now' => now_iso(), ':id' => $duelId]
     );
+
+    if (function_exists('social_notify')) {
+        social_notify(
+            $pdo,
+            (int) $duel['challenger_id'],
+            'duel_accepted',
+            t('notif.duel_accepted_title'),
+            t('notif.duel_accepted_body', ['name' => social_user_name($pdo, $me)])
+        );
+    }
 
     return true;
 }
@@ -200,6 +223,19 @@ function duels_finalize_due(PDO $pdo, array $config): void
             'UPDATE user_duels SET status = "completed", winner_id = :w, updated_at = :now WHERE id = :id',
             [':w' => $winner, ':now' => now_iso(), ':id' => (int) $duel['id']]
         );
+
+        if (function_exists('social_notify')) {
+            $cId = (int) $duel['challenger_id'];
+            $oId = (int) $duel['opponent_id'];
+            foreach ([$cId, $oId] as $participant) {
+                $body = $winner === null
+                    ? t('notif.duel_finished_tie_body')
+                    : ($winner === $participant
+                        ? t('notif.duel_finished_won_body')
+                        : t('notif.duel_finished_lost_body', ['name' => social_user_name($pdo, $winner)]));
+                social_notify($pdo, $participant, 'duel_finished', t('notif.duel_finished_title'), $body);
+            }
+        }
     }
 }
 

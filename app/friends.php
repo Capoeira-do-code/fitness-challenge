@@ -24,6 +24,31 @@ function friends_ensure_schema(PDO $pdo): void
     );
 }
 
+/**
+ * Display name for a user id, for use in social notifications. Falls back to a
+ * generic label so a notification is never built with an empty actor name.
+ */
+function social_user_name(PDO $pdo, int $userId): string
+{
+    $row = db_fetch_one($pdo, 'SELECT display_name FROM users WHERE id = :id', [':id' => $userId]);
+    $name = trim((string) ($row['display_name'] ?? ''));
+
+    return $name !== '' ? $name : t('social.someone');
+}
+
+/**
+ * Fire a user notification for a social event if the notification API is
+ * available. Central wrapper so the friends/duels/squads modules stay tidy and
+ * degrade gracefully if the notifications feature is ever absent.
+ */
+function social_notify(PDO $pdo, int $userId, string $kind, string $title, string $message, array $payload = []): void
+{
+    if ($userId <= 0 || !function_exists('create_user_notification')) {
+        return;
+    }
+    create_user_notification($pdo, $userId, $kind, $title, $message, null, $payload);
+}
+
 /** The friendship row between two users, in either direction, or null. */
 function friends_relation(PDO $pdo, int $a, int $b): ?array
 {
@@ -74,6 +99,15 @@ function friends_send_request(PDO $pdo, int $me, int $target): bool
         [':me' => $me, ':target' => $target, ':now' => $now]
     );
 
+    $name = social_user_name($pdo, $me);
+    social_notify(
+        $pdo,
+        $target,
+        'friend_request',
+        t('notif.friend_request_title'),
+        t('notif.friend_request_body', ['name' => $name])
+    );
+
     return true;
 }
 
@@ -93,6 +127,13 @@ function friends_respond(PDO $pdo, int $me, int $requesterId, bool $accept): boo
             $pdo,
             'UPDATE friendships SET status = "accepted", updated_at = :now WHERE id = :id',
             [':now' => now_iso(), ':id' => (int) $row['id']]
+        );
+        social_notify(
+            $pdo,
+            $requesterId,
+            'friend_accepted',
+            t('notif.friend_accepted_title'),
+            t('notif.friend_accepted_body', ['name' => social_user_name($pdo, $me)])
         );
     } else {
         db_execute($pdo, 'DELETE FROM friendships WHERE id = :id', [':id' => (int) $row['id']]);

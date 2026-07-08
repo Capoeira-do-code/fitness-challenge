@@ -225,6 +225,21 @@ function comp_create(PDO $pdo, int $challengerSquadId, int $opponentSquadId, int
         [':c' => $challengerSquadId, ':o' => $opponentSquadId, ':m' => $metric, ':d' => $days, ':now' => $now]
     );
 
+    if (function_exists('social_notify')) {
+        $challenger = squad_get($pdo, $challengerSquadId);
+        $opponent = squad_get($pdo, $opponentSquadId);
+        social_notify(
+            $pdo,
+            (int) ($opponent['owner_id'] ?? 0),
+            'comp_invite',
+            t('notif.comp_invite_title'),
+            t('notif.comp_invite_body', [
+                'squad' => (string) ($challenger['name'] ?? ''),
+                'metric' => duels_metric_label($metric),
+            ])
+        );
+    }
+
     return true;
 }
 
@@ -247,6 +262,18 @@ function comp_respond(PDO $pdo, int $compId, int $userId, bool $accept): bool
         'UPDATE squad_competitions SET status = "active", start_date = :s, end_date = :e, updated_at = :now WHERE id = :id',
         [':s' => $start, ':e' => $end, ':now' => now_iso(), ':id' => $compId]
     );
+
+    if (function_exists('social_notify')) {
+        $challenger = squad_get($pdo, (int) $comp['challenger_squad_id']);
+        $opponent = squad_get($pdo, (int) $comp['opponent_squad_id']);
+        social_notify(
+            $pdo,
+            (int) ($challenger['owner_id'] ?? 0),
+            'comp_accepted',
+            t('notif.comp_accepted_title'),
+            t('notif.comp_accepted_body', ['squad' => (string) ($opponent['name'] ?? '')])
+        );
+    }
 
     return true;
 }
@@ -330,6 +357,22 @@ function comp_finalize_due(PDO $pdo, array $config): void
             'UPDATE squad_competitions SET status = "completed", winner_squad_id = :w, updated_at = :now WHERE id = :id',
             [':w' => $winner, ':now' => now_iso(), ':id' => (int) $comp['id']]
         );
+
+        if (function_exists('social_notify')) {
+            $winnerName = $winner !== null ? (string) (squad_get($pdo, $winner)['name'] ?? '') : '';
+            $owners = [
+                (int) ($s['challenger_squad']['owner_id'] ?? 0) => (int) $comp['challenger_squad_id'],
+                (int) ($s['opponent_squad']['owner_id'] ?? 0) => (int) $comp['opponent_squad_id'],
+            ];
+            foreach ($owners as $ownerId => $squadId) {
+                $body = $winner === null
+                    ? t('notif.comp_finished_tie_body')
+                    : ($winner === $squadId
+                        ? t('notif.comp_finished_won_body')
+                        : t('notif.comp_finished_lost_body', ['squad' => $winnerName]));
+                social_notify($pdo, $ownerId, 'comp_finished', t('notif.comp_finished_title'), $body);
+            }
+        }
     }
 }
 
