@@ -1044,6 +1044,9 @@ if ($page === 'entries') {
                     ]
                 );
                 flash_set('success', t('flash.photo_uploaded'));
+                if (function_exists('xp_grant_action')) {
+                    xp_grant_action($pdo, $userId, 'photo', 'photo:' . $date);
+                }
                 // Notify friends of a meal or training post (privacy-aware, once/day).
                 if (function_exists('social_broadcast_activity')) {
                     $activityType = $category === 'workout'
@@ -2940,6 +2943,7 @@ if ($page === 'profile') {
         'currentUser' => $currentUser,
         'profileUser' => $profileUser,
         'profileMetric' => $profileMetric,
+        'profileXp' => xp_user_level_info($pdo, (int) $profileUser['id']),
         'isOwnProfile' => $isOwnProfile,
         'canEditProfile' => $canEditProfile,
         'canExportProfilePdf' => $isOwnProfile || is_admin($currentUser),

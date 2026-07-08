@@ -4044,6 +4044,57 @@ a.mini-card-link:focus-visible {
     background: linear-gradient(135deg, #14a38b, #0f8d78);
 }
 
+/* User level + XP */
+.profile-level {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.7rem;
+    flex-wrap: wrap;
+}
+
+.profile-level-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.28rem 0.7rem;
+    border-radius: 999px;
+    font-weight: 900;
+    font-size: 0.82rem;
+    color: #fff;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    box-shadow: 0 6px 16px rgba(217, 119, 6, 0.28);
+    white-space: nowrap;
+}
+
+.profile-xp {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 180px;
+    flex: 1 1 180px;
+    max-width: 320px;
+}
+
+.profile-xp-bar {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--surface-2, rgba(148, 163, 184, 0.22));
+    overflow: hidden;
+}
+
+.profile-xp-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #14a38b, #f59e0b);
+    transition: width 0.4s ease;
+}
+
+.profile-xp-label {
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
 /* Team switcher, leave/join, and danger zone */
 .btn-danger {
     background: linear-gradient(135deg, #ef4444, #dc2626);

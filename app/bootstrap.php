@@ -49,6 +49,7 @@ require_once __DIR__ . '/friends.php';
 require_once __DIR__ . '/duels.php';
 require_once __DIR__ . '/squads.php';
 require_once __DIR__ . '/privacy.php';
+require_once __DIR__ . '/xp.php';
 require_once __DIR__ . '/view.php';
 
 $pdo = db_connect($config);

@@ -658,12 +658,18 @@ function upsert_daily_log_and_sync_approvals(PDO $pdo, array $payload, int $acto
         sync_log_approval_requests($pdo, (int) $payload['user_id'], (string) $payload['log_date'], $actorUserId, $payload);
         $pdo->commit();
 
-        // Tell friends when a user logs their own workout (privacy-aware, once/day).
-        if (function_exists('social_broadcast_activity')
-            && (int) $payload['user_id'] === $actorUserId
-            && (int) ($payload['workout_done'] ?? 0) === 1
-        ) {
-            social_broadcast_activity($pdo, $actorUserId, 'training');
+        // Reward and notify only for a user's own logging.
+        if ((int) $payload['user_id'] === $actorUserId) {
+            $logDate = (string) $payload['log_date'];
+            if (function_exists('xp_grant_action')) {
+                xp_grant_action($pdo, $actorUserId, 'daily_log', 'daily_log:' . $logDate);
+                if ((int) ($payload['workout_done'] ?? 0) === 1) {
+                    xp_grant_action($pdo, $actorUserId, 'workout', 'workout:' . $logDate);
+                }
+            }
+            if (function_exists('social_broadcast_activity') && (int) ($payload['workout_done'] ?? 0) === 1) {
+                social_broadcast_activity($pdo, $actorUserId, 'training');
+            }
         }
     } catch (Throwable $e) {
         $pdo->rollBack();
@@ -5658,6 +5664,18 @@ function award_achievement(PDO $pdo, int $achievementId, ?int $userId, ?int $tea
         'team_id' => $teamId,
         'note' => $note,
     ]);
+
+    // Earning an achievement grants XP: to the user, or to every active member
+    // of the team for a team achievement. Idempotent per achievement.
+    if (function_exists('xp_grant_action')) {
+        if ($userId !== null) {
+            xp_grant_action($pdo, (int) $userId, 'achievement', 'achievement:' . $achievementId);
+        } elseif ($teamId !== null) {
+            foreach (list_active_team_users($pdo, (int) $teamId) as $member) {
+                xp_grant_action($pdo, (int) $member['id'], 'achievement', 'achievement:' . $achievementId . ':team:' . (int) $teamId);
+            }
+        }
+    }
 }
 
 function list_awarded_achievements(PDO $pdo, ?int $userId = null, ?int $teamId = null): array

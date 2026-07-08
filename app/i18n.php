@@ -3369,6 +3369,10 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'privacy.friends_hint' => 'Only your accepted friends can see your data and posts.',
         'privacy.private' => 'Only me',
         'privacy.private_hint' => 'Nobody else can see your data or posts.',
+        'xp.level' => 'Level',
+        'xp.level_short' => 'Lv',
+        'xp.points' => 'XP',
+        'xp.to_next' => '{xp} XP to next level',
     ],
     'es' => [
         'nav.friends' => 'Amigos',
@@ -3484,6 +3488,10 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'privacy.friends_hint' => 'Solo tus amigos aceptados pueden ver tus datos y publicaciones.',
         'privacy.private' => 'Solo yo',
         'privacy.private_hint' => 'Nadie mas puede ver tus datos ni publicaciones.',
+        'xp.level' => 'Nivel',
+        'xp.level_short' => 'Nv',
+        'xp.points' => 'XP',
+        'xp.to_next' => '{xp} XP para el siguiente nivel',
     ],
     'it' => [
         'nav.friends' => 'Amici',
@@ -3599,6 +3607,10 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'privacy.friends_hint' => 'Solo i tuoi amici accettati possono vedere i tuoi dati e post.',
         'privacy.private' => 'Solo io',
         'privacy.private_hint' => 'Nessun altro puo vedere i tuoi dati o post.',
+        'xp.level' => 'Livello',
+        'xp.level_short' => 'Lv',
+        'xp.points' => 'XP',
+        'xp.to_next' => '{xp} XP al prossimo livello',
     ],
 ]);
 

@@ -525,6 +525,14 @@ $profileSetupRows = [
                 <p class="eyebrow"><?= e(t('nav.profile')) ?></p>
                 <h1><?= e((string) $profileUser['display_name']) ?></h1>
                 <p class="muted">@<?= e((string) $profileUser['username']) ?> &middot; <?= e($profileHeroMessage) ?><?php if (!$isOwnProfile): ?> &middot; <?= e(t('profile.read_only')) ?><?php endif; ?></p>
+                <?php $xp = (array) ($profileXp ?? []); ?>
+                <div class="profile-level" title="<?= e(t('xp.level') . ' ' . (int) ($xp['level'] ?? 1)) ?>">
+                    <span class="profile-level-badge"><?= e(t('xp.level_short')) ?> <?= (int) ($xp['level'] ?? 1) ?></span>
+                    <div class="profile-xp">
+                        <div class="profile-xp-bar"><span style="width: <?= max(0, min(100, (int) ($xp['progress_pct'] ?? 0))) ?>%"></span></div>
+                        <span class="profile-xp-label"><?= e(number_format((int) ($xp['total_xp'] ?? 0))) ?> <?= e(t('xp.points')) ?> &middot; <?= e(t('xp.to_next', ['xp' => number_format((int) ($xp['xp_to_next'] ?? 0))])) ?></span>
+                    </div>
+                </div>
             </div>
         </div>
         <?php if ($isOwnProfile || !empty($canExportProfilePdf)): ?>
