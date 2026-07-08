@@ -7,7 +7,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 $page = $_GET['page'] ?? null;
 if ($page === null) {
     $pathPage = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/');
-    if (in_array($pathPage, ['dashboard', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'login', 'login_background'], true)) {
+    if (in_array($pathPage, ['dashboard', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'login', 'login_background'], true)) {
         $page = $pathPage;
     }
 }
@@ -1671,6 +1671,73 @@ if ($page === 'friends') {
         'friendsOutgoing' => $friendsOutgoing,
         'friendsAddable' => $friendsAddable,
         'friendCompare' => $friendCompare,
+        'config' => $config,
+    ]);
+}
+
+if ($page === 'duels') {
+    friends_ensure_schema($pdo);
+    duels_ensure_schema($pdo);
+    $meId = (int) $currentUser['id'];
+
+    if (is_post()) {
+        if (!csrf_verify()) {
+            flash_set('error', t('flash.csrf'));
+            redirect('/?page=duels');
+        }
+        $duelAction = (string) ($_POST['action'] ?? '');
+        if ($duelAction === 'duel_create') {
+            $ok = duels_create(
+                $pdo,
+                $meId,
+                (int) ($_POST['opponent_id'] ?? 0),
+                (string) ($_POST['metric'] ?? ''),
+                (int) ($_POST['duration_days'] ?? 7)
+            );
+            flash_set($ok ? 'success' : 'error', $ok ? t('flash.duel_created') : t('flash.duel_failed'));
+            redirect('/?page=duels');
+        }
+        if ($duelAction === 'duel_accept' || $duelAction === 'duel_decline') {
+            duels_respond($pdo, (int) ($_POST['duel_id'] ?? 0), $meId, $duelAction === 'duel_accept');
+            flash_set('success', $duelAction === 'duel_accept' ? t('flash.duel_accepted') : t('flash.duel_declined'));
+            redirect('/?page=duels');
+        }
+        if ($duelAction === 'duel_cancel') {
+            duels_cancel($pdo, (int) ($_POST['duel_id'] ?? 0), $meId);
+            flash_set('success', t('flash.duel_cancelled'));
+            redirect('/?page=duels');
+        }
+        redirect('/?page=duels');
+    }
+
+    duels_finalize_due($pdo, $config);
+
+    $duelRows = duels_for_user($pdo, $meId);
+    $duelViewModels = [];
+    foreach ($duelRows as $duel) {
+        $duelStatus = (string) $duel['status'];
+        $rangeStart = (string) ($duel['start_date'] ?? to_date(null));
+        $rangeEnd = $duelStatus === 'active' ? to_date(null) : (string) ($duel['end_date'] ?? $rangeStart);
+        if ($duelStatus === 'active' || $duelStatus === 'completed') {
+            $values = duels_values($pdo, $config, (array) $duel, $rangeStart, $rangeEnd);
+        } else {
+            $values = [
+                'challenger' => 0.0,
+                'opponent' => 0.0,
+                'challenger_user' => db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $duel['challenger_id']]),
+                'opponent_user' => db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $duel['opponent_id']]),
+            ];
+        }
+        $duelViewModels[] = ['duel' => (array) $duel, 'values' => $values];
+    }
+
+    render_view('duels', [
+        'title' => t('duels.title'),
+        'currentPage' => 'friends',
+        'currentUser' => $currentUser,
+        'duels' => $duelViewModels,
+        'duelFriends' => friends_list($pdo, $meId),
+        'duelMetrics' => duels_metrics(),
         'config' => $config,
     ]);
 }
