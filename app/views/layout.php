@@ -39,7 +39,7 @@ $desktopNavItems = [
     'profile' => ['label' => t('nav.profile'), 'href' => '/?page=profile', 'icon' => 'user'],
 ];
 $mobileNavItems = [
-    'dashboard' => $desktopNavItems['dashboard'],
+    'dashboard' => array_replace($desktopNavItems['dashboard'], ['label' => t('nav.home')]),
     'table' => $desktopNavItems['table'],
     'gallery' => ['label' => t('gallery.title'), 'href' => '/?page=gallery&gallery_view=recent', 'icon' => 'gallery'],
     'analytics' => $desktopNavItems['analytics'],
@@ -154,6 +154,15 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                     <?php endif; ?>
                 </summary>
                 <div class="user-menu-panel">
+                    <?php if (function_exists('xp_user_level_info')): $menuXp = xp_user_level_info($GLOBALS['pdo'], (int) $currentUser['id']); ?>
+                        <a class="user-menu-level" href="/?page=profile" title="<?= e(t('xp.level') . ' ' . (int) $menuXp['level']) ?>">
+                            <span class="profile-level-badge"><?= e(t('xp.level_short')) ?> <?= (int) $menuXp['level'] ?></span>
+                            <span class="user-menu-xp">
+                                <span class="user-menu-xp-bar"><span style="width: <?= max(0, min(100, (int) $menuXp['progress_pct'])) ?>%"></span></span>
+                                <span class="user-menu-xp-text"><?= e(number_format((int) $menuXp['total_xp'])) ?> <?= e(t('xp.points')) ?> &middot; <?= e(t('xp.to_next', ['xp' => number_format((int) $menuXp['xp_to_next'])])) ?></span>
+                            </span>
+                        </a>
+                    <?php endif; ?>
                     <a href="/?page=profile"><?= e(t('nav.profile')) ?></a>
                     <a href="/?page=friends"><?= e(t('nav.friends')) ?></a>
                     <a href="/?page=duels"><?= e(t('nav.duels')) ?></a>

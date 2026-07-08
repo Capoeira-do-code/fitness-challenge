@@ -165,12 +165,18 @@ function xp_total(PDO $pdo, int $userId): int
     return (int) (db_fetch_one($pdo, 'SELECT COALESCE(SUM(amount), 0) AS total FROM xp_events WHERE user_id = :u', [':u' => $userId])['total'] ?? 0);
 }
 
-/** Cumulative XP required to reach a given level (level 1 = 0). Widening curve. */
+/**
+ * Cumulative XP required to reach a given level (level 1 = 0). Gentle, fast-
+ * starting curve so early levels come quickly and stay rewarding: thresholds
+ * are L2=20, L3=50, L4=90, L5=140, L6=200 ... — each level costs 10 XP more
+ * than the last (L2 costs 20, L3 costs 30, ...). With ~25 XP from a logged
+ * workout day, the first levels arrive in a day or two.
+ */
 function xp_threshold_for_level(int $level): int
 {
     $level = max(1, $level);
 
-    return 50 * ($level - 1) * $level;
+    return 5 * ($level - 1) * $level + 10 * ($level - 1);
 }
 
 /**
