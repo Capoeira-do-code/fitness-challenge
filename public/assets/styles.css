@@ -5096,6 +5096,19 @@ a.mini-card-link:focus-visible {
     width: 290px;
 }
 
+/* Extra-workout panel floated over the sheet so opening it does not grow the
+   table row. Positioned via JS (fixed) to escape the scroll container. */
+.sheet-extra-panel.sheet-extra-floating {
+    position: fixed;
+    z-index: 200;
+    overflow: auto;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.24);
+    padding: 0.85rem;
+}
+
 .sheet-habits-cell {
     width: 330px;
 }

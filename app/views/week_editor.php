@@ -472,6 +472,74 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
         return;
     }
 
+    // Extra-workout popover: opening the panel inline would grow the whole table
+    // row, so float it over the sheet with fixed positioning (no reparenting, so
+    // all existing per-card handlers keep working on the same nodes).
+    let floatingPanel = null;
+    let floatingToggle = null;
+    const positionFloatingPanel = () => {
+        if (!floatingPanel || !floatingToggle) {
+            return;
+        }
+        const rect = floatingToggle.getBoundingClientRect();
+        const width = Math.min(340, window.innerWidth - 24);
+        floatingPanel.style.width = width + 'px';
+        let left = Math.min(rect.left, window.innerWidth - width - 12);
+        left = Math.max(12, left);
+        floatingPanel.style.left = left + 'px';
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const openDown = spaceBelow > 240 || spaceBelow >= rect.top;
+        const room = openDown ? spaceBelow : rect.top;
+        floatingPanel.style.maxHeight = Math.max(180, Math.min(window.innerHeight * 0.6, room - 16)) + 'px';
+        if (openDown) {
+            floatingPanel.style.top = (rect.bottom + 4) + 'px';
+            floatingPanel.style.bottom = 'auto';
+        } else {
+            floatingPanel.style.top = 'auto';
+            floatingPanel.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+        }
+    };
+    const closeFloatingPanel = () => {
+        if (floatingPanel) {
+            floatingPanel.classList.remove('sheet-extra-floating');
+            floatingPanel.style.width = '';
+            floatingPanel.style.left = '';
+            floatingPanel.style.top = '';
+            floatingPanel.style.bottom = '';
+            floatingPanel.style.maxHeight = '';
+            floatingPanel.hidden = true;
+        }
+        floatingPanel = null;
+        floatingToggle = null;
+    };
+    const openFloatingPanel = (toggle, panel) => {
+        if (floatingPanel && floatingPanel !== panel) {
+            closeFloatingPanel();
+        }
+        floatingPanel = panel;
+        floatingToggle = toggle;
+        panel.hidden = false;
+        panel.classList.add('sheet-extra-floating');
+        positionFloatingPanel();
+    };
+    window.addEventListener('scroll', () => { if (floatingPanel) { positionFloatingPanel(); } }, true);
+    window.addEventListener('resize', () => { if (floatingPanel) { positionFloatingPanel(); } });
+    document.addEventListener('click', (event) => {
+        if (!floatingPanel) {
+            return;
+        }
+        const target = event.target;
+        if (floatingPanel.contains(target) || (floatingToggle && floatingToggle.contains(target))) {
+            return;
+        }
+        closeFloatingPanel();
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && floatingPanel) {
+            closeFloatingPanel();
+        }
+    });
+
     const formatExtraCount = (count) => {
         if (count <= 0) {
             return '';
@@ -955,15 +1023,19 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
 
         const extraToggle = card.querySelector('[data-extra-toggle]');
         const extraPanel = card.querySelector('[data-extra-panel]');
+        // Keep rows compact: never leave a panel expanded inline on load.
+        if (extraPanel instanceof HTMLElement && !extraPanel.hidden) {
+            extraPanel.hidden = true;
+        }
         if (extraToggle instanceof HTMLButtonElement && extraPanel instanceof HTMLElement) {
             extraToggle.addEventListener('click', () => {
-                if (extraPanel.hidden) {
-                    extraPanel.hidden = false;
+                if (floatingPanel === extraPanel) {
+                    closeFloatingPanel();
+                } else {
                     if (getExtraWorkoutRows(card).length === 0) {
                         appendExtraRow(card, null);
                     }
-                } else {
-                    extraPanel.hidden = true;
+                    openFloatingPanel(extraToggle, extraPanel);
                 }
                 enforceCompletedFromSelections(card);
                 updateExtraCounter(card);
@@ -976,8 +1048,12 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
             extraAdd.addEventListener('click', () => {
                 appendExtraRow(card, null);
                 const extraPanelNode = card.querySelector('[data-extra-panel]');
-                if (extraPanelNode instanceof HTMLElement) {
-                    extraPanelNode.hidden = false;
+                if (extraPanelNode instanceof HTMLElement && extraToggle instanceof HTMLButtonElement) {
+                    if (floatingPanel !== extraPanelNode) {
+                        openFloatingPanel(extraToggle, extraPanelNode);
+                    } else {
+                        positionFloatingPanel();
+                    }
                 }
                 enforceCompletedFromSelections(card);
                 updateExtraCounter(card);
