@@ -343,28 +343,41 @@ try {
 
     <article class="panel settings-panel<?= $activeSection === 'app' ? ' active' : '' ?>" data-spa-section="app" <?= $activeSection === 'app' ? '' : 'hidden' ?>>
         <div class="panel-head">
-            <h2>App</h2>
+            <div>
+                <h2><?= e(t('admin.app_settings')) ?></h2>
+                <p class="muted admin-section-help"><?= e(t('admin.app_help')) ?></p>
+            </div>
             <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
         </div>
-        <form method="post" action="/?page=admin" class="stack compact-form">
-            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-            <input type="hidden" name="action" value="update_app_name">
-            <label><?= e(t('admin.app_name')) ?><input type="text" name="app_name" value="<?= e((string) ($appNameSetting ?? 'Fitness Challenge Tracker')) ?>" required></label>
-            <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
-        </form>
 
-        <form method="post" action="/?page=admin" class="stack compact-form">
-            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-            <input type="hidden" name="action" value="update_penalties_feature">
-            <div class="toggle-row">
-                <label class="check standalone-check">
-                    <input type="checkbox" name="penalties_enabled" value="1" <?= !empty($penaltiesEnabled) ? 'checked' : '' ?>>
-                    <?= e(t('admin.penalties_enabled')) ?>
-                </label>
-                <p class="muted small"><?= e(t('admin.penalties_feature_hint')) ?></p>
-            </div>
-            <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
-        </form>
+        <section class="admin-subsection">
+            <h3><?= e(t('admin.app_branding')) ?></h3>
+            <p class="muted small"><?= e(t('admin.app_branding_help')) ?></p>
+            <form method="post" action="/?page=admin" class="stack compact-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="update_app_name">
+                <label><?= e(t('admin.app_name')) ?><input type="text" name="app_name" value="<?= e((string) ($appNameSetting ?? 'Fitness Challenge Tracker')) ?>" required></label>
+                <span class="muted small"><?= e(t('admin.app_name_help')) ?></span>
+                <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+            </form>
+        </section>
+
+        <section class="admin-subsection">
+            <h3><?= e(t('admin.app_features')) ?></h3>
+            <p class="muted small"><?= e(t('admin.app_features_help')) ?></p>
+            <form method="post" action="/?page=admin" class="stack compact-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="update_penalties_feature">
+                <div class="toggle-row">
+                    <label class="check standalone-check">
+                        <input type="checkbox" name="penalties_enabled" value="1" <?= !empty($penaltiesEnabled) ? 'checked' : '' ?>>
+                        <?= e(t('admin.penalties_enabled')) ?>
+                    </label>
+                    <p class="muted small"><?= e(t('admin.penalties_feature_hint')) ?></p>
+                </div>
+                <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+            </form>
+        </section>
     </article>
 
     <article class="panel settings-panel<?= $activeSection === 'notion' ? ' active' : '' ?>" data-spa-section="notion" <?= $activeSection === 'notion' ? '' : 'hidden' ?>>
@@ -629,6 +642,9 @@ try {
     </article>
 
     <article class="panel settings-panel<?= $activeSection === 'app' ? ' active' : '' ?>" data-spa-section="app" <?= $activeSection === 'app' ? '' : 'hidden' ?>>
+        <section class="admin-subsection">
+        <h3><?= e(t('admin.app_icon')) ?></h3>
+        <p class="muted small"><?= e(t('admin.app_icon_help')) ?></p>
         <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack" data-image-cropper-form>
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="upload_app_icon">
@@ -645,8 +661,9 @@ try {
             <label><?= e(t('common.photo')) ?><input type="file" name="app_icon" accept="image/*" required data-image-crop-input></label>
             <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
         </form>
+        </section>
 
-        <section class="stack compact-form admin-login-background">
+        <section class="stack compact-form admin-login-background admin-subsection">
             <div class="panel-head">
                 <div>
                     <h3><?= e(t('admin.login_background_title')) ?></h3>

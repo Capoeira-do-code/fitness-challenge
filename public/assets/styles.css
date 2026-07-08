@@ -4044,6 +4044,27 @@ a.mini-card-link:focus-visible {
     background: linear-gradient(135deg, #14a38b, #0f8d78);
 }
 
+/* Admin settings subsections */
+.admin-subsection {
+    padding: 1rem 0;
+    border-top: 1px solid var(--line);
+}
+
+.admin-subsection:first-of-type {
+    border-top: 0;
+    padding-top: 0.4rem;
+}
+
+.admin-subsection > h3 {
+    margin: 0 0 0.15rem;
+    font-size: 1rem;
+}
+
+.admin-subsection > .muted.small {
+    margin: 0 0 0.7rem;
+    display: block;
+}
+
 /* User level + XP */
 .profile-level {
     display: flex;
