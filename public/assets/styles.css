@@ -6556,8 +6556,38 @@ body[data-theme="dark"] .training-sheet-table thead th {
     -webkit-backdrop-filter: blur(12px) saturate(140%);
 }
 
+/* The summary tiles hardcode a light glass background; make them dark surfaces
+   in dark mode so they do not read as washed-out light boxes. */
+body[data-theme="dark"] .achievement-summary-card,
+body.theme-active-dark .achievement-summary-card {
+    background: var(--dark-ui-surface, rgba(18, 27, 36, 0.94));
+    border-color: var(--dark-ui-border, rgba(170, 193, 204, 0.2));
+}
+
+@media (prefers-color-scheme: dark) {
+    body[data-theme="auto"] .achievement-summary-card {
+        background: var(--dark-ui-surface, rgba(18, 27, 36, 0.94));
+        border-color: var(--dark-ui-border, rgba(170, 193, 204, 0.2));
+    }
+}
+
+/* Make unlocked achievements clearly stand out from locked ones. */
+.achievement-list-card.is-unlocked {
+    border-color: var(--accent, #34d399);
+    box-shadow: 0 14px 32px rgba(20, 163, 139, 0.16);
+}
+
+body[data-theme="dark"] .achievement-list-card.is-unlocked,
+body.theme-active-dark .achievement-list-card.is-unlocked {
+    border-color: var(--accent, #34d399);
+}
+
+.achievement-list-card.is-locked {
+    opacity: 0.86;
+}
+
 .achievement-summary-card strong {
-    color: #0f172a;
+    color: var(--ink);
     font-size: 1.35rem;
     line-height: 1;
 }
