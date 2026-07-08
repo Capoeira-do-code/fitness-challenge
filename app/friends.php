@@ -43,10 +43,17 @@ function social_user_name(PDO $pdo, int $userId): string
  */
 function social_notify(PDO $pdo, int $userId, string $kind, string $title, string $message, array $payload = []): void
 {
-    if ($userId <= 0 || !function_exists('create_user_notification')) {
+    if ($userId <= 0) {
         return;
     }
-    create_user_notification($pdo, $userId, $kind, $title, $message, null, $payload);
+    if (function_exists('create_user_notification')) {
+        create_user_notification($pdo, $userId, $kind, $title, $message, null, $payload);
+    }
+    // Also push to Telegram if the recipient is linked and opted in. Queued to an
+    // outbox so the web request never blocks on a Telegram API call.
+    if (function_exists('telegram_enqueue')) {
+        telegram_enqueue($pdo, $userId, trim($title . "\n" . $message));
+    }
 }
 
 /** The friendship row between two users, in either direction, or null. */

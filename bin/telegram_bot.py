@@ -297,6 +297,33 @@ class BotDB:
             (user_id, start, end),
         ).fetchall()
 
+    def outbox_ensure(self) -> None:
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS telegram_outbox ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, "
+            "text TEXT NOT NULL, created_at TEXT NOT NULL, sent_at TEXT)"
+        )
+        self.conn.commit()
+
+    def outbox_pending(self, limit: int = 25) -> list[sqlite3.Row]:
+        self.outbox_ensure()
+        return self.conn.execute(
+            "SELECT * FROM telegram_outbox WHERE sent_at IS NULL ORDER BY id ASC LIMIT ?",
+            (limit,),
+        ).fetchall()
+
+    def chat_id_for(self, user_id: int) -> str:
+        row = self.conn.execute(
+            "SELECT telegram_chat_id FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+        return str(row["telegram_chat_id"]).strip() if row and row["telegram_chat_id"] else ""
+
+    def mark_outbox_sent(self, outbox_id: int) -> None:
+        self.conn.execute(
+            "UPDATE telegram_outbox SET sent_at = ? WHERE id = ?", (now_iso(), outbox_id)
+        )
+        self.conn.commit()
+
 
 def api_call(token: str, method: str, params: Optional[dict] = None, timeout: int = 25):
     if not token:
@@ -714,6 +741,26 @@ def run_reminders(db: BotDB, settings: dict) -> None:
                     log(f"motivation send failed -> #{user_id}: {error}")
 
 
+def drain_outbox(db: BotDB, settings: dict) -> None:
+    """Send queued event-driven push messages (friend/duel/competition activity)."""
+    sent = 0
+    for row in db.outbox_pending():
+        if sent >= MAX_SENDS_PER_PASS:
+            break
+        outbox_id = int(row["id"])
+        chat_id = db.chat_id_for(int(row["user_id"]))
+        if not chat_id:
+            db.mark_outbox_sent(outbox_id)  # recipient unlinked; drop it
+            continue
+        ok, error = send_message(settings["token"], chat_id, str(row["text"]))
+        if ok:
+            db.mark_outbox_sent(outbox_id)
+            sent += 1
+            log(f"outbox -> #{row['user_id']}")
+        else:
+            log(f"outbox send failed -> #{row['user_id']}: {error}")
+
+
 def run_forever(db_path: Path, verbose: bool) -> int:
     log(f"Fitness Challenge Telegram bot starting. DB: {db_path}")
     log(f"Timezone: {TZ if TZ is not None else 'system local (zoneinfo unavailable)'}")
@@ -748,6 +795,9 @@ def run_forever(db_path: Path, verbose: bool) -> int:
 
             poll_once(db, settings, POLL_TIMEOUT)
 
+            # Event-driven pushes are low-latency: drain every loop iteration.
+            drain_outbox(db, settings)
+
             if time.time() - last_reminder >= REMINDER_INTERVAL:
                 run_reminders(db, settings)
                 last_reminder = time.time()
@@ -774,6 +824,7 @@ def run_once(db_path: Path, verbose: bool) -> int:
         db.set_setting("telegram_external_bot", "1")
         settings["external"] = True
     poll_once(db, settings, 0)
+    drain_outbox(db, settings)
     run_reminders(db, settings)
     db.conn.close()
     return 0

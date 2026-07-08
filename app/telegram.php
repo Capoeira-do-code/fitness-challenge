@@ -418,6 +418,85 @@ function telegram_run_reminders(PDO $pdo, array $settings): void
 }
 
 /**
+ * Outbox for event-driven push messages (friend/duel/competition activity).
+ * Social events fire during a web request; rather than block on a Telegram API
+ * call we enqueue here and let whichever process owns Telegram I/O drain it.
+ * Self-contained (lazy schema).
+ */
+function telegram_outbox_ensure_schema(PDO $pdo): void
+{
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS telegram_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            sent_at TEXT
+        )'
+    );
+}
+
+/** Queue a push message for a user, only if they are linked and opted in. */
+function telegram_enqueue(PDO $pdo, int $userId, string $text): bool
+{
+    $text = trim($text);
+    if ($userId <= 0 || $text === '') {
+        return false;
+    }
+    if (!telegram_is_enabled(telegram_settings($pdo))) {
+        return false;
+    }
+    $user = db_fetch_one(
+        $pdo,
+        'SELECT telegram_chat_id, telegram_reminders_enabled, telegram_motivation_enabled
+         FROM users WHERE id = :id AND active = 1',
+        [':id' => $userId]
+    );
+    if ($user === null || trim((string) ($user['telegram_chat_id'] ?? '')) === '') {
+        return false;
+    }
+    $optedIn = (int) ($user['telegram_reminders_enabled'] ?? 0) === 1
+        || (int) ($user['telegram_motivation_enabled'] ?? 0) === 1;
+    if (!$optedIn) {
+        return false;
+    }
+    telegram_outbox_ensure_schema($pdo);
+    db_execute(
+        $pdo,
+        'INSERT INTO telegram_outbox (user_id, text, created_at) VALUES (:u, :t, :c)',
+        [':u' => $userId, ':t' => $text, ':c' => now_iso()]
+    );
+
+    return true;
+}
+
+/** Send queued outbox messages (run by whichever process owns Telegram I/O). */
+function telegram_drain_outbox(PDO $pdo, array $settings): void
+{
+    telegram_outbox_ensure_schema($pdo);
+    $rows = db_fetch_all($pdo, 'SELECT * FROM telegram_outbox WHERE sent_at IS NULL ORDER BY id ASC LIMIT 25');
+    $sent = 0;
+    foreach ($rows as $row) {
+        if ($sent >= TELEGRAM_MAX_SENDS_PER_TICK) {
+            break;
+        }
+        $outboxId = (int) $row['id'];
+        $recipient = db_fetch_one($pdo, 'SELECT telegram_chat_id FROM users WHERE id = :id', [':id' => (int) $row['user_id']]);
+        $chatId = $recipient !== null ? trim((string) ($recipient['telegram_chat_id'] ?? '')) : '';
+        if ($chatId === '') {
+            // Recipient unlinked since queueing: drop the message.
+            db_execute($pdo, 'UPDATE telegram_outbox SET sent_at = :now WHERE id = :id', [':now' => now_iso(), ':id' => $outboxId]);
+            continue;
+        }
+        if (telegram_send_message($settings, $chatId, (string) $row['text'])) {
+            db_execute($pdo, 'UPDATE telegram_outbox SET sent_at = :now WHERE id = :id', [':now' => now_iso(), ':id' => $outboxId]);
+            $sent++;
+        }
+        // On failure leave sent_at NULL so it retries on the next drain.
+    }
+}
+
+/**
  * Scheduler tick (mirrors run_system_backup_scheduler / notion_run_scheduler).
  * Polls for links and sends due reminders. Failures are swallowed so a Telegram
  * outage never breaks page rendering.
@@ -431,12 +510,13 @@ function telegram_run_scheduler(PDO $pdo, array $config): void
         }
         // When the standalone Python bot (bin/telegram_bot.py) runs, it owns all
         // Telegram I/O — the PHP app must not poll or send, to avoid double
-        // reminders and getUpdates offset conflicts.
+        // reminders and getUpdates offset conflicts. The bot drains the outbox.
         if (!empty($settings['external_bot'])) {
             return;
         }
         telegram_poll_updates($pdo, $settings);
         telegram_run_reminders($pdo, $settings);
+        telegram_drain_outbox($pdo, $settings);
     } catch (Throwable $exception) {
         error_log('telegram_run_scheduler: ' . $exception->getMessage());
     }
