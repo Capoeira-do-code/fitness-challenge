@@ -657,9 +657,17 @@ function upsert_daily_log_and_sync_approvals(PDO $pdo, array $payload, int $acto
         }
         sync_log_approval_requests($pdo, (int) $payload['user_id'], (string) $payload['log_date'], $actorUserId, $payload);
         $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
 
-        // Reward and notify only for a user's own logging.
-        if ((int) $payload['user_id'] === $actorUserId) {
+    // Post-commit side effects (XP, activity broadcast) run only for a user's
+    // own logging and must NOT run inside the transaction above: a failure here
+    // would otherwise trigger a rollBack() on an already-committed transaction
+    // and surface a fatal despite the log having saved. Swallow their errors.
+    if ((int) $payload['user_id'] === $actorUserId) {
+        try {
             $logDate = (string) $payload['log_date'];
             if (function_exists('xp_grant_action')) {
                 xp_grant_action($pdo, $actorUserId, 'daily_log', 'daily_log:' . $logDate);
@@ -670,10 +678,9 @@ function upsert_daily_log_and_sync_approvals(PDO $pdo, array $payload, int $acto
             if (function_exists('social_broadcast_activity') && (int) ($payload['workout_done'] ?? 0) === 1) {
                 social_broadcast_activity($pdo, $actorUserId, 'training');
             }
+        } catch (Throwable $rewardError) {
+            error_log('daily_log post-commit rewards: ' . $rewardError->getMessage());
         }
-    } catch (Throwable $e) {
-        $pdo->rollBack();
-        throw $e;
     }
 }
 
