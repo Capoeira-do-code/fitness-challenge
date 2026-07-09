@@ -49,6 +49,7 @@ ADD_DATA_PATH = "/?page=entries&mode=data"
 MESSAGES = {
     "en": {
         "linked": "Linked! You will get reminders and motivation here.\nType /progress anytime to see how you are doing.",
+        "invalid_link": "This Telegram link is invalid or expired. Open Settings in the app and press Link Telegram again.",
         "not_linked": "Your Telegram is not linked yet. Open Settings in the app and press Link Telegram.",
         "no_challenge": "There is no active challenge right now.",
         "rem1": "{name}, you have not logged your day yet. One minute and you are done.",
@@ -72,6 +73,7 @@ MESSAGES = {
     },
     "es": {
         "linked": "Vinculado! Recibiras recordatorios y motivacion aqui.\nEscribe /progress cuando quieras ver como vas.",
+        "invalid_link": "Este enlace de Telegram no es valido o ha caducado. Abre Ajustes en la app y pulsa Vincular Telegram otra vez.",
         "not_linked": "Tu Telegram no esta vinculado. Ve a Ajustes en la app y pulsa Vincular Telegram.",
         "no_challenge": "No hay un challenge activo ahora mismo.",
         "rem1": "{name}, aun no registraste tu dia. Un minuto y listo.",
@@ -95,6 +97,7 @@ MESSAGES = {
     },
     "it": {
         "linked": "Collegato! Riceverai promemoria e motivazione qui.\nScrivi /progress per vedere come stai andando.",
+        "invalid_link": "Questo link Telegram non e valido o e scaduto. Apri Impostazioni nell'app e premi Collega Telegram di nuovo.",
         "not_linked": "Il tuo Telegram non e collegato. Apri Impostazioni nell'app e premi Collega Telegram.",
         "no_challenge": "Non c'e una challenge attiva al momento.",
         "rem1": "{name}, non hai ancora registrato la giornata. Un minuto e hai finito.",
@@ -205,13 +208,16 @@ class BotDB:
         self.conn.commit()
 
     def settings(self) -> dict:
+        base_url = self.setting("app_base_url", "").strip().rstrip("/")
+        if not base_url:
+            base_url = os.environ.get("APP_BASE_URL", "").strip().rstrip("/")
         return {
             "enabled": self.setting("telegram_enabled", "0") in ("1", "true", "yes", "on"),
             "token": self.setting("telegram_bot_token", "").strip(),
             "username": self.setting("telegram_bot_username", "").strip(),
             "external": self.setting("telegram_external_bot", "0") in ("1", "true", "yes", "on"),
             "offset": int(self.setting("telegram_update_offset", "0") or "0"),
-            "base_url": self.setting("app_base_url", "").strip().rstrip("/"),
+            "base_url": base_url,
         }
 
     def user_by_link_code(self, code: str) -> Optional[sqlite3.Row]:
@@ -635,6 +641,15 @@ def check_streak_milestone(db: BotDB, user: sqlite3.Row, stats: Optional[dict], 
     return ok
 
 
+def update_locale(message: dict) -> str:
+    sender = message.get("from") if isinstance(message, dict) else {}
+    if not isinstance(sender, dict):
+        sender = {}
+    raw = str(sender.get("language_code") or "").strip().lower()
+    locale = raw.split("-", 1)[0] if raw else "es"
+    return locale if locale in MESSAGES else "es"
+
+
 def process_update(db: BotDB, settings: dict, update: dict) -> None:
     message = update.get("message") or {}
     text = str(message.get("text") or "").strip()
@@ -644,10 +659,12 @@ def process_update(db: BotDB, settings: dict, update: dict) -> None:
         return
 
     # /start <code> links a Telegram chat to an app user.
-    match = re.match(r"^/start\s+(\S+)", text)
+    match = re.match(r"^/start(?:@\w+)?\s+(\S+)", text, re.IGNORECASE)
     if match:
         user = db.user_by_link_code(match.group(1))
         if user is None:
+            send_message(settings["token"], chat_id, T(update_locale(message), "invalid_link"))
+            log(f"invalid link code from chat={chat_id}")
             return
         db.link_user(int(user["id"]), chat_id)
         ok, error = send_message(settings["token"], chat_id, T(user["locale"], "linked"))
@@ -659,7 +676,7 @@ def process_update(db: BotDB, settings: dict, update: dict) -> None:
     command = text.split()[0].lower().lstrip("/").split("@")[0]
     user = db.user_by_chat_id(chat_id)
     if user is None:
-        send_message(settings["token"], chat_id, T("es", "not_linked"))
+        send_message(settings["token"], chat_id, T(update_locale(message), "not_linked"))
         return
 
     locale = user["locale"]

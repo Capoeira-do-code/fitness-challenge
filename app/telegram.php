@@ -289,12 +289,13 @@ function telegram_poll_updates(PDO $pdo, array $settings): void
 function telegram_handle_incoming(PDO $pdo, array $settings, string $chatId, string $text): void
 {
     // Expect "/start <code>" (Telegram sends this when a user opens the deep link).
-    if (!preg_match('/^\/start\s+(\S+)/', $text, $matches)) {
+    if (!preg_match('/^\/start(?:@\w+)?\s+(\S+)/i', $text, $matches)) {
         return;
     }
     $code = $matches[1];
     $user = db_fetch_one($pdo, 'SELECT * FROM users WHERE telegram_link_code = :code', [':code' => $code]);
     if ($user === null) {
+        telegram_send_message($settings, $chatId, t('telegram.msg_invalid_link'));
         return;
     }
     db_execute(

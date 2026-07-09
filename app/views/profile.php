@@ -6,6 +6,15 @@ $profileUser = $profileUser ?? $currentUser;
 $isOwnProfile = (bool) ($isOwnProfile ?? ((int) ($profileUser['id'] ?? 0) === (int) ($currentUser['id'] ?? 0)));
 $canEditProfile = (bool) ($canEditProfile ?? $isOwnProfile);
 $profileBaseUrl = (string) ($profileBaseUrl ?? '/?page=profile');
+$profileFriends = is_array($profileFriends ?? null) ? array_values((array) $profileFriends) : [];
+$profileFriendIncoming = is_array($profileFriendIncoming ?? null) ? array_values((array) $profileFriendIncoming) : [];
+$profileFriendOutgoing = is_array($profileFriendOutgoing ?? null) ? array_values((array) $profileFriendOutgoing) : [];
+$profileFriendAddable = is_array($profileFriendAddable ?? null) ? array_values((array) $profileFriendAddable) : [];
+$profileFriendStatus = (string) ($profileFriendStatus ?? ($isOwnProfile ? 'self' : 'none'));
+$profileFriendCount = count($profileFriends);
+$profileFriendPreview = array_slice($profileFriends, 0, 5);
+$profileFriendIncomingPreview = array_slice($profileFriendIncoming, 0, 2);
+$profileFriendOutgoingCount = count($profileFriendOutgoing);
 
 $activeSection = (string) ($_GET['section'] ?? '');
 $allowedSections = ['goals', 'achievements', 'config', 'activity'];
@@ -59,6 +68,59 @@ $profileUrl = static function (string $section = '', array $extra = []) use ($pr
 
     return '/?' . http_build_query($query);
 };
+$profileFriendAvatar = static function (array $user): void {
+    $url = avatar_url($user);
+    $name = (string) ($user['display_name'] ?? $user['username'] ?? '');
+    if ($url !== '') {
+        echo '<img class="profile-friend-avatar" src="' . e($url) . '" alt="' . e($name) . '">';
+        return;
+    }
+
+    echo '<span class="profile-friend-avatar initials">' . e(initials_for($name !== '' ? $name : '?')) . '</span>';
+};
+$profileFriendActionForm = static function (string $action, int $userId, string $label, string $btnClass, string $contextClass = '') use ($profileUrl): void {
+    ?>
+    <form method="post" action="<?= e($profileUrl()) ?>" class="inline-form profile-friend-action-form <?= e($contextClass) ?>">
+        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+        <input type="hidden" name="action" value="<?= e($action) ?>">
+        <input type="hidden" name="user_id" value="<?= $userId ?>">
+        <button class="btn <?= e($btnClass) ?> small" type="submit"><?= e($label) ?></button>
+    </form>
+    <?php
+};
+$renderProfileFriendActions = static function (string $status, int $targetUserId, string $contextClass = '') use ($profileFriendActionForm): void {
+    if ($targetUserId <= 0) {
+        return;
+    }
+
+    if ($status === 'none') {
+        $profileFriendActionForm('friend_request', $targetUserId, t('friends.send_request'), 'btn-primary', $contextClass);
+        return;
+    }
+    if ($status === 'pending_out') {
+        $profileFriendActionForm('friend_remove', $targetUserId, t('friends.cancel_request'), 'btn-ghost', $contextClass);
+        return;
+    }
+    if ($status === 'pending_in') {
+        $profileFriendActionForm('friend_accept', $targetUserId, t('friends.accept'), 'btn-primary', $contextClass);
+        $profileFriendActionForm('friend_reject', $targetUserId, t('friends.reject'), 'btn-ghost', $contextClass);
+        return;
+    }
+    if ($status === 'friends') {
+        ?>
+        <a class="btn btn-primary small <?= e($contextClass) ?>" href="/?page=friends&amp;compare=<?= $targetUserId ?>" data-spa-link><?= e(t('friends.compare')) ?></a>
+        <?php
+        $profileFriendActionForm('friend_remove', $targetUserId, t('friends.remove'), 'btn-ghost', $contextClass);
+    }
+};
+$profileFriendStatusText = match ($profileFriendStatus) {
+    'friends' => (string) t('profile.friend_status_friends'),
+    'pending_out' => (string) t('profile.friend_status_pending_out'),
+    'pending_in' => (string) t('profile.friend_status_pending_in'),
+    'self' => (string) t('profile.friend_status_self'),
+    default => (string) t('profile.friend_status_none'),
+};
+$showProfileFriendActions = !$isOwnProfile && (int) ($profileUser['id'] ?? 0) > 0;
 $profileAchievementsUrl = '/?' . http_build_query([
     'page' => 'achievements',
     'scope' => 'user',
@@ -535,13 +597,31 @@ $profileSetupRows = [
                 </div>
             </div>
         </div>
-        <?php if ($isOwnProfile || !empty($canExportProfilePdf)): ?>
-            <div class="profile-hero-actions">
+        <?php if ($isOwnProfile || !empty($canExportProfilePdf) || $showProfileFriendActions): ?>
+            <?php
+            $profileHeroActionClasses = ['profile-hero-actions'];
+            if ($showProfileFriendActions) {
+                $profileHeroActionClasses[] = 'has-friend-actions';
+            }
+            if (!empty($canExportProfilePdf)) {
+                $profileHeroActionClasses[] = 'has-pdf-action';
+            }
+            if ($isOwnProfile) {
+                $profileHeroActionClasses[] = 'has-tagline-action';
+            }
+            ?>
+            <div class="<?= e(implode(' ', $profileHeroActionClasses)) ?>">
                 <?php if (!empty($canExportProfilePdf)): ?>
                     <button class="btn btn-primary profile-pdf-export-btn" type="button" data-profile-pdf-export>
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg>
                         <span data-profile-pdf-export-label><?= e(t('profile.export_pdf')) ?></span>
                     </button>
+                <?php endif; ?>
+                <?php if ($showProfileFriendActions): ?>
+                    <div class="profile-friend-actions profile-friend-actions-hero" aria-label="<?= e(t('profile.friendship')) ?>">
+                        <span class="profile-friend-status"><?= e($profileFriendStatusText) ?></span>
+                        <?php $renderProfileFriendActions($profileFriendStatus, (int) $profileUser['id'], 'profile-friend-hero-action'); ?>
+                    </div>
                 <?php endif; ?>
                 <?php if ($isOwnProfile): ?>
                     <details class="profile-tagline-editor">
@@ -704,6 +784,106 @@ $profileSetupRows = [
             <?php endif; ?>
         </article>
 
+        <article class="panel profile-home-card profile-friends-card">
+            <div class="profile-home-card-head">
+                <div>
+                    <p class="eyebrow">
+                        <?= e((string) $profileFriendCount) ?> <?= e(t('friends.count_label')) ?>
+                        <?php if ($isOwnProfile && count($profileFriendIncoming) > 0): ?>
+                            &middot; <?= e((string) count($profileFriendIncoming)) ?> <?= e(t('friends.incoming')) ?>
+                        <?php endif; ?>
+                    </p>
+                    <h2><?= e($isOwnProfile ? t('friends.your_friends') : t('profile.friends_of', ['name' => (string) ($profileUser['display_name'] ?? '')])) ?></h2>
+                </div>
+                <div class="inline-actions-mini">
+                    <?php if ($isOwnProfile): ?>
+                        <a class="btn btn-ghost small" href="/?page=friends" data-spa-link><?= e(t('profile.manage_friends')) ?></a>
+                    <?php else: ?>
+                        <span class="profile-friend-status compact"><?= e($profileFriendStatusText) ?></span>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <?php if ($isOwnProfile && $profileFriendIncomingPreview !== []): ?>
+                <div class="profile-friend-request-list">
+                    <strong><?= e(t('friends.incoming')) ?></strong>
+                    <?php foreach ($profileFriendIncomingPreview as $requester): ?>
+                        <div class="profile-friend-row">
+                            <a class="profile-friend-id" href="/?page=profile&amp;user_id=<?= (int) ($requester['id'] ?? 0) ?>" data-spa-link>
+                                <?php $profileFriendAvatar($requester); ?>
+                                <span>
+                                    <strong><?= e((string) ($requester['display_name'] ?? $requester['username'] ?? '')) ?></strong>
+                                    <small>@<?= e((string) ($requester['username'] ?? '')) ?></small>
+                                </span>
+                            </a>
+                            <div class="profile-friend-actions">
+                                <?php $profileFriendActionForm('friend_accept', (int) ($requester['id'] ?? 0), t('friends.accept'), 'btn-primary', 'profile-friend-card-action'); ?>
+                                <?php $profileFriendActionForm('friend_reject', (int) ($requester['id'] ?? 0), t('friends.reject'), 'btn-ghost', 'profile-friend-card-action'); ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($profileFriendPreview === []): ?>
+                <p class="muted"><?= e($isOwnProfile ? t('friends.none') : t('profile.friends_empty_other')) ?></p>
+            <?php else: ?>
+                <div class="profile-friend-list">
+                    <?php foreach ($profileFriendPreview as $friend): ?>
+                        <div class="profile-friend-row">
+                            <a class="profile-friend-id" href="/?page=profile&amp;user_id=<?= (int) ($friend['id'] ?? 0) ?>" data-spa-link>
+                                <?php $profileFriendAvatar($friend); ?>
+                                <span>
+                                    <strong><?= e((string) ($friend['display_name'] ?? $friend['username'] ?? '')) ?></strong>
+                                    <small>@<?= e((string) ($friend['username'] ?? '')) ?></small>
+                                </span>
+                            </a>
+                            <?php if ($isOwnProfile): ?>
+                                <div class="profile-friend-actions">
+                                    <a class="btn btn-primary small profile-friend-card-action" href="/?page=friends&amp;compare=<?= (int) ($friend['id'] ?? 0) ?>" data-spa-link><?= e(t('friends.compare')) ?></a>
+                                    <?php $profileFriendActionForm('friend_remove', (int) ($friend['id'] ?? 0), t('friends.remove'), 'btn-ghost', 'profile-friend-card-action'); ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php if ($profileFriendCount > count($profileFriendPreview)): ?>
+                    <a class="profile-friend-more" href="/?page=friends" data-spa-link><?= e(t('common.view_all')) ?></a>
+                <?php endif; ?>
+            <?php endif; ?>
+
+            <?php if ($isOwnProfile): ?>
+                <div class="profile-friend-add">
+                    <div>
+                        <strong><?= e(t('friends.add_title')) ?></strong>
+                        <?php if ($profileFriendOutgoingCount > 0): ?>
+                            <small><?= e(t('profile.friend_outgoing_count', ['count' => $profileFriendOutgoingCount])) ?></small>
+                        <?php else: ?>
+                            <small><?= e(t('profile.friend_add_hint')) ?></small>
+                        <?php endif; ?>
+                    </div>
+                    <?php if ($profileFriendAddable === []): ?>
+                        <p class="muted small"><?= e(t('friends.add_none')) ?></p>
+                    <?php else: ?>
+                        <form method="post" action="<?= e($profileUrl()) ?>" class="profile-friends-add-form">
+                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                            <input type="hidden" name="action" value="friend_request">
+                            <label>
+                                <span class="sr-only"><?= e(t('friends.add_title')) ?></span>
+                                <select name="user_id" required>
+                                    <option value=""><?= e(t('friends.add_placeholder')) ?></option>
+                                    <?php foreach ($profileFriendAddable as $candidate): ?>
+                                        <option value="<?= (int) ($candidate['id'] ?? 0) ?>"><?= e((string) ($candidate['display_name'] ?? $candidate['username'] ?? '')) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </label>
+                            <button class="btn btn-primary small" type="submit"><?= e(t('friends.send_request')) ?></button>
+                        </form>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+        </article>
+
         <article class="panel profile-home-card">
             <div class="profile-home-card-head">
                 <div>
@@ -748,7 +928,7 @@ $profileSetupRows = [
                 <span><?= e(t('settings.primary_goals_spec')) ?></span>
                 <div class="profile-current-goal-chips">
                     <?php foreach ($profileCurrentGoalChips as $goalChip): ?>
-                        <span><strong><?= e((string) $goalChip['value']) ?></strong><?= e((string) $goalChip['label']) ?></span>
+                        <span aria-label="<?= e((string) $goalChip['value'] . ' ' . (string) $goalChip['label']) ?>"><strong><?= e((string) $goalChip['value']) ?></strong><small><?= e((string) $goalChip['label']) ?></small></span>
                     <?php endforeach; ?>
                     <?php if ($profileCurrentGoalChips === []): ?>
                         <span class="is-empty"><?= e(t('settings.no_extra_goals')) ?></span>
@@ -1031,7 +1211,7 @@ $profileSetupRows = [
                     <span><?= e(t('settings.primary_goals_spec')) ?></span>
                     <div class="profile-current-goal-chips">
                         <?php foreach ($profileCurrentGoalChips as $goalChip): ?>
-                            <span><strong><?= e((string) $goalChip['value']) ?></strong><?= e((string) $goalChip['label']) ?></span>
+                            <span aria-label="<?= e((string) $goalChip['value'] . ' ' . (string) $goalChip['label']) ?>"><strong><?= e((string) $goalChip['value']) ?></strong><small><?= e((string) $goalChip['label']) ?></small></span>
                         <?php endforeach; ?>
                         <?php if ($profileCurrentGoalChips === []): ?>
                             <span class="is-empty"><?= e(t('settings.no_extra_goals')) ?></span>

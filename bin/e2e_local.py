@@ -1047,26 +1047,51 @@ def run_quick_checks(
     return 1 if failed else 0
 
 
-def start_side_process(script_name: str, label: str) -> Optional[subprocess.Popen]:
+def start_side_process(script_name: str, label: str, db_path: Path, base_url: str) -> Optional[subprocess.Popen]:
     script = ROOT / "bin" / script_name
     if not script.exists():
         return None
     env = os.environ.copy()
-    env["DB_PATH"] = str(STORAGE_DIR / "fitness.sqlite")
-    print(f"[{label}] Launching {script_name} alongside the app (Ctrl+C stops all).")
+    env["DB_PATH"] = str(db_path)
+    env["APP_BASE_URL"] = base_url.rstrip("/")
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    print(f"[{label}] Launching {script_name} alongside the app (DB: {db_path}).")
     try:
-        return subprocess.Popen([sys.executable, str(script)], cwd=str(ROOT), env=env)
+        return subprocess.Popen([sys.executable, str(script), "--db", str(db_path)], cwd=str(ROOT), env=env)
     except Exception as exc:
         print(f"[{label}] Could not start {script_name}: {exc}")
         return None
 
 
-def start_telegram_bot() -> Optional[subprocess.Popen]:
-    return start_side_process("telegram_bot.py", "telegram")
+def start_telegram_bot(db_path: Path, base_url: str) -> Optional[subprocess.Popen]:
+    return start_side_process("telegram_bot.py", "telegram", db_path, base_url)
 
 
-def start_notion_sync() -> Optional[subprocess.Popen]:
-    return start_side_process("notion_sync.py", "notion")
+def start_notion_sync(db_path: Path, base_url: str) -> Optional[subprocess.Popen]:
+    return start_side_process("notion_sync.py", "notion", db_path, base_url)
+
+
+def wait_for_foreground_process(
+    app_proc: Optional[subprocess.Popen],
+    side_procs: list[Optional[subprocess.Popen]],
+) -> None:
+    live_side_procs = [proc for proc in side_procs if proc is not None]
+    if app_proc is None and live_side_procs == []:
+        return
+    print("[serve] Press Ctrl+C to stop side processes.")
+    try:
+        if app_proc is not None:
+            app_proc.wait()
+            return
+        while live_side_procs:
+            for proc in list(live_side_procs):
+                if proc.poll() is not None:
+                    live_side_procs.remove(proc)
+            if live_side_procs == []:
+                return
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        print("\n[serve] Stopping side processes...")
 
 
 def serve_basic_ui(
@@ -1088,6 +1113,8 @@ def serve_basic_ui(
         wait_timeout_s=wait_timeout_s,
         wait_interval_ms=wait_interval_ms,
     )
+    app_base = base_url_from_absolute(live_url)
+    db_path = STORAGE_DIR / "fitness.sqlite"
     print(f"[serve] UI ready at {live_url}")
     maybe_open_browser(
         live_url,
@@ -1096,15 +1123,10 @@ def serve_basic_ui(
         window_size=window_size,
         window_pos=window_pos,
     )
-    if proc is None:
-        return 0
-    bot_proc = start_telegram_bot() if launch_telegram_bot else None
-    notion_proc = start_notion_sync() if launch_notion_sync else None
-    print("[serve] Press Ctrl+C to stop.")
+    bot_proc = start_telegram_bot(db_path, app_base) if launch_telegram_bot else None
+    notion_proc = start_notion_sync(db_path, app_base) if launch_notion_sync else None
     try:
-        proc.wait()
-    except KeyboardInterrupt:
-        print("\n[serve] Stopping local PHP server...")
+        wait_for_foreground_process(proc, [bot_proc, notion_proc])
     finally:
         stop_process(notion_proc)
         stop_process(bot_proc)
@@ -1123,6 +1145,8 @@ def serve_full_ui(
     force: bool,
     wait_timeout_s: int,
     wait_interval_ms: int,
+    launch_telegram_bot: bool = True,
+    launch_notion_sync: bool = True,
 ) -> int:
     login_url = start_full_server(
         base_url,
@@ -1131,6 +1155,8 @@ def serve_full_ui(
         wait_timeout_s=wait_timeout_s,
         wait_interval_ms=wait_interval_ms,
     )
+    app_base = base_url_from_absolute(login_url)
+    db_path = host_db_path_for_mode(db_mode)
     print(f"[serve] UI ready at {login_url}")
     print("[serve] HTTPS is available in full mode.")
     maybe_open_browser(
@@ -1140,6 +1166,13 @@ def serve_full_ui(
         window_size=window_size,
         window_pos=window_pos,
     )
+    bot_proc = start_telegram_bot(db_path, app_base) if launch_telegram_bot else None
+    notion_proc = start_notion_sync(db_path, app_base) if launch_notion_sync else None
+    try:
+        wait_for_foreground_process(None, [bot_proc, notion_proc])
+    finally:
+        stop_process(notion_proc)
+        stop_process(bot_proc)
     return 0
 
 
@@ -1254,13 +1287,13 @@ def main() -> int:
         "--telegram-bot",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Also run the Telegram bot (bin/telegram_bot.py) alongside the app in basic mode.",
+        help="Also run the Telegram bot (bin/telegram_bot.py) alongside the app.",
     )
     parser.add_argument(
         "--notion-sync",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Also run the Notion sync (bin/notion_sync.py) alongside the app in basic mode.",
+        help="Also run the Notion sync (bin/notion_sync.py) alongside the app.",
     )
 
     args = parser.parse_args()
@@ -1298,6 +1331,8 @@ def main() -> int:
                 force=bool(args.force),
                 wait_timeout_s=max(10, int(args.wait_timeout_s)),
                 wait_interval_ms=max(50, int(args.wait_interval_ms)),
+                launch_telegram_bot=bool(args.telegram_bot),
+                launch_notion_sync=bool(args.notion_sync),
             )
             return exit_code
 

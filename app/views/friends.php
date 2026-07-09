@@ -8,9 +8,16 @@ $friendsOutgoing = is_array($friendsOutgoing ?? null) ? array_values((array) $fr
 $friendsAddable = is_array($friendsAddable ?? null) ? array_values((array) $friendsAddable) : [];
 $friendCompare = is_array($friendCompare ?? null) ? (array) $friendCompare : null;
 
-$friendActionForm = static function (string $action, int $userId, string $label, string $btnClass) use (&$csrfPrinted): void {
+$friendProfileUrl = static function (array $user): string {
+    return '/?' . http_build_query([
+        'page' => 'profile',
+        'user_id' => (int) ($user['id'] ?? 0),
+    ]);
+};
+
+$friendActionForm = static function (string $action, int $userId, string $label, string $btnClass): void {
     ?>
-    <form method="post" action="/?page=friends" class="inline-form">
+    <form method="post" action="/?page=friends" class="inline-form friends-action-form">
         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
         <input type="hidden" name="action" value="<?= e($action) ?>">
         <input type="hidden" name="user_id" value="<?= $userId ?>">
@@ -45,8 +52,8 @@ $fmtVal = static function (string $fmt, $v): string {
     };
 };
 ?>
-<section class="screen stack-lg">
-    <div class="hero-panel">
+<section class="screen stack-lg friends-screen">
+    <div class="hero-panel friends-hero">
         <div>
             <p class="eyebrow"><?= e(t('friends.eyebrow')) ?></p>
             <h1><?= e(t('friends.title')) ?></h1>
@@ -64,7 +71,7 @@ $fmtVal = static function (string $fmt, $v): string {
         <article class="panel friends-compare-panel">
             <div class="panel-head">
                 <h2><?= e(t('friends.compare_title')) ?></h2>
-                <a class="btn btn-ghost small" href="/?page=friends"><?= e(t('common.back')) ?></a>
+                <a class="btn btn-ghost small" href="/?page=friends" data-spa-link><?= e(t('common.back')) ?></a>
             </div>
             <div class="friends-compare-head">
                 <div class="friends-compare-person">
@@ -96,13 +103,19 @@ $fmtVal = static function (string $fmt, $v): string {
     <?php endif; ?>
 
     <?php if ($friendsIncoming !== []): ?>
-        <article class="panel">
+        <article class="panel friends-panel">
             <div class="panel-head"><h2><?= e(t('friends.incoming')) ?></h2><span class="badge"><?= count($friendsIncoming) ?></span></div>
             <div class="card-list">
                 <?php foreach ($friendsIncoming as $req): ?>
                     <div class="mini-card friends-row">
-                        <div class="friends-row-id"><?php $friendAvatar($req); ?><strong><?= e((string) ($req['display_name'] ?? $req['username'] ?? '')) ?></strong></div>
-                        <div class="inline-actions">
+                        <a class="friends-row-id" href="<?= e($friendProfileUrl($req)) ?>" data-spa-link>
+                            <?php $friendAvatar($req); ?>
+                            <span>
+                                <strong><?= e((string) ($req['display_name'] ?? $req['username'] ?? '')) ?></strong>
+                                <small class="muted">@<?= e((string) ($req['username'] ?? '')) ?></small>
+                            </span>
+                        </a>
+                        <div class="inline-actions friends-row-actions">
                             <?php $friendActionForm('friend_accept', (int) $req['id'], t('friends.accept'), 'btn-primary'); ?>
                             <?php $friendActionForm('friend_reject', (int) $req['id'], t('friends.reject'), 'btn-ghost'); ?>
                         </div>
@@ -112,7 +125,7 @@ $fmtVal = static function (string $fmt, $v): string {
         </article>
     <?php endif; ?>
 
-    <article class="panel">
+    <article class="panel friends-panel">
         <div class="panel-head"><h2><?= e(t('friends.your_friends')) ?></h2><span class="badge"><?= count($friendsList) ?></span></div>
         <?php if ($friendsList === []): ?>
             <p class="muted"><?= e(t('friends.none')) ?></p>
@@ -120,15 +133,15 @@ $fmtVal = static function (string $fmt, $v): string {
             <div class="card-list">
                 <?php foreach ($friendsList as $friend): ?>
                     <div class="mini-card friends-row">
-                        <div class="friends-row-id">
+                        <a class="friends-row-id" href="<?= e($friendProfileUrl($friend)) ?>" data-spa-link>
                             <?php $friendAvatar($friend); ?>
                             <span>
                                 <strong><?= e((string) ($friend['display_name'] ?? '')) ?></strong>
                                 <small class="muted">@<?= e((string) ($friend['username'] ?? '')) ?></small>
                             </span>
-                        </div>
-                        <div class="inline-actions">
-                            <a class="btn btn-primary small" href="/?page=friends&compare=<?= (int) $friend['id'] ?>"><?= e(t('friends.compare')) ?></a>
+                        </a>
+                        <div class="inline-actions friends-row-actions">
+                            <a class="btn btn-primary small" href="/?page=friends&compare=<?= (int) $friend['id'] ?>" data-spa-link><?= e(t('friends.compare')) ?></a>
                             <?php $friendActionForm('friend_remove', (int) $friend['id'], t('friends.remove'), 'btn-ghost'); ?>
                         </div>
                     </div>
@@ -138,25 +151,33 @@ $fmtVal = static function (string $fmt, $v): string {
     </article>
 
     <?php if ($friendsOutgoing !== []): ?>
-        <article class="panel">
+        <article class="panel friends-panel">
             <div class="panel-head"><h2><?= e(t('friends.outgoing')) ?></h2><span class="badge"><?= count($friendsOutgoing) ?></span></div>
             <div class="card-list">
                 <?php foreach ($friendsOutgoing as $req): ?>
                     <div class="mini-card friends-row">
-                        <div class="friends-row-id"><?php $friendAvatar($req); ?><strong><?= e((string) ($req['display_name'] ?? '')) ?></strong></div>
-                        <?php $friendActionForm('friend_remove', (int) $req['id'], t('friends.cancel_request'), 'btn-ghost'); ?>
+                        <a class="friends-row-id" href="<?= e($friendProfileUrl($req)) ?>" data-spa-link>
+                            <?php $friendAvatar($req); ?>
+                            <span>
+                                <strong><?= e((string) ($req['display_name'] ?? $req['username'] ?? '')) ?></strong>
+                                <small class="muted">@<?= e((string) ($req['username'] ?? '')) ?></small>
+                            </span>
+                        </a>
+                        <div class="inline-actions friends-row-actions">
+                            <?php $friendActionForm('friend_remove', (int) $req['id'], t('friends.cancel_request'), 'btn-ghost'); ?>
+                        </div>
                     </div>
                 <?php endforeach; ?>
             </div>
         </article>
     <?php endif; ?>
 
-    <article class="panel">
+    <article class="panel friends-panel">
         <div class="panel-head"><h2><?= e(t('friends.add_title')) ?></h2></div>
         <?php if ($friendsAddable === []): ?>
             <p class="muted"><?= e(t('friends.add_none')) ?></p>
         <?php else: ?>
-            <form method="post" action="/?page=friends" class="control-strip wrap">
+            <form method="post" action="/?page=friends" class="control-strip wrap friends-add-form">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="friend_request">
                 <label class="friends-add-select">

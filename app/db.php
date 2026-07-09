@@ -2,6 +2,24 @@
 
 declare(strict_types=1);
 
+function db_retry(callable $operation, int $maxAttempts = 6): mixed
+{
+    $attempt = 0;
+    while (true) {
+        try {
+            return $operation();
+        } catch (PDOException $exception) {
+            $message = strtolower($exception->getMessage());
+            $isLockError = str_contains($message, 'database is locked') || str_contains($message, 'database table is locked');
+            if (!$isLockError || $attempt >= $maxAttempts - 1) {
+                throw $exception;
+            }
+            $attempt++;
+            usleep(250000 * $attempt);
+        }
+    }
+}
+
 function db_connect(array $config): PDO
 {
     static $pdo = null;
@@ -19,18 +37,28 @@ function db_connect(array $config): PDO
     $pdo = new PDO('sqlite:' . $dbPath);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $pdo->setAttribute(PDO::ATTR_TIMEOUT, 5);
+    $pdo->exec('PRAGMA busy_timeout = 5000');
+    $pdo->exec('PRAGMA journal_mode = WAL');
+    $pdo->exec('PRAGMA synchronous = NORMAL');
 
-    initialize_database($pdo, $config);
+    try {
+        initialize_database($pdo, $config);
+    } catch (Throwable $exception) {
+        $pdo = null;
+        throw $exception;
+    }
 
     return $pdo;
 }
 
 function initialize_database(PDO $pdo, array $config): void
 {
-    $pdo->exec('PRAGMA foreign_keys = ON');
+    db_retry(static function () use ($pdo, $config): void {
+        $pdo->exec('PRAGMA foreign_keys = ON');
 
-    $pdo->exec(
-        'CREATE TABLE IF NOT EXISTS users (
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
@@ -619,32 +647,33 @@ function initialize_database(PDO $pdo, array $config): void
         }
     }
 
-    $settings = $pdo->query('SELECT id FROM challenge_settings WHERE id = 1')->fetch();
-    if ($settings === false) {
-        $insertSettings = $pdo->prepare(
-            'INSERT INTO challenge_settings (id, challenge_name, challenge_start, challenge_end, created_at, updated_at)
-             VALUES (1, :name, :start, :end, :created_at, :updated_at)'
-        );
+        $settings = $pdo->query('SELECT id FROM challenge_settings WHERE id = 1')->fetch();
+        if ($settings === false) {
+            $insertSettings = $pdo->prepare(
+                'INSERT INTO challenge_settings (id, challenge_name, challenge_start, challenge_end, created_at, updated_at)
+                 VALUES (1, :name, :start, :end, :created_at, :updated_at)'
+            );
 
-        $now = now_iso();
-        $insertSettings->execute([
-            ':name' => 'Fitness Challenge - Catalina & Roberto',
-            ':start' => (string) $config['challenge_start'],
-            ':end' => (string) $config['challenge_end'],
-            ':created_at' => $now,
-            ':updated_at' => $now,
-        ]);
-    }
+            $now = now_iso();
+            $insertSettings->execute([
+                ':name' => 'Fitness Challenge - Catalina & Roberto',
+                ':start' => (string) $config['challenge_start'],
+                ':end' => (string) $config['challenge_end'],
+                ':created_at' => $now,
+                ':updated_at' => $now,
+            ]);
+        }
 
-    seed_default_team($pdo);
-    seed_default_habits($pdo);
-    seed_default_achievements($pdo);
-    seed_default_motivational_quotes($pdo);
-    seed_workout_types_from_logs($pdo);
-    backfill_daily_log_base_metrics($pdo);
-    backfill_workout_type_ids($pdo);
-    backfill_daily_log_workouts($pdo);
-    backfill_daily_log_habits($pdo);
+        seed_default_team($pdo);
+        seed_default_habits($pdo);
+        seed_default_achievements($pdo);
+        seed_default_motivational_quotes($pdo);
+        seed_workout_types_from_logs($pdo);
+        backfill_daily_log_base_metrics($pdo);
+        backfill_workout_type_ids($pdo);
+        backfill_daily_log_workouts($pdo);
+        backfill_daily_log_habits($pdo);
+    });
 }
 
 function ensure_schema_columns(PDO $pdo, array $config): void
@@ -1646,37 +1675,43 @@ function backfill_daily_log_habits(PDO $pdo): void
 
 function db_fetch_one(PDO $pdo, string $sql, array $params = []): ?array
 {
-    $startedAt = microtime(true);
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    db_profile_record($sql, $params, $startedAt);
-    $row = $stmt->fetch();
+    return db_retry(static function () use ($pdo, $sql, $params): ?array {
+        $startedAt = microtime(true);
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        db_profile_record($sql, $params, $startedAt);
+        $row = $stmt->fetch();
 
-    return $row === false ? null : $row;
+        return $row === false ? null : $row;
+    });
 }
 
 function db_fetch_all(PDO $pdo, string $sql, array $params = []): array
 {
-    $startedAt = microtime(true);
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    db_profile_record($sql, $params, $startedAt);
+    return db_retry(static function () use ($pdo, $sql, $params): array {
+        $startedAt = microtime(true);
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        db_profile_record($sql, $params, $startedAt);
 
-    return $stmt->fetchAll();
+        return $stmt->fetchAll();
+    });
 }
 
 function db_execute(PDO $pdo, string $sql, array $params = []): bool
 {
-    $startedAt = microtime(true);
-    $stmt = $pdo->prepare($sql);
+    return db_retry(static function () use ($pdo, $sql, $params): bool {
+        $startedAt = microtime(true);
+        $stmt = $pdo->prepare($sql);
 
-    $result = $stmt->execute($params);
-    db_profile_record($sql, $params, $startedAt);
-    if ($result && preg_match('/^\s*(insert|update|delete|replace|create|drop|alter)\b/i', $sql) === 1 && function_exists('app_cache_clear')) {
-        app_cache_clear();
-    }
+        $result = $stmt->execute($params);
+        db_profile_record($sql, $params, $startedAt);
+        if ($result && preg_match('/^\s*(insert|update|delete|replace|create|drop|alter)\b/i', $sql) === 1 && function_exists('app_cache_clear')) {
+            app_cache_clear();
+        }
 
-    return $result;
+        return $result;
+    });
 }
 
 function db_profile_enabled(): bool
