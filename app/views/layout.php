@@ -165,10 +165,11 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
             <details class="user-menu">
                 <summary class="user-menu-trigger">
                     <?php $currentUserAvatarUrl = avatar_url($currentUser); ?>
+                    <?php $currentUserFrameClass = cosmetic_frame_class($currentUser); ?>
                     <?php if ($currentUserAvatarUrl !== ''): ?>
-                        <img src="<?= e($currentUserAvatarUrl) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
+                        <img class="<?= e(trim($currentUserFrameClass)) ?>" src="<?= e($currentUserAvatarUrl) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
                     <?php else: ?>
-                        <span><?= e(initials_for((string) $currentUser['display_name'])) ?></span>
+                        <span class="<?= e(trim($currentUserFrameClass)) ?>"><?= e(initials_for((string) $currentUser['display_name'])) ?></span>
                     <?php endif; ?>
                     <?php if ($unreadNotificationsCount > 0): ?>
                         <span class="user-menu-unread-badge" data-notification-badge aria-label="<?= e(t('nav.notifications')) ?>: <?= (int) $unreadNotificationsCount ?>"><?= (int) min(99, $unreadNotificationsCount) ?></span>

@@ -711,6 +711,7 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'analytics_layout_json', 'TEXT');
     ensure_column($pdo, 'users', 'analytics_view', 'TEXT NOT NULL DEFAULT "total"');
     ensure_column($pdo, 'users', 'profile_layout_json', 'TEXT');
+    ensure_column($pdo, 'users', 'avatar_frame', "TEXT NOT NULL DEFAULT 'none'");
     ensure_column($pdo, 'users', 'meal_calendar_view', 'TEXT NOT NULL DEFAULT "week"');
     ensure_column($pdo, 'users', 'maintenance_calories', 'REAL');
     ensure_column($pdo, 'users', 'calorie_burn_goal', 'REAL');

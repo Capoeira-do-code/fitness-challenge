@@ -431,7 +431,34 @@ try {
 
             <p class="muted small notion-status-records">
                 <?= e(t('admin.notion_synced_records', ['n' => (int) ($nStatus['synced_records'] ?? 0)])) ?>
+                <?php if ((int) ($nStatus['pending_records'] ?? 0) > 0): ?>
+                    &middot; <?= e(t('admin.notion_pending_records', ['n' => (int) $nStatus['pending_records']])) ?>
+                <?php endif; ?>
             </p>
+
+            <?php $nFields = (array) ($nStatus['fields'] ?? []); ?>
+            <?php if ($nFields !== []): ?>
+                <details class="notion-field-detail">
+                    <summary><?= e(t('admin.notion_fields_title')) ?></summary>
+                    <?php if (empty($nStatus['schema_known'])): ?>
+                        <p class="muted small"><?= e(t('admin.notion_schema_unknown')) ?></p>
+                    <?php endif; ?>
+                    <ul class="notion-field-list">
+                        <?php foreach ($nFields as $nf): ?>
+                            <li class="notion-field-row<?= !empty($nf['missing_property']) ? ' is-bad' : '' ?>">
+                                <span class="notion-field-name"><?= e((string) $nf['label']) ?></span>
+                                <span class="notion-field-prop">
+                                    <?= (string) $nf['property'] !== '' ? e((string) $nf['property']) : '&mdash;' ?>
+                                </span>
+                                <span class="notion-field-dir dir-<?= e((string) $nf['direction']) ?>">
+                                    <?= e(t('admin.notion_dir_' . (string) $nf['direction'])) ?>
+                                </span>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                    <p class="muted small"><?= e(t('admin.notion_fields_hint')) ?></p>
+                </details>
+            <?php endif; ?>
 
             <?php if ($nError !== ''): ?>
                 <p class="notion-status-error"><?= e($nError) ?></p>

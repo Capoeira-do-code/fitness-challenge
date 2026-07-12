@@ -749,3 +749,109 @@ function celebrations_drain(PDO $pdo, int $userId): array
 
     return $rows;
 }
+
+/* ---------------------------------------------------------------------------
+ * Cosmetics
+ *
+ * Purely visual rewards (avatar frames). They cannot be bought or claimed: a
+ * frame is unlocked iff the user already meets a requirement that is itself
+ * derived from real progress (level, or an earned badge). So cosmetics add no
+ * new surface to farm - they only re-express progress that already happened.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * @return array<string,array{label:string,require:string,value:mixed}>
+ */
+function cosmetics_catalogue(): array
+{
+    return [
+        'none' => ['label' => 'cosmetic.none', 'require' => 'always', 'value' => null],
+        'steel' => ['label' => 'cosmetic.steel', 'require' => 'level', 'value' => 3],
+        'ember' => ['label' => 'cosmetic.ember', 'require' => 'level', 'value' => 8],
+        'aurora' => ['label' => 'cosmetic.aurora', 'require' => 'level', 'value' => 15],
+        'gold' => ['label' => 'cosmetic.gold', 'require' => 'level', 'value' => 25],
+        'legend' => ['label' => 'cosmetic.legend', 'require' => 'level', 'value' => 40],
+        'iron' => ['label' => 'cosmetic.iron', 'require' => 'badge', 'value' => 'workouts_10'],
+        'streaker' => ['label' => 'cosmetic.streaker', 'require' => 'badge', 'value' => 'streak_7'],
+    ];
+}
+
+function cosmetics_normalize(string $key): string
+{
+    return array_key_exists($key, cosmetics_catalogue()) ? $key : 'none';
+}
+
+/**
+ * The catalogue with each entry resolved against this user's real progress.
+ *
+ * @return array<int,array<string,mixed>>
+ */
+function cosmetics_for_user(PDO $pdo, array $user): array
+{
+    badges_ensure_schema($pdo);
+
+    $userId = (int) ($user['id'] ?? 0);
+    $level = (int) (xp_user_level_info($pdo, $userId)['level'] ?? 1);
+    $equipped = cosmetics_normalize((string) ($user['avatar_frame'] ?? 'none'));
+
+    $earnedBadges = [];
+    foreach (db_fetch_all($pdo, 'SELECT badge_key FROM user_badges WHERE user_id = :u', [':u' => $userId]) as $row) {
+        $earnedBadges[(string) $row['badge_key']] = true;
+    }
+
+    $out = [];
+    foreach (cosmetics_catalogue() as $key => $item) {
+        $requirement = (string) $item['require'];
+        if ($requirement === 'level') {
+            $unlocked = $level >= (int) $item['value'];
+            $hint = t('cosmetic.need_level', ['n' => (int) $item['value']]);
+        } elseif ($requirement === 'badge') {
+            $unlocked = isset($earnedBadges[(string) $item['value']]);
+            $hint = t('cosmetic.need_badge', ['b' => t('badge.' . (string) $item['value'])]);
+        } else {
+            $unlocked = true;
+            $hint = '';
+        }
+
+        $out[] = [
+            'key' => $key,
+            'label' => t((string) $item['label']),
+            'unlocked' => $unlocked,
+            'equipped' => $key === $equipped,
+            'hint' => $unlocked ? '' : $hint,
+        ];
+    }
+
+    return $out;
+}
+
+/**
+ * Equip a frame. Re-checks the unlock server-side, so a hand-crafted POST cannot
+ * equip something the user has not earned.
+ */
+function cosmetics_equip(PDO $pdo, array $user, string $key): bool
+{
+    $key = cosmetics_normalize($key);
+
+    foreach (cosmetics_for_user($pdo, $user) as $item) {
+        if ($item['key'] === $key && empty($item['unlocked'])) {
+            return false;
+        }
+    }
+
+    db_execute(
+        $pdo,
+        'UPDATE users SET avatar_frame = :f WHERE id = :id',
+        [':f' => $key, ':id' => (int) $user['id']]
+    );
+
+    return true;
+}
+
+/** Class for an avatar element, so a frame follows the user everywhere. */
+function cosmetic_frame_class(array $user): string
+{
+    $key = cosmetics_normalize((string) ($user['avatar_frame'] ?? 'none'));
+
+    return $key === 'none' ? '' : ' avatar-frame frame-' . $key;
+}

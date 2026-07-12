@@ -616,10 +616,11 @@ $profileSetupRows = [
     <div class="hero-panel profile-hero">
         <div class="profile-title">
             <?php $profileAvatarUrl = avatar_url($profileUser); ?>
+            <?php $profileFrameClass = cosmetic_frame_class($profileUser); ?>
             <?php if ($profileAvatarUrl !== ''): ?>
-                <img class="profile-avatar" src="<?= e($profileAvatarUrl) ?>" alt="<?= e((string) $profileUser['display_name']) ?>">
+                <img class="profile-avatar<?= e($profileFrameClass) ?>" src="<?= e($profileAvatarUrl) ?>" alt="<?= e((string) $profileUser['display_name']) ?>">
             <?php else: ?>
-                <span class="profile-avatar initials"><?= e(initials_for((string) $profileUser['display_name'])) ?></span>
+                <span class="profile-avatar initials<?= e($profileFrameClass) ?>"><?= e(initials_for((string) $profileUser['display_name'])) ?></span>
             <?php endif; ?>
             <div>
                 <p class="eyebrow"><?= e(t('nav.profile')) ?></p>
@@ -1571,6 +1572,33 @@ $profileSetupRows = [
             </div>
         </div>
         <p class="muted level-progress-hint"><?= e(t('xp.progress_hint')) ?></p>
+
+        <?php $cosmetics = (array) ($profileCosmetics ?? []); ?>
+        <?php if (!empty($isOwnProfile) && $cosmetics !== []): ?>
+            <form method="post" action="<?= e($profileUrl()) ?>" class="cosmetics-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="equip_frame">
+                <p class="cosmetics-title"><?= e(t('cosmetic.title')) ?></p>
+                <div class="cosmetics-grid">
+                    <?php foreach ($cosmetics as $cosmetic): ?>
+                        <label class="cosmetic-option<?= empty($cosmetic['unlocked']) ? ' is-locked' : '' ?><?= !empty($cosmetic['equipped']) ? ' is-equipped' : '' ?>"
+                               title="<?= e((string) ($cosmetic['hint'] !== '' ? $cosmetic['hint'] : $cosmetic['label'])) ?>">
+                            <input type="radio" name="frame" value="<?= e((string) $cosmetic['key']) ?>"
+                                   <?= !empty($cosmetic['equipped']) ? 'checked' : '' ?>
+                                   <?= empty($cosmetic['unlocked']) ? 'disabled' : '' ?>>
+                            <span class="cosmetic-swatch avatar-frame frame-<?= e((string) $cosmetic['key']) ?>" aria-hidden="true">
+                                <?= empty($cosmetic['unlocked']) ? '&#128274;' : '' ?>
+                            </span>
+                            <span class="cosmetic-label"><?= e((string) $cosmetic['label']) ?></span>
+                            <?php if (!empty($cosmetic['hint'])): ?>
+                                <small class="cosmetic-hint"><?= e((string) $cosmetic['hint']) ?></small>
+                            <?php endif; ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <button class="btn btn-primary small" type="submit"><?= e(t('cosmetic.equip')) ?></button>
+            </form>
+        <?php endif; ?>
     </div>
 </div>
 

@@ -291,38 +291,48 @@ $topbarControls = ob_get_clean();
     </div>
 
     <?php if ($dashboardLayoutEditMode): ?>
-    <article class="panel dashboard-layout-edit-mode-panel">
+    <div class="dashboard-layout-editbar">
         <form id="dashboard-layout-edit-form" method="post" action="/?page=dashboard" class="dashboard-layout-editor dashboard-layout-editor-mobile" data-dashboard-layout-editor>
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="save_dashboard_layout">
             <input type="hidden" name="dashboard_view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
             <input type="hidden" name="redirect_user_id" value="<?= (int) ($selectedUser['id'] ?? 0) ?>">
-            <div class="team-layout-editor-head">
-                <strong><?= e(t('dashboard.edit_layout')) ?></strong>
-                <small><?= e(t('dashboard.layout_hint')) ?></small>
+
+            <div class="dashboard-editbar-row">
+                <p class="dashboard-editbar-hint">
+                    <strong><?= e(t('dashboard.edit_layout')) ?></strong>
+                    <small><?= e(t('dashboard.drag_hint')) ?></small>
+                </p>
+                <div class="dashboard-editbar-actions">
+                    <a class="btn btn-ghost small" href="<?= e($dashboardCancelEditLayoutUrl) ?>"><?= e(t('common.cancel')) ?></a>
+                    <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
+                </div>
             </div>
-            <div class="team-layout-editor-list dashboard-layout-editor-list" data-dashboard-layout-list>
-                <?php foreach ($dashboardEditorWidgets as $idx => $widget): ?>
-                    <div class="team-layout-editor-item dashboard-layout-editor-item dashboard-layout-edit-card" data-dashboard-layout-item>
-                        <div class="dashboard-layout-mobile-actions">
-                            <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="Move up">&uarr;</button>
-                            <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="Move down">&darr;</button>
+
+            <?php // The widget list still backs the form (order inputs + checkboxes the
+                  // drag handler syncs), but it is tucked away: reordering happens on the
+                  // real cards, so the only reason to open this is to show/hide a widget. ?>
+            <details class="dashboard-layout-visibility">
+                <summary><?= e(t('dashboard.visible_widgets')) ?></summary>
+                <div class="team-layout-editor-list dashboard-layout-editor-list" data-dashboard-layout-list>
+                    <?php foreach ($dashboardEditorWidgets as $idx => $widget): ?>
+                        <div class="team-layout-editor-item dashboard-layout-editor-item dashboard-layout-edit-card" data-dashboard-layout-item>
+                            <div class="dashboard-layout-mobile-actions">
+                                <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="Move up">&uarr;</button>
+                                <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="Move down">&darr;</button>
+                            </div>
+                            <label class="dashboard-layout-toggle">
+                                <input type="checkbox" name="dashboard_widgets[]" value="<?= e($widget) ?>" <?= in_array($widget, $visibleWidgets, true) ? 'checked' : '' ?>>
+                                <span><?= e(t('dashboard.widget_' . $widget)) ?></span>
+                            </label>
+                            <input type="hidden" name="dashboard_order[<?= e($widget) ?>]" value="<?= e((string) ($idx + 1)) ?>" data-dashboard-order-input>
                         </div>
-                        <label class="dashboard-layout-toggle">
-                            <input type="checkbox" name="dashboard_widgets[]" value="<?= e($widget) ?>" <?= in_array($widget, $visibleWidgets, true) ? 'checked' : '' ?>>
-                            <span><?= e(t('dashboard.widget_' . $widget)) ?></span>
-                        </label>
-                        <input type="hidden" name="dashboard_order[<?= e($widget) ?>]" value="<?= e((string) ($idx + 1)) ?>" data-dashboard-order-input>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-            <div class="team-layout-editor-actions">
-                <a class="btn btn-ghost small" href="<?= e($dashboardCancelEditLayoutUrl) ?>"><?= e(t('common.back')) ?></a>
-                <button class="btn btn-ghost small" type="submit" name="reset_dashboard_layout" value="1"><?= e(t('dashboard.reset_layout')) ?></button>
-                <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
-            </div>
+                    <?php endforeach; ?>
+                </div>
+                <button class="btn btn-ghost small dashboard-editbar-reset" type="submit" name="reset_dashboard_layout" value="1"><?= e(t('dashboard.reset_layout')) ?></button>
+            </details>
         </form>
-    </article>
+    </div>
     <?php endif; ?>
 
     <div class="dashboard-layout" data-unsaved-message="<?= e(t('dashboard.unsaved_changes')) ?>">

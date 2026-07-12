@@ -18229,3 +18229,284 @@ body.theme-active-dark .team-mission {
     .celebration-toast,
     .celebration-toast.is-leaving { animation: none; }
 }
+
+/* --- Compact dashboard layout edit bar ------------------------------------ */
+.dashboard-layout-editbar {
+    position: sticky;
+    top: 8px;
+    z-index: 30;
+    margin-bottom: 4px;
+}
+
+.dashboard-layout-editbar .dashboard-layout-editor {
+    display: grid;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 18px;
+    background: var(--panel-bg, #fff);
+    border: 1px solid var(--border, rgba(127, 127, 127, 0.22));
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+}
+
+.dashboard-editbar-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.dashboard-editbar-hint {
+    display: grid;
+    gap: 2px;
+    margin: 0;
+    min-width: 0;
+}
+
+.dashboard-editbar-hint small {
+    opacity: 0.7;
+}
+
+.dashboard-editbar-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.dashboard-layout-visibility > summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 6px 0;
+    list-style: none;
+}
+
+.dashboard-layout-visibility > summary::-webkit-details-marker { display: none; }
+
+.dashboard-layout-visibility > summary::before {
+    content: "\25B8";
+    display: inline-block;
+    margin-right: 6px;
+    transition: transform 0.18s ease;
+}
+
+.dashboard-layout-visibility[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+.dashboard-layout-visibility .dashboard-layout-editor-list {
+    margin-top: 8px;
+}
+
+.dashboard-editbar-reset {
+    margin-top: 10px;
+}
+
+/* --- Notion field detail --------------------------------------------------- */
+.notion-field-detail {
+    margin-top: 12px;
+}
+
+.notion-field-detail > summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 6px 0;
+}
+
+.notion-field-list {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.notion-field-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: 10px;
+    background: var(--surface-2, rgba(127, 127, 127, 0.08));
+    font-size: 0.82rem;
+}
+
+.notion-field-row.is-bad {
+    background: rgba(220, 78, 65, 0.12);
+}
+
+.notion-field-name { font-weight: 600; }
+
+.notion-field-name,
+.notion-field-prop {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.notion-field-prop {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    opacity: 0.75;
+}
+
+.notion-field-dir {
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.notion-field-dir.dir-off { background: rgba(127, 127, 127, 0.18); opacity: 0.7; }
+.notion-field-dir.dir-push { background: rgba(79, 124, 255, 0.18); }
+.notion-field-dir.dir-two_way { background: rgba(52, 168, 110, 0.2); }
+
+@media (max-width: 640px) {
+    .notion-field-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .notion-field-prop {
+        grid-column: 1 / -1;
+    }
+}
+
+/* --- Cosmetics: avatar frames --------------------------------------------- */
+.avatar-frame {
+    position: relative;
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+}
+
+.avatar-frame.frame-steel {
+    background-image: linear-gradient(var(--panel-bg, #fff), var(--panel-bg, #fff)),
+        linear-gradient(135deg, #9aa5b1, #d7dde3, #8d99a6);
+}
+
+.avatar-frame.frame-ember {
+    background-image: linear-gradient(var(--panel-bg, #fff), var(--panel-bg, #fff)),
+        linear-gradient(135deg, #ff7a18, #ff3d54, #ffb03a);
+}
+
+.avatar-frame.frame-aurora {
+    background-image: linear-gradient(var(--panel-bg, #fff), var(--panel-bg, #fff)),
+        linear-gradient(135deg, #35e0c0, #4f7cff, #a855f7);
+}
+
+.avatar-frame.frame-gold {
+    background-image: linear-gradient(var(--panel-bg, #fff), var(--panel-bg, #fff)),
+        linear-gradient(135deg, #f7c948, #fff0b3, #d99e0b);
+}
+
+.avatar-frame.frame-legend {
+    background-image: linear-gradient(var(--panel-bg, #fff), var(--panel-bg, #fff)),
+        linear-gradient(135deg, #ff3d54, #ffb03a, #4f7cff, #a855f7);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 6px 18px rgba(168, 85, 247, 0.32);
+}
+
+.avatar-frame.frame-iron {
+    background-image: linear-gradient(var(--panel-bg, #fff), var(--panel-bg, #fff)),
+        linear-gradient(135deg, #4b5563, #9ca3af, #374151);
+}
+
+.avatar-frame.frame-streaker {
+    background-image: linear-gradient(var(--panel-bg, #fff), var(--panel-bg, #fff)),
+        linear-gradient(135deg, #f97316, #fbbf24);
+}
+
+.cosmetics-form {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+    display: grid;
+    gap: 12px;
+    justify-items: start;
+}
+
+.cosmetics-title {
+    margin: 0;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.cosmetics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: 10px;
+    width: 100%;
+}
+
+.cosmetic-option {
+    display: grid;
+    justify-items: center;
+    gap: 5px;
+    padding: 10px 6px;
+    border-radius: 14px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    text-align: center;
+    min-width: 0;
+}
+
+.cosmetic-option:hover { background: var(--surface-2, rgba(127, 127, 127, 0.08)); }
+
+.cosmetic-option.is-equipped {
+    border-color: var(--accent, #4f7cff);
+    background: var(--surface-2, rgba(79, 124, 255, 0.1));
+}
+
+.cosmetic-option.is-locked {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.cosmetic-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.cosmetic-swatch {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    background-color: var(--surface-2, rgba(127, 127, 127, 0.14));
+    font-size: 0.9rem;
+}
+
+.cosmetic-swatch.frame-none {
+    border: 3px dashed var(--border, rgba(127, 127, 127, 0.35));
+}
+
+.cosmetic-label {
+    font-size: 0.76rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+.cosmetic-hint {
+    font-size: 0.68rem;
+    opacity: 0.7;
+    line-height: 1.25;
+}
+
+/* A tall modal on mobile used to end up underneath the fixed bottom nav, so its
+   last control (Save/Equip) could not be tapped at all. Reserve the nav's height
+   inside the scroll area rather than shortening the card, so the content still
+   scrolls all the way. */
+@media (max-width: 860px) {
+    .app-modal-card {
+        max-height: calc(100dvh - 2rem);
+        padding-bottom: calc(clamp(1.2rem, 3vw, 1.6rem) + 84px + env(safe-area-inset-bottom, 0px));
+    }
+}

@@ -2398,6 +2398,18 @@ if ($page === 'profile') {
             redirect($profileUrl());
         }
 
+        if ($action === 'equip_frame') {
+            if (!$isOwnProfile) {
+                flash_set('error', t('flash.no_permission'));
+                redirect($profileUrl());
+            }
+            // cosmetics_equip() re-checks the unlock, so a forged POST cannot equip
+            // a frame the user has not earned.
+            $equipped = cosmetics_equip($pdo, $currentUser, (string) ($_POST['frame'] ?? 'none'));
+            flash_set($equipped ? 'success' : 'error', t($equipped ? 'flash.preferences_updated' : 'cosmetic.locked'));
+            redirect($profileUrl());
+        }
+
         if ($action === 'save_profile_layout') {
             if (!$isOwnProfile) {
                 flash_set('error', t('flash.no_permission'));
@@ -3187,6 +3199,7 @@ if ($page === 'profile') {
         'profileUser' => $profileUser,
         'profileMetric' => $profileMetric,
         'profileXp' => xp_user_level_info($pdo, (int) $profileUser['id']),
+        'profileCosmetics' => $isOwnProfile ? cosmetics_for_user($pdo, $currentUser) : [],
         'isOwnProfile' => $isOwnProfile,
         'canEditProfile' => $canEditProfile,
         'canExportProfilePdf' => $isOwnProfile || is_admin($currentUser),
