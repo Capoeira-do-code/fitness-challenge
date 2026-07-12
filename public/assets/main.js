@@ -5447,3 +5447,49 @@
         window.AppOverlay.open(sheet);
     });
 })();
+
+/* Unlock celebrations: auto-dismiss the toasts the server drained for us. The
+   queue is already marked shown server-side, so nothing to report back. */
+(function () {
+    'use strict';
+
+    function dismiss(toast) {
+        if (!toast || toast.classList.contains('is-leaving')) {
+            return;
+        }
+        toast.classList.add('is-leaving');
+        window.setTimeout(function () {
+            toast.remove();
+        }, 260);
+    }
+
+    function init(root) {
+        var stack = (root || document).querySelector('[data-celebrations]');
+        if (!stack || stack.dataset.celebrationsReady === '1') {
+            return;
+        }
+        stack.dataset.celebrationsReady = '1';
+
+        stack.addEventListener('click', function (event) {
+            var close = event.target.closest('[data-celebration-close]');
+            if (close) {
+                dismiss(close.closest('.celebration-toast'));
+            }
+        });
+
+        var toasts = Array.prototype.slice.call(stack.querySelectorAll('.celebration-toast'));
+        toasts.forEach(function (toast, index) {
+            window.setTimeout(function () {
+                dismiss(toast);
+            }, 5200 + (index * 900));
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () { init(document); });
+    } else {
+        init(document);
+    }
+
+    document.addEventListener('pjax:loaded', function () { init(document); });
+})();

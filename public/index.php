@@ -2051,7 +2051,7 @@ if ($page === 'settings') {
             $layoutJson = (string) ($before['dashboard_layout_json'] ?? '[]');
             $hasWidgetPayload = array_key_exists('dashboard_widgets', $_POST) || array_key_exists('dashboard_order', $_POST);
             if ($hasWidgetPayload) {
-                $allowedWidgets = ['kpis', 'distance_walked', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories', 'achievements', 'duels', 'competitions', 'quests'];
+                $allowedWidgets = ['kpis', 'distance_walked', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories', 'achievements', 'duels', 'competitions', 'quests', 'season'];
                 $selectedWidgets = array_values(array_intersect(array_map('strval', (array) ($_POST['dashboard_widgets'] ?? [])), $allowedWidgets));
                 $selectedWidgets = array_values(array_unique(array_map(
                     static fn(string $widget): string => $widget === 'money' ? 'distance_walked' : $widget,
@@ -6699,7 +6699,7 @@ if ($page === 'dashboard') {
         }
 
         if ($action === 'save_dashboard_layout' || $action === 'save_dashboard_prefs') {
-            $allowedWidgets = ['kpis', 'approvals', 'ranking', 'weekly', 'achievements', 'duels', 'competitions', 'quests'];
+            $allowedWidgets = ['kpis', 'approvals', 'ranking', 'weekly', 'achievements', 'duels', 'competitions', 'quests', 'season'];
             $resetLayout = bool_from_form('reset_dashboard_layout') === 1;
             $widgets = [];
             if (!$resetLayout) {
@@ -6920,14 +6920,18 @@ if ($page === 'dashboard') {
     $dashboardQuestStreak = quests_active_streak($pdo, (int) $currentUser['id']);
     $dashboardBadges = badges_for_user($pdo, (int) $currentUser['id']);
     $dashboardCompetitionsSummary = comp_summary_for_user($pdo, (int) $currentUser['id']);
+    $dashboardSeason = seasons_current($pdo);
+    $dashboardSeasonBoard = season_leaderboard($pdo, $dashboardSeason, 6);
+    $dashboardSeasonXp = season_xp_for_user($pdo, (int) $currentUser['id'], $dashboardSeason);
+    $dashboardSeasonDaysLeft = season_days_left($dashboardSeason);
 
     // A saved dashboard layout only stores the *visible* widgets, so a widget
     // added after the user last saved would stay invisible forever. Reconcile
     // once: append widgets this user has never been offered, and remember the
     // full set so a deliberately hidden widget is not resurrected later.
     $dashAllWidgets = penalties_enabled($pdo)
-        ? ['kpis', 'quests', 'achievements', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
-        : ['kpis', 'quests', 'achievements', 'duels', 'competitions', 'ranking', 'weekly'];
+        ? ['kpis', 'quests', 'season', 'achievements', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
+        : ['kpis', 'quests', 'season', 'achievements', 'duels', 'competitions', 'ranking', 'weekly'];
     $savedDashLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
     $knownDashWidgets = json_decode((string) ($currentUser['dashboard_widgets_known'] ?? ''), true);
     $knownDashWidgets = is_array($knownDashWidgets) ? $knownDashWidgets : [];
@@ -6967,6 +6971,10 @@ if ($page === 'dashboard') {
         'dashboardQuestStreak' => $dashboardQuestStreak,
         'dashboardBadges' => $dashboardBadges,
         'dashboardCompetitionsSummary' => $dashboardCompetitionsSummary,
+        'dashboardSeason' => $dashboardSeason,
+        'dashboardSeasonBoard' => $dashboardSeasonBoard,
+        'dashboardSeasonXp' => $dashboardSeasonXp,
+        'dashboardSeasonDaysLeft' => $dashboardSeasonDaysLeft,
         'settings' => $settings,
         'users' => $users,
         'selectedMetric' => $selectedMetric,

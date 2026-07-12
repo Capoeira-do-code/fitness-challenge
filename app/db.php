@@ -49,7 +49,25 @@ function db_connect(array $config): PDO
         throw $exception;
     }
 
+    db_current($pdo);
+
     return $pdo;
+}
+
+/**
+ * The connection db_connect() already opened, for callers that have no $config
+ * at hand (views, in particular, only receive the params they were rendered
+ * with). Returns null before the first connect.
+ */
+function db_current(?PDO $pdo = null): ?PDO
+{
+    static $current = null;
+
+    if ($pdo instanceof PDO) {
+        $current = $pdo;
+    }
+
+    return $current;
 }
 
 function initialize_database(PDO $pdo, array $config): void

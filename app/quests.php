@@ -238,6 +238,14 @@ function quests_for_user(PDO $pdo, array $user): array
                 [':now' => $now, ':id' => (int) $row['id']]
             );
             $row['completed_at'] = $now;
+            celebration_enqueue(
+                $pdo,
+                $userId,
+                'quest',
+                $key . ':' . $periodKey,
+                t((string) $quest['label'], ['n' => (int) round($target)]),
+                (int) $row['xp_reward']
+            );
         }
 
         $board[] = [
@@ -425,6 +433,7 @@ function badges_for_user(PDO $pdo, int $userId): array
             );
             // Bonus XP, idempotent: a badge is earned exactly once, ever.
             xp_award($pdo, $userId, (int) $badge['xp'], 'badge:' . $key, 'badge:' . $key);
+            celebration_enqueue($pdo, $userId, 'badge', $key, t('badge.' . $key), (int) $badge['xp']);
             $has = true;
             $earned[$key] = $now;
         }
@@ -532,4 +541,211 @@ function team_missions_for_team(PDO $pdo, int $teamId): array
     }
 
     return $board;
+}
+
+/* ---------------------------------------------------------------------------
+ * Seasons (#14 phase 3)
+ *
+ * A season is just a time window. Because xp_events is an append-only ledger
+ * with created_at, "season XP" is derived by summing the ledger inside that
+ * window — there is no second XP counter to keep in sync, and a season reset
+ * never destroys history: lifetime XP and levels are untouched.
+ * ------------------------------------------------------------------------- */
+
+function seasons_ensure_schema(PDO $pdo): void
+{
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS seasons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            season_key TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )'
+    );
+}
+
+/**
+ * The season covering a date, created on demand. Seasons are quarterly, so they
+ * roll over on their own without an admin having to remember to open one.
+ *
+ * @return array<string,mixed>
+ */
+function seasons_current(PDO $pdo, ?string $date = null): array
+{
+    seasons_ensure_schema($pdo);
+
+    try {
+        $dt = new DateTimeImmutable($date ?? 'today');
+    } catch (Throwable) {
+        $dt = new DateTimeImmutable('today');
+    }
+
+    $year = (int) $dt->format('Y');
+    $quarter = (int) ceil(((int) $dt->format('n')) / 3);
+    $key = $year . '-Q' . $quarter;
+
+    $existing = db_fetch_one($pdo, 'SELECT * FROM seasons WHERE season_key = :k', [':k' => $key]);
+    if ($existing !== null) {
+        return $existing;
+    }
+
+    $startMonth = ($quarter - 1) * 3 + 1;
+    $start = (new DateTimeImmutable(sprintf('%04d-%02d-01', $year, $startMonth)));
+    $end = $start->modify('+3 months')->modify('-1 day');
+
+    db_execute(
+        $pdo,
+        'INSERT OR IGNORE INTO seasons (season_key, name, start_date, end_date, created_at)
+         VALUES (:k, :n, :s, :e, :now)',
+        [
+            ':k' => $key,
+            ':n' => t('season.name', ['q' => $quarter, 'y' => $year]),
+            ':s' => $start->format('Y-m-d'),
+            ':e' => $end->format('Y-m-d'),
+            ':now' => now_iso(),
+        ]
+    );
+
+    $row = db_fetch_one($pdo, 'SELECT * FROM seasons WHERE season_key = :k', [':k' => $key]);
+
+    return $row ?? [
+        'season_key' => $key,
+        'name' => $key,
+        'start_date' => $start->format('Y-m-d'),
+        'end_date' => $end->format('Y-m-d'),
+    ];
+}
+
+/** Days left in a season (0 on the final day). */
+function season_days_left(array $season): int
+{
+    try {
+        $end = new DateTimeImmutable((string) ($season['end_date'] ?? 'today'));
+        $today = new DateTimeImmutable('today');
+    } catch (Throwable) {
+        return 0;
+    }
+
+    return max(0, (int) $today->diff($end)->days * ($end >= $today ? 1 : 0));
+}
+
+/** XP a user earned inside the season window (derived from the ledger). */
+function season_xp_for_user(PDO $pdo, int $userId, array $season): int
+{
+    $row = db_fetch_one(
+        $pdo,
+        'SELECT COALESCE(SUM(amount), 0) AS total FROM xp_events
+         WHERE user_id = :u AND DATE(created_at) BETWEEN :a AND :b',
+        [':u' => $userId, ':a' => (string) $season['start_date'], ':b' => (string) $season['end_date']]
+    );
+
+    return (int) ($row['total'] ?? 0);
+}
+
+/**
+ * Season leaderboard: every active user ranked by XP earned this season.
+ * Lifetime XP is deliberately NOT used, so a newcomer can still win a season.
+ *
+ * @return array<int,array<string,mixed>>
+ */
+function season_leaderboard(PDO $pdo, array $season, int $limit = 10): array
+{
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT u.id, u.display_name, COALESCE(SUM(e.amount), 0) AS season_xp
+         FROM users u
+         LEFT JOIN xp_events e
+           ON e.user_id = u.id AND DATE(e.created_at) BETWEEN :a AND :b
+         WHERE u.active = 1
+         GROUP BY u.id
+         ORDER BY season_xp DESC, u.display_name COLLATE NOCASE ASC
+         LIMIT ' . max(1, min(50, $limit)),
+        [':a' => (string) $season['start_date'], ':b' => (string) $season['end_date']]
+    );
+
+    $out = [];
+    $rank = 0;
+    foreach ($rows as $r) {
+        $rank++;
+        $out[] = [
+            'rank' => $rank,
+            'user_id' => (int) $r['id'],
+            'name' => (string) $r['display_name'],
+            'xp' => (int) $r['season_xp'],
+        ];
+    }
+
+    return $out;
+}
+
+/* ---------------------------------------------------------------------------
+ * Celebrations
+ *
+ * A tiny outbox. The two places that can *newly* unlock something (a quest
+ * completing, a badge being earned) enqueue a row here; the layout drains the
+ * queue once and shows a toast. UNIQUE(user_id, kind, ckey) plus a shown_at
+ * stamp means a reload can never replay a celebration — same guarantee the XP
+ * ledger gives, so the toast and the payout can never disagree.
+ * ------------------------------------------------------------------------- */
+
+function celebrations_ensure_schema(PDO $pdo): void
+{
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS celebrations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            ckey TEXT NOT NULL,
+            label TEXT NOT NULL,
+            xp INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            shown_at TEXT,
+            UNIQUE (user_id, kind, ckey),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )'
+    );
+}
+
+function celebration_enqueue(PDO $pdo, int $userId, string $kind, string $key, string $label, int $xp): void
+{
+    celebrations_ensure_schema($pdo);
+    db_execute(
+        $pdo,
+        'INSERT OR IGNORE INTO celebrations (user_id, kind, ckey, label, xp, created_at)
+         VALUES (:u, :kind, :k, :l, :xp, :now)',
+        [':u' => $userId, ':kind' => $kind, ':k' => $key, ':l' => $label, ':xp' => $xp, ':now' => now_iso()]
+    );
+}
+
+/**
+ * Drain: return what has not been shown yet and immediately stamp it, so the
+ * same unlock is celebrated exactly once even across two open tabs.
+ *
+ * @return array<int,array<string,mixed>>
+ */
+function celebrations_drain(PDO $pdo, int $userId): array
+{
+    celebrations_ensure_schema($pdo);
+
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT id, kind, ckey, label, xp FROM celebrations
+         WHERE user_id = :u AND shown_at IS NULL
+         ORDER BY id ASC LIMIT 5',
+        [':u' => $userId]
+    );
+    if ($rows === []) {
+        return [];
+    }
+
+    $ids = array_map(static fn (array $r): int => (int) $r['id'], $rows);
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $stmt = $pdo->prepare(
+        'UPDATE celebrations SET shown_at = ? WHERE id IN (' . $placeholders . ') AND shown_at IS NULL'
+    );
+    $stmt->execute(array_merge([now_iso()], $ids));
+
+    return $rows;
 }

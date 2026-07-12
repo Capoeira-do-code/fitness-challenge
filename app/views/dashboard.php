@@ -6,8 +6,8 @@ $selectedUser = $selectedMetric['user'];
 $penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
 $dashboardLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
 $dashboardWidgets = $penaltiesEnabled
-    ? ['kpis', 'quests', 'achievements', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
-    : ['kpis', 'quests', 'achievements', 'duels', 'competitions', 'ranking', 'weekly'];
+    ? ['kpis', 'quests', 'season', 'achievements', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
+    : ['kpis', 'quests', 'season', 'achievements', 'duels', 'competitions', 'ranking', 'weekly'];
 $visibleWidgets = [];
 if (is_array($dashboardLayout) && $dashboardLayout !== []) {
     foreach ($dashboardLayout as $widget) {
@@ -513,6 +513,52 @@ $topbarControls = ob_get_clean();
                 <?php if (($dashboardQuestRank['next_level'] ?? null) !== null): ?>
                     <p class="muted small quests-next-rank"><?= e(t('quests.next_rank', ['n' => (int) $dashboardQuestRank['next_level']])) ?></p>
                 <?php endif; ?>
+            </article>
+        <?php endif; ?>
+
+        <?php if ($showWidget('season')): ?>
+            <?php
+            $season = (array) ($dashboardSeason ?? []);
+            $seasonBoard = (array) ($dashboardSeasonBoard ?? []);
+            $seasonDaysLeft = (int) ($dashboardSeasonDaysLeft ?? 0);
+            $seasonTop = 0;
+            foreach ($seasonBoard as $srow) {
+                $seasonTop = max($seasonTop, (int) $srow['xp']);
+            }
+            ?>
+            <article class="panel dashboard-panel season-widget dashboard-span-full" data-dashboard-widget="season" style="order: <?= $contentWidgetOrder('season') ?>">
+                <div class="panel-head">
+                    <div>
+                        <p class="eyebrow"><?= e(t('season.title')) ?></p>
+                        <h2><?= e((string) ($season['name'] ?? '')) ?></h2>
+                    </div>
+                    <span class="season-countdown">
+                        <?= $seasonDaysLeft > 0 ? e(t('season.days_left', ['n' => $seasonDaysLeft])) : e(t('season.ends_today')) ?>
+                    </span>
+                </div>
+
+                <p class="season-your-xp">
+                    <span class="muted small"><?= e(t('season.your_xp')) ?></span>
+                    <strong><?= e(number_format((float) ($dashboardSeasonXp ?? 0), 0, '.', ' ')) ?> XP</strong>
+                </p>
+
+                <?php if ($seasonBoard === []): ?>
+                    <p class="muted panel-inline-empty">&mdash;</p>
+                <?php else: ?>
+                    <ol class="season-board">
+                        <?php foreach ($seasonBoard as $srow): ?>
+                            <?php $pct = $seasonTop > 0 ? (int) round(((int) $srow['xp'] / $seasonTop) * 100) : 0; ?>
+                            <li class="season-row<?= (int) $srow['user_id'] === (int) $currentUser['id'] ? ' is-me' : '' ?>">
+                                <span class="season-rank">#<?= (int) $srow['rank'] ?></span>
+                                <span class="season-name"><?= e((string) $srow['name']) ?></span>
+                                <span class="season-bar"><span style="width: <?= $pct ?>%"></span></span>
+                                <span class="season-xp"><?= e(number_format((float) $srow['xp'], 0, '.', ' ')) ?></span>
+                            </li>
+                        <?php endforeach; ?>
+                    </ol>
+                <?php endif; ?>
+
+                <p class="muted small season-hint"><?= e(t('season.hint')) ?></p>
             </article>
         <?php endif; ?>
 

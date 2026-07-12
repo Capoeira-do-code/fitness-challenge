@@ -18031,3 +18031,201 @@ body.theme-active-dark .team-mission {
     background: var(--dark-ui-row);
     border-color: var(--dark-ui-border);
 }
+
+/* --- Season widget ------------------------------------------------------- */
+.season-countdown {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--surface-2, rgba(127, 127, 127, 0.12));
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.season-your-xp {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 14px;
+}
+
+.season-your-xp strong {
+    font-size: 1.35rem;
+    letter-spacing: -0.02em;
+}
+
+.season-board {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+}
+
+.season-row {
+    display: grid;
+    grid-template-columns: 2.2rem minmax(72px, 1fr) minmax(60px, 2fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    min-width: 0;
+}
+
+.season-row.is-me {
+    background: var(--surface-2, rgba(127, 127, 127, 0.12));
+}
+
+.season-rank {
+    font-weight: 700;
+    font-size: 0.82rem;
+    opacity: 0.7;
+}
+
+.season-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.season-bar {
+    display: block;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--surface-2, rgba(127, 127, 127, 0.16));
+    overflow: hidden;
+}
+
+.season-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent, #4f7cff), var(--accent-2, #8b5cf6));
+    transition: width 0.35s ease;
+}
+
+.season-xp {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.season-hint {
+    margin: 12px 0 0;
+}
+
+@media (max-width: 640px) {
+    .season-row {
+        grid-template-columns: 1.9rem 1fr auto;
+    }
+
+    .season-bar {
+        grid-column: 1 / -1;
+    }
+}
+
+/* --- Unlock celebrations -------------------------------------------------- */
+.celebration-stack {
+    position: fixed;
+    left: 50%;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
+    transform: translateX(-50%);
+    z-index: 10080;
+    display: grid;
+    gap: 10px;
+    width: min(420px, calc(100vw - 32px));
+    pointer-events: none;
+}
+
+@media (min-width: 900px) {
+    .celebration-stack {
+        left: auto;
+        right: 24px;
+        bottom: 24px;
+        transform: none;
+    }
+}
+
+.celebration-toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: var(--panel-bg, #fff);
+    border: 1px solid var(--border, rgba(127, 127, 127, 0.22));
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+    animation: celebrationIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.celebration-toast.is-leaving {
+    animation: celebrationOut 0.24s ease forwards;
+}
+
+@keyframes celebrationIn {
+    from { opacity: 0; transform: translateY(14px) scale(0.96); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes celebrationOut {
+    to { opacity: 0; transform: translateY(8px) scale(0.98); }
+}
+
+.celebration-spark {
+    font-size: 1.4rem;
+    line-height: 1;
+}
+
+.celebration-body {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.celebration-body strong {
+    font-size: 0.9rem;
+}
+
+.celebration-body span {
+    font-size: 0.82rem;
+    opacity: 0.75;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.celebration-xp {
+    font-weight: 700;
+    font-size: 0.82rem;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent, #4f7cff), var(--accent-2, #8b5cf6));
+    color: #fff;
+    white-space: nowrap;
+}
+
+.celebration-close {
+    border: 0;
+    background: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 4px;
+    color: inherit;
+    opacity: 0.5;
+}
+
+.celebration-close:hover { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+    .celebration-toast,
+    .celebration-toast.is-leaving { animation: none; }
+}

@@ -264,6 +264,33 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     </button>
 <?php endif; ?>
 
+<?php
+// Unlock celebrations. Drained here (not in a page view) so a quest completed on
+// any page is celebrated on the very next render, exactly once.
+$celebrations = [];
+$celebrationPdo = db_current();
+if ($loggedIn && $celebrationPdo instanceof PDO && isset($currentUser['id'])) {
+    $celebrations = celebrations_drain($celebrationPdo, (int) $currentUser['id']);
+}
+?>
+<?php if ($celebrations !== []): ?>
+    <div class="celebration-stack" data-celebrations aria-live="polite">
+        <?php foreach ($celebrations as $celebration): ?>
+            <div class="celebration-toast celebration-<?= e((string) $celebration['kind']) ?>" role="status">
+                <span class="celebration-spark" aria-hidden="true">&#127881;</span>
+                <span class="celebration-body">
+                    <strong><?= e(t('celebration.' . $celebration['kind'])) ?></strong>
+                    <span><?= e((string) $celebration['label']) ?></span>
+                </span>
+                <?php if ((int) $celebration['xp'] > 0): ?>
+                    <span class="celebration-xp">+<?= (int) $celebration['xp'] ?> XP</span>
+                <?php endif; ?>
+                <button type="button" class="celebration-close" data-celebration-close aria-label="<?= e(t('celebration.dismiss')) ?>">&times;</button>
+            </div>
+        <?php endforeach; ?>
+    </div>
+<?php endif; ?>
+
 <script src="<?= e($mainJsAssetUrl) ?>"></script>
 </body>
 </html>
