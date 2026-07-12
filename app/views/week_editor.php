@@ -268,6 +268,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                                             <?php foreach ((array) ($workoutTypes ?? []) as $type): ?>
                                                 <option value="<?= (int) $type['id'] ?>" <?= $primarySelection['select_value'] === (string) ((int) $type['id']) ? 'selected' : '' ?>><?= e((string) $type['name']) ?></option>
                                             <?php endforeach; ?>
+                                            <?= wk_routine_options_html((array) ($userRoutines ?? []), (string) ($workoutSelectionValue ?? '')) ?>
                                             <option value="__custom__" <?= $primarySelection['is_custom'] ? 'selected' : '' ?>><?= e(t('entries.workout_other')) ?></option>
                                         </select>
                                         <div class="workout-type-custom" data-primary-workout-custom-wrap <?= $primarySelection['is_custom'] ? '' : 'hidden' ?>>
@@ -300,6 +301,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                                                     <?php foreach ((array) ($workoutTypes ?? []) as $type): ?>
                                                         <option value="<?= (int) $type['id'] ?>" <?= $extraSelection['select_value'] === (string) ((int) $type['id']) ? 'selected' : '' ?>><?= e((string) $type['name']) ?></option>
                                                     <?php endforeach; ?>
+                                                    <?= wk_routine_options_html((array) ($userRoutines ?? []), (string) ($workoutSelectionValue ?? '')) ?>
                                                     <option value="__custom__" <?= $extraSelection['is_custom'] ? 'selected' : '' ?>><?= e(t('entries.workout_other')) ?></option>
                                                 </select>
                                             </label>
@@ -322,6 +324,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                                             <?php foreach ((array) ($workoutTypes ?? []) as $type): ?>
                                                 <option value="<?= (int) $type['id'] ?>"><?= e((string) $type['name']) ?></option>
                                             <?php endforeach; ?>
+                                            <?= wk_routine_options_html((array) ($userRoutines ?? []), (string) ($workoutSelectionValue ?? '')) ?>
                                             <option value="__custom__"><?= e(t('entries.workout_other')) ?></option>
                                         </select>
                                     </label>

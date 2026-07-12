@@ -34,13 +34,24 @@ function duels_ensure_schema(PDO $pdo): void
 /** Selectable metrics: key => i18n label. */
 function duels_metrics(): array
 {
-    return [
+    $metrics = [
         'steps' => t('metric.steps'),
         'distance_km' => t('metric.distance_km'),
         'workouts' => t('metric.workouts'),
         'score' => t('metric.score'),
         'consistency' => t('duels.metric_consistency'),
     ];
+    if (function_exists('wk_versus_metrics')) {
+        $metrics += wk_versus_metrics();
+    }
+
+    return $metrics;
+}
+
+/** Whether a duel/competition metric is powered by the workout subsystem. */
+function duels_metric_is_workout(string $metric): bool
+{
+    return str_starts_with($metric, 'wk_');
 }
 
 function duels_metric_label(string $metric): string
@@ -65,6 +76,10 @@ function duels_metric_value(?array $metric, string $key): float
 
 function duels_format_value(string $metric, float $value): string
 {
+    if (duels_metric_is_workout($metric) && function_exists('wk_versus_format')) {
+        return wk_versus_format($metric, $value);
+    }
+
     return match ($metric) {
         'distance_km' => number_format($value, 2, '.', '') . ' km',
         'consistency' => (string) (int) $value . '%',
@@ -183,6 +198,19 @@ function duels_values(PDO $pdo, array $config, array $duel, string $rangeStart, 
     if ($challenger === null || $opponent === null) {
         return ['challenger' => 0.0, 'opponent' => 0.0, 'challenger_user' => $challenger, 'opponent_user' => $opponent];
     }
+    $key = (string) $duel['metric'];
+
+    // Workout-powered metrics come from the workout subsystem, not the
+    // challenge metrics row.
+    if (duels_metric_is_workout($key) && function_exists('wk_metric_over_range')) {
+        return [
+            'challenger' => wk_metric_over_range($pdo, (int) $duel['challenger_id'], $key, $rangeStart, $rangeEnd),
+            'opponent' => wk_metric_over_range($pdo, (int) $duel['opponent_id'], $key, $rangeStart, $rangeEnd),
+            'challenger_user' => $challenger,
+            'opponent_user' => $opponent,
+        ];
+    }
+
     $metrics = compute_challenge_metrics($pdo, [$challenger, $opponent], $rangeStart, $rangeEnd);
     if (function_exists('apply_strike_review_overrides_to_metrics')) {
         $metrics = apply_strike_review_overrides_to_metrics($pdo, $metrics);
@@ -191,7 +219,6 @@ function duels_values(PDO $pdo, array $config, array $duel, string $rangeStart, 
     foreach ($metrics as $m) {
         $byUser[(int) ($m['user']['id'] ?? 0)] = $m;
     }
-    $key = (string) $duel['metric'];
 
     return [
         'challenger' => duels_metric_value($byUser[(int) $duel['challenger_id']] ?? null, $key),
@@ -261,4 +288,32 @@ function duels_active_count(PDO $pdo, int $me): int
     );
 
     return (int) ($row['total'] ?? 0);
+}
+
+/**
+ * Compact status summary for a user's duels (for Profile/Dashboard cards).
+ *
+ * @return array{active:int,pending:int,won:int,lost:int,total:int}
+ */
+function duels_summary_for_user(PDO $pdo, int $me): array
+{
+    $summary = ['active' => 0, 'pending' => 0, 'won' => 0, 'lost' => 0, 'total' => 0];
+    foreach (duels_for_user($pdo, $me) as $duel) {
+        $status = (string) ($duel['status'] ?? '');
+        $summary['total']++;
+        if ($status === 'active') {
+            $summary['active']++;
+        } elseif ($status === 'pending') {
+            $summary['pending']++;
+        } elseif ($status === 'completed') {
+            $winnerId = (int) ($duel['winner_id'] ?? 0);
+            if ($winnerId === $me) {
+                $summary['won']++;
+            } elseif ($winnerId > 0) {
+                $summary['lost']++;
+            }
+        }
+    }
+
+    return $summary;
 }

@@ -100,7 +100,22 @@ if (!$loggedIn && $currentPage === 'login') {
 if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     $bodyClasses[] = 'login-body-has-bg';
 }
-if ($loggedIn && (string) ($_GET['layout_edit'] ?? '') === '1') {
+if (!$loggedIn && $currentPage === 'login' && (string) ($loginStyle ?? '') === 'spotlight') {
+    $bodyClasses[] = 'login-variant-spotlight-body';
+}
+$layoutEditRequested = $loggedIn
+    && (string) ($_GET['layout_edit'] ?? '') === '1'
+    && in_array((string) $currentPage, ['dashboard', 'analytics', 'team', 'profile'], true);
+if ($layoutEditRequested && $currentPage === 'profile') {
+    $profileSectionForLayout = trim((string) ($_GET['section'] ?? ''));
+    $profileUserIdForLayout = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) ($currentUser['id'] ?? 0);
+    $layoutEditRequested = $profileSectionForLayout === '' && $profileUserIdForLayout === (int) ($currentUser['id'] ?? 0);
+}
+if ($layoutEditRequested && $currentPage === 'team') {
+    $layoutEditRequested = trim((string) ($_GET['section'] ?? '')) === ''
+        && trim((string) ($_GET['metric'] ?? '')) === '';
+}
+if ($layoutEditRequested) {
     $bodyClasses[] = 'layout-edit-active';
 }
 $bodyStyle = '';
@@ -131,6 +146,12 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
 
         <div class="topbar-actions">
             <?= $topbarControls ?>
+            <a class="topbar-notif-btn" href="/?page=notifications" aria-label="<?= e(t('nav.notifications')) ?><?= $unreadNotificationsCount > 0 ? ' (' . (int) $unreadNotificationsCount . ')' : '' ?>">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                <?php if ($unreadNotificationsCount > 0): ?>
+                    <span class="topbar-notif-badge" data-notification-badge><?= (int) min(99, $unreadNotificationsCount) ?></span>
+                <?php endif; ?>
+            </a>
             <details class="add-menu topbar-add-menu">
                 <summary class="btn btn-primary add-menu-trigger btn-add" data-add-button aria-label="<?= e(t('entries.title')) ?>">
                     <span aria-hidden="true">+</span>
@@ -164,6 +185,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                         </a>
                     <?php endif; ?>
                     <a href="/?page=profile"><?= e(t('nav.profile')) ?></a>
+                    <a href="/?page=workouts"><?= e(t('nav.workouts')) ?></a>
                     <a href="/?page=friends"><?= e(t('nav.friends')) ?></a>
                     <a href="/?page=duels"><?= e(t('nav.duels')) ?></a>
                     <a href="/?page=competitions"><?= e(t('nav.competitions')) ?></a>
@@ -234,6 +256,12 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
             </div>
         </details>
     </nav>
+<?php endif; ?>
+
+<?php if ($loggedIn): ?>
+    <button type="button" class="to-top-btn" data-to-top hidden aria-label="<?= e(t('common.back_to_top')) ?>">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+    </button>
 <?php endif; ?>
 
 <script src="<?= e($mainJsAssetUrl) ?>"></script>

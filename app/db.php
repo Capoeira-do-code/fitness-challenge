@@ -688,8 +688,11 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'theme_mode', 'TEXT NOT NULL DEFAULT "auto"');
     ensure_column($pdo, 'users', 'dashboard_view', 'TEXT NOT NULL DEFAULT "current_week"');
     ensure_column($pdo, 'users', 'dashboard_layout_json', 'TEXT');
+    ensure_column($pdo, 'users', 'dashboard_widgets_known', 'TEXT');
     ensure_column($pdo, 'users', 'team_layout_json', 'TEXT');
     ensure_column($pdo, 'users', 'analytics_layout_json', 'TEXT');
+    ensure_column($pdo, 'users', 'analytics_view', 'TEXT NOT NULL DEFAULT "total"');
+    ensure_column($pdo, 'users', 'profile_layout_json', 'TEXT');
     ensure_column($pdo, 'users', 'meal_calendar_view', 'TEXT NOT NULL DEFAULT "week"');
     ensure_column($pdo, 'users', 'maintenance_calories', 'REAL');
     ensure_column($pdo, 'users', 'calorie_burn_goal', 'REAL');
@@ -699,6 +702,12 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'telegram_reminders_enabled', 'INTEGER NOT NULL DEFAULT 0');
     ensure_column($pdo, 'users', 'telegram_motivation_enabled', 'INTEGER NOT NULL DEFAULT 0');
     ensure_column($pdo, 'users', 'telegram_reminder_time', "TEXT NOT NULL DEFAULT '20:00'");
+    ensure_column($pdo, 'users', 'telegram_quiet_start', "TEXT NOT NULL DEFAULT ''");
+    ensure_column($pdo, 'users', 'telegram_quiet_end', "TEXT NOT NULL DEFAULT ''");
+    ensure_column($pdo, 'users', 'telegram_weekends_off', 'INTEGER NOT NULL DEFAULT 0');
+    ensure_column($pdo, 'users', 'telegram_tz', "TEXT NOT NULL DEFAULT ''");
+    ensure_column($pdo, 'users', 'telegram_notify_duel', 'INTEGER NOT NULL DEFAULT 1');
+    ensure_column($pdo, 'users', 'telegram_notify_streak', 'INTEGER NOT NULL DEFAULT 1');
     ensure_column($pdo, 'users', 'telegram_last_reminded_on', 'TEXT');
     ensure_column($pdo, 'users', 'telegram_last_reminded_at', 'TEXT');
     ensure_column($pdo, 'users', 'telegram_reminder_count', 'INTEGER NOT NULL DEFAULT 0');

@@ -74,28 +74,31 @@ foreach ($nutritionFields as $field => $meta) {
             <div class="photo-post-head-actions">
                 <a class="btn btn-ghost small photo-back-btn" href="<?= e($backUrl) ?>">&larr; <?= e(t('photo.back_to_entries')) ?></a>
                 <?php if ($photoCanDelete || $photoCanEdit): ?>
-                    <?php $photoDeleteFormId = 'photo-delete-form-page-' . $photoId; ?>
-                    <details class="photo-post-menu photo-post-head-menu">
-                        <summary class="btn btn-ghost small" aria-label="<?= e(t('photo.actions')) ?>">&bull;&bull;&bull;</summary>
-                        <div class="photo-post-menu-panel">
-                            <?php if ($photoCanEdit): ?>
-                                <button
-                                    type="button"
-                                    class="btn btn-ghost"
-                                    data-photo-edit-open
-                                ><?= e(t('photo.edit_post')) ?></button>
-                            <?php endif; ?>
-                            <?php if ($photoCanDelete): ?>
-                            <button
-                                type="button"
-                                class="btn btn-ghost photo-delete-text-btn"
-                                data-photo-delete-trigger
-                                data-photo-delete-form="<?= e($photoDeleteFormId) ?>"
-                                data-photo-delete-message="<?= e(t('entries.delete_photo_confirm')) ?>"
-                            ><?= e(t('photo.delete_photo')) ?></button>
-                            <?php endif; ?>
-                        </div>
-                    </details>
+                    <?php
+                    $photoDeleteFormId = 'photo-delete-form-page-' . $photoId;
+                    $photoMenuItems = [];
+                    if ($photoCanEdit) {
+                        $photoMenuItems[] = [
+                            'label' => t('photo.edit_post'),
+                            'attrs' => ['data-photo-edit-open' => ''],
+                        ];
+                    }
+                    if ($photoCanDelete) {
+                        $photoMenuItems[] = [
+                            'label' => t('photo.delete_photo'),
+                            'danger' => true,
+                            'attrs' => [
+                                'data-photo-delete-trigger' => '',
+                                'data-photo-delete-form' => $photoDeleteFormId,
+                                'data-photo-delete-message' => t('entries.delete_photo_confirm'),
+                            ],
+                        ];
+                    }
+                    echo render_kebab_menu($photoMenuItems, [
+                        'label' => t('photo.actions'),
+                        'align' => 'end',
+                    ]);
+                    ?>
                 <?php endif; ?>
                 <?php if ($photoCanDelete): ?>
                     <form id="<?= e($photoDeleteFormId) ?>" method="post" action="/?page=photo&photo_id=<?= $photoId ?>" hidden>

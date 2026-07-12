@@ -223,16 +223,90 @@ function telegram_update_user_prefs(PDO $pdo, int $userId, array $input): void
          SET telegram_reminders_enabled = :reminders,
              telegram_motivation_enabled = :motivation,
              telegram_reminder_time = :reminder_time,
+             telegram_quiet_start = :quiet_start,
+             telegram_quiet_end = :quiet_end,
+             telegram_weekends_off = :weekends_off,
+             telegram_tz = :tz,
+             telegram_notify_duel = :notify_duel,
+             telegram_notify_streak = :notify_streak,
              updated_at = :updated_at
          WHERE id = :id',
         [
             ':reminders' => !empty($input['telegram_reminders_enabled']) ? 1 : 0,
             ':motivation' => !empty($input['telegram_motivation_enabled']) ? 1 : 0,
             ':reminder_time' => telegram_normalize_time((string) ($input['telegram_reminder_time'] ?? '20:00')),
+            ':quiet_start' => telegram_normalize_optional_time((string) ($input['telegram_quiet_start'] ?? '')),
+            ':quiet_end' => telegram_normalize_optional_time((string) ($input['telegram_quiet_end'] ?? '')),
+            ':weekends_off' => !empty($input['telegram_weekends_off']) ? 1 : 0,
+            ':tz' => telegram_normalize_tz((string) ($input['telegram_tz'] ?? '')),
+            ':notify_duel' => !empty($input['telegram_notify_duel']) ? 1 : 0,
+            ':notify_streak' => !empty($input['telegram_notify_streak']) ? 1 : 0,
             ':updated_at' => now_iso(),
             ':id' => $userId,
         ]
     );
+}
+
+/**
+ * "Now" (H:i and Y-m-d) in the user's own timezone (#15). Falls back to the
+ * server timezone when the user has not set one, so existing users are
+ * unaffected.
+ *
+ * @return array{hm:string,date:string,dow:int}
+ */
+function telegram_user_now(array $user): array
+{
+    $tz = trim((string) ($user['telegram_tz'] ?? ''));
+    try {
+        $zone = $tz !== '' ? new DateTimeZone($tz) : null;
+        $now = $zone !== null ? new DateTimeImmutable('now', $zone) : new DateTimeImmutable('now');
+    } catch (Throwable) {
+        $now = new DateTimeImmutable('now');
+    }
+
+    return ['hm' => $now->format('H:i'), 'date' => $now->format('Y-m-d'), 'dow' => (int) $now->format('N')];
+}
+
+/** Accept only a real IANA timezone; anything else falls back to server time. */
+function telegram_normalize_tz(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+
+    return in_array($value, timezone_identifiers_list(), true) ? $value : '';
+}
+
+/** Like telegram_normalize_time() but allows an empty value (feature off). */
+function telegram_normalize_optional_time(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+
+    return preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/', $value) === 1 ? $value : '';
+}
+
+/**
+ * Whether HH:MM falls inside a quiet-hours window. Handles overnight windows
+ * (e.g. 22:00–07:00). An empty start or end disables quiet hours.
+ */
+function telegram_in_quiet_hours(string $start, string $end, string $nowHm): bool
+{
+    $start = telegram_normalize_optional_time($start);
+    $end = telegram_normalize_optional_time($end);
+    if ($start === '' || $end === '' || $start === $end) {
+        return false;
+    }
+    if ($start < $end) {
+        // Same-day window, e.g. 01:00–06:00.
+        return $nowHm >= $start && $nowHm < $end;
+    }
+
+    // Overnight window, e.g. 22:00–07:00.
+    return $nowHm >= $start || $nowHm < $end;
 }
 
 function telegram_normalize_time(string $value): string
@@ -384,8 +458,21 @@ function telegram_run_reminders(PDO $pdo, array $settings): void
         if ($sends >= TELEGRAM_MAX_SENDS_PER_TICK) {
             break;
         }
+        // Everything below is evaluated in the user's own timezone (#15), so a
+        // 20:00 reminder means 20:00 where they live, not on the server.
+        $userNow = telegram_user_now($user);
+        $nowHm = $userNow['hm'];
+        $today = $userNow['date'];
+
         $reminderTime = telegram_normalize_time((string) ($user['telegram_reminder_time'] ?? '20:00'));
         if ($nowHm < $reminderTime) {
+            continue;
+        }
+        // Respect quiet hours and the optional weekends-off preference.
+        if (telegram_in_quiet_hours((string) ($user['telegram_quiet_start'] ?? ''), (string) ($user['telegram_quiet_end'] ?? ''), $nowHm)) {
+            continue;
+        }
+        if ((int) ($user['telegram_weekends_off'] ?? 0) === 1 && in_array($userNow['dow'], [6, 7], true)) {
             continue;
         }
         $chatId = (string) $user['telegram_chat_id'];
@@ -419,7 +506,72 @@ function telegram_run_reminders(PDO $pdo, array $settings): void
                 }
             }
         }
+
+        // --- Event-driven reminders (#15). Each is opt-in and, like the daily
+        // reminder, only fires when the underlying data actually warrants it. ---
+        foreach (telegram_event_reminders($pdo, $user, $today, $loggedToday) as $event) {
+            if ($sends >= TELEGRAM_MAX_SENDS_PER_TICK) {
+                break;
+            }
+            // De-duplicate per event per day using the existing outbox key idea:
+            // a sent marker in app_settings keyed by user+event+date.
+            $marker = 'tg_evt:' . $userId . ':' . $event['key'] . ':' . $today;
+            if (trim((string) (app_setting($pdo, $marker, '') ?? '')) !== '') {
+                continue;
+            }
+            $text = telegram_with_user_locale($user, static fn(): string => $event['text']);
+            if (telegram_send_message($settings, $chatId, $text)) {
+                $sends++;
+                set_app_setting_silent($pdo, $marker, '1', $userId);
+            }
+        }
     }
+}
+
+/**
+ * Build the event reminders due for a user right now. Returns nothing unless
+ * the data says the nudge is warranted, which is what keeps this from becoming
+ * spam.
+ *
+ * @return array<int,array{key:string,text:string}>
+ */
+function telegram_event_reminders(PDO $pdo, array $user, string $today, bool $loggedToday): array
+{
+    $userId = (int) ($user['id'] ?? 0);
+    $events = [];
+
+    // 1. A duel of yours ends tomorrow (or today) and is still active.
+    if ((int) ($user['telegram_notify_duel'] ?? 0) === 1 && function_exists('duels_for_user')) {
+        try {
+            $tomorrow = (new DateTimeImmutable($today))->modify('+1 day')->format('Y-m-d');
+            $row = db_fetch_one(
+                $pdo,
+                'SELECT COUNT(*) AS c FROM user_duels
+                 WHERE status = \'active\' AND (challenger_id = :u OR opponent_id = :u)
+                   AND end_date IS NOT NULL AND end_date <= :tomorrow',
+                [':u' => $userId, ':tomorrow' => $tomorrow]
+            );
+            if ((int) ($row['c'] ?? 0) > 0) {
+                $events[] = ['key' => 'duel_ending', 'text' => t('telegram.msg_duel_ending')];
+            }
+        } catch (Throwable) {
+            // Duels schema not present yet — nothing to nudge about.
+        }
+    }
+
+    // 2. Your streak is alive but you have not logged today, so it is at risk.
+    if ((int) ($user['telegram_notify_streak'] ?? 0) === 1 && !$loggedToday && function_exists('quests_active_streak')) {
+        try {
+            $streak = quests_active_streak($pdo, $userId);
+            if ($streak >= 3) {
+                $events[] = ['key' => 'streak_risk', 'text' => t('telegram.msg_streak_risk', ['n' => $streak])];
+            }
+        } catch (Throwable) {
+            // Quests schema not present yet.
+        }
+    }
+
+    return $events;
 }
 
 /**

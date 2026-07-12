@@ -1301,6 +1301,7 @@
 
         const navigate = (root, href) => {
             document.body.classList.add('is-view-changing');
+            window.__fcSpaDepth = (window.__fcSpaDepth || 0) + 1;
             history.pushState({}, '', href);
             applyState(root, href);
             initAdminAchievementFields();
@@ -1329,6 +1330,14 @@
                     return;
                 }
                 event.preventDefault();
+                // Smart back: when there is in-app history, return to the exact
+                // previous view (e.g. a goal opened from Home returns to Home,
+                // one opened from the list returns to the list). Falls back to
+                // the static href on a deep link with no in-app history.
+                if (link.matches('[data-spa-history]') && (window.__fcSpaDepth || 0) > 0) {
+                    history.back();
+                    return;
+                }
                 navigate(root, link.href);
             });
         });
@@ -1337,6 +1346,7 @@
             window.removeEventListener('popstate', window.__fcSpaPopstateHandler);
         }
         window.__fcSpaPopstateHandler = () => {
+            window.__fcSpaDepth = Math.max(0, (window.__fcSpaDepth || 0) - 1);
             roots.forEach((root) => applyState(root, window.location.href));
             initAdminAchievementFields();
             clearMobileViewTransitionState(true);
@@ -4395,7 +4405,7 @@
     };
 
     const initTeamLayoutEditor = () => {
-        document.querySelectorAll('[data-team-layout-list], [data-dashboard-layout-list], [data-analytics-layout-list]').forEach((list) => {
+        document.querySelectorAll('[data-team-layout-list], [data-dashboard-layout-list], [data-analytics-layout-list], [data-profile-layout-list]').forEach((list) => {
             if (!(list instanceof HTMLElement)) {
                 return;
             }
@@ -4407,12 +4417,13 @@
             let dragged = null;
             const isDashboardLayout = list.hasAttribute('data-dashboard-layout-list');
             const isAnalyticsLayout = list.hasAttribute('data-analytics-layout-list');
+            const isProfileLayout = list.hasAttribute('data-profile-layout-list');
             const itemSelector = isDashboardLayout
                 ? '[data-dashboard-layout-item]'
-                : (isAnalyticsLayout ? '[data-analytics-layout-item]' : '[data-team-layout-item]');
+                : (isAnalyticsLayout ? '[data-analytics-layout-item]' : (isProfileLayout ? '[data-profile-layout-item]' : '[data-team-layout-item]'));
             const orderInputSelector = isDashboardLayout
                 ? '[data-dashboard-order-input]'
-                : (isAnalyticsLayout ? '[data-analytics-order-input]' : '');
+                : (isAnalyticsLayout ? '[data-analytics-order-input]' : (isProfileLayout ? '[data-profile-order-input]' : ''));
 
             const layoutItemMatches = (node) => node instanceof Element && node.matches(itemSelector);
             const layoutItems = () => [...list.querySelectorAll(itemSelector)].filter((node) => node instanceof HTMLElement);
@@ -4571,23 +4582,38 @@
         root.dataset.notificationsReady = '1';
 
         const replaceBadge = (doc) => {
-            const currentTrigger = document.querySelector('.user-menu-trigger');
-            if (!(currentTrigger instanceof HTMLElement)) {
-                return;
-            }
-            const currentBadge = currentTrigger.querySelector('[data-notification-badge]');
-            const nextBadge = doc.querySelector('.user-menu-trigger [data-notification-badge]');
-            if (nextBadge instanceof HTMLElement) {
-                const clone = nextBadge.cloneNode(true);
-                if (currentBadge instanceof HTMLElement) {
-                    currentBadge.replaceWith(clone);
-                } else {
-                    currentTrigger.appendChild(clone);
+            const syncBadge = (containerSelector) => {
+                const currentContainer = document.querySelector(containerSelector);
+                const nextContainer = doc.querySelector(containerSelector);
+                if (!(currentContainer instanceof HTMLElement) || !(nextContainer instanceof HTMLElement)) {
+                    return;
                 }
-                return;
-            }
-            if (currentBadge instanceof HTMLElement) {
-                currentBadge.remove();
+                if (nextContainer.hasAttribute('aria-label')) {
+                    currentContainer.setAttribute('aria-label', nextContainer.getAttribute('aria-label') || '');
+                }
+                const currentBadge = currentContainer.querySelector('[data-notification-badge]');
+                const nextBadge = nextContainer.querySelector('[data-notification-badge]');
+                if (nextBadge instanceof HTMLElement) {
+                    const clone = nextBadge.cloneNode(true);
+                    if (currentBadge instanceof HTMLElement) {
+                        currentBadge.replaceWith(clone);
+                    } else {
+                        currentContainer.appendChild(clone);
+                    }
+                    return;
+                }
+                if (currentBadge instanceof HTMLElement) {
+                    currentBadge.remove();
+                }
+            };
+
+            syncBadge('.topbar-notif-btn');
+            syncBadge('.user-menu-trigger');
+
+            const currentNotificationsLink = document.querySelector('.user-menu-panel a[href="/?page=notifications"]');
+            const nextNotificationsLink = doc.querySelector('.user-menu-panel a[href="/?page=notifications"]');
+            if (currentNotificationsLink instanceof HTMLElement && nextNotificationsLink instanceof HTMLElement) {
+                currentNotificationsLink.textContent = nextNotificationsLink.textContent;
             }
         };
 
@@ -5030,4 +5056,394 @@
     } else {
         runPageHydration(true);
     }
+})();
+
+/* ==========================================================================
+   Reusable UI controllers: kebab menu + app modal/drawer (#components)
+   ========================================================================== */
+(() => {
+    // ---- Kebab menus (native <details data-kebab-menu>) ----
+    const closeAllKebabs = (except) => {
+        document.querySelectorAll('details[data-kebab-menu][open]').forEach((el) => {
+            if (el !== except) el.removeAttribute('open');
+        });
+    };
+
+    document.addEventListener('toggle', (event) => {
+        const el = event.target;
+        if (el instanceof HTMLDetailsElement && el.matches('details[data-kebab-menu]') && el.open) {
+            closeAllKebabs(el);
+        }
+    }, true);
+
+    // Close when clicking a menu item (buttons/links) or outside
+    document.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        const insideMenu = target.closest('details[data-kebab-menu]');
+        if (!insideMenu) {
+            closeAllKebabs(null);
+            return;
+        }
+        // Clicking an actual item closes the menu (after its own handler runs)
+        if (target.closest('.kebab-menu-item')) {
+            setTimeout(() => insideMenu.removeAttribute('open'), 0);
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeAllKebabs(null);
+    });
+
+    // ---- App modal / drawer ----
+    const openOverlay = (overlay) => {
+        if (!overlay) return;
+        overlay.hidden = false;
+        // Force reflow so the transition runs
+        void overlay.offsetWidth;
+        overlay.classList.add('is-open');
+        document.body.classList.add('app-scroll-locked');
+        const focusable = overlay.querySelector('[autofocus], input, button, [tabindex]');
+        if (focusable instanceof HTMLElement) {
+            try { focusable.focus({ preventScroll: true }); } catch (_) {}
+        }
+    };
+
+    const closeOverlay = (overlay) => {
+        if (!overlay || overlay.hidden) return;
+        overlay.classList.remove('is-open');
+        const anyOpen = () => document.querySelector('.app-modal.is-open, .app-drawer.is-open');
+        const finish = () => {
+            overlay.hidden = true;
+            if (!anyOpen()) document.body.classList.remove('app-scroll-locked');
+        };
+        let done = false;
+        const onEnd = () => { if (done) return; done = true; finish(); };
+        overlay.addEventListener('transitionend', onEnd, { once: true });
+        setTimeout(onEnd, 260);
+    };
+
+    document.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+
+        const opener = target.closest('[data-app-modal-open]');
+        if (opener) {
+            const id = opener.getAttribute('data-app-modal-open');
+            const overlay = id ? document.getElementById(id) : null;
+            if (overlay) {
+                event.preventDefault();
+                openOverlay(overlay);
+                return;
+            }
+        }
+
+        const closer = target.closest('[data-app-modal-close]');
+        if (closer) {
+            event.preventDefault();
+            closeOverlay(closer.closest('.app-modal, .app-drawer'));
+            return;
+        }
+
+        // Backdrop click (clicking the overlay itself, not its card)
+        if (target.matches('.app-modal, .app-drawer') && target.classList.contains('is-open')) {
+            closeOverlay(target);
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const open = document.querySelector('.app-modal.is-open, .app-drawer.is-open');
+        if (open) closeOverlay(open);
+    });
+
+    // Expose for programmatic use elsewhere
+    window.AppOverlay = { open: openOverlay, close: closeOverlay };
+})();
+
+/* ==========================================================================
+   Back-to-top floating button (#9 long config/settings pages)
+   ========================================================================== */
+(() => {
+    const btn = document.querySelector('[data-to-top]');
+    if (!(btn instanceof HTMLElement)) return;
+    btn.hidden = false;
+    let ticking = false;
+    const threshold = 480;
+    const update = () => {
+        ticking = false;
+        const y = window.scrollY || document.documentElement.scrollTop || 0;
+        btn.classList.toggle('is-visible', y > threshold);
+    };
+    window.addEventListener('scroll', () => {
+        if (ticking) return;
+        ticking = true;
+        window.requestAnimationFrame(update);
+    }, { passive: true });
+    btn.addEventListener('click', () => {
+        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+    });
+    update();
+})();
+
+/* ==========================================================================
+   Workouts — kebab menu actions submit a POST form (#5)
+   ========================================================================== */
+(() => {
+    document.addEventListener('click', (event) => {
+        const el = event.target instanceof Element ? event.target.closest('[data-wk-submit]') : null;
+        if (!el) return;
+        const confirmMsg = el.getAttribute('data-wk-confirm');
+        if (confirmMsg && !window.confirm(confirmMsg)) {
+            event.preventDefault();
+            return;
+        }
+        event.preventDefault();
+        const csrfInput = document.querySelector('input[name="csrf_token"]');
+        const form = document.createElement('form');
+        form.method = 'post';
+        form.action = '/?page=workouts';
+        const add = (name, value) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value == null ? '' : String(value);
+            form.appendChild(input);
+        };
+        add('csrf_token', csrfInput instanceof HTMLInputElement ? csrfInput.value : '');
+        add('action', el.getAttribute('data-wk-submit') || '');
+        if (el.hasAttribute('data-wk-routine')) add('routine_id', el.getAttribute('data-wk-routine'));
+        if (el.hasAttribute('data-wk-value')) add('value', el.getAttribute('data-wk-value'));
+        document.body.appendChild(form);
+        form.submit();
+    });
+})();
+
+/* ==========================================================================
+   Dashboard direct drag-and-drop reordering + unsaved-changes guard (#2)
+
+   In layout-edit mode the widget CARDS themselves become draggable, so the user
+   reorders the real dashboard instead of an abstract list. Uses Pointer Events
+   (one code path for mouse + touch). A drag only starts after the pointer moves
+   past a threshold, so a tap never turns into an accidental drag on mobile.
+   ========================================================================== */
+(() => {
+    const isEditing = () => document.body.classList.contains('layout-edit-active');
+    const layout = document.querySelector('.dashboard-layout');
+    // The dashboard ships TWO editor forms (a desktop panel and a mobile sheet).
+    // Whichever one the user submits must carry the same state, so every sync
+    // below is applied to all of them, not just the first match.
+    const forms = [...document.querySelectorAll('[data-dashboard-layout-editor]')];
+    if (!layout || forms.length === 0) return;
+    const form = forms[0];
+
+    const widgets = () => [...layout.querySelectorAll('[data-dashboard-widget]')];
+    const DRAG_THRESHOLD = 8; // px before a press becomes a drag (anti tap-drag)
+
+    let dirty = false;
+    const markDirty = () => {
+        dirty = true;
+        document.body.classList.add('layout-has-unsaved');
+    };
+
+    /* ---- unsaved-changes guard + keep both editor forms in sync ---- */
+    forms.forEach((f) => {
+        f.addEventListener('change', (e) => {
+            markDirty();
+            // Mirror a widget toggle into the other editor form so the one that
+            // actually gets submitted always reflects what the user saw.
+            const cb = e.target;
+            if (cb instanceof HTMLInputElement && cb.type === 'checkbox' && cb.name === 'dashboard_widgets[]') {
+                forms.forEach((other) => {
+                    if (other === f) return;
+                    const twin = other.querySelector(`input[type="checkbox"][name="dashboard_widgets[]"][value="${CSS.escape(cb.value)}"]`);
+                    if (twin instanceof HTMLInputElement) twin.checked = cb.checked;
+                });
+            }
+        });
+        f.addEventListener('submit', () => { dirty = false; });
+    });
+
+    window.addEventListener('beforeunload', (e) => {
+        if (!dirty || !isEditing()) return;
+        e.preventDefault();
+        e.returnValue = '';
+    });
+
+    // Intercept in-app navigation (links) while there are unsaved changes.
+    document.addEventListener('click', (e) => {
+        if (!dirty || !isEditing()) return;
+        const link = e.target instanceof Element ? e.target.closest('a[href]') : null;
+        if (!link || link.closest('[data-dashboard-layout-editor]')) return;
+        if (link.target === '_blank' || link.href.startsWith('javascript:')) return;
+        const msg = layout.dataset.unsavedMessage || 'You have unsaved layout changes. Leave without saving?';
+        if (!window.confirm(msg)) {
+            e.preventDefault();
+            e.stopPropagation();
+        } else {
+            dirty = false;
+        }
+    }, true);
+
+    /* ---- order syncing: DOM order -> inline order + hidden form inputs ---- */
+    const syncOrder = () => {
+        widgets().forEach((el, i) => {
+            const key = el.getAttribute('data-dashboard-widget');
+            el.style.order = String((i + 1) * 10);
+            forms.forEach((f) => {
+                const input = f.querySelector(`[data-dashboard-order-input][name="dashboard_order[${key}]"]`);
+                if (input instanceof HTMLInputElement) input.value = String(i + 1);
+            });
+        });
+        markDirty();
+    };
+
+    /* ---- pointer-based drag ---- */
+    let dragEl = null;
+    let placeholder = null;
+    let startX = 0, startY = 0, offX = 0, offY = 0;
+    let active = false;
+
+    const cleanup = () => {
+        if (dragEl) {
+            dragEl.classList.remove('is-dragging');
+            dragEl.style.position = '';
+            dragEl.style.left = '';
+            dragEl.style.top = '';
+            dragEl.style.width = '';
+            dragEl.style.zIndex = '';
+            dragEl.style.pointerEvents = '';
+        }
+        if (placeholder && placeholder.parentNode) placeholder.remove();
+        document.body.classList.remove('layout-dragging');
+        dragEl = null; placeholder = null; active = false;
+    };
+
+    layout.addEventListener('pointerdown', (e) => {
+        if (!isEditing() || e.button !== 0) return;
+        const el = e.target instanceof Element ? e.target.closest('[data-dashboard-widget]') : null;
+        if (!el) return;
+        // Let real controls inside a widget keep working.
+        if (e.target instanceof Element && e.target.closest('a, button, input, select, textarea')) return;
+        dragEl = el;
+        const r = el.getBoundingClientRect();
+        startX = e.clientX; startY = e.clientY;
+        offX = e.clientX - r.left; offY = e.clientY - r.top;
+        active = false;
+    });
+
+    window.addEventListener('pointermove', (e) => {
+        if (!dragEl) return;
+        if (!active) {
+            if (Math.hypot(e.clientX - startX, e.clientY - startY) < DRAG_THRESHOLD) return;
+            // promote to a real drag
+            active = true;
+            const r = dragEl.getBoundingClientRect();
+            placeholder = document.createElement('div');
+            placeholder.className = 'dashboard-drop-placeholder';
+            placeholder.style.height = `${r.height}px`;
+            placeholder.style.order = dragEl.style.order;
+            dragEl.parentNode.insertBefore(placeholder, dragEl);
+            dragEl.classList.add('is-dragging');
+            dragEl.style.width = `${r.width}px`;
+            dragEl.style.position = 'fixed';
+            dragEl.style.zIndex = '9999';
+            dragEl.style.pointerEvents = 'none';
+            document.body.classList.add('layout-dragging');
+            try { dragEl.setPointerCapture(e.pointerId); } catch (_) {}
+        }
+        e.preventDefault();
+        dragEl.style.left = `${e.clientX - offX}px`;
+        dragEl.style.top = `${e.clientY - offY}px`;
+
+        // Pick the drop target by nearest centre rather than strict containment:
+        // the layout is a grid, so the pointer is often in the gutter between
+        // cards, where a contains() test finds nothing and the drag feels dead.
+        let over = null;
+        let best = Infinity;
+        for (const w of widgets()) {
+            if (w === dragEl || w === placeholder) continue;
+            const r = w.getBoundingClientRect();
+            if (r.width === 0 && r.height === 0) continue;
+            const cx = r.left + r.width / 2;
+            const cy = r.top + r.height / 2;
+            const d = Math.hypot(e.clientX - cx, e.clientY - cy);
+            if (d < best) { best = d; over = w; }
+        }
+        if (over && placeholder) {
+            const r = over.getBoundingClientRect();
+            // Reading order: past the vertical midpoint (or, on the same row,
+            // past the horizontal midpoint) means "insert after".
+            const sameRow = Math.abs(e.clientY - (r.top + r.height / 2)) < r.height / 2;
+            const after = sameRow
+                ? e.clientX > r.left + r.width / 2
+                : e.clientY > r.top + r.height / 2;
+            placeholder.style.order = over.style.order;
+            over.parentNode.insertBefore(placeholder, after ? over.nextSibling : over);
+        }
+    }, { passive: false });
+
+    window.addEventListener('pointerup', () => {
+        if (!dragEl) return;
+        if (active && placeholder) {
+            placeholder.parentNode.insertBefore(dragEl, placeholder);
+            cleanup();
+            syncOrder();
+        } else {
+            cleanup();
+        }
+    });
+    window.addEventListener('pointercancel', cleanup);
+})();
+
+/* ==========================================================================
+   Gallery calendar — mobile day bottom sheet (#12)
+
+   On phones a day cell shows only a dot, so tapping it opens a sheet listing
+   that day's photos instead of jumping blindly to the first one. Desktop keeps
+   its existing behaviour (the cell is a plain link).
+   ========================================================================== */
+(() => {
+    const sheet = document.getElementById('gallery-day-sheet');
+    const panel = document.querySelector('.gallery-calendar-panel');
+    if (!sheet || !panel || !window.AppOverlay) return;
+
+    const grid = sheet.querySelector('[data-day-sheet-grid]');
+    const title = sheet.querySelector('[data-day-sheet-title]');
+    const countEl = sheet.querySelector('[data-day-sheet-count]');
+    const emptyEl = sheet.querySelector('[data-day-sheet-empty]');
+    const openLink = sheet.querySelector('[data-day-sheet-open]');
+    const isMobile = () => window.matchMedia('(max-width: 899px)').matches;
+
+    panel.addEventListener('click', (e) => {
+        if (!isMobile()) return;
+        const cell = e.target instanceof Element ? e.target.closest('.entries-calendar-day') : null;
+        if (!cell) return;
+        e.preventDefault();
+
+        const count = Number(cell.dataset.calCount || 0);
+        title.textContent = cell.dataset.calLabel || '';
+        countEl.textContent = count > 0 ? `${count} ${grid.dataset.photosLabel || ''}`.trim() : '';
+        openLink.href = cell.dataset.calAll || cell.href;
+
+        // Reuse the thumbnails the cell already carries — no extra request.
+        grid.innerHTML = '';
+        const thumbs = [...cell.querySelectorAll('.entries-calendar-collage img')];
+        thumbs.forEach((img) => {
+            const a = document.createElement('a');
+            a.href = cell.getAttribute('href') || '#';
+            const clone = document.createElement('img');
+            clone.src = img.currentSrc || img.src;
+            clone.alt = '';
+            clone.loading = 'lazy';
+            a.appendChild(clone);
+            grid.appendChild(a);
+        });
+        const hasPhotos = thumbs.length > 0;
+        grid.hidden = !hasPhotos;
+        emptyEl.hidden = hasPhotos;
+
+        window.AppOverlay.open(sheet);
+    });
 })();

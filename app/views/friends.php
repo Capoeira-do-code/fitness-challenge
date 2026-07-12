@@ -84,6 +84,33 @@ $fmtVal = static function (string $fmt, $v): string {
                     <strong><?= e((string) ($cmpUser['display_name'] ?? '')) ?></strong>
                 </div>
             </div>
+            <?php
+            $meWins = 0;
+            $friendWins = 0;
+            foreach ($compareMetricRows as $row) {
+                $mine = (float) ($cmpMe[$row['key']] ?? 0);
+                $theirs = (float) ($cmpFriend[$row['key']] ?? 0);
+                if ($mine > $theirs) {
+                    $meWins++;
+                } elseif ($theirs > $mine) {
+                    $friendWins++;
+                }
+            }
+            $leadClass = $meWins > $friendWins ? 'is-me' : ($friendWins > $meWins ? 'is-friend' : 'is-tie');
+            ?>
+            <div class="friends-compare-lead <?= e($leadClass) ?>">
+                <span class="friends-compare-lead-score"><?= (int) $meWins ?></span>
+                <span class="friends-compare-lead-label">
+                    <?php if ($meWins > $friendWins): ?>
+                        <?= e(t('friends.you_lead')) ?>
+                    <?php elseif ($friendWins > $meWins): ?>
+                        <?= e(t('friends.friend_leads', ['name' => (string) ($cmpUser['display_name'] ?? '')])) ?>
+                    <?php else: ?>
+                        <?= e(t('friends.tied')) ?>
+                    <?php endif; ?>
+                </span>
+                <span class="friends-compare-lead-score"><?= (int) $friendWins ?></span>
+            </div>
             <div class="friends-compare-grid">
                 <?php foreach ($compareMetricRows as $row): ?>
                     <?php
@@ -91,11 +118,24 @@ $fmtVal = static function (string $fmt, $v): string {
                     $theirs = (float) ($cmpFriend[$row['key']] ?? 0);
                     $meWin = $mine > $theirs;
                     $friendWin = $theirs > $mine;
+                    $barMax = max($mine, $theirs, 0.0001);
+                    $mePct = max(0, min(100, ($mine / $barMax) * 100));
+                    $theirPct = max(0, min(100, ($theirs / $barMax) * 100));
                     ?>
                     <div class="friends-compare-row">
-                        <span class="friends-compare-val<?= $meWin ? ' is-win' : '' ?>"><?= e($fmtVal($row['fmt'], $mine)) ?></span>
-                        <span class="friends-compare-metric"><?= e($row['label']) ?></span>
-                        <span class="friends-compare-val<?= $friendWin ? ' is-win' : '' ?>"><?= e($fmtVal($row['fmt'], $theirs)) ?></span>
+                        <div class="friends-compare-line">
+                            <span class="friends-compare-val<?= $meWin ? ' is-win' : '' ?>"><?= e($fmtVal($row['fmt'], $mine)) ?></span>
+                            <span class="friends-compare-metric"><?= e($row['label']) ?></span>
+                            <span class="friends-compare-val<?= $friendWin ? ' is-win' : '' ?>"><?= e($fmtVal($row['fmt'], $theirs)) ?></span>
+                        </div>
+                        <div class="friends-compare-bars" aria-hidden="true">
+                            <div class="friends-compare-bar-track friends-compare-bar-me">
+                                <span class="friends-compare-bar-fill<?= $meWin ? ' is-win' : '' ?>" style="width: <?= e((string) round($mePct, 1)) ?>%"></span>
+                            </div>
+                            <div class="friends-compare-bar-track friends-compare-bar-them">
+                                <span class="friends-compare-bar-fill<?= $friendWin ? ' is-win' : '' ?>" style="width: <?= e((string) round($theirPct, 1)) ?>%"></span>
+                            </div>
+                        </div>
                     </div>
                 <?php endforeach; ?>
             </div>

@@ -310,6 +310,17 @@ function comp_squad_value(PDO $pdo, array $config, int $squadId, string $metric,
     if ($members === []) {
         return 0.0;
     }
+
+    // Workout-powered metrics sum each member's workout value over the range.
+    if (function_exists('duels_metric_is_workout') && duels_metric_is_workout($metric) && function_exists('wk_metric_over_range')) {
+        $total = 0.0;
+        foreach ($members as $member) {
+            $total += wk_metric_over_range($pdo, (int) ($member['id'] ?? 0), $metric, $rangeStart, $rangeEnd);
+        }
+
+        return round($total, 2);
+    }
+
     $metrics = compute_challenge_metrics($pdo, $members, $rangeStart, $rangeEnd);
     if (function_exists('apply_strike_review_overrides_to_metrics')) {
         $metrics = apply_strike_review_overrides_to_metrics($pdo, $metrics);
@@ -398,4 +409,31 @@ function comp_for_user(PDO $pdo, int $userId): array
          ORDER BY (c.status = "active") DESC, (c.status = "pending") DESC, c.updated_at DESC',
         [':u' => $userId]
     );
+}
+
+/**
+ * Compact status summary for a user's squad competitions.
+ *
+ * @return array{active:int,pending:int,won:int,total:int}
+ */
+function comp_summary_for_user(PDO $pdo, int $userId): array
+{
+    $summary = ['active' => 0, 'pending' => 0, 'won' => 0, 'total' => 0];
+    $ownedSquadIds = [];
+    foreach (squads_owned($pdo, $userId) as $ownedSquad) {
+        $ownedSquadIds[(int) ($ownedSquad['id'] ?? 0)] = true;
+    }
+    foreach (comp_for_user($pdo, $userId) as $comp) {
+        $status = (string) ($comp['status'] ?? '');
+        $summary['total']++;
+        if ($status === 'active') {
+            $summary['active']++;
+        } elseif ($status === 'pending') {
+            $summary['pending']++;
+        } elseif ($status === 'completed' && isset($ownedSquadIds[(int) ($comp['winner_squad_id'] ?? 0)])) {
+            $summary['won']++;
+        }
+    }
+
+    return $summary;
 }

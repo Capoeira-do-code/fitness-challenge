@@ -142,14 +142,32 @@ $weeklyPenalty = array_sum(array_map(static fn(array $row): float => (float) ($r
             </article>
             <article class="panel">
                 <h2><?= e(t('table.habits_section')) ?></h2>
-                <div class="training-habit-chips">
-                    <?php foreach (($metric['habit_counts'] ?? []) as $code => $count): ?>
+                <?php
+                $habitCountsAll = (array) ($metric['habit_counts'] ?? []);
+                $habitCountsShown = array_slice($habitCountsAll, 0, 3, true);
+                $habitCountsRest = array_slice($habitCountsAll, 3, null, true);
+                ?>
+                <div class="training-habit-chips training-habit-chips-compact">
+                    <?php foreach ($habitCountsShown as $code => $count): ?>
                         <span class="training-habit-chip">
                             <span class="training-habit-chip-label"><?= e($habitLabelFor((string) $code)) ?></span>
                             <span class="training-habit-chip-count"><?= e((string) $count) ?></span>
                         </span>
                     <?php endforeach; ?>
-                    <?php if (($metric['habit_counts'] ?? []) === []): ?>
+                    <?php if ($habitCountsRest !== []): ?>
+                        <details class="kebab-menu training-habit-more" data-kebab-menu data-align="end">
+                            <summary class="kebab-menu-trigger btn btn-ghost small training-habit-more-btn" aria-label="<?= e(t('common.view_all')) ?>">+<?= count($habitCountsRest) ?></summary>
+                            <div class="kebab-menu-panel" role="menu">
+                                <?php foreach ($habitCountsRest as $code => $count): ?>
+                                    <span class="kebab-menu-item training-habit-more-item">
+                                        <span class="training-habit-chip-label"><?= e($habitLabelFor((string) $code)) ?></span>
+                                        <span class="training-habit-chip-count"><?= e((string) $count) ?></span>
+                                    </span>
+                                <?php endforeach; ?>
+                            </div>
+                        </details>
+                    <?php endif; ?>
+                    <?php if ($habitCountsAll === []): ?>
                         <p class="muted"><?= e(t('common.none')) ?></p>
                     <?php endif; ?>
                 </div>

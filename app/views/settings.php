@@ -224,6 +224,43 @@ if ($settingsView === 'avatar') {
                     </label>
                 </div>
                 <label><?= e(t('settings.telegram_time')) ?><input type="time" name="telegram_reminder_time" value="<?= e((string) ($currentUser['telegram_reminder_time'] ?? '20:00')) ?>"></label>
+                <div class="grid-inline two">
+                    <label><?= e(t('settings.telegram_quiet_start')) ?><input type="time" name="telegram_quiet_start" value="<?= e((string) ($currentUser['telegram_quiet_start'] ?? '')) ?>"></label>
+                    <label><?= e(t('settings.telegram_quiet_end')) ?><input type="time" name="telegram_quiet_end" value="<?= e((string) ($currentUser['telegram_quiet_end'] ?? '')) ?>"></label>
+                </div>
+                <p class="muted small"><?= e(t('settings.telegram_quiet_hint')) ?></p>
+                <div class="toggle-row">
+                    <label class="check standalone-check">
+                        <input type="checkbox" name="telegram_weekends_off" value="1" <?= (int) ($currentUser['telegram_weekends_off'] ?? 0) === 1 ? 'checked' : '' ?>>
+                        <?= e(t('settings.telegram_weekends_off')) ?>
+                    </label>
+                </div>
+
+                <label><?= e(t('settings.telegram_tz')) ?>
+                    <select name="telegram_tz">
+                        <option value=""><?= e(t('common.none')) ?></option>
+                        <?php $userTz = (string) ($currentUser['telegram_tz'] ?? ''); ?>
+                        <?php foreach (timezone_identifiers_list() as $tzId): ?>
+                            <option value="<?= e($tzId) ?>" <?= $userTz === $tzId ? 'selected' : '' ?>><?= e($tzId) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+                <p class="muted small"><?= e(t('settings.telegram_tz_hint')) ?></p>
+
+                <p class="quests-group-label"><?= e(t('settings.telegram_events')) ?></p>
+                <div class="toggle-row">
+                    <label class="check standalone-check">
+                        <input type="checkbox" name="telegram_notify_duel" value="1" <?= (int) ($currentUser['telegram_notify_duel'] ?? 1) === 1 ? 'checked' : '' ?>>
+                        <?= e(t('settings.telegram_notify_duel')) ?>
+                    </label>
+                </div>
+                <div class="toggle-row">
+                    <label class="check standalone-check">
+                        <input type="checkbox" name="telegram_notify_streak" value="1" <?= (int) ($currentUser['telegram_notify_streak'] ?? 1) === 1 ? 'checked' : '' ?>>
+                        <?= e(t('settings.telegram_notify_streak')) ?>
+                    </label>
+                </div>
+
                 <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
             </form>
             <div class="inline-actions">

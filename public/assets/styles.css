@@ -9498,7 +9498,7 @@ body.is-transitioning::after {
         -webkit-backdrop-filter: blur(12px) saturate(1.22);
     }
 
-    body.layout-edit-active .screen > :not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel) {
+    body.layout-edit-active .screen > :not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel):not(.profile-layout-edit-mode-panel) {
         filter: blur(8px);
         opacity: 0.42;
         pointer-events: none;
@@ -9506,7 +9506,8 @@ body.is-transitioning::after {
     }
 
     body.layout-edit-active .dashboard-layout-edit-mode-panel,
-    body.layout-edit-active .team-layout-edit-mode-panel {
+    body.layout-edit-active .team-layout-edit-mode-panel,
+    body.layout-edit-active .profile-layout-edit-mode-panel {
         position: fixed;
         left: 0.7rem;
         right: 0.7rem;
@@ -14423,6 +14424,7 @@ body[data-theme="dark"][data-page="gallery"] .gallery-month-label {
 
 @media (max-width: 899px) {
   .team-layout-edit-mode-panel,
+  .profile-layout-edit-mode-panel,
   body.layout-edit-active .team-layout-item {
     padding: 0 !important;
   }
@@ -14437,7 +14439,7 @@ body[data-theme="dark"][data-page="gallery"] .gallery-month-label {
     -webkit-backdrop-filter: blur(8px) saturate(1.08) !important;
   }
 
-  body.layout-edit-active .screen > :not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel) {
+  body.layout-edit-active .screen > :not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel):not(.profile-layout-edit-mode-panel) {
     visibility: hidden !important;
     opacity: 0 !important;
     pointer-events: none !important;
@@ -14446,7 +14448,8 @@ body[data-theme="dark"][data-page="gallery"] .gallery-month-label {
   }
 
   body.layout-edit-active .dashboard-layout-edit-mode-panel,
-  body.layout-edit-active .team-layout-edit-mode-panel {
+  body.layout-edit-active .team-layout-edit-mode-panel,
+  body.layout-edit-active .profile-layout-edit-mode-panel {
     position: fixed !important;
     left: 0.7rem !important;
     right: 0.7rem !important;
@@ -14467,8 +14470,10 @@ body[data-theme="dark"][data-page="gallery"] .gallery-month-label {
 
   body.layout-edit-active.theme-active-dark .dashboard-layout-edit-mode-panel,
   body.layout-edit-active.theme-active-dark .team-layout-edit-mode-panel,
+  body.layout-edit-active.theme-active-dark .profile-layout-edit-mode-panel,
   body.layout-edit-active[data-theme="dark"] .dashboard-layout-edit-mode-panel,
-  body.layout-edit-active[data-theme="dark"] .team-layout-edit-mode-panel {
+  body.layout-edit-active[data-theme="dark"] .team-layout-edit-mode-panel,
+  body.layout-edit-active[data-theme="dark"] .profile-layout-edit-mode-panel {
     background: var(--dark-ui-surface-strong, #16222e) !important;
     border: 1px solid var(--dark-ui-border, rgba(170, 193, 204, 0.2)) !important;
   }
@@ -15949,4 +15954,2080 @@ body.theme-active-dark .profile-challenge-history-metrics span {
     nav.bottom-nav.mobile-liquid-nav .liquid-nav-item .nav-label {
         letter-spacing: 0 !important;
     }
+}
+
+/* ==========================================================================
+   Login page redesign — variants, dark mode & Remember Me fix (#1)
+   ========================================================================== */
+
+.login-variant {
+    --login-card-width: 400px;
+}
+
+.login-variant .auth-shell-login {
+    width: min(1040px, 100%);
+    display: grid;
+    gap: 1.5rem;
+    align-items: center;
+}
+
+/* Shared brand block (external copy) */
+.login-variant .auth-copy-login {
+    display: grid;
+    gap: 0.75rem;
+    align-content: center;
+    padding: 1.4rem 1.2rem;
+}
+
+.login-variant .login-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+}
+
+.login-variant .login-headline {
+    margin: 0;
+    color: #fff;
+    font-size: clamp(2rem, 4.5vw, 3rem);
+    line-height: 1.04;
+}
+
+.login-variant .login-tagline {
+    margin: 0;
+    max-width: 42ch;
+    color: rgba(233, 243, 240, 0.92);
+    font-size: 1.05rem;
+    line-height: 1.5;
+}
+
+/* Card */
+.login-variant .auth-card-login {
+    width: 100%;
+    max-width: var(--login-card-width);
+    margin-inline: auto;
+    padding: clamp(1.4rem, 3vw, 2rem);
+    border-radius: var(--radius-xl);
+}
+
+.login-variant .auth-card-header {
+    display: grid;
+    justify-items: center;
+    gap: 0.35rem;
+    margin-bottom: 1.2rem;
+    text-align: center;
+}
+
+.login-variant .login-card-logo,
+.login-variant .login-card-logo-mark {
+    width: 58px;
+    height: 58px;
+    border-radius: 16px;
+    object-fit: cover;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.35rem;
+}
+
+.login-variant .auth-card-title {
+    margin: 0;
+    font-size: 1.35rem;
+    line-height: 1.15;
+}
+
+.login-variant .auth-card-subtitle {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.94rem;
+}
+
+.login-variant .auth-form {
+    gap: 0.85rem;
+}
+
+.login-variant .auth-field span {
+    display: block;
+    margin-bottom: 0.3rem;
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.login-variant .auth-field input {
+    width: 100%;
+}
+
+/* Remember Me — subtle, theme-aware (fixes unreadable dark-mode text) */
+.login-variant .remember-me-check {
+    min-height: 40px;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+    cursor: pointer;
+}
+
+.login-variant .remember-me-check span {
+    font-weight: 600;
+    color: var(--ink);
+}
+
+/* ---- Variant: split (default) ---- */
+@media (min-width: 861px) {
+    .login-variant-split .auth-shell-login {
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 2.4rem;
+    }
+    .login-variant-split .auth-card-login {
+        margin-inline: 0 auto;
+    }
+}
+
+.login-variant-split .auth-card-header {
+    text-align: left;
+    justify-items: start;
+}
+
+.login-variant-split .auth-card-header .login-card-logo,
+.login-variant-split .auth-card-header .login-card-logo-mark {
+    display: none;
+}
+
+/* ---- Variant: centered ---- */
+.login-variant-centered .auth-shell-login {
+    grid-template-columns: minmax(0, 440px);
+    justify-content: center;
+    gap: 1rem;
+}
+
+.login-variant-centered .auth-copy-login {
+    display: none;
+}
+
+.login-variant-centered .auth-card-login {
+    --login-card-width: 440px;
+}
+
+/* ---- Variant: spotlight ---- */
+.login-variant-spotlight .auth-shell-login {
+    grid-template-columns: minmax(0, 420px);
+    justify-content: center;
+}
+
+.login-variant-spotlight .auth-copy-login {
+    display: none;
+}
+
+.login-variant-spotlight .auth-card-login {
+    --login-card-width: 420px;
+    border-radius: 26px;
+    box-shadow: 0 30px 80px rgba(4, 10, 18, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+body.login-body.login-variant-spotlight-body {
+    background:
+        linear-gradient(160deg, rgba(6, 12, 20, 0.58), rgba(8, 18, 26, 0.62)),
+        var(--login-bg-image, linear-gradient(140deg, #0c141d, #0f2027)) center / cover no-repeat fixed;
+}
+
+/* Dark-mode / auto refinements for the login card internals */
+body[data-theme="dark"] .login-variant .remember-me-check,
+body[data-theme="dark"] .login-variant .auth-field span,
+body[data-theme="dark"] .login-variant .auth-card-title {
+    color: var(--ink);
+}
+
+body[data-theme="dark"] .login-variant .remember-me-check {
+    border-color: rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+    body[data-theme="auto"] .login-variant .remember-me-check {
+        border-color: rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.06);
+    }
+    body[data-theme="auto"] .login-variant .remember-me-check span,
+    body[data-theme="auto"] .login-variant .auth-field span {
+        color: var(--ink);
+    }
+}
+
+@media (max-width: 860px) {
+    .login-variant .auth-shell-login {
+        width: 100%;
+        max-width: 440px;
+        grid-template-columns: minmax(0, 1fr);
+        justify-content: center;
+    }
+    .login-variant .auth-copy-login,
+    .login-variant .auth-card-login {
+        min-width: 0;
+        width: min(100%, calc(100vw - 2rem));
+        max-width: calc(100vw - 2rem);
+        justify-self: center;
+    }
+    .login-variant-split .auth-copy-login {
+        text-align: center;
+        justify-items: center;
+        padding-bottom: 0.4rem;
+    }
+    .login-variant-split .login-brand {
+        justify-content: center;
+    }
+    .login-variant-split .login-tagline {
+        margin-inline: auto;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+}
+
+@media (max-width: 520px) {
+    body.login-body .container {
+        width: min(100%, calc(100vw - 1rem));
+    }
+    .login-variant .auth-copy-login {
+        padding-inline: 0.45rem;
+    }
+    .login-variant .auth-card-login {
+        padding: 1.25rem 1.1rem;
+    }
+    .login-variant .login-headline {
+        font-size: 1.8rem;
+    }
+}
+
+/* ---- Admin: login style picker ---- */
+.admin-login-style-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem;
+}
+
+.admin-login-style-item {
+    display: grid;
+    gap: 0.6rem;
+    padding: 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+
+.admin-login-style-item.is-active {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+.admin-login-style-preview {
+    position: relative;
+    display: block;
+    height: 74px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: linear-gradient(140deg, #12303a, #0f2027);
+}
+
+.admin-login-style-preview-card {
+    position: absolute;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3);
+}
+
+.admin-login-style-preview-panel {
+    position: absolute;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.admin-login-style-preview-split .admin-login-style-preview-panel {
+    left: 8px; top: 14px; width: 40%; height: 46px;
+}
+.admin-login-style-preview-split .admin-login-style-preview-card {
+    right: 8px; top: 14px; width: 40%; height: 46px;
+}
+
+.admin-login-style-preview-centered .admin-login-style-preview-panel { display: none; }
+.admin-login-style-preview-centered .admin-login-style-preview-card {
+    left: 50%; top: 14px; transform: translateX(-50%); width: 46%; height: 46px;
+}
+
+.admin-login-style-preview-spotlight {
+    background: linear-gradient(140deg, #1a3d47, #0b1a22);
+}
+.admin-login-style-preview-spotlight .admin-login-style-preview-panel { display: none; }
+.admin-login-style-preview-spotlight .admin-login-style-preview-card {
+    left: 50%; top: 12px; transform: translateX(-50%); width: 40%; height: 50px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(4px);
+}
+
+.admin-login-style-meta {
+    display: grid;
+    gap: 0.15rem;
+}
+
+.admin-login-style-meta strong { font-size: 0.95rem; }
+.admin-login-style-meta .muted { font-size: 0.8rem; }
+
+/* ==========================================================================
+   Reusable UI components: kebab menu, modal, drawer (shared)
+   ========================================================================== */
+
+/* ---- Kebab (three-dot) menu ---- */
+.kebab-menu {
+    position: relative;
+    display: inline-block;
+}
+
+.kebab-menu > summary.kebab-menu-trigger {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    padding: 0;
+    cursor: pointer;
+}
+
+.kebab-menu > summary.kebab-menu-trigger::-webkit-details-marker { display: none; }
+.kebab-menu > summary.kebab-menu-trigger::marker { content: ""; }
+
+.kebab-menu-dots {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.kebab-menu-dots span {
+    width: 4px;
+    height: 4px;
+    border-radius: 999px;
+    background: currentColor;
+    display: block;
+}
+
+.kebab-menu-panel {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    z-index: 50;
+    min-width: 190px;
+    display: grid;
+    gap: 0.18rem;
+    padding: 0.4rem;
+    border: 1px solid var(--glass-border, var(--line));
+    border-radius: 14px;
+    background: var(--glass-strong, var(--surface));
+    box-shadow: var(--glass-shadow-deep, 0 16px 34px rgba(15, 23, 42, 0.16));
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    animation: kebabMenuIn 0.14s ease both;
+}
+.kebab-menu[data-align="end"] .kebab-menu-panel { right: 0; }
+.kebab-menu[data-align="start"] .kebab-menu-panel { left: 0; }
+
+@keyframes kebabMenuIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.kebab-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    min-height: 38px;
+    padding: 0.5rem 0.6rem;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+}
+.kebab-menu-item:hover,
+.kebab-menu-item:focus-visible {
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.kebab-menu-item.is-danger { color: var(--bad, #df4c43); }
+.kebab-menu-item.is-danger:hover { background: color-mix(in srgb, var(--bad, #df4c43) 14%, transparent); }
+
+/* Mobile: kebab panel becomes a bottom sheet for easy reach */
+@media (max-width: 600px) {
+    .kebab-menu[open] .kebab-menu-panel {
+        position: fixed;
+        left: 0.6rem;
+        right: 0.6rem;
+        bottom: calc(0.6rem + env(safe-area-inset-bottom));
+        top: auto;
+        min-width: 0;
+        gap: 0.25rem;
+        padding: 0.5rem;
+        border-radius: 18px;
+        animation: kebabSheetIn 0.18s ease both;
+    }
+    .kebab-menu-item { min-height: 46px; font-size: 1rem; }
+    @keyframes kebabSheetIn {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+}
+
+/* ---- App modal & drawer ---- */
+.app-modal,
+.app-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    padding: 1rem;
+    background: rgba(8, 14, 22, 0.5);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+.app-modal[hidden],
+.app-drawer[hidden] { display: none; }
+.app-modal.is-open,
+.app-drawer.is-open { opacity: 1; }
+
+.app-modal { align-items: center; justify-content: center; }
+
+.app-modal-card {
+    width: min(560px, 100%);
+    max-height: calc(100vh - 2rem);
+    overflow: auto;
+    padding: clamp(1.2rem, 3vw, 1.6rem);
+    border: 1px solid var(--glass-border, var(--line));
+    border-radius: var(--radius-lg, 20px);
+    background: var(--glass-strong, var(--surface));
+    box-shadow: var(--glass-shadow-deep, 0 28px 78px rgba(15, 23, 42, 0.22));
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+    backdrop-filter: blur(22px) saturate(140%);
+    transform: translateY(10px) scale(0.98);
+    transition: transform 0.2s ease;
+}
+.app-modal.is-open .app-modal-card { transform: translateY(0) scale(1); }
+
+.app-modal-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.8rem;
+    margin-bottom: 0.9rem;
+}
+.app-modal-head h2, .app-modal-head h3 { margin: 0; }
+
+.app-modal-close,
+.app-drawer-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ink);
+    font-size: 1.15rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.app-modal-close:hover,
+.app-drawer-close:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+
+/* Drawer: from right on desktop, bottom sheet on mobile */
+.app-drawer { align-items: stretch; justify-content: flex-end; padding: 0; }
+.app-drawer-card {
+    width: min(440px, 100%);
+    height: 100%;
+    overflow: auto;
+    padding: clamp(1.2rem, 3vw, 1.6rem);
+    border-left: 1px solid var(--glass-border, var(--line));
+    background: var(--glass-strong, var(--surface));
+    box-shadow: var(--glass-shadow-deep, 0 28px 78px rgba(15, 23, 42, 0.22));
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+    backdrop-filter: blur(22px) saturate(140%);
+    transform: translateX(24px);
+    transition: transform 0.22s ease;
+}
+.app-drawer.is-open .app-drawer-card { transform: translateX(0); }
+
+@media (max-width: 600px) {
+    .app-drawer { align-items: flex-end; }
+    .app-drawer-card {
+        width: 100%;
+        height: auto;
+        max-height: 88vh;
+        border-left: 0;
+        border-top-left-radius: 22px;
+        border-top-right-radius: 22px;
+        transform: translateY(24px);
+    }
+    .app-drawer.is-open .app-drawer-card { transform: translateY(0); }
+}
+
+body.app-scroll-locked { overflow: hidden; }
+
+/* ==========================================================================
+   Photo Post — Instagram-style polish + round avatars (#7)
+   ========================================================================== */
+.photo-post-author .profile-avatar,
+.photo-comment-author .profile-avatar,
+.gallery-post-author .profile-avatar {
+    border-radius: 999px;
+    border: 2px solid color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+.photo-post-author {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+}
+.photo-post-author strong {
+    font-size: 0.98rem;
+    letter-spacing: -0.01em;
+}
+
+/* Cleaner post meta card header row */
+.photo-post-meta-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+.photo-post-tags {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+/* Post media framing — Instagram-like square-ish, centered */
+.photo-post-media {
+    border-radius: var(--radius-lg, 18px);
+    overflow: hidden;
+    background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+.photo-post-media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.photo-post-caption {
+    line-height: 1.5;
+}
+
+/* ==========================================================================
+   Level clickable -> XP progress modal (#21)
+   ========================================================================== */
+button.profile-level-trigger {
+    border: 0;
+    background: transparent;
+    padding: 0.3rem 0.4rem 0.3rem 0.3rem;
+    margin-top: 0.5rem;
+    border-radius: 12px;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    transition: background 0.16s ease, transform 0.16s ease;
+}
+button.profile-level-trigger:hover {
+    background: color-mix(in srgb, var(--ink) 6%, transparent);
+    transform: translateY(-1px);
+}
+button.profile-level-trigger:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+.level-progress-ring-wrap {
+    display: grid;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+}
+.level-progress-bar-lg {
+    height: 12px !important;
+    border-radius: 999px;
+}
+.level-progress-pct {
+    margin: 0;
+    font-weight: 800;
+    font-size: 1.4rem;
+    text-align: center;
+}
+.level-progress-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.6rem;
+}
+.level-progress-stat {
+    display: grid;
+    gap: 0.15rem;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.level-progress-stat-label {
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+.level-progress-stat strong { font-size: 1.05rem; }
+.level-progress-hint { margin: 1rem 0 0; font-size: 0.86rem; }
+
+/* ==========================================================================
+   Team Settings — 2-col secondary grid (#10) + compact Join Requests (#12)
+   ========================================================================== */
+.team-settings-secondary {
+    align-items: start;
+}
+
+.join-requests-list {
+    display: grid;
+    gap: 0.4rem;
+    max-height: 360px;
+    overflow-y: auto;
+}
+.join-requests-empty { margin: 0.3rem 0; }
+
+.join-request-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin: 0;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--ink) 2.5%, transparent);
+}
+.join-request-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+}
+.join-request-meta .member-avatar {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border-radius: 999px;
+}
+.join-request-text {
+    display: grid;
+    gap: 0.05rem;
+    min-width: 0;
+}
+.join-request-text strong {
+    font-size: 0.92rem;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.join-request-text span {
+    color: var(--muted);
+    font-size: 0.76rem;
+}
+.join-request-actions {
+    display: flex;
+    gap: 0.35rem;
+    flex: 0 0 auto;
+}
+.join-request-actions .btn.small {
+    min-height: 32px;
+    padding-inline: 0.6rem;
+}
+
+@media (max-width: 480px) {
+    .join-request-row { flex-wrap: wrap; }
+    .join-request-actions { width: 100%; }
+    .join-request-actions .btn { flex: 1; }
+}
+
+/* ==========================================================================
+   Team members — clickable rows, name-only on mobile (#11)
+   ========================================================================== */
+a.member-card-link {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    transition: transform 0.14s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+a.member-card-link:hover {
+    transform: translateY(-1px);
+}
+.member-card-body {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+    flex: 1;
+}
+.member-card-body strong {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.member-card-meta {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+.member-card-go {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 1.3rem;
+    line-height: 1;
+    opacity: 0.7;
+}
+
+@media (max-width: 600px) {
+    /* Name-focused compact rows on mobile */
+    .team-members-panel .member-card-meta { display: none; }
+    .team-members-panel a.member-card-link {
+        padding-block: 0.55rem;
+        gap: 0.55rem;
+    }
+    .team-members-panel .member-card-title .member-avatar {
+        width: 30px;
+        height: 30px;
+        flex: 0 0 30px;
+    }
+}
+
+/* ==========================================================================
+   Analytics — default Total view is server-side (#8). Mobile summary fonts.
+   ========================================================================== */
+@media (max-width: 600px) {
+    .analytics-summary-section .analytics-stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.55rem;
+    }
+    .analytics-summary-section .analytics-stat-card strong,
+    .analytics-stat-grid .analytics-stat-card strong {
+        font-size: 1.05rem;
+        line-height: 1.15;
+        word-break: break-word;
+    }
+    .analytics-stat-grid .analytics-stat-card {
+        padding: 0.6rem 0.65rem;
+    }
+    .analytics-stat-card .analytics-stat-label,
+    .analytics-stat-card span {
+        font-size: 0.72rem;
+    }
+    .analytics-section-title h2 {
+        font-size: 1.05rem;
+    }
+}
+
+/* Keep analytics sections visually consistent with the page's panels so they
+   don't read as detached patches (#8). */
+.analytics-section {
+    border-radius: var(--radius-lg, 18px);
+}
+
+/* ==========================================================================
+   Profile My Data — clickable metric cards -> detail (#16)
+   ========================================================================== */
+a.profile-data-card-link {
+    position: relative;
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    transition: transform 0.14s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+a.profile-data-card-link:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+    box-shadow: 0 12px 26px rgba(15, 23, 42, 0.1);
+}
+a.profile-data-card-link:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+.profile-data-card-go {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.6rem;
+    color: var(--muted);
+    font-size: 1.15rem;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+}
+a.profile-data-card-link:hover .profile-data-card-go {
+    opacity: 0.75;
+    transform: translateX(2px);
+}
+
+/* ==========================================================================
+   Training Overview — compact single-line habit chips (#4) + overflow guards (#3)
+   ========================================================================== */
+.training-habit-chips-compact {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 42px;
+    overflow: visible;
+}
+.training-habit-chips-compact .training-habit-chip {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+}
+.training-habit-chips-compact .training-habit-chip-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.training-habit-more { flex: 0 0 auto; }
+.training-habit-more > summary.training-habit-more-btn {
+    width: auto;
+    min-width: 42px;
+    height: 34px;
+    padding-inline: 0.6rem;
+    font-weight: 800;
+}
+.training-habit-more-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+}
+
+/* #3 — keep training bars/tables within their container, never push right */
+.training-summary-controls,
+.training-sheet-view-tabs {
+    max-width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+.training-sheet-view-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+.training-summary-weeks-panel .table-wrap,
+.training-overview .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+}
+/* grid-two children must be allowed to shrink so tables/bars don't force
+   horizontal page overflow */
+.grid-two > * { min-width: 0; }
+
+/* ==========================================================================
+   Custom Habit form opens as a floating popover, not inline in the table (#5)
+   so the sheet row height never changes when it opens.
+   ========================================================================== */
+.week-help-wrap .week-custom-habit:not([hidden]) {
+    position: absolute;
+    z-index: 60;
+    top: calc(100% + 6px);
+    right: 0;
+    width: min(280px, calc(100vw - 2rem));
+    border: 1px solid var(--glass-border, var(--line));
+    border-radius: 14px;
+    background: var(--glass-strong, #fff);
+    box-shadow: var(--glass-shadow-deep, 0 18px 40px rgba(15, 23, 42, 0.2));
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(18px) saturate(140%);
+}
+/* Let the popover escape the habit cell without expanding the row */
+.sheet-habits-cell { overflow: visible; }
+
+/* ==========================================================================
+   Training Overview — clearer visual hierarchy (#6)
+   ========================================================================== */
+.training-result-stat {
+    position: relative;
+    transition: transform 0.14s ease, box-shadow 0.16s ease;
+}
+.training-result-stat::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0.7rem; bottom: 0.7rem;
+    width: 3px;
+    border-radius: 999px;
+    background: var(--good, #19a974);
+    opacity: 0.55;
+}
+.training-result-stat.is-warn::before { background: var(--bad, #ef4444); opacity: 0.7; }
+.training-result-stat { padding-left: 1rem; }
+.training-result-stat.is-ok .training-result-value { color: var(--good, #19a974); }
+.training-result-stat:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.07);
+}
+.training-result-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: 0.72rem;
+}
+/* Consistent spacing between the overview panels */
+.training-summary-weeks-panel { margin-top: 0.2rem; }
+
+/* ==========================================================================
+   Status summary cards — Duels / Competitions on Profile & Dashboard (#19/#20)
+   ========================================================================== */
+.status-summary-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+    gap: 0.6rem;
+}
+.status-summary-stat {
+    display: grid;
+    gap: 0.1rem;
+    padding: 0.7rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+    text-align: center;
+}
+.status-summary-value {
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--ink);
+}
+.status-summary-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+}
+.status-summary-stat.is-active { border-color: color-mix(in srgb, var(--primary) 40%, var(--line)); }
+.status-summary-stat.is-active .status-summary-value { color: var(--primary); }
+.status-summary-stat.is-won .status-summary-value { color: var(--good, #19a974); }
+.status-summary-stat.is-pending .status-summary-value { color: var(--warning, #f5b94b); }
+
+/* ==========================================================================
+   Profile — team badges in hero (#19)
+   ========================================================================== */
+.profile-team-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.55rem;
+}
+.profile-team-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.28rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--ink);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition: transform 0.14s ease, background 0.16s ease;
+}
+.profile-team-badge:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--primary) 16%, transparent); }
+.profile-team-badge-dot {
+    width: 8px; height: 8px; border-radius: 999px;
+    background: var(--primary);
+}
+
+/* Dashboard duels/competitions widgets sit in the layout grid (#20) */
+.dashboard-versus-widget { min-width: 0; }
+.dashboard-versus-widget .status-summary-card { height: 100%; }
+
+/* ==========================================================================
+   Friends — motivating comparator + desktop grid (#18)
+   ========================================================================== */
+.friends-compare-lead {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin: 0.4rem 0 1rem;
+    padding: 0.7rem 1rem;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.friends-compare-lead-score {
+    font-size: 1.9rem;
+    font-weight: 900;
+    line-height: 1;
+    min-width: 2ch;
+    text-align: center;
+    color: var(--muted);
+}
+.friends-compare-lead.is-me .friends-compare-lead-score:first-child,
+.friends-compare-lead.is-friend .friends-compare-lead-score:last-child {
+    color: var(--primary);
+}
+.friends-compare-lead-label {
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-size: 0.82rem;
+    text-align: center;
+}
+
+.friends-compare-row { display: grid; gap: 0.35rem; padding: 0.4rem 0; }
+.friends-compare-line {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 0.6rem;
+}
+.friends-compare-line .friends-compare-val:first-child { text-align: right; }
+.friends-compare-line .friends-compare-val:last-child { text-align: left; }
+.friends-compare-metric {
+    font-size: 0.74rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+    white-space: nowrap;
+}
+.friends-compare-val.is-win { color: var(--primary); font-weight: 900; }
+
+.friends-compare-bars {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.35rem;
+    align-items: center;
+}
+.friends-compare-bar-track {
+    height: 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 8%, transparent);
+    overflow: hidden;
+    display: flex;
+}
+.friends-compare-bar-me { justify-content: flex-end; }
+.friends-compare-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 28%, transparent);
+}
+.friends-compare-bar-fill.is-win { background: var(--primary); }
+
+/* Desktop: friend lists as a responsive grid to use the width */
+@media (min-width: 720px) {
+    .friends-panel .card-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 0.6rem;
+    }
+    .friends-panel .friends-row { margin: 0; }
+}
+
+/* ==========================================================================
+   Admin — Levels & XP compact layout, uses full desktop width (#22)
+   ========================================================================== */
+.admin-xp-forms { align-items: start; }
+.admin-xp-card {
+    padding: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--ink) 2.5%, transparent);
+}
+.admin-xp-card h3 { margin-top: 0; }
+.xp-input-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.6rem;
+    align-items: end;
+}
+.xp-input-grid label {
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    min-width: 0;
+}
+.xp-input-grid input,
+.xp-input-grid select { width: 100%; }
+
+.xp-user-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.5rem;
+}
+.xp-user-grid .xp-user-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0.6rem 0.75rem;
+}
+.xp-user-grid .xp-user-item strong {
+    display: block;
+    font-size: 0.92rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ==========================================================================
+   Profile — customizable home layout (#15)
+   ========================================================================== */
+.profile-home-block-wrap {
+    min-width: 0;
+    display: flex;
+}
+.profile-home-block-wrap > .status-summary-card { width: 100%; }
+.profile-layout-editor-panel { margin-bottom: 0.2rem; }
+.profile-layout-editor-label { flex: 1; font-weight: 700; min-width: 0; }
+
+/* ==========================================================================
+   Notification center — dedicated bell in topbar, visible on mobile too (#13)
+   ========================================================================== */
+.topbar-notif-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--glass, rgba(255, 255, 255, 0.6));
+    color: var(--ink);
+    text-decoration: none;
+    transition: transform 0.14s ease, background 0.16s ease;
+}
+.topbar-notif-btn:hover { transform: translateY(-1px); }
+.topbar-notif-btn svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.topbar-notif-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: var(--coral, #ff6b4a);
+    color: #fff;
+    font-size: 0.66rem;
+    font-weight: 800;
+    line-height: 1;
+    box-shadow: 0 0 0 2px var(--surface, #fff);
+}
+
+/* ==========================================================================
+   Dark mode fix — base .check had a hardcoded #fff background (same family
+   as the Remember Me bug): week editor habits, entries toggles, pill toggles.
+   ========================================================================== */
+body[data-theme="dark"] .check,
+body.theme-active-dark .check {
+    color: var(--ink);
+    border-color: rgba(174, 194, 203, 0.22);
+    background: rgba(18, 27, 36, 0.92);
+}
+
+@media (prefers-color-scheme: dark) {
+    body[data-theme="auto"] .check {
+        color: var(--ink);
+        border-color: rgba(174, 194, 203, 0.22);
+        background: rgba(18, 27, 36, 0.92);
+    }
+}
+
+/* Hero panels that host a kebab menu must not clip its dropdown
+   (.hero-panel has overflow:hidden by default). */
+.hero-panel:has(.kebab-menu) {
+    overflow: visible;
+    position: relative;
+    z-index: 30;
+}
+
+@media (max-width: 719px) {
+    .profile-hero:has(.profile-hero-menu),
+    .hero-panel:has(.team-hero-actions > .team-hero-menu):not(:has(.team-join-more)) {
+        padding-right: 4.25rem;
+    }
+
+    .profile-hero-actions:has(> .profile-hero-menu):not(.has-friend-actions),
+    .team-hero-actions:has(> .team-hero-menu):not(:has(> .team-join-more)) {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        z-index: 45;
+        width: auto;
+        min-width: 0;
+        display: inline-flex;
+        justify-self: auto;
+        align-self: auto;
+    }
+}
+
+/* ==========================================================================
+   Deep UX pass — Apple-inspired polish + acceptance fixes
+   ========================================================================== */
+
+/* #9 — Avatar must be a perfect circle on every device. The mobile override
+   set width/height:60px but left flex-basis:82px from the base rule, so the
+   box became non-square (oval/faceted). Lock aspect-ratio + flex at the base. */
+.profile-avatar,
+.member-avatar,
+.settings-avatar-preview,
+.settings-avatar-preview-round {
+    aspect-ratio: 1 / 1;
+    flex-shrink: 0;
+    border-radius: 50%;
+    -webkit-mask-image: -webkit-radial-gradient(white, black); /* Safari clip fix */
+}
+@media (max-width: 600px) {
+    .settings-avatar-preview-round,
+    .settings-avatar-preview,
+    .profile-avatar {
+        flex: 0 0 60px !important;
+        min-height: 60px !important;
+    }
+}
+
+/* #9 — Profile/Team hero kebab must be TOP-right on desktop. The hero-panel is
+   a 2-col grid with align-items:end (≥680px), which pushed the actions column
+   to the bottom. Pin the kebab-bearing action cluster to the top. */
+@media (min-width: 680px) {
+    .profile-hero-actions:has(.kebab-menu),
+    .team-hero-actions:has(.kebab-menu) {
+        align-self: start;
+    }
+}
+
+/* #10 — Panel/summary-card headers keep title + action on ONE row until it
+   truly can't fit, then wrap gracefully. Fixes the Duels "Duels / View All"
+   double-line height jump. */
+.status-summary-card .panel-head,
+.panel > .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.status-summary-card .panel-head > div:first-child,
+.panel > .panel-head > div:first-child {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+.status-summary-card .panel-head .btn,
+.panel > .panel-head > .btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+.status-summary-card .panel-head h2,
+.status-summary-card .panel-head h3 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* #8 — Analytics sections: clearer card vs page separation on mobile (subtle
+   but visible border + soft shadow, coherent radius). No heavy glass. */
+@media (max-width: 600px) {
+    .analytics-section,
+    .analytics-summary-section,
+    .analytics-layout-item {
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg, 16px);
+        background: var(--surface);
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.05);
+        padding: 0.85rem;
+    }
+}
+body[data-theme="dark"] .analytics-section,
+body.theme-active-dark .analytics-section,
+body[data-theme="dark"] .analytics-summary-section,
+body.theme-active-dark .analytics-summary-section {
+    border-color: var(--dark-ui-border);
+    background: var(--dark-ui-surface);
+    box-shadow: none;
+}
+
+/* Respect reduced-motion across the new interactive components (#16). */
+@media (prefers-reduced-motion: reduce) {
+    .kebab-menu-panel,
+    .app-modal,
+    .app-drawer,
+    .app-modal-card,
+    .app-drawer-card,
+    .friends-compare-bar-fill,
+    .profile-data-card-link,
+    .member-card-link,
+    .status-summary-card,
+    .to-top-btn {
+        transition: none !important;
+        animation: none !important;
+    }
+}
+
+/* Back-to-top floating button (#9 — long settings/config pages) */
+.to-top-btn {
+    position: fixed;
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: calc(1rem + env(safe-area-inset-bottom) + var(--mobile-bottom-nav-height, 0px));
+    z-index: 120;
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--glass-strong, var(--surface));
+    color: var(--ink);
+    box-shadow: var(--glass-shadow, 0 10px 26px rgba(15, 23, 42, 0.16));
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
+    cursor: pointer;
+    opacity: 0;
+    transform: translateY(8px) scale(0.9);
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.to-top-btn.is-visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+.to-top-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ==========================================================================
+   Human activity feed (#11) + shared empty states (#16)
+   ========================================================================== */
+.activity-feed {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.15rem;
+}
+.activity-item {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.55rem 0.35rem;
+    border-radius: 12px;
+}
+.activity-item + .activity-item { border-top: 1px solid color-mix(in srgb, var(--ink) 7%, transparent); }
+.activity-item-icon {
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: var(--primary);
+}
+.activity-item-icon svg { width: 18px; height: 18px; }
+.activity-item-body { display: grid; gap: 0.05rem; min-width: 0; }
+.activity-item-body strong {
+    font-weight: 600;
+    font-size: 0.92rem;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.activity-item-when { color: var(--muted); font-size: 0.76rem; }
+
+.empty-state {
+    display: grid;
+    justify-items: center;
+    gap: 0.5rem;
+    padding: 1.6rem 1rem;
+    text-align: center;
+}
+.empty-state-compact { padding: 1rem 0.6rem; }
+.empty-state-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    height: 46px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 6%, transparent);
+    color: var(--muted);
+}
+.empty-state-icon svg { width: 24px; height: 24px; }
+.empty-state p { margin: 0; max-width: 30ch; }
+
+/* ==========================================================================
+   Workouts subsystem (#5) — routines, session logger
+   ========================================================================== */
+.workouts-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+}
+@media (min-width: 680px) { .workouts-stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.workouts-stat-card {
+    display: grid;
+    gap: 0.15rem;
+    padding: 0.85rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg, 16px);
+    background: var(--surface);
+}
+.workouts-stat-value { font-size: 1.6rem; font-weight: 900; line-height: 1; }
+.workouts-stat-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
+
+.workouts-routine-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 0.7rem;
+}
+.workouts-routine-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg, 16px);
+    background: var(--surface);
+    transition: transform 0.14s ease, box-shadow 0.16s ease;
+}
+.workouts-routine-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08); }
+.workouts-routine-card.is-favorite { border-color: color-mix(in srgb, var(--warning, #f5b94b) 55%, var(--line)); }
+.workouts-routine-card-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.workouts-routine-title { display: inline-flex; align-items: center; gap: 0.35rem; min-width: 0; text-decoration: none; color: inherit; }
+.workouts-routine-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workouts-fav-star { color: var(--warning, #f5b94b); }
+.workouts-routine-desc { margin: 0; }
+.workouts-routine-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: auto; }
+.workouts-list-actions { margin-top: 0.8rem; }
+
+.workouts-archived { margin-top: 0.9rem; }
+.workouts-archived summary { cursor: pointer; font-weight: 700; color: var(--muted); }
+.workouts-archived-list { display: grid; gap: 0.4rem; margin-top: 0.5rem; }
+.workouts-archived-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.4rem 0.55rem; border: 1px solid var(--line); border-radius: 10px; }
+
+.workouts-pr-list, .workouts-session-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; }
+.workouts-pr-list li { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.45rem 0.1rem; border-bottom: 1px solid color-mix(in srgb, var(--ink) 7%, transparent); }
+.workouts-session-list li { display: grid; gap: 0.05rem; padding: 0.4rem 0.1rem; border-bottom: 1px solid color-mix(in srgb, var(--ink) 7%, transparent); }
+
+.workouts-exercise-list { list-style: none; margin: 0 0 0.8rem; padding: 0; display: grid; gap: 0.35rem; }
+.workouts-exercise-row { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.55rem 0.6rem; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--ink) 2.5%, transparent); }
+.workouts-exercise-info { display: grid; gap: 0.1rem; min-width: 0; }
+.workouts-exercise-info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-icon { min-width: 34px; padding-inline: 0.5rem; }
+
+.workouts-add-exercise-grid { display: grid; grid-template-columns: 1fr; gap: 0.5rem; margin-bottom: 0.6rem; }
+@media (min-width: 620px) { .workouts-add-exercise-grid { grid-template-columns: 2fr 1fr 1fr 1fr; align-items: end; } }
+.workouts-custom-exercise { margin-top: 0.8rem; }
+.workouts-custom-exercise summary { cursor: pointer; font-weight: 700; }
+.workouts-routine-danger .inline-actions { justify-content: flex-end; }
+
+/* Session logger — one-handed mobile friendly */
+.workouts-session-exercises { display: grid; gap: 0.7rem; }
+.workouts-session-exercise { padding: 0.75rem; border: 1px solid var(--line); border-radius: var(--radius-lg, 16px); background: var(--surface); }
+.workouts-session-exercise-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+.workouts-set-rows { display: grid; gap: 0.4rem; }
+.workouts-set-row { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
+.workouts-set-row.is-done { opacity: 0.72; }
+.workouts-set-index { flex: 0 0 24px; text-align: center; font-weight: 800; color: var(--muted); }
+.workouts-set-field { flex: 1; min-width: 0; }
+.workouts-set-field input { width: 100%; text-align: center; min-height: 44px; font-size: 1rem; }
+.workouts-set-x { color: var(--muted); font-weight: 700; }
+.workouts-set-done { flex: 0 0 46px; min-height: 44px; font-size: 1.1rem; }
+.workouts-add-set-btn { margin-top: 0.4rem; }
+.workouts-session-add-exercise { display: flex; gap: 0.5rem; margin-top: 0.9rem; flex-wrap: wrap; }
+.workouts-session-add-exercise select { flex: 1; min-width: 0; }
+.workouts-session-footer { display: flex; gap: 0.6rem; justify-content: space-between; margin-top: 1rem; position: sticky; bottom: calc(0.6rem + env(safe-area-inset-bottom) + var(--mobile-bottom-nav-height, 0px)); }
+.workouts-session-footer form { flex: 1; }
+.workouts-session-footer .btn { width: 100%; }
+
+body[data-theme="dark"] .workouts-stat-card,
+body.theme-active-dark .workouts-stat-card,
+body[data-theme="dark"] .workouts-routine-card,
+body.theme-active-dark .workouts-routine-card,
+body[data-theme="dark"] .workouts-session-exercise,
+body.theme-active-dark .workouts-session-exercise {
+    background: var(--dark-ui-surface);
+    border-color: var(--dark-ui-border);
+}
+
+/* ==========================================================================
+   Workout analytics (#6) — CSS bar chart, messages, muscle distribution
+   ========================================================================== */
+.workouts-messages { display: grid; gap: 0.5rem; }
+.workouts-message {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--line));
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
+    font-weight: 600;
+}
+.workouts-message-icon {
+    flex: 0 0 30px; width: 30px; height: 30px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 999px; background: color-mix(in srgb, var(--primary) 16%, transparent); color: var(--primary);
+}
+.workouts-message-icon svg { width: 17px; height: 17px; }
+
+.workouts-bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.4rem;
+    height: 180px;
+    padding-top: 0.5rem;
+}
+.workouts-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; height: 100%; min-width: 0; justify-content: flex-end; }
+.workouts-bar {
+    width: 100%;
+    max-width: 42px;
+    border-radius: 8px 8px 3px 3px;
+    background: linear-gradient(180deg, var(--primary), color-mix(in srgb, var(--primary) 65%, #0d7d6c));
+    min-height: 2px;
+    transition: height 0.3s ease;
+}
+.workouts-bar-label { font-size: 0.68rem; color: var(--muted); white-space: nowrap; }
+.workouts-bar-sub { font-size: 0.7rem; font-weight: 800; color: var(--ink); }
+
+.workouts-muscle-list { display: grid; gap: 0.5rem; }
+.workouts-muscle-row { display: grid; grid-template-columns: 5.5rem 1fr 2.5rem; align-items: center; gap: 0.5rem; }
+.workouts-muscle-name { font-size: 0.82rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workouts-muscle-bar { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 8%, transparent); overflow: hidden; }
+.workouts-muscle-bar span { display: block; height: 100%; border-radius: 999px; background: var(--primary); }
+.workouts-muscle-pct { font-size: 0.78rem; font-weight: 800; text-align: right; color: var(--muted); }
+
+/* ==========================================================================
+   Layout edit mode — root-cause fix (#2)
+
+   `.screen` runs `animation: screenIn ... both`. With fill-mode `both` the
+   final keyframe's transform sticks around forever, so `.screen` permanently
+   creates a containing block AND a stacking context. That trapped the fixed
+   edit panels inside it: their z-index only counted *within* `.screen`, so the
+   root-level `body::before` blur overlay painted over them — the panel was
+   visible in the DOM but unclickable ("only blur appears" on mobile).
+
+   Dropping the transform while editing lets the panels be truly viewport-fixed
+   and lifts their z-index into the root stacking context. Fixes dashboard,
+   team and profile layout editing in one place.
+   ========================================================================== */
+body.layout-edit-active .screen {
+    animation: none !important;
+    transform: none !important;
+    filter: none !important;
+    will-change: auto !important;
+}
+
+/* ==========================================================================
+   Dashboard direct drag-and-drop (#2)
+   ========================================================================== */
+body.layout-edit-active .dashboard-layout > [data-dashboard-widget] {
+    position: relative;
+    cursor: grab;
+    touch-action: none;          /* let the pointer drag win over page scroll */
+    user-select: none;
+    outline: 2px dashed color-mix(in srgb, var(--primary) 45%, transparent);
+    outline-offset: 3px;
+    border-radius: var(--radius-lg, 16px);
+    transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+body.layout-edit-active .dashboard-layout > [data-dashboard-widget]::before {
+    content: "⠿";
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    z-index: 5;
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: var(--primary);
+    color: #fff;
+    font-size: 0.8rem;
+    line-height: 1;
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.2);
+    pointer-events: none;
+}
+body.layout-edit-active .dashboard-layout > [data-dashboard-widget]:active { cursor: grabbing; }
+
+.dashboard-layout > [data-dashboard-widget].is-dragging {
+    cursor: grabbing;
+    opacity: 0.95;
+    transform: scale(1.02);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+    outline-color: var(--primary);
+}
+
+.dashboard-drop-placeholder {
+    border: 2px dashed var(--primary);
+    border-radius: var(--radius-lg, 16px);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    min-width: 0;
+    animation: dropPulse 0.9s ease-in-out infinite;
+}
+@keyframes dropPulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 0.9; }
+}
+
+body.layout-dragging { cursor: grabbing; }
+body.layout-dragging * { cursor: grabbing !important; }
+
+/* Unsaved-changes hint on the save button */
+body.layout-has-unsaved [data-dashboard-layout-editor] button[type="submit"] {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning, #f5b94b) 55%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dashboard-drop-placeholder { animation: none; }
+    .dashboard-layout > [data-dashboard-widget] { transition: none; }
+}
+
+/* ==========================================================================
+   Dashboard edit mode on mobile (#2) — no more full-screen takeover.
+
+   The old behaviour hid the whole dashboard behind a blur and offered only an
+   abstract list. Instead we keep the REAL widget cards on screen so they can be
+   dragged directly, and demote the editor to a compact bottom sheet holding the
+   toggles / reset / save. Scoped to the dashboard so team & profile keep their
+   current (now working) editors untouched.
+   ========================================================================== */
+@media (max-width: 899px) {
+    body.layout-edit-active[data-page="dashboard"]::before {
+        display: none !important;
+    }
+
+    body.layout-edit-active[data-page="dashboard"] .screen > :not(.dashboard-layout-edit-mode-panel) {
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        filter: none !important;
+    }
+
+    body.layout-edit-active[data-page="dashboard"] .dashboard-layout-edit-mode-panel {
+        position: fixed !important;
+        inset: auto 0 0 0 !important;
+        top: auto !important;
+        max-height: 40vh !important;
+        overflow: auto !important;
+        z-index: 10060 !important;
+        border-radius: 22px 22px 0 0 !important;
+        padding: 0.75rem !important;
+        padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)) !important;
+        box-shadow: 0 -14px 40px rgba(15, 23, 42, 0.22) !important;
+    }
+
+    /* Sheet grab affordance */
+    body.layout-edit-active[data-page="dashboard"] .dashboard-layout-edit-mode-panel::before {
+        content: "";
+        display: block;
+        width: 38px;
+        height: 4px;
+        margin: 0 auto 0.6rem;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--ink) 22%, transparent);
+    }
+
+    /* Keep the last card reachable above the sheet */
+    body.layout-edit-active[data-page="dashboard"] .dashboard-layout {
+        padding-bottom: 44vh !important;
+    }
+}
+
+/* In edit mode a widget is a draggable object, not a live control surface.
+   Neutralising its inner links/buttons means (a) the whole card is grabbable
+   and (b) you can't accidentally navigate away while rearranging. */
+body.layout-edit-active .dashboard-layout > [data-dashboard-widget] :where(a, button, input, select, textarea, summary, details, canvas) {
+    pointer-events: none !important;
+}
+
+/* The legacy mobile rule hides `.screen` children with three :not() clauses,
+   giving it a higher specificity than a shorter override. Match its :not chain
+   (plus [data-page]) so the dashboard's real cards stay visible and draggable
+   while editing. */
+@media (max-width: 899px) {
+    body.layout-edit-active[data-page="dashboard"] .screen
+        > :not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel):not(.profile-layout-edit-mode-panel) {
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        filter: none !important;
+    }
+}
+
+/* ==========================================================================
+   Gallery calendar on mobile (#12)
+
+   The month view was `display:none` below 900px with nothing in its place, so
+   switching to Calendar View on a phone showed an empty 137px panel. Desktop
+   keeps its rich photo-collage grid; mobile gets a real, weekday-aligned month
+   calendar with dot indicators, and tapping a day opens a bottom sheet.
+   ========================================================================== */
+/* The month grid is 7 columns at every breakpoint, so the weekday header
+   belongs everywhere — desktop never had one and its day 1 was not aligned to
+   its real weekday, which made the whole month read wrong. */
+.gallery-calendar-panel .gallery-cal-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.5rem;
+    padding: 0 0.1rem 0.4rem;
+}
+.gallery-calendar-panel .gallery-cal-weekdays span {
+    text-align: center;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+@media (max-width: 899px) {
+    /* Bring the month grid back, as a proper 7-column calendar. */
+    .gallery-calendar-panel .entries-calendar.meal-calendar-month {
+        display: grid !important;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 4px;
+        padding: 0.25rem;
+    }
+
+    .gallery-calendar-panel .gallery-cal-weekdays {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 4px;
+        padding: 0 0.25rem 0.3rem;
+    }
+    .gallery-calendar-panel .gallery-cal-weekdays span {
+        text-align: center;
+        font-size: 0.68rem;
+        font-weight: 800;
+        color: var(--muted);
+        text-transform: uppercase;
+    }
+
+    /* Compact square cells: day number + a dot. No collage, no badge. */
+    .gallery-calendar-panel .entries-calendar-day {
+        min-height: 0;
+        text-decoration: none;
+    }
+    .gallery-calendar-panel .entries-calendar-day article {
+        display: grid;
+        place-items: center;
+        gap: 2px;
+        aspect-ratio: 1 / 1;
+        min-height: 0;
+        padding: 2px;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        background: color-mix(in srgb, var(--ink) 4%, transparent);
+    }
+    .gallery-calendar-panel .entries-calendar-day strong {
+        font-size: 0.82rem;
+        font-weight: 600;
+        line-height: 1;
+    }
+    .gallery-calendar-panel .entries-calendar-day .entries-calendar-collage,
+    .gallery-calendar-panel .entries-calendar-day .entries-calendar-empty,
+    .gallery-calendar-panel .entries-calendar-day .badge {
+        display: none !important;
+    }
+
+    /* Dot indicator instead of the content preview */
+    .gallery-cal-dot {
+        width: 5px;
+        height: 5px;
+        border-radius: 999px;
+        background: transparent;
+    }
+    .gallery-calendar-panel .entries-calendar-day.has-log .gallery-cal-dot {
+        background: var(--primary);
+    }
+    .gallery-calendar-panel .entries-calendar-day.has-log article {
+        background: color-mix(in srgb, var(--primary) 12%, transparent);
+        border-color: color-mix(in srgb, var(--primary) 28%, transparent);
+    }
+    .gallery-calendar-panel .entries-calendar-day.is-today article {
+        border-color: var(--primary);
+        font-weight: 800;
+    }
+    .gallery-calendar-panel .entries-calendar-day.is-selected article {
+        background: var(--primary);
+        border-color: var(--primary);
+    }
+    .gallery-calendar-panel .entries-calendar-day.is-selected strong { color: #fff; }
+    .gallery-calendar-panel .entries-calendar-day.is-selected .gallery-cal-dot { background: #fff; }
+}
+
+/* Day bottom sheet contents */
+.gallery-day-sheet-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+    margin-bottom: 0.9rem;
+}
+.gallery-day-sheet-grid a {
+    display: block;
+    aspect-ratio: 1 / 1;
+    border-radius: 10px;
+    overflow: hidden;
+}
+.gallery-day-sheet-grid img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.gallery-day-sheet-empty { margin: 0 0 0.9rem; }
+
+/* ==========================================================================
+   Quests / RPG board (#14)
+   ========================================================================== */
+.quests-streak {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--coral, #ff6b4a) 40%, var(--line));
+    background: color-mix(in srgb, var(--coral, #ff6b4a) 12%, transparent);
+    font-weight: 900;
+}
+.quests-streak-flame { font-size: 0.95rem; line-height: 1; }
+
+.quests-group-label {
+    margin: 0.7rem 0 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+}
+.quests-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+
+.quest-item {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.6rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+    transition: border-color 0.16s ease, background 0.16s ease;
+}
+.quest-item.is-done {
+    border-color: color-mix(in srgb, var(--good, #19a974) 45%, transparent);
+    background: color-mix(in srgb, var(--good, #19a974) 10%, transparent);
+}
+.quest-icon {
+    flex: 0 0 34px;
+    width: 34px; height: 34px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary) 14%, transparent);
+    color: var(--primary);
+}
+.quest-item.is-done .quest-icon {
+    background: color-mix(in srgb, var(--good, #19a974) 18%, transparent);
+    color: var(--good, #19a974);
+}
+.quest-icon svg { width: 17px; height: 17px; }
+
+.quest-body { display: grid; gap: 0.25rem; min-width: 0; flex: 1; }
+.quest-top { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.quest-top strong { font-size: 0.9rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quest-xp {
+    flex: 0 0 auto;
+    font-size: 0.72rem;
+    font-weight: 900;
+    color: var(--primary);
+    white-space: nowrap;
+}
+.quest-bar {
+    display: block;
+    height: 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 9%, transparent);
+    overflow: hidden;
+}
+.quest-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--primary);
+    transition: width 0.35s ease;
+}
+.quest-item.is-done .quest-bar > span { background: var(--good, #19a974); }
+.quest-meta { color: var(--muted); font-size: 0.72rem; }
+.quest-done { flex: 0 0 auto; color: var(--good, #19a974); font-weight: 900; font-size: 1.1rem; }
+.quests-next-rank { margin: 0.7rem 0 0; }
+
+@media (min-width: 900px) {
+    .quests-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .quest-bar > span { transition: none; }
+}
+
+body[data-theme="dark"] .quest-item,
+body.theme-active-dark .quest-item {
+    background: var(--dark-ui-row);
+    border-color: var(--dark-ui-border);
+}
+
+/* ==========================================================================
+   Notion sync status card (#15)
+   ========================================================================== */
+.notion-status-card {
+    display: grid;
+    gap: 0.7rem;
+    padding: 0.9rem 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.notion-status-card.is-ok { border-color: color-mix(in srgb, var(--good, #19a974) 40%, var(--line)); }
+.notion-status-card.is-error { border-color: color-mix(in srgb, var(--bad, #df4c43) 45%, var(--line)); }
+
+.notion-status-head {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+}
+.notion-status-head > div { flex: 1; min-width: 0; display: grid; gap: 0.1rem; }
+.notion-status-head form { flex: 0 0 auto; }
+
+.notion-status-dot {
+    flex: 0 0 10px;
+    width: 10px; height: 10px;
+    border-radius: 999px;
+    background: var(--muted);
+}
+.notion-status-card.is-ok .notion-status-dot { background: var(--good, #19a974); }
+.notion-status-card.is-error .notion-status-dot { background: var(--bad, #df4c43); }
+
+.notion-status-counts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+    gap: 0.4rem;
+}
+.notion-count {
+    display: grid;
+    gap: 0.05rem;
+    padding: 0.45rem 0.4rem;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--ink) 5%, transparent);
+    text-align: center;
+}
+.notion-count strong { font-size: 1.05rem; font-weight: 900; }
+.notion-count small { font-size: 0.66rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
+.notion-count.is-bad strong { color: var(--bad, #df4c43); }
+
+.notion-status-records { margin: 0; }
+.notion-status-error {
+    margin: 0;
+    padding: 0.55rem 0.7rem;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bad, #df4c43) 12%, transparent);
+    color: var(--bad, #df4c43);
+    font-size: 0.84rem;
+    word-break: break-word;
+}
+
+/* ==========================================================================
+   Badges + team missions (#14 phase 2)
+   ========================================================================== */
+.badge-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.4rem;
+}
+.badge-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+    min-width: 0;
+}
+.badge-chip.is-locked { opacity: 0.55; }
+.badge-chip.is-earned.tier-bronze { border-color: #b87333; background: color-mix(in srgb, #b87333 12%, transparent); }
+.badge-chip.is-earned.tier-silver { border-color: #9aa7b2; background: color-mix(in srgb, #9aa7b2 14%, transparent); }
+.badge-chip.is-earned.tier-gold { border-color: #e0a422; background: color-mix(in srgb, #e0a422 14%, transparent); }
+
+.badge-chip-icon {
+    flex: 0 0 28px;
+    width: 28px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 8%, transparent);
+    color: var(--muted);
+}
+.badge-chip.is-earned .badge-chip-icon { background: color-mix(in srgb, var(--primary) 16%, transparent); color: var(--primary); }
+.badge-chip-icon svg { width: 15px; height: 15px; }
+.badge-chip-body { display: grid; gap: 0.05rem; min-width: 0; }
+.badge-chip-body strong { font-size: 0.8rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge-chip-body small { font-size: 0.68rem; color: var(--muted); font-weight: 800; }
+.badge-chip.is-earned .badge-chip-body small { color: var(--primary); }
+
+.team-missions-list { display: grid; gap: 0.6rem; }
+.team-mission {
+    display: grid;
+    gap: 0.4rem;
+    padding: 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.team-mission.is-done {
+    border-color: color-mix(in srgb, var(--good, #19a974) 45%, transparent);
+    background: color-mix(in srgb, var(--good, #19a974) 10%, transparent);
+}
+.team-mission-head { display: flex; align-items: center; gap: 0.55rem; }
+.team-mission-head strong { flex: 1; min-width: 0; font-size: 0.9rem; font-weight: 600; }
+.team-mission-count { flex: 0 0 auto; font-weight: 900; font-size: 0.85rem; color: var(--muted); }
+.team-mission.is-done .team-mission-count { color: var(--good, #19a974); }
+.team-mission.is-done .quest-bar > span { background: var(--good, #19a974); }
+
+.team-mission-contrib summary { cursor: pointer; font-size: 0.74rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
+.team-mission-contrib ul { list-style: none; margin: 0.4rem 0 0; padding: 0; display: grid; gap: 0.2rem; }
+.team-mission-contrib li { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.84rem; padding: 0.2rem 0; }
+
+body[data-theme="dark"] .badge-chip,
+body.theme-active-dark .badge-chip,
+body[data-theme="dark"] .team-mission,
+body.theme-active-dark .team-mission {
+    background: var(--dark-ui-row);
+    border-color: var(--dark-ui-border);
 }

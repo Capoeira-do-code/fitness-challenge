@@ -336,6 +336,24 @@ function normalize_workout_row(PDO $pdo, array $row, ?int $actorUserId = null): 
     $rawType = trim((string) ($row['workout_type'] ?? ''));
     $skipTypePersist = !empty($row['skip_type_persist']);
 
+    // A personal workout routine picked from the daily-log dropdown arrives as
+    // "routine:<id>" (#13). Resolve it to its name and let the normal free-text
+    // path register it as a workout type, so routines and types stay coherent.
+    if (is_string($rawTypeId) && preg_match('/^routine:(\d+)$/', trim($rawTypeId), $routineMatch) === 1) {
+        $routineName = '';
+        if ($actorUserId !== null && function_exists('wk_routine_get')) {
+            $routine = wk_routine_get($pdo, (int) $routineMatch[1], $actorUserId);
+            $routineName = $routine !== null ? trim((string) ($routine['name'] ?? '')) : '';
+        }
+        if ($routineName === '') {
+            return null;
+        }
+        $rawTypeId = null;
+        if ($rawType === '') {
+            $rawType = $routineName;
+        }
+    }
+
     $workoutTypeId = null;
     if (is_int($rawTypeId) && $rawTypeId > 0) {
         $workoutTypeId = $rawTypeId;
@@ -9821,4 +9839,24 @@ function is_valid_login_background_path(array $config, string $path): bool
     $absolutePath = resolve_media_storage_path($config, $normalized);
 
     return is_string($absolutePath) && $absolutePath !== '' && is_file($absolutePath);
+}
+
+/**
+ * Available login page style variants (admin-selectable).
+ *
+ * @return array<int, string>
+ */
+function login_style_options(): array
+{
+    return ['split', 'centered', 'spotlight'];
+}
+
+/**
+ * Normalize a stored/selected login style to a supported value.
+ */
+function login_style_normalize(mixed $value): string
+{
+    $value = is_string($value) ? trim($value) : '';
+
+    return in_array($value, login_style_options(), true) ? $value : 'split';
 }

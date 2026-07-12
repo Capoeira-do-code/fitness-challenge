@@ -1073,6 +1073,41 @@ function notion_record_run(PDO $pdo, array $summary, ?int $actorUserId): void
     set_app_setting_silent($pdo, 'notion_last_sync_at', now_iso(), $actor);
     set_app_setting_silent($pdo, 'notion_last_status', (string) ($summary['status'] ?? ''), $actor);
     set_app_setting_silent($pdo, 'notion_last_summary', (string) ($summary['message'] ?? ''), $actor);
+    // Keep the per-run counters so the admin can see what actually moved (#15).
+    set_app_setting_silent($pdo, 'notion_last_counts', json_encode([
+        'created' => (int) ($summary['created'] ?? 0),
+        'updated' => (int) ($summary['updated'] ?? 0),
+        'skipped' => (int) ($summary['skipped'] ?? 0),
+        'failed' => (int) ($summary['failed'] ?? 0),
+        'pulled' => (int) ($summary['pulled'] ?? 0),
+        'remaining' => (int) ($summary['remaining'] ?? 0),
+    ], JSON_UNESCAPED_SLASHES), $actor);
+    // Only overwrite the stored error when this run actually failed, so a
+    // successful run clears it and a transient failure stays visible.
+    $failed = (string) ($summary['status'] ?? '') === 'error' || (int) ($summary['failed'] ?? 0) > 0;
+    set_app_setting_silent($pdo, 'notion_last_error', $failed ? (string) ($summary['message'] ?? '') : '', $actor);
+}
+
+/**
+ * Sync health for the admin panel (#15): when it last ran, what moved, and
+ * whether the last run errored.
+ *
+ * @return array{last_sync_at:string,status:string,summary:string,error:string,counts:array<string,int>,synced_records:int}
+ */
+function notion_sync_status(PDO $pdo): array
+{
+    notion_ensure_schema($pdo);
+    $counts = json_decode((string) (app_setting($pdo, 'notion_last_counts', '') ?? ''), true);
+    $records = db_fetch_one($pdo, 'SELECT COUNT(*) AS c FROM notion_sync_state');
+
+    return [
+        'last_sync_at' => trim((string) (app_setting($pdo, 'notion_last_sync_at', '') ?? '')),
+        'status' => trim((string) (app_setting($pdo, 'notion_last_status', '') ?? '')),
+        'summary' => trim((string) (app_setting($pdo, 'notion_last_summary', '') ?? '')),
+        'error' => trim((string) (app_setting($pdo, 'notion_last_error', '') ?? '')),
+        'counts' => is_array($counts) ? array_map('intval', $counts) : [],
+        'synced_records' => (int) ($records['c'] ?? 0),
+    ];
 }
 
 /**

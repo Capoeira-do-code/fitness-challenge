@@ -779,3 +779,217 @@ function json_response(array $data, int $status = 200): never
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
+
+/**
+ * Render a reusable three-dot (kebab) dropdown menu built on native <details>.
+ *
+ * Each item is an associative array:
+ *   - 'label'  (string, required)
+ *   - 'href'   (string) renders an <a>; omit for a <button>
+ *   - 'attrs'  (array<string,string>) extra attributes (e.g. data-*)
+ *   - 'danger' (bool) styles the item as destructive
+ *   - 'type'   (string) button type, defaults to 'button'
+ *
+ * $opts:
+ *   - 'label'         (string) accessible label for the trigger
+ *   - 'align'         (string) 'end' (default) or 'start'
+ *   - 'class'         (string) extra classes on the <details> wrapper
+ *   - 'trigger_class' (string) extra classes on the <summary>
+ *
+ * @param array<int,array<string,mixed>> $items
+ * @param array<string,mixed> $opts
+ */
+function render_kebab_menu(array $items, array $opts = []): string
+{
+    $items = array_values(array_filter($items, static fn ($i) => is_array($i) && ($i['label'] ?? '') !== ''));
+    if ($items === []) {
+        return '';
+    }
+
+    $triggerLabel = (string) ($opts['label'] ?? (function_exists('t') ? t('common.actions') : 'Actions'));
+    $align = ($opts['align'] ?? 'end') === 'start' ? 'start' : 'end';
+    $wrapClass = trim('kebab-menu ' . (string) ($opts['class'] ?? ''));
+    $triggerClass = trim('kebab-menu-trigger btn btn-ghost small ' . (string) ($opts['trigger_class'] ?? ''));
+
+    $html = '<details class="' . e($wrapClass) . '" data-kebab-menu data-align="' . e($align) . '">';
+    $html .= '<summary class="' . e($triggerClass) . '" aria-label="' . e($triggerLabel) . '" aria-haspopup="menu">';
+    $html .= '<span class="kebab-menu-dots" aria-hidden="true"><span></span><span></span><span></span></span>';
+    $html .= '</summary>';
+    $html .= '<div class="kebab-menu-panel" role="menu">';
+
+    foreach ($items as $item) {
+        $label = (string) $item['label'];
+        $danger = !empty($item['danger']);
+        $itemClass = 'kebab-menu-item' . ($danger ? ' is-danger' : '');
+        $attrParts = '';
+        foreach ((array) ($item['attrs'] ?? []) as $attrKey => $attrVal) {
+            $attrParts .= ' ' . e((string) $attrKey) . '="' . e((string) $attrVal) . '"';
+        }
+
+        if (($item['href'] ?? '') !== '') {
+            $html .= '<a class="' . e($itemClass) . '" role="menuitem" href="' . e((string) $item['href']) . '"' . $attrParts . '>' . e($label) . '</a>';
+        } else {
+            $type = (string) ($item['type'] ?? 'button');
+            $html .= '<button class="' . e($itemClass) . '" role="menuitem" type="' . e($type) . '"' . $attrParts . '>' . e($label) . '</button>';
+        }
+    }
+
+    $html .= '</div></details>';
+
+    return $html;
+}
+
+/**
+ * Render a compact "status summary" card (used for Duels / Competitions
+ * overviews on Profile and Dashboard). Reusable so both pages stay in sync.
+ *
+ * @param array<int,array{label:string,value:int|string,tone?:string}> $stats
+ */
+function render_status_summary_card(string $eyebrow, string $title, array $stats, string $href, string $linkLabel, string $extraClass = ''): string
+{
+    $wrapClass = trim('panel status-summary-card ' . $extraClass);
+    $html = '<article class="' . e($wrapClass) . '">';
+    $html .= '<div class="panel-head"><div>';
+    $html .= '<p class="eyebrow">' . e($eyebrow) . '</p>';
+    $html .= '<h2>' . e($title) . '</h2>';
+    $html .= '</div>';
+    if ($href !== '') {
+        $html .= '<a class="btn btn-ghost small" href="' . e($href) . '">' . e($linkLabel) . '</a>';
+    }
+    $html .= '</div>';
+    $html .= '<div class="status-summary-stats">';
+    foreach ($stats as $stat) {
+        $tone = (string) ($stat['tone'] ?? '');
+        $statClass = 'status-summary-stat' . ($tone !== '' ? ' is-' . preg_replace('/[^a-z0-9\-]/', '', $tone) : '');
+        $html .= '<div class="' . e($statClass) . '">';
+        $html .= '<span class="status-summary-value">' . e((string) ($stat['value'] ?? '0')) . '</span>';
+        $html .= '<span class="status-summary-label">' . e((string) ($stat['label'] ?? '')) . '</span>';
+        $html .= '</div>';
+    }
+    $html .= '</div></article>';
+
+    return $html;
+}
+
+/**
+ * Relative "time ago" label for an ISO datetime (localized, coarse buckets).
+ */
+function human_time_ago(string $isoDatetime): string
+{
+    $ts = strtotime($isoDatetime);
+    if ($ts === false) {
+        return '';
+    }
+    $diff = time() - $ts;
+    if ($diff < 0) {
+        $diff = 0;
+    }
+    if ($diff < 60) {
+        return t('time.just_now');
+    }
+    if ($diff < 3600) {
+        return t('time.minutes_ago', ['n' => (int) floor($diff / 60)]);
+    }
+    if ($diff < 86400) {
+        return t('time.hours_ago', ['n' => (int) floor($diff / 3600)]);
+    }
+    if ($diff < 604800) {
+        return t('time.days_ago', ['n' => (int) floor($diff / 86400)]);
+    }
+
+    return function_exists('format_date_eu') ? format_date_eu(date('Y-m-d', $ts)) : date('Y-m-d', $ts);
+}
+
+/**
+ * Turn a raw audit-log row into a human activity item for end users.
+ * Returns null for noise/technical events that shouldn't surface to users.
+ *
+ * @param array<string,mixed> $item
+ * @return array{icon:string,text:string,when:string}|null
+ */
+function humanize_activity_item(array $item, int $viewerId): ?array
+{
+    $action = (string) ($item['action'] ?? '');
+    $entity = (string) ($item['entity_type'] ?? '');
+    $actorId = (int) ($item['actor_user_id'] ?? 0);
+    $isSelf = $actorId === $viewerId;
+    $actorName = trim((string) ($item['actor_name'] ?? ''));
+    // Locale-aware subject so the perfect-tense templates agree ("You created"
+    // / "Roberto created"; "Has creado" / "Roberto ha creado").
+    $who = $isSelf
+        ? t('activity.subject_self')
+        : t('activity.subject_other', ['name' => $actorName !== '' ? $actorName : t('common.user')]);
+
+    // Security / pure-preference noise: never surface to end users.
+    static $hidden = [
+        'password_changed', 'user_preferences_updated', 'dashboard_preferences_updated',
+        'dashboard_view', 'app_setting_updated', 'challenge_settings_updated',
+    ];
+    if (in_array($action, $hidden, true)) {
+        return null;
+    }
+
+    // action prefix => [icon, i18n key]. Keys receive {who}.
+    $map = [
+        'goal_created' => ['target', 'activity.goal_created'],
+        'goal_completed' => ['trophy', 'activity.goal_completed'],
+        'goal_updated' => ['target', 'activity.goal_updated'],
+        'goal_deleted' => ['target', 'activity.goal_deleted'],
+        'achievement' => ['medal', 'activity.achievement'],
+        'daily_log' => ['check', 'activity.logged_day'],
+        'log_' => ['check', 'activity.logged_day'],
+        'photo' => ['image', 'activity.photo_added'],
+        'profile_tagline_updated' => ['user', 'activity.profile_updated'],
+        'team_join_request' => ['users', 'activity.team_join'],
+        'team_membership' => ['users', 'activity.team_join'],
+        'duel' => ['sword', 'activity.duel'],
+        'workout_type_created' => ['dumbbell', 'activity.workout_added'],
+    ];
+
+    $icon = 'spark';
+    $key = '';
+    foreach ($map as $prefix => $meta) {
+        if ($action === $prefix || str_starts_with($action, $prefix)) {
+            [$icon, $key] = $meta;
+            break;
+        }
+    }
+
+    if ($key === '') {
+        // Fallback: reuse the stored human summary but strip trailing period and
+        // any bracketed/technical id noise; skip if it looks like raw JSON/ids.
+        $summary = trim((string) ($item['summary'] ?? ''));
+        if ($summary === '' || str_contains($summary, '{') || str_contains($summary, '#')) {
+            return null;
+        }
+        $text = rtrim($summary, '.');
+    } else {
+        $text = t($key, ['who' => $who]);
+    }
+
+    return [
+        'icon' => $icon,
+        'text' => $text,
+        'when' => human_time_ago((string) ($item['created_at'] ?? '')),
+    ];
+}
+
+/** Small inline SVG for activity icons. */
+function activity_icon_svg(string $name): string
+{
+    $paths = [
+        'target' => '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+        'trophy' => '<path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0Z"/><path d="M5 5H3v2a3 3 0 0 0 3 3M19 5h2v2a3 3 0 0 1-3 3"/>',
+        'medal' => '<circle cx="12" cy="14" r="6"/><path d="M9 8 7 3h10l-2 5"/>',
+        'check' => '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+        'image' => '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m21 16-5-5L5 20"/>',
+        'user' => '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+        'users' => '<circle cx="9" cy="8" r="3.5"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M17 11a3.5 3.5 0 0 0 0-6M22 21a6 6 0 0 0-4-5.6"/>',
+        'sword' => '<path d="M14.5 4 20 4v5.5L9 20.5 3.5 15z"/><path d="m13 11 2 2M4 21l3-3"/>',
+        'dumbbell' => '<path d="M6 7v10M18 7v10M3 9v6M21 9v6M6 12h12"/>',
+        'spark' => '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/>',
+    ];
+    $p = $paths[$name] ?? $paths['spark'];
+
+    return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' . $p . '</svg>';
+}
