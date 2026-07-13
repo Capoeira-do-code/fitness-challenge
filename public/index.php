@@ -259,6 +259,7 @@ if ($page === 'api_save_row') {
         json_response(['ok' => false, 'message' => t('flash.invalid_user')], 422);
     }
 
+    $excusesAllowed = penalties_enabled($pdo);
     $habitPayload = is_array($json['habits'] ?? null) ? (array) $json['habits'] : [];
     $hasWorkoutsPayload = is_array($json['workouts'] ?? null);
     $workoutsPayload = [];
@@ -294,10 +295,13 @@ if ($page === 'api_save_row') {
         'training_calories_burned' => ($json['training_calories_burned'] ?? '') !== '' ? (float) $json['training_calories_burned'] : null,
         'weight' => ($json['weight'] ?? '') !== '' ? (float) $json['weight'] : null,
         'notes' => trim((string) ($json['notes'] ?? '')),
-        'step_exception_reason' => trim((string) ($json['step_exception_reason'] ?? '')),
-        'distance_exception_reason' => trim((string) ($json['distance_exception_reason'] ?? '')),
-        'workout_exception_reason' => trim((string) ($json['workout_exception_reason'] ?? '')),
-        'resend_requests' => (int) ($json['resend_requests'] ?? 0) === 1 ? 1 : 0,
+        // Excuses only make sense while penalties are on. With the feature off the
+        // client cannot show the fields, and the server refuses to store them, so a
+        // crafted request cannot smuggle an excuse back in.
+        'step_exception_reason' => $excusesAllowed ? trim((string) ($json['step_exception_reason'] ?? '')) : '',
+        'distance_exception_reason' => $excusesAllowed ? trim((string) ($json['distance_exception_reason'] ?? '')) : '',
+        'workout_exception_reason' => $excusesAllowed ? trim((string) ($json['workout_exception_reason'] ?? '')) : '',
+        'resend_requests' => $excusesAllowed && (int) ($json['resend_requests'] ?? 0) === 1 ? 1 : 0,
         'morning_walk' => !empty($habitPayload['morning_walk']) || (int) ($json['morning_walk'] ?? 0) === 1 ? 1 : 0,
         'journaling' => !empty($habitPayload['journaling']) || (int) ($json['journaling'] ?? 0) === 1 ? 1 : 0,
         'evening_chores' => !empty($habitPayload['evening_chores']) || (int) ($json['evening_chores'] ?? 0) === 1 ? 1 : 0,
@@ -340,6 +344,47 @@ if ($page === 'api_save_row') {
     } catch (Throwable $e) {
         json_response(['ok' => false, 'message' => t('flash.save_failed')], 500);
     }
+
+    json_response(['ok' => true]);
+}
+
+if ($page === 'api_delete_habit') {
+    $currentUser = require_login($pdo);
+
+    if (!is_post()) {
+        json_response(['ok' => false, 'message' => t('flash.method_not_allowed')], 405);
+    }
+
+    $json = json_decode((string) file_get_contents('php://input'), true);
+    if (!is_array($json)) {
+        json_response(['ok' => false, 'message' => t('flash.invalid_json')], 400);
+    }
+    if (!isset($json['csrf_token']) || !is_string($json['csrf_token']) || !hash_equals((string) ($_SESSION['csrf_token'] ?? ''), $json['csrf_token'])) {
+        json_response(['ok' => false, 'message' => t('flash.csrf')], 419);
+    }
+
+    $code = trim((string) ($json['code'] ?? ''));
+    $habit = $code !== ''
+        ? db_fetch_one($pdo, 'SELECT * FROM habit_definitions WHERE code = :c', [':c' => $code])
+        : null;
+    if ($habit === null) {
+        json_response(['ok' => false, 'message' => t('table.custom_habit_error')], 404);
+    }
+
+    // Only custom habits can be removed, and only by the person who created them
+    // (or an admin). The seeded habits belong to the challenge, not to a user.
+    $createdBy = (int) ($habit['created_by'] ?? 0);
+    if ($createdBy <= 0 || ($createdBy !== (int) $currentUser['id'] && !is_admin($currentUser))) {
+        json_response(['ok' => false, 'message' => t('flash.no_permission')], 403);
+    }
+
+    // Deactivate rather than delete: the daily_log_habits rows already logged
+    // against it stay intact, so past days keep their history.
+    db_execute(
+        $pdo,
+        'UPDATE habit_definitions SET active = 0, updated_at = :now WHERE id = :id',
+        [':now' => now_iso(), ':id' => (int) $habit['id']]
+    );
 
     json_response(['ok' => true]);
 }
@@ -1465,14 +1510,17 @@ if ($page === 'table' || $page === 'week_editor') {
     $users = list_active_users($pdo);
 
     $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
-    if (!is_admin($currentUser) && $selectedUserId !== (int) $currentUser['id']) {
-        $selectedUserId = (int) $currentUser['id'];
-    }
+
+    // Anyone may look at another member's sheet, but only its owner (or an admin)
+    // may edit it. The read-only rendering is a courtesy; api_save_row enforces the
+    // same rule server-side, so a crafted request cannot write to someone else.
+    $canEditSheet = is_admin($currentUser) || $selectedUserId === (int) $currentUser['id'];
 
     $selectedUser = find_user_by_id($users, $selectedUserId);
     if ($selectedUser === null) {
         $selectedUser = $currentUser;
         $selectedUserId = (int) $selectedUser['id'];
+        $canEditSheet = true;
     }
 
     $settings = challenge_settings($pdo, $config);
@@ -1553,6 +1601,14 @@ if ($page === 'table' || $page === 'week_editor') {
         'workoutTypes' => list_workout_types($pdo, true),
         'userRoutines' => wk_routines_for_user($pdo, (int) $selectedUserId, false),
         'habits' => list_habit_definitions($pdo, true),
+        // Custom habits are the user-created ones (the seeded challenge habits have
+        // no creator). The panel lists these before offering to create another.
+        'customHabits' => array_values(array_filter(
+            list_habit_definitions($pdo, true),
+            static fn (array $habit): bool => (int) ($habit['created_by'] ?? 0) > 0
+        )),
+        'penaltiesEnabled' => penalties_enabled($pdo),
+        'canEditSheet' => $canEditSheet,
         'config' => $config,
     ]);
 }

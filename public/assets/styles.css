@@ -18510,3 +18510,313 @@ body.theme-active-dark .team-mission {
         padding-bottom: calc(clamp(1.2rem, 3vw, 1.6rem) + 84px + env(safe-area-inset-bottom, 0px));
     }
 }
+
+/* =========================================================================
+   Round 2 fixes
+   ========================================================================= */
+
+/* #1 Achievements: the widget head used to give the action a full-width row,
+   which pushed "View All" onto a second line. Keep title left / action right. */
+@media (max-width: 700px) {
+    .dashboard-achievements-panel .panel-head {
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 0.5rem;
+    }
+
+    .dashboard-achievements-panel .panel-head > div:first-child {
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .dashboard-achievements-panel .panel-head > div:first-child .eyebrow,
+    .dashboard-achievements-panel .panel-head > div:first-child .muted {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .dashboard-achievements-summary {
+        width: auto;
+        flex: 0 0 auto;
+        margin-left: auto;
+        justify-content: flex-end;
+        flex-wrap: nowrap;
+    }
+
+    .dashboard-achievements-summary .btn,
+    .dashboard-achievements-summary .dashboard-panel-action {
+        margin-left: 0;
+        white-space: nowrap;
+    }
+
+    /* The three counters stacked into one column; keep them on one row and
+       shrink the type instead, so nothing is hidden. */
+    .achievement-summary-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.4rem;
+    }
+
+    .achievement-summary-card {
+        justify-items: center;
+        padding: 0.6rem 0.4rem;
+        text-align: center;
+    }
+
+    .achievement-summary-card strong {
+        font-size: 1.05rem;
+    }
+
+    .achievement-summary-card small {
+        font-size: 0.6rem;
+        letter-spacing: 0;
+        line-height: 1.15;
+    }
+}
+
+@media (max-width: 360px) {
+    .achievement-summary-card {
+        padding: 0.5rem 0.25rem;
+    }
+
+    .achievement-summary-card small {
+        font-size: 0.55rem;
+    }
+}
+
+/* #2 Mobile edit layout: direct drag never actually worked on touch (the page is
+   blurred behind an overlay there), so showing a grab handle was a lie. Drop the
+   handle and the grab affordance below 900px — reordering happens in the
+   "Visible widgets" list, which does work. Desktop keeps direct drag. */
+@media (max-width: 899px) {
+    body.layout-edit-active .dashboard-layout > [data-dashboard-widget]::before {
+        content: none !important;
+        display: none !important;
+    }
+
+    body.layout-edit-active .dashboard-layout > [data-dashboard-widget] {
+        cursor: default;
+        touch-action: auto;
+        outline-style: solid;
+        outline-width: 1px;
+        outline-color: color-mix(in srgb, var(--primary) 30%, transparent);
+    }
+
+    /* The compact edit bar replaced the old edit-mode panel, so it needs the same
+       "stays on top of the blurred page" treatment its predecessor had. */
+    body.layout-edit-active .dashboard-layout-editbar {
+        position: sticky;
+        top: calc(0.5rem + env(safe-area-inset-top));
+        z-index: var(--z-edit-panel, 10060);
+    }
+
+    body.layout-edit-active .screen > .dashboard-layout-editbar {
+        filter: none !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        visibility: visible !important;
+    }
+
+    body.layout-edit-active .dashboard-layout-editbar .dashboard-layout-editor-list {
+        max-height: 46vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Touch targets for the reorder arrows. */
+    body.layout-edit-active .dashboard-layout-mobile-actions .btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
+
+/* A widget unchecked in the editor is previewed as dimmed rather than removed,
+   so the layout does not jump around while you are still deciding. */
+body.layout-edit-active .dashboard-layout > [data-dashboard-widget].is-layout-hidden {
+    display: block !important;
+    opacity: 0.32;
+    filter: grayscale(1);
+}
+body.layout-edit-active .dashboard-layout > [data-dashboard-widget][hidden] {
+    display: block;
+}
+
+/* #4 Habits in the training sheet.
+
+   The list was a 4-column grid capped at max-height:32px while each row is 36px
+   tall, so rows were silently clipped (measured: scrollHeight 36 > clientHeight
+   32). Nothing is hidden now: the list scrolls inside its cell instead. */
+.sheet-habits-list {
+    max-height: 68px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+@media (max-width: 899px) {
+    /* One habit per row so a long name never breaks the whole row, with a real
+       44px touch target on the checkbox. */
+    .sheet-habits-list {
+        display: grid;
+        grid-template-columns: 1fr;
+        width: 100%;
+        max-width: 220px;
+        max-height: 148px;
+        margin-left: 0;
+        gap: 0.15rem;
+    }
+
+    .training-sheet-table .sheet-habits-list .check {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        min-height: 44px;
+        padding: 0.25rem 0.35rem;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        line-height: 1.2;
+    }
+
+    .training-sheet-table .sheet-habits-list .check input[type="checkbox"] {
+        flex: 0 0 auto;
+        width: 20px;
+        height: 20px;
+    }
+
+    .training-sheet-table .sheet-habits-cell > .week-help-wrap {
+        display: block;
+        width: auto;
+        margin-bottom: 0.35rem;
+    }
+
+    .training-sheet-table .sheet-custom-habit-toggle {
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
+
+/* #5 Custom habit panel: existing habits first, creation as a second step. */
+.week-custom-habit {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+    padding: 0.6rem;
+    border: 1px solid var(--line, rgba(127, 127, 127, 0.2));
+    border-radius: 14px;
+    background: var(--surface, #fff);
+    min-width: 220px;
+}
+
+.custom-habit-section-label {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    opacity: 0.65;
+}
+
+.custom-habit-existing.is-collapsed {
+    display: none;
+}
+
+.custom-habit-list {
+    list-style: none;
+    margin: 0.35rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.25rem;
+    max-height: 168px;
+    overflow-y: auto;
+}
+
+.custom-habit-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.custom-habit-pick {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 40px;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--line, rgba(127, 127, 127, 0.2));
+    border-radius: 10px;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.custom-habit-pick span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.custom-habit-pick:hover { background: var(--surface-2, rgba(127, 127, 127, 0.08)); }
+.custom-habit-pick.is-active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
+
+.custom-habit-remove {
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: inherit;
+    opacity: 0.55;
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+.custom-habit-remove:hover { opacity: 1; background: var(--surface-2, rgba(127, 127, 127, 0.1)); }
+
+.custom-habit-create-trigger {
+    justify-self: start;
+}
+
+.custom-habit-empty {
+    margin: 0.35rem 0 0;
+}
+
+/* The custom-habit panel stays in flow inside its cell (the row simply grows).
+   An absolutely positioned popover ended up painted underneath the next row's
+   habit labels, because each table row is its own stacking context. */
+.training-sheet-table .week-custom-habit {
+    width: 250px;
+    max-width: min(250px, 78vw);
+    margin-top: 0.4rem;
+}
+
+/* #6 Read-only training sheet (viewing someone else's data). */
+.sheet-fieldset {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.sheet-readonly-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.75rem;
+    padding: 0.6rem 0.85rem;
+    border-radius: 12px;
+    background: var(--surface-2, rgba(127, 127, 127, 0.12));
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.sheet-fieldset[disabled] .training-sheet-table input,
+.sheet-fieldset[disabled] .training-sheet-table select,
+.sheet-fieldset[disabled] .training-sheet-table textarea {
+    opacity: 0.75;
+    cursor: not-allowed;
+}

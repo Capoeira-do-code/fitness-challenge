@@ -271,8 +271,17 @@
         }, true);
     };
 
-    const entryForm = document.querySelector('[data-testid="entry-form"]');
-    if (entryForm) {
+    // The entry form used to be wired up once, at script load. After an in-page
+    // (pjax) navigation to ?page=entries the form is a brand new DOM node, so none
+    // of these listeners existed - which is why "Add workout" did nothing when you
+    // reached the page through the app instead of a hard reload. It is an init
+    // function now, run on every page hydration.
+    const initEntryForm = () => {
+        const entryForm = document.querySelector('[data-testid="entry-form"]');
+        if (!entryForm || entryForm.dataset.entryFormReady === '1') {
+            return;
+        }
+        entryForm.dataset.entryFormReady = '1';
         const stepsInput = entryForm.querySelector('[name="steps"]');
         const kmInput = entryForm.querySelector('[name="distance_km"]');
         const missingReason = entryForm.querySelector('[data-reason="missing"]');
@@ -640,7 +649,7 @@
         updateWorkoutIndexes();
         updateWorkoutPanelState();
         updateReasons();
-    }
+    };
 
     const proofPhotoForm = document.querySelector('[data-proof-photo-form]');
     if (proofPhotoForm) {
@@ -5047,6 +5056,7 @@
         safeInit(initProfilePdfExport);
         safeInit(initTeamLayoutEditor);
         safeInit(initNotificationsAjax);
+        safeInit(initEntryForm);
         clearMobileViewTransitionState(true);
         queueMobileViewTransitionStateCleanup(350, true);
     };
@@ -5320,8 +5330,13 @@
         dragEl = null; placeholder = null; active = false;
     };
 
+    // Direct drag is a desktop affordance only: on phones the edit view blurs the
+    // page behind an overlay, so a card can never actually be grabbed there.
+    // Touch reordering happens in the "Visible widgets" list instead.
+    const dragSupported = () => !window.matchMedia('(max-width: 899px)').matches;
+
     layout.addEventListener('pointerdown', (e) => {
-        if (!isEditing() || e.button !== 0) return;
+        if (!isEditing() || e.button !== 0 || !dragSupported()) return;
         const el = e.target instanceof Element ? e.target.closest('[data-dashboard-widget]') : null;
         if (!el) return;
         // Let real controls inside a widget keep working.
@@ -5492,4 +5507,97 @@
     }
 
     document.addEventListener('pjax:loaded', function () { init(document); });
+})();
+
+/* Live preview for the dashboard "Visible widgets" list (#2).
+
+   On touch the list is the only way to reorder, so reflect its order (and the
+   show/hide checkboxes) on the real cards immediately - otherwise you reorder
+   blind and only find out what you did after saving. */
+(function () {
+    'use strict';
+
+    function sync(list) {
+        var layout = document.querySelector('.dashboard-layout');
+        if (!layout) {
+            return;
+        }
+        var items = list.querySelectorAll('[data-dashboard-layout-item]');
+        items.forEach(function (item, index) {
+            var box = item.querySelector('input[type="checkbox"][name="dashboard_widgets[]"]');
+            if (!box) {
+                return;
+            }
+            var card = layout.querySelector('[data-dashboard-widget="' + box.value + '"]');
+            if (!card) {
+                return;
+            }
+            card.style.order = String(index + 1);
+            card.hidden = !box.checked;
+            card.classList.toggle('is-layout-hidden', !box.checked);
+        });
+    }
+
+    function init() {
+        document.querySelectorAll('[data-dashboard-layout-list]').forEach(function (list) {
+            if (list.dataset.livePreviewReady === '1') {
+                return;
+            }
+            list.dataset.livePreviewReady = '1';
+            list.addEventListener('click', function (event) {
+                if (event.target.closest('[data-layout-move]')) {
+                    window.setTimeout(function () { sync(list); }, 0);
+                }
+            });
+            list.addEventListener('change', function () { sync(list); });
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+    document.addEventListener('pjax:loaded', init);
+})();
+
+/* Double-submit guard (#10).
+
+   A slow save (photo upload, Notion push) left the submit button live, so a second
+   impatient tap posted the form twice. Lock the button for the duration of the
+   navigation; re-enable on bfcache restore so a Back button never lands the user on
+   a dead form. */
+(function () {
+    'use strict';
+
+    document.addEventListener('submit', function (event) {
+        var form = event.target;
+        if (!(form instanceof HTMLFormElement) || form.hasAttribute('data-allow-multi-submit')) {
+            return;
+        }
+        if (form.dataset.submitting === '1') {
+            event.preventDefault();
+            return;
+        }
+        form.dataset.submitting = '1';
+        window.setTimeout(function () {
+            form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function (btn) {
+                btn.disabled = true;
+                btn.classList.add('is-busy');
+            });
+        }, 0);
+    }, true);
+
+    var release = function () {
+        document.querySelectorAll('form[data-submitting="1"]').forEach(function (form) {
+            form.dataset.submitting = '';
+            form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function (btn) {
+                btn.disabled = false;
+                btn.classList.remove('is-busy');
+            });
+        });
+    };
+
+    window.addEventListener('pageshow', release);
+    document.addEventListener('fc:afterPageSwap', release);
 })();
