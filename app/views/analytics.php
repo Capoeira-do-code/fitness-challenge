@@ -312,7 +312,7 @@ ob_start();
 <a class="btn btn-ghost btn-topbar" href="<?= e($analyticsCancelEditLayoutUrl) ?>"><?= e(t('common.back')) ?></a>
 <?php else: ?>
 <details class="topbar-context analytics-view-menu">
-    <summary class="btn btn-ghost btn-topbar">View</summary>
+    <summary class="btn btn-ghost btn-topbar"><?= e(t('common.view')) ?></summary>
     <div class="topbar-context-panel analytics-view-panel">
         <form method="get" action="/" class="analytics-controls analytics-filter-panel analytics-filter-panel-topbar" data-analytics-filter>
             <input type="hidden" name="page" value="analytics">

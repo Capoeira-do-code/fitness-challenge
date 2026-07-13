@@ -462,11 +462,47 @@
             if (customField instanceof HTMLElement) {
                 customField.hidden = !isCustom;
             }
-            if (!isCustom && customInput instanceof HTMLInputElement) {
-                customInput.value = '';
+            if (select instanceof HTMLSelectElement) {
+                select.required = isWorkoutEnabled();
+            }
+            if (customInput instanceof HTMLInputElement) {
+                customInput.required = isWorkoutEnabled() && isCustom;
+                if (!isCustom) {
+                    customInput.value = '';
+                }
             }
             buildWorkoutSubfields(row);
             updateWorkoutIndexes();
+        };
+
+        const focusWorkoutRow = (row) => {
+            if (!(row instanceof HTMLElement)) {
+                return;
+            }
+            const select = row.querySelector('[data-workout-select]');
+            if (!(select instanceof HTMLSelectElement)) {
+                return;
+            }
+
+            // A new account only has "None" and "Other". Sending the user to a
+            // two-option select in that state adds a pointless step and made the
+            // workout flow look broken. Open the custom field immediately; once a
+            // type or routine exists, keep the regular picker behaviour.
+            const hasPresetChoice = Array.from(select.options).some((option) => {
+                const value = String(option.value || '').trim();
+                return value !== '' && value !== '__custom__';
+            });
+            const customOption = Array.from(select.options).find((option) => option.value === '__custom__');
+            if (!hasPresetChoice && customOption) {
+                select.value = '__custom__';
+                updateWorkoutRowVisibility(row);
+                const customInput = row.querySelector('[data-workout-custom-input]');
+                if (customInput instanceof HTMLInputElement) {
+                    customInput.focus();
+                    return;
+                }
+            }
+            select.focus();
         };
 
         const ensureOneWorkoutRow = () => {
@@ -607,6 +643,7 @@
         }
 
         workoutAddButton?.addEventListener('click', () => {
+            const wasEnabled = isWorkoutEnabled();
             if (workoutEnabled instanceof HTMLInputElement && !workoutEnabled.checked) {
                 workoutEnabled.checked = true;
                 updateWorkoutPanelState();
@@ -614,16 +651,20 @@
             if (!(workoutRows instanceof HTMLElement) || !(workoutTemplate instanceof HTMLTemplateElement)) {
                 return;
             }
-            const fragment = workoutTemplate.content.cloneNode(true);
-            workoutRows.appendChild(fragment);
-            const rows = getWorkoutRows();
-            const lastRow = rows[rows.length - 1];
-            if (lastRow instanceof HTMLElement) {
-                updateWorkoutRowVisibility(lastRow);
-                const select = lastRow.querySelector('[data-workout-select]');
-                if (select instanceof HTMLSelectElement) {
-                    select.focus();
-                }
+            ensureOneWorkoutRow();
+            let rows = getWorkoutRows();
+
+            // The disabled form already keeps one template row ready. The first
+            // tap should reveal and use it, not create a second empty workout.
+            if (wasEnabled) {
+                const fragment = workoutTemplate.content.cloneNode(true);
+                workoutRows.appendChild(fragment);
+                rows = getWorkoutRows();
+            }
+            const rowToFocus = rows[rows.length - 1];
+            if (rowToFocus instanceof HTMLElement) {
+                updateWorkoutRowVisibility(rowToFocus);
+                focusWorkoutRow(rowToFocus);
             }
             updateWorkoutRemoveButtons();
             updateWorkoutIndexes();
@@ -5084,7 +5125,7 @@
     // was left hanging open when you clicked away or pressed Escape. They all behave
     // like the kebab menus now: one open at a time, closed by an outside click or Escape.
     const MENU_SELECTOR = 'details[data-kebab-menu], details.notif-menu, details.user-menu,'
-        + ' details.topbar-add-menu, details.topbar-context';
+        + ' details.add-menu, details.topbar-context';
 
     const closeAllKebabs = (except) => {
         document.querySelectorAll(MENU_SELECTOR).forEach((el) => {
@@ -5118,7 +5159,17 @@
     });
 
     document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') closeAllKebabs(null);
+        if (event.key !== 'Escape') return;
+        const openMenus = Array.from(document.querySelectorAll(MENU_SELECTOR))
+            .filter((menu) => menu instanceof HTMLDetailsElement && menu.open);
+        if (openMenus.length === 0) return;
+        event.preventDefault();
+        const menuToFocus = openMenus[openMenus.length - 1];
+        closeAllKebabs(null);
+        const summary = menuToFocus.querySelector(':scope > summary');
+        if (summary instanceof HTMLElement) {
+            try { summary.focus({ preventScroll: true }); } catch (_) { summary.focus(); }
+        }
     });
 
     // ---- App modal / drawer ----

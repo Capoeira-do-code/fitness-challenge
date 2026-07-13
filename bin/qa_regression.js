@@ -110,27 +110,29 @@ const saveRowAs = async (page, userId) => {
     });
     await page.waitForTimeout(1500);
     const rowsBefore = await page.locator('[data-workout-row]').count();
+    const workoutWasEnabled = await page.locator('[data-workout-enabled]').evaluate((el) => el.checked);
     await page.locator('[data-workout-add]').click();
     await page.waitForTimeout(300);
     const rowsAfter = await page.locator('[data-workout-row]').count();
     const panelVisible = await page.locator('[data-workout-panel]').evaluate((el) => !el.hidden);
-    check('Add workout adds a row after in-app navigation', rowsAfter === rowsBefore + 1 && panelVisible,
-        `rows ${rowsBefore} -> ${rowsAfter}, panel visible: ${panelVisible}`);
+    const expectedRows = workoutWasEnabled ? rowsBefore + 1 : Math.max(1, rowsBefore);
+    check('Add workout activates one usable row after in-app navigation', rowsAfter === expectedRows && panelVisible,
+        `enabled: ${workoutWasEnabled}, rows ${rowsBefore} -> ${rowsAfter}, panel visible: ${panelVisible}`);
 
     const select = page.locator('[data-workout-row] [data-workout-select]').first();
     const options = await select.locator('option').evaluateAll((els) =>
         els.map((el) => el.value).filter((v) => v && v !== '__custom__' && !v.startsWith('routine:')));
     if (options.length > 0) {
         await select.selectOption(options[0]);
-        await page.fill('input[name="steps"]', '8123');
-        await page.locator('[data-testid="entry-form"] button[type=submit]').first().click();
-        await page.waitForLoadState('networkidle');
-        const saved = await page.locator('.flash').first().textContent().catch(() => '');
-        check('Workout entry saves and reports back', /saved|guardad|salvat/i.test(saved || ''), (saved || '').trim().slice(0, 50));
     } else {
-        // A silently skipped check reads as a pass, which is worse than a failure.
-        skip('Workout entry saves and reports back', 'no workout types exist in this database');
+        await select.selectOption('__custom__');
+        await page.locator('[data-workout-row] [data-workout-custom-input]').first().fill('QA mobility workout');
     }
+    await page.fill('input[name="steps"]', '8123');
+    await page.locator('[data-testid="entry-form"] button[type=submit]').first().click();
+    await page.waitForLoadState('networkidle');
+    const saved = await page.locator('.flash').first().textContent().catch(() => '');
+    check('Workout entry saves and reports back', /saved|guardad|salvat/i.test(saved || ''), (saved || '').trim().slice(0, 50));
 
     /* ---------------- Double submit ------------------------------------------- */
     let posts = 0;
@@ -305,6 +307,212 @@ const saveRowAs = async (page, userId) => {
         }
     }
     check('No horizontal overflow on any page (320-1024px)', overflow.length === 0, overflow.join(', '));
+
+    const touchContext = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+    });
+    const touchPage = await touchContext.newPage();
+    await login(touchPage, ADMIN);
+    await touchPage.goto(`${BASE}/?page=entries&mode=data`);
+    await touchPage.waitForLoadState('networkidle');
+    const undersizedTouchTargets = await touchPage.evaluate(() => {
+        const selectors = [
+            '.brand',
+            '.entry-day-arrow',
+            'input[name="steps"]',
+            'input[name="distance_km"]',
+            '[data-workout-add]',
+            '[data-testid="entry-form"] button[type="submit"]',
+        ];
+        return selectors.flatMap((selector) => [...document.querySelectorAll(selector)]
+            .filter((el) => {
+                const rect = el.getBoundingClientRect();
+                const style = getComputedStyle(el);
+                return style.display !== 'none' && style.visibility !== 'hidden'
+                    && (rect.width < 44 || rect.height < 44);
+            })
+            .map((el) => {
+                const rect = el.getBoundingClientRect();
+                return `${selector}:${Math.round(rect.width)}x${Math.round(rect.height)}`;
+            }));
+    });
+    check('Primary mobile controls meet the 44px touch target', undersizedTouchTargets.length === 0,
+        undersizedTouchTargets.join(', '));
+
+    await touchPage.setViewportSize({ width: 320, height: 568 });
+    await touchPage.goto(`${BASE}/?page=dashboard`);
+    await touchPage.waitForLoadState('networkidle');
+    const narrowChrome = await touchPage.evaluate(() => {
+        const title = document.querySelector('.topbar-page-title');
+        const clippedLabels = [...document.querySelectorAll('.bottom-nav .nav-label')]
+            .filter((label) => label.scrollWidth > label.clientWidth + 1)
+            .map((label) => label.textContent.trim());
+        return {
+            clippedLabels,
+            titleClipped: title ? title.scrollWidth > title.clientWidth + 1 : true,
+            labels: [...document.querySelectorAll('.bottom-nav .nav-label')]
+                .map((label) => label.textContent.trim()),
+        };
+    });
+    check('Bottom navigation labels fit at 320px', narrowChrome.clippedLabels.length === 0,
+        narrowChrome.clippedLabels.join(', '));
+    check('Dashboard title fits in the 320px topbar', !narrowChrome.titleClipped,
+        narrowChrome.titleClipped ? 'title is clipped' : '');
+    check('Spanish mobile navigation is fully localized',
+        narrowChrome.labels.join('|') === 'Inicio|Entreno|Galería|Analítica|Equipo',
+        narrowChrome.labels.join('|'));
+
+    const userMenu = touchPage.locator('details.user-menu');
+    await touchPage.locator('details.user-menu > summary').click();
+    const mobileUserMenu = await touchPage.evaluate(() => {
+        const details = document.querySelector('details.user-menu');
+        const summary = details?.querySelector(':scope > summary');
+        const panel = details?.querySelector('.user-menu-panel');
+        const nav = document.querySelector('.bottom-nav');
+        if (!details || !summary || !panel || !nav) return { valid: false, label: '', minItem: 0 };
+        const panelRect = panel.getBoundingClientRect();
+        const navRect = nav.getBoundingClientRect();
+        const itemHeights = [...panel.querySelectorAll('a, button')]
+            .map((item) => item.getBoundingClientRect().height);
+        return {
+            valid: details.open && panelRect.left >= 0 && panelRect.right <= innerWidth
+                && panelRect.bottom <= navRect.top && Math.min(...itemHeights) >= 44,
+            label: summary.getAttribute('aria-label') || '',
+            minItem: Math.round(Math.min(...itemHeights)),
+        };
+    });
+    check('Mobile user menu fits above navigation with accessible controls',
+        mobileUserMenu.valid && mobileUserMenu.label.startsWith('Menú de usuario'),
+        `label: ${mobileUserMenu.label}, min item: ${mobileUserMenu.minItem}px`);
+    await touchPage.locator('.topbar-page-title').click();
+    check('Mobile user menu closes on outside tap', await userMenu.getAttribute('open') === null);
+
+    const quickMenu = touchPage.locator('details.bottom-nav-plus');
+    await touchPage.locator('details.bottom-nav-plus > summary').click();
+    const mobileQuickMenu = await touchPage.evaluate(() => {
+        const panel = document.querySelector('.bottom-nav-plus-menu');
+        const nav = document.querySelector('.bottom-nav');
+        if (!panel || !nav) return { valid: false, width: 0, minItem: 0 };
+        const panelRect = panel.getBoundingClientRect();
+        const navRect = nav.getBoundingClientRect();
+        const itemHeights = [...panel.querySelectorAll('a')]
+            .map((item) => item.getBoundingClientRect().height);
+        return {
+            valid: panelRect.width >= innerWidth - 22 && panelRect.left >= 0
+                && panelRect.right <= innerWidth && panelRect.bottom <= navRect.top
+                && Math.min(...itemHeights) >= 44,
+            width: Math.round(panelRect.width),
+            minItem: Math.round(Math.min(...itemHeights)),
+        };
+    });
+    check('Mobile quick actions form a full-width touch sheet', mobileQuickMenu.valid,
+        `width: ${mobileQuickMenu.width}px, min item: ${mobileQuickMenu.minItem}px`);
+
+    await touchPage.locator('details.dashboard-mobile-controls > summary').click();
+    const exclusiveMenus = await touchPage.evaluate(() => ({
+        quickClosed: !document.querySelector('details.bottom-nav-plus')?.open,
+        contextOpen: Boolean(document.querySelector('details.dashboard-mobile-controls')?.open),
+    }));
+    await touchPage.keyboard.press('Escape');
+    const escapeMenuState = await touchPage.evaluate(() => ({
+        closed: !document.querySelector('details.dashboard-mobile-controls')?.open,
+        focusReturned: document.activeElement === document.querySelector('details.dashboard-mobile-controls > summary'),
+    }));
+    check('Mobile menus are exclusive and Escape restores trigger focus',
+        exclusiveMenus.quickClosed && exclusiveMenus.contextOpen
+            && escapeMenuState.closed && escapeMenuState.focusReturned);
+
+    await touchPage.setViewportSize({ width: 320, height: 480 });
+    const contextMenuProblems = [];
+    for (const target of ['analytics', 'entries&mode=calendar', 'gallery&gallery_view=recent']) {
+        await touchPage.goto(`${BASE}/?page=${target}`);
+        await touchPage.waitForLoadState('networkidle');
+        const contextDetails = touchPage.locator('details.topbar-context');
+        if (await contextDetails.count() !== 1) {
+            contextMenuProblems.push(`${target}:missing`);
+            continue;
+        }
+        await touchPage.locator('details.topbar-context > summary').click();
+        const menuState = await touchPage.evaluate(() => {
+            const panel = document.querySelector('.topbar-context-panel');
+            const nav = document.querySelector('.bottom-nav');
+            if (!panel || !nav) return { valid: false, minItem: 0 };
+            const rect = panel.getBoundingClientRect();
+            const navRect = nav.getBoundingClientRect();
+            const controls = [...panel.querySelectorAll('a, button, input:not([type="hidden"]), select')]
+                .filter((control) => getComputedStyle(control).display !== 'none')
+                .map((control) => control.getBoundingClientRect().height);
+            return {
+                valid: rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0
+                    && rect.bottom <= navRect.top && (controls.length === 0 || Math.min(...controls) >= 44),
+                minItem: controls.length === 0 ? 0 : Math.round(Math.min(...controls)),
+            };
+        });
+        if (!menuState.valid) contextMenuProblems.push(`${target}:${menuState.minItem}px`);
+        await touchPage.keyboard.press('Escape');
+    }
+    check('Context menus fit a short 320px phone with 44px targets',
+        contextMenuProblems.length === 0, contextMenuProblems.join(', '));
+    await touchPage.setViewportSize({ width: 320, height: 568 });
+
+    await touchPage.goto(`${BASE}/?page=entries&mode=data`);
+    await touchPage.waitForLoadState('networkidle');
+    const entryDateLayout = await touchPage.evaluate(() => {
+        const dateInput = document.querySelector('.entry-date-nav input');
+        const timeInput = document.querySelector('.entry-time-inline input');
+        const arrows = [...document.querySelectorAll('.entry-day-arrow')];
+        if (!dateInput || !timeInput || arrows.length !== 2) {
+            return { valid: false, dateWidth: 0 };
+        }
+        const dateRect = dateInput.getBoundingClientRect();
+        const timeRect = timeInput.getBoundingClientRect();
+        const overlaps = (a, b) => a.left < b.right && a.right > b.left
+            && a.top < b.bottom && a.bottom > b.top;
+        return {
+            valid: arrows.every((arrow) => {
+                const rect = arrow.getBoundingClientRect();
+                return !overlaps(rect, dateRect) && !overlaps(rect, timeRect);
+            }) && dateRect.width >= 100,
+            dateWidth: Math.round(dateRect.width),
+        };
+    });
+    check('Entry date controls stay legible at 320px', entryDateLayout.valid,
+        `date width: ${entryDateLayout.dateWidth}px`);
+
+    const currentTouchTheme = await touchPage.locator('body').getAttribute('data-theme');
+    if (currentTouchTheme !== 'dark') {
+        await touchPage.locator('.user-menu > summary').click();
+        await touchPage.locator('[data-theme-toggle]').click();
+        await touchPage.waitForTimeout(250);
+    }
+    const brandContrast = await touchPage.evaluate(() => {
+        const mark = document.querySelector('.brand-mark');
+        if (!mark) return 0;
+        const parse = (value) => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+        const luminance = (rgb) => {
+            const values = rgb.map((value) => {
+                const channel = value / 255;
+                return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+            });
+            return (0.2126 * values[0]) + (0.7152 * values[1]) + (0.0722 * values[2]);
+        };
+        const style = getComputedStyle(mark);
+        const foreground = luminance(parse(style.color));
+        const background = luminance(parse(style.backgroundColor));
+        return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+    });
+    check('Dark-mode brand mark keeps readable contrast', brandContrast >= 4.5,
+        `contrast ${brandContrast.toFixed(2)}:1`);
+
+    await touchPage.goto(`${BASE}/?page=notifications`);
+    await touchPage.waitForLoadState('networkidle');
+    const visibleNotificationHeadings = await touchPage.evaluate(() => [...document.querySelectorAll('h1')]
+        .filter((heading) => getComputedStyle(heading).display !== 'none')
+        .map((heading) => heading.textContent.trim()));
+    check('Notifications has one visible mobile page heading', visibleNotificationHeadings.length === 1,
+        visibleNotificationHeadings.join(' | '));
+    await touchContext.close();
     check('No uncaught JS errors', jsErrors.length === 0, jsErrors.slice(0, 2).join(' | '));
 
     await browser.close();

@@ -20058,3 +20058,260 @@ body {
         order: -1;
     }
 }
+
+/* ==========================================================================
+   Touch ergonomics
+
+   Compact desktop controls were still only 35-40px tall on phones. Keep the
+   dense desktop layout, but give touch users a reliable 44px hit area without
+   inflating checkboxes/radios inside their already-clickable labels.
+   ========================================================================== */
+@media (max-width: 899px) and (pointer: coarse) {
+    .btn,
+    button:not([hidden]),
+    input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    select,
+    textarea {
+        min-height: 44px;
+    }
+
+    .brand {
+        min-width: 44px;
+        min-height: 44px;
+        justify-content: center;
+    }
+
+    .entry-day-arrow,
+    .to-top-btn {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+    }
+
+    .entry-data-form .check,
+    .remember-me-check {
+        min-height: 44px;
+    }
+}
+
+/* ==========================================================================
+   Narrow-phone and dark-mode polish
+   ========================================================================== */
+body[data-theme="dark"] .brand-mark,
+body.theme-active-dark .brand-mark {
+    color: #102028 !important;
+    background: #edf7f4 !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    body[data-theme="auto"] .brand-mark {
+        color: #102028 !important;
+        background: #edf7f4 !important;
+    }
+}
+
+@media (max-width: 899px) {
+    /* The same title was already present in the fixed topbar. Keep only the
+       unread counter in the page panel so mobile users do not read it twice. */
+    .notifications-header > div,
+    .notifications-header h1,
+    .notifications-header .eyebrow {
+        display: none;
+    }
+
+    .notifications-header {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 360px) {
+    .topbar {
+        gap: 0.4rem;
+        padding-inline: 0.5rem;
+    }
+
+    .topbar-actions {
+        gap: 0.3rem;
+    }
+
+    .dashboard-controls-trigger {
+        gap: 0.25rem;
+        padding-inline: 0.45rem;
+        font-size: 0.78rem;
+    }
+
+    /* A date, two 44px day controls and the time field cannot remain legible
+       in one 288px row. Stack the time field and give the date the full row. */
+    .entry-date-time-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .entry-date-nav {
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
+    }
+
+    .entry-date-nav input {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    nav.bottom-nav.mobile-liquid-nav .liquid-nav-item,
+    nav.bottom-nav.mobile-liquid-nav .liquid-nav-item .nav-label {
+        font-size: 9px !important;
+        letter-spacing: -0.1px !important;
+    }
+
+    nav.bottom-nav.mobile-liquid-nav .liquid-nav-item .nav-label {
+        text-overflow: clip;
+    }
+}
+
+/* ==========================================================================
+   Mobile menu sheets
+   ========================================================================== */
+.quick-entry-action {
+    display: flex !important;
+    align-items: center;
+    gap: 0.65rem;
+    text-align: left;
+}
+
+.quick-entry-icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    color: var(--primary-dark);
+    background: rgba(20, 163, 139, 0.13);
+}
+
+.quick-entry-icon svg {
+    width: 21px;
+    height: 21px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+@media (max-width: 520px) {
+    .topbar-context[open] .topbar-context-panel,
+    .topbar .user-menu[open] .user-menu-panel {
+        background: rgba(255, 255, 255, 0.96) !important;
+    }
+
+    .topbar-context .topbar-context-panel {
+        max-height: calc(100dvh - 170px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+    }
+
+    .topbar .user-menu-panel {
+        position: fixed;
+        top: calc(74px + env(safe-area-inset-top));
+        left: max(8px, env(safe-area-inset-left));
+        right: max(8px, env(safe-area-inset-right));
+        width: auto;
+        min-width: 0;
+        max-height: calc(100dvh - 170px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 4px;
+        padding: 10px;
+        border-radius: 24px;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+    }
+
+    .topbar .user-menu-panel > * {
+        min-width: 0;
+        margin: 0;
+    }
+
+    .topbar .user-menu-panel .user-menu-level {
+        grid-column: 1 / -1;
+        min-height: 54px;
+    }
+
+    .topbar .user-menu-panel a,
+    .topbar .user-menu-panel .user-menu-theme-toggle {
+        min-height: 48px;
+        padding: 0.65rem 0.72rem;
+        border: 0;
+        border-radius: 14px;
+        line-height: 1.18;
+    }
+
+    .topbar .user-menu-panel a[aria-current="page"] {
+        color: var(--primary-dark);
+        background: rgba(20, 163, 139, 0.13);
+        box-shadow: inset 0 0 0 1px rgba(20, 163, 139, 0.18);
+    }
+
+    nav.bottom-nav.mobile-liquid-nav .bottom-nav-plus-menu,
+    nav.bottom-nav.mobile-liquid-nav .add-menu-panel {
+        position: absolute !important;
+        left: auto !important;
+        right: 0 !important;
+        bottom: calc(100% + 10px) !important;
+        width: calc(100vw - 20px) !important;
+        max-width: calc(100vw - 20px) !important;
+        min-width: 0 !important;
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        padding: 10px !important;
+    }
+
+    nav.bottom-nav.mobile-liquid-nav .bottom-nav-plus-menu a,
+    nav.bottom-nav.mobile-liquid-nav .add-menu-panel a {
+        min-width: 0;
+        min-height: 54px;
+        padding: 0.55rem 0.65rem !important;
+        white-space: normal !important;
+    }
+
+    nav.bottom-nav.mobile-liquid-nav .liquid-nav-plus[open] .bottom-nav-plus-icon {
+        transform: rotate(45deg) !important;
+    }
+}
+
+@media (max-width: 899px) {
+    .topbar-context-panel .analytics-period-segments a,
+    .topbar-context-panel .calendar-view-segments a {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+}
+
+body[data-theme="dark"] .quick-entry-icon,
+body.theme-active-dark .quick-entry-icon {
+    color: #74e3d0;
+    background: rgba(45, 212, 191, 0.14);
+}
+
+body[data-theme="dark"] .topbar .user-menu-panel a[aria-current="page"],
+body.theme-active-dark .topbar .user-menu-panel a[aria-current="page"] {
+    color: #8debdc;
+    background: rgba(45, 212, 191, 0.15);
+    box-shadow: inset 0 0 0 1px rgba(94, 234, 212, 0.18);
+}
+
+@media (max-width: 520px) {
+    body[data-theme="dark"] .topbar-context[open] .topbar-context-panel,
+    body[data-theme="dark"] .topbar .user-menu[open] .user-menu-panel,
+    body.theme-active-dark .topbar-context[open] .topbar-context-panel,
+    body.theme-active-dark .topbar .user-menu[open] .user-menu-panel {
+        color: #f8fafc;
+        background: rgba(15, 23, 42, 0.96) !important;
+    }
+}

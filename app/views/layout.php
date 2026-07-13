@@ -75,6 +75,11 @@ $renderMobileIcon = static function (string $icon): string {
         default => '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>',
     };
 };
+$renderQuickActionIcon = static function (string $mode): string {
+    return $mode === 'meal'
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v7M3.5 3v5a2.5 2.5 0 0 0 5 0V3M6 10v11M15 3v18M15 3c3 1.5 4 4.5 4 8h-4"/></svg>'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8v8M3 10v4M18 8v8M21 10v4M6 12h12"/></svg>';
+};
 ?>
 <!doctype html>
 <html lang="<?= e($activeLocale) ?>">
@@ -210,12 +215,12 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                     <span class="sr-only"><?= e(t('entries.title')) ?></span>
                 </summary>
                 <div class="add-menu-panel">
-                    <a class="btn btn-ghost" href="/?page=entries&mode=data"><?= e(t('entries.quick_data')) ?></a>
-                    <a class="btn btn-ghost" href="/?page=entries&mode=meal"><?= e(t('entries.quick_meal')) ?></a>
+                    <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><?= e(t('entries.quick_data')) ?></span></a>
+                    <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=meal"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
                 </div>
             </details>
             <details class="user-menu">
-                <summary class="user-menu-trigger">
+                <summary class="user-menu-trigger" aria-label="<?= e(t('nav.user_menu', ['name' => (string) $currentUser['display_name']])) ?>">
                     <?php $currentUserAvatarUrl = avatar_url($currentUser); ?>
                     <?php $currentUserFrameClass = cosmetic_frame_class($currentUser); ?>
                     <?php if ($currentUserAvatarUrl !== ''): ?>
@@ -227,7 +232,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                         <span class="user-menu-unread-badge" data-notification-badge aria-label="<?= e(t('nav.notifications')) ?>: <?= (int) $unreadNotificationsCount ?>"><?= (int) min(99, $unreadNotificationsCount) ?></span>
                     <?php endif; ?>
                 </summary>
-                <div class="user-menu-panel">
+                <nav class="user-menu-panel" aria-label="<?= e(t('nav.user_menu', ['name' => (string) $currentUser['display_name']])) ?>">
                     <?php if (function_exists('xp_user_level_info')): $menuXp = xp_user_level_info($GLOBALS['pdo'], (int) $currentUser['id']); ?>
                         <a class="user-menu-level" href="/?page=profile" title="<?= e(t('xp.level') . ' ' . (int) $menuXp['level']) ?>">
                             <span class="profile-level-badge"><?= e(t('xp.level_short')) ?> <?= (int) $menuXp['level'] ?></span>
@@ -237,22 +242,22 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                             </span>
                         </a>
                     <?php endif; ?>
-                    <a href="/?page=profile"><?= e(t('nav.profile')) ?></a>
-                    <a href="/?page=workouts"><?= e(t('nav.workouts')) ?></a>
-                    <a href="/?page=friends"><?= e(t('nav.friends')) ?></a>
-                    <a href="/?page=duels"><?= e(t('nav.duels')) ?></a>
-                    <a href="/?page=settings"><?= e(t('nav.settings')) ?></a>
+                    <a href="/?page=profile"<?= $currentPage === 'profile' ? ' aria-current="page"' : '' ?>><?= e(t('nav.profile')) ?></a>
+                    <a href="/?page=workouts"<?= $currentPage === 'workouts' ? ' aria-current="page"' : '' ?>><?= e(t('nav.workouts')) ?></a>
+                    <a href="/?page=friends"<?= $currentPage === 'friends' ? ' aria-current="page"' : '' ?>><?= e(t('nav.friends')) ?></a>
+                    <a href="/?page=duels"<?= $currentPage === 'duels' ? ' aria-current="page"' : '' ?>><?= e(t('nav.duels')) ?></a>
+                    <a href="/?page=settings"<?= $currentPage === 'settings' ? ' aria-current="page"' : '' ?>><?= e(t('nav.settings')) ?></a>
                     <button type="button" class="user-menu-theme-toggle" data-theme-toggle data-csrf="<?= e(csrf_token()) ?>" data-label-dark="<?= e(t('nav.theme_toggle_dark')) ?>" data-label-light="<?= e(t('nav.theme_toggle_light')) ?>" aria-pressed="<?= $themeMode === 'dark' ? 'true' : 'false' ?>">
                         <span class="theme-toggle-icon theme-toggle-icon-sun" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg></span>
                         <span class="theme-toggle-icon theme-toggle-icon-moon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></span>
                         <span class="theme-toggle-label" data-theme-toggle-label><?= e($themeMode === 'dark' ? t('nav.theme_toggle_light') : t('nav.theme_toggle_dark')) ?></span>
                     </button>
                     <?php if (is_admin($currentUser)): ?>
-                        <a href="/?page=admin"><?= e(t('nav.admin')) ?></a>
+                        <a href="/?page=admin"<?= $currentPage === 'admin' ? ' aria-current="page"' : '' ?>><?= e(t('nav.admin')) ?></a>
                     <?php endif; ?>
                     <a href="/?page=settings&view=avatar#avatar"><?= e(t('settings.change_avatar')) ?></a>
                     <a href="/?page=logout"><?= e(t('nav.logout')) ?></a>
-                </div>
+                </nav>
             </details>
         </div>
     </header>
@@ -282,8 +287,8 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     <details class="floating-log add-menu">
         <summary class="add-menu-trigger" aria-label="<?= e(t('entries.title')) ?>">+</summary>
         <div class="add-menu-panel floating-add-panel">
-            <a class="btn btn-ghost" href="/?page=entries&mode=data"><?= e(t('entries.quick_data')) ?></a>
-            <a class="btn btn-ghost" href="/?page=entries&mode=meal"><?= e(t('entries.quick_meal')) ?></a>
+            <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><?= e(t('entries.quick_data')) ?></span></a>
+            <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=meal"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
         </div>
     </details>
     <nav class="bottom-nav mobile-liquid-nav" aria-label="Primary mobile">
@@ -302,8 +307,8 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                 <span><?= e(t('common.create')) ?></span>
             </summary>
             <div class="add-menu-panel bottom-nav-plus-menu">
-                <a class="btn btn-ghost" href="/?page=entries&mode=data"><?= e(t('entries.quick_data')) ?></a>
-                <a class="btn btn-ghost" href="/?page=entries&mode=meal"><?= e(t('entries.quick_meal')) ?></a>
+                <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><?= e(t('entries.quick_data')) ?></span></a>
+                <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=meal"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
             </div>
         </details>
     </nav>
