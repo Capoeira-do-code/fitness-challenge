@@ -5078,16 +5078,23 @@
    Reusable UI controllers: kebab menu + app modal/drawer (#components)
    ========================================================================== */
 (() => {
-    // ---- Kebab menus (native <details data-kebab-menu>) ----
+    // ---- Dismissible menus (native <details>) ----
+    // A native <details> stays open until you click its own summary again, so every
+    // dropdown in the topbar - the bell, the + menu, the user menu, the view panel -
+    // was left hanging open when you clicked away or pressed Escape. They all behave
+    // like the kebab menus now: one open at a time, closed by an outside click or Escape.
+    const MENU_SELECTOR = 'details[data-kebab-menu], details.notif-menu, details.user-menu,'
+        + ' details.topbar-add-menu, details.topbar-context';
+
     const closeAllKebabs = (except) => {
-        document.querySelectorAll('details[data-kebab-menu][open]').forEach((el) => {
-            if (el !== except) el.removeAttribute('open');
+        document.querySelectorAll(MENU_SELECTOR).forEach((el) => {
+            if (el !== except && el.open) el.removeAttribute('open');
         });
     };
 
     document.addEventListener('toggle', (event) => {
         const el = event.target;
-        if (el instanceof HTMLDetailsElement && el.matches('details[data-kebab-menu]') && el.open) {
+        if (el instanceof HTMLDetailsElement && el.matches(MENU_SELECTOR) && el.open) {
             closeAllKebabs(el);
         }
     }, true);
@@ -5096,13 +5103,16 @@
     document.addEventListener('click', (event) => {
         const target = event.target;
         if (!(target instanceof Element)) return;
-        const insideMenu = target.closest('details[data-kebab-menu]');
+        const insideMenu = target.closest(MENU_SELECTOR);
         if (!insideMenu) {
             closeAllKebabs(null);
             return;
         }
-        // Clicking an actual item closes the menu (after its own handler runs)
-        if (target.closest('.kebab-menu-item')) {
+        // Clicking an actual item closes the menu (after its own handler runs). Controls
+        // that live inside a menu to be used there - selects, checkboxes, the layout
+        // editor - must not close it under the user's fingers.
+        const item = target.closest('.kebab-menu-item, .notif-menu-item a, .notif-menu-all, .user-menu-panel a, .add-menu-panel a');
+        if (item) {
             setTimeout(() => insideMenu.removeAttribute('open'), 0);
         }
     });
