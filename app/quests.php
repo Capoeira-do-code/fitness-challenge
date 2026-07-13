@@ -773,6 +773,14 @@ function cosmetics_catalogue(): array
         'legend' => ['label' => 'cosmetic.legend', 'require' => 'level', 'value' => 40],
         'iron' => ['label' => 'cosmetic.iron', 'require' => 'badge', 'value' => 'workouts_10'],
         'streaker' => ['label' => 'cosmetic.streaker', 'require' => 'badge', 'value' => 'streak_7'],
+        // Second wave. Same rule as the first: every frame hangs off progress that was
+        // already earned somewhere else, so cosmetics never become a thing to farm.
+        'mint' => ['label' => 'cosmetic.mint', 'require' => 'level', 'value' => 5],
+        'ocean' => ['label' => 'cosmetic.ocean', 'require' => 'level', 'value' => 12],
+        'sunset' => ['label' => 'cosmetic.sunset', 'require' => 'level', 'value' => 20],
+        'carbon' => ['label' => 'cosmetic.carbon', 'require' => 'level', 'value' => 32],
+        'titan' => ['label' => 'cosmetic.titan', 'require' => 'badge', 'value' => 'workouts_50'],
+        'marathon' => ['label' => 'cosmetic.marathon', 'require' => 'badge', 'value' => 'streak_30'],
     ];
 }
 

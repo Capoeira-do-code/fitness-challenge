@@ -936,7 +936,14 @@ $profileSetupRows = [
                     <?php endforeach; ?>
                 </div>
             <?php else: ?>
-                <p class="muted"><?= e(t('goals.empty')) ?></p>
+                <div class="empty-state profile-goals-empty">
+                    <span class="empty-state-icon"><?= activity_icon_svg('target') ?></span>
+                    <p><strong><?= e(t('goals.empty')) ?></strong></p>
+                    <p class="muted small"><?= e(t('goals.empty_hint')) ?></p>
+                    <?php if ($canEditProfile): ?>
+                        <a class="btn btn-primary small" href="<?= e($profileUrl('goals', ['goal_new' => 1])) ?>" data-spa-link><?= e(t('profile.new_goal')) ?></a>
+                    <?php endif; ?>
+                </div>
             <?php endif; ?>
         </article>
 
@@ -952,9 +959,7 @@ $profileSetupRows = [
                     <h2><?= e($isOwnProfile ? t('friends.your_friends') : t('profile.friends_of', ['name' => (string) ($profileUser['display_name'] ?? '')])) ?></h2>
                 </div>
                 <div class="inline-actions-mini">
-                    <?php if ($isOwnProfile): ?>
-                        <a class="btn btn-ghost small" href="/?page=friends" data-spa-link><?= e(t('profile.manage_friends')) ?></a>
-                    <?php else: ?>
+                    <?php if (!$isOwnProfile): ?>
                         <span class="profile-friend-status compact"><?= e($profileFriendStatusText) ?></span>
                     <?php endif; ?>
                 </div>
@@ -1008,36 +1013,6 @@ $profileSetupRows = [
                 <?php endif; ?>
             <?php endif; ?>
 
-            <?php if ($isOwnProfile): ?>
-                <div class="profile-friend-add">
-                    <div>
-                        <strong><?= e(t('friends.add_title')) ?></strong>
-                        <?php if ($profileFriendOutgoingCount > 0): ?>
-                            <small><?= e(t('profile.friend_outgoing_count', ['count' => $profileFriendOutgoingCount])) ?></small>
-                        <?php else: ?>
-                            <small><?= e(t('profile.friend_add_hint')) ?></small>
-                        <?php endif; ?>
-                    </div>
-                    <?php if ($profileFriendAddable === []): ?>
-                        <p class="muted small"><?= e(t('friends.add_none')) ?></p>
-                    <?php else: ?>
-                        <form method="post" action="<?= e($profileUrl()) ?>" class="profile-friends-add-form">
-                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                            <input type="hidden" name="action" value="friend_request">
-                            <label>
-                                <span class="sr-only"><?= e(t('friends.add_title')) ?></span>
-                                <select name="user_id" required>
-                                    <option value=""><?= e(t('friends.add_placeholder')) ?></option>
-                                    <?php foreach ($profileFriendAddable as $candidate): ?>
-                                        <option value="<?= (int) ($candidate['id'] ?? 0) ?>"><?= e((string) ($candidate['display_name'] ?? $candidate['username'] ?? '')) ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </label>
-                            <button class="btn btn-primary small" type="submit"><?= e(t('friends.send_request')) ?></button>
-                        </form>
-                    <?php endif; ?>
-                </div>
-            <?php endif; ?>
         </article>
 
         <article class="panel profile-home-card" data-profile-block="achievements" style="<?= e($profileBlockStyle('achievements')) ?>">

@@ -19718,3 +19718,117 @@ body {
     -webkit-backdrop-filter: none;
     margin-bottom: 0.6rem;
 }
+
+/* Six more frames. Same construction as the first wave: a gradient ring around the
+   card surface, so they sit on any background and adapt to the theme. */
+.avatar-frame.frame-mint {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #34d399, #a7f3d0, #10b981);
+}
+
+.avatar-frame.frame-ocean {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #0ea5e9, #38bdf8, #1d4ed8);
+}
+
+.avatar-frame.frame-sunset {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #fb7185, #fb923c, #fde047);
+}
+
+.avatar-frame.frame-carbon {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #111827, #4b5563, #0f172a);
+}
+
+.avatar-frame.frame-titan {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #94a3b8, #e2e8f0, #64748b, #cbd5e1);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.avatar-frame.frame-marathon {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #f43f5e, #f59e0b, #22c55e, #3b82f6);
+    box-shadow: 0 6px 18px rgba(244, 63, 94, 0.25);
+}
+
+/* ==========================================================================
+   Training sheet on mobile: reclaim the screen
+
+   Measured before: the sheet header alone was 262px and every row 206px, inside a
+   main that keeps 11.5px of padding on each side of an already-cramped table.
+   ========================================================================== */
+@media (max-width: 899px) {
+    /* The sheet is a horizontal scroller; let it use the full width of the device
+       rather than sitting inside the page gutter. */
+    .training-sheet-wrap {
+        margin-inline: -11.5px;
+        padding-inline: 0;
+        width: calc(100% + 23px);
+    }
+
+    /* Controls stack into a compact two-column grid instead of a tall column. */
+    .training-sheet-head,
+    .panel-head.training-sheet-head {
+        gap: 0.4rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .training-sheet-controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.35rem 0.5rem;
+        align-items: end;
+    }
+
+    .training-sheet-controls > label {
+        display: grid;
+        gap: 0.15rem;
+        min-width: 0;
+        font-size: 0.72rem;
+    }
+
+    .training-sheet-view-tabs {
+        grid-column: 1 / -1;
+    }
+
+    .training-sheet-head .btn,
+    .training-sheet-controls select,
+    .training-sheet-controls input {
+        min-height: 40px;
+    }
+
+    /* Rows were as tall as their tallest cell, and that cell was the habits list. */
+    .sheet-habits-list {
+        max-height: 96px;
+    }
+
+    .training-sheet-table .sheet-day-cell {
+        padding: 0.35rem 0.45rem;
+    }
+
+    .training-sheet-table td,
+    .training-sheet-table th {
+        padding-block: 0.3rem;
+    }
+}
+
+/* The week/scope tabs sit between the two selects in the DOM, so a two-column grid
+   was forced into three rows (select / tabs / week). Send the tabs to the end and the
+   two selects share a row. */
+@media (max-width: 899px) {
+    .training-sheet-controls > label {
+        order: 1;
+    }
+
+    .training-sheet-view-tabs {
+        order: 2;
+    }
+
+    .training-sheet-controls select,
+    .training-sheet-controls input[type="week"] {
+        height: 40px;
+        min-height: 40px;
+    }
+}
