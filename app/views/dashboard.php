@@ -244,40 +244,9 @@ ob_start();
             </select>
         </label>
         </form>
-        <a class="btn btn-primary btn-block dashboard-mobile-edit-entry edit-layout-button" href="<?= e($dashboardEditLayoutUrl) ?>"><?= e(t('dashboard.edit_layout')) ?></a>
-        <details class="inline-context-sub dashboard-layout-context">
-            <summary class="btn btn-ghost btn-block dashboard-edit-layout-trigger"><?= e(t('dashboard.edit_layout')) ?></summary>
-            <form method="post" action="/?page=dashboard" class="team-layout-editor dashboard-layout-editor" data-dashboard-layout-editor>
-                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="save_dashboard_layout">
-                <input type="hidden" name="dashboard_view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
-                <input type="hidden" name="redirect_user_id" value="<?= (int) ($selectedUser['id'] ?? 0) ?>">
-                <div class="team-layout-editor-head">
-                    <strong><?= e(t('dashboard.edit_layout')) ?></strong>
-                    <small><?= e(t('dashboard.layout_hint')) ?></small>
-                </div>
-                <div class="team-layout-editor-list dashboard-layout-editor-list" data-dashboard-layout-list>
-                    <?php foreach ($dashboardEditorWidgets as $idx => $widget): ?>
-                        <div class="team-layout-editor-item dashboard-layout-editor-item" draggable="true" data-dashboard-layout-item>
-                            <span class="team-layout-drag-handle" aria-hidden="true">::</span>
-                            <label class="dashboard-layout-toggle">
-                                <input type="checkbox" name="dashboard_widgets[]" value="<?= e($widget) ?>" <?= in_array($widget, $visibleWidgets, true) ? 'checked' : '' ?>>
-                                <span><?= e(t('dashboard.widget_' . $widget)) ?></span>
-                            </label>
-                            <div class="dashboard-layout-mobile-actions">
-                                <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="Move up">&uarr;</button>
-                                <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="Move down">&darr;</button>
-                            </div>
-                            <input type="hidden" name="dashboard_order[<?= e($widget) ?>]" value="<?= e((string) ($idx + 1)) ?>" data-dashboard-order-input>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-                <div class="team-layout-editor-actions">
-                    <button class="btn btn-ghost small" type="submit" name="reset_dashboard_layout" value="1"><?= e(t('dashboard.reset_layout')) ?></button>
-                    <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
-                </div>
-            </form>
-        </details>
+        <?php // One entry point on every size: edit mode itself is the editor - you drag the
+              // real cards on desktop, and use the visible-widgets list on touch. ?>
+        <a class="btn btn-primary btn-block edit-layout-button" href="<?= e($dashboardEditLayoutUrl) ?>"><?= e(t('dashboard.edit_layout')) ?></a>
     </div>
 </details>
 <?php endif; ?>

@@ -93,7 +93,7 @@ function initialize_database(PDO $pdo, array $config): void
             calorie_consumed_max REAL,
             motivation_quote TEXT DEFAULT "",
             profile_tagline TEXT,
-            theme_mode TEXT NOT NULL DEFAULT "auto",
+            theme_mode TEXT NOT NULL DEFAULT "light",
             locale TEXT NOT NULL DEFAULT "en",
             avatar_path TEXT,
             primary_goal_type TEXT NOT NULL DEFAULT "steps",
@@ -703,7 +703,7 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'primary_goal_value', 'REAL');
     ensure_column($pdo, 'users', 'primary_goals_spec', 'TEXT');
     ensure_column($pdo, 'users', 'profile_tagline', 'TEXT');
-    ensure_column($pdo, 'users', 'theme_mode', 'TEXT NOT NULL DEFAULT "auto"');
+    ensure_column($pdo, 'users', 'theme_mode', 'TEXT NOT NULL DEFAULT "light"');
     ensure_column($pdo, 'users', 'dashboard_view', 'TEXT NOT NULL DEFAULT "current_week"');
     ensure_column($pdo, 'users', 'dashboard_layout_json', 'TEXT');
     ensure_column($pdo, 'users', 'dashboard_widgets_known', 'TEXT');
@@ -833,6 +833,7 @@ function ensure_column(PDO $pdo, string $table, string $column, string $definiti
 function ensure_indexes(PDO $pdo): void
 {
     deduplicate_achievement_awards($pdo);
+    repair_zero_data_achievement_awards($pdo);
     deduplicate_achievement_suppressions($pdo);
     deduplicate_approval_requests($pdo);
 
@@ -1796,4 +1797,40 @@ function db_profile_snapshot(): array
         'query_time_ms' => round((float) ($profile['query_time_ms'] ?? 0.0), 2),
         'slow_queries' => array_values((array) ($profile['slow_queries'] ?? [])),
     ];
+}
+
+/**
+ * One-off repair: revoke achievements that were unlocked with no data behind them.
+ *
+ * While penalties are disabled every week's penalty is zero, and two achievements
+ * ("no strike week", "two clean weeks") gated on nothing but that. So an account that
+ * had never logged a single day unlocked both on its first page load, banked 100 XP and
+ * started at level 4. The gate is fixed in evaluate_automatic_achievements(); this
+ * removes the awards (and the XP they minted) that already landed.
+ *
+ * Only touches users with zero daily_logs, so a real unlock is never revoked. Idempotent:
+ * once the rows are gone there is nothing left to delete, and the fixed gate will not
+ * re-grant them.
+ */
+function repair_zero_data_achievement_awards(PDO $pdo): void
+{
+    $rows = db_fetch_all(
+        $pdo,
+        "SELECT aw.id AS award_id, aw.user_id, aw.achievement_id, a.trigger_key
+         FROM achievement_awards aw
+         JOIN achievements a ON a.id = aw.achievement_id
+         WHERE a.trigger_key IN ('no_strike_week', 'clean_two_weeks')
+           AND NOT EXISTS (SELECT 1 FROM daily_logs dl WHERE dl.user_id = aw.user_id)"
+    );
+
+    foreach ($rows as $row) {
+        db_execute($pdo, 'DELETE FROM achievement_awards WHERE id = :id', [':id' => (int) $row['award_id']]);
+        // xp_award() keys these as "achievement:<id>", so the ledger row goes with it and
+        // the unique_key is free again if the user later earns it for real.
+        db_execute(
+            $pdo,
+            'DELETE FROM xp_events WHERE user_id = :u AND unique_key = :k',
+            [':u' => (int) $row['user_id'], ':k' => 'achievement:' . (int) $row['achievement_id']]
+        );
+    }
 }

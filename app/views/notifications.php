@@ -50,27 +50,37 @@ $checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 
                     <?php
                     $isRead = (int) ($notification['is_read'] ?? 0) === 1;
                     $createdAt = trim((string) ($notification['created_at'] ?? ''));
-                    $createdDate = $createdAt !== '' ? format_date_eu(substr($createdAt, 0, 10)) : '';
-                    $createdTime = strlen($createdAt) >= 16 ? substr($createdAt, 11, 5) : '';
+                    $kind = (string) ($notification['kind'] ?? 'info');
+                    // Only a few kinds carry a pending decision. The rest are news, and news
+                    // gets no call to action - nothing on the card can then be mistaken for a
+                    // button that accepts something.
+                    $pendingCta = notification_pending_action($kind);
                     ?>
-                    <article class="notification-card<?= $isRead ? ' is-read' : ' is-unread' ?>">
+                    <article class="notification-card kind-<?= e($kind) ?><?= $isRead ? ' is-read' : ' is-unread' ?><?= $pendingCta !== null ? ' needs-action' : '' ?>">
+                        <span class="notification-icon" aria-hidden="true"><?= activity_icon_svg(notification_icon($kind)) ?></span>
                         <a class="notification-main" href="/?page=notifications&amp;open_notification_id=<?= (int) ($notification['id'] ?? 0) ?>">
                             <strong><?= e((string) ($notification['title'] ?? '')) ?></strong>
                             <p><?= e((string) ($notification['message'] ?? '')) ?></p>
-                            <?php if ($createdDate !== ''): ?>
-                                <small class="notification-time muted"><?= e(trim($createdDate . ' ' . $createdTime)) ?></small>
+                            <?php if ($createdAt !== ''): ?>
+                                <small class="notification-time muted"><?= e(human_time_ago($createdAt)) ?></small>
                             <?php endif; ?>
                         </a>
                         <div class="notification-actions">
+                            <?php if ($pendingCta !== null): ?>
+                                <?php // Sends you to the page where the decision is actually made. The
+                                      // notification carries no duel/request id, so an accept button
+                                      // here would have nothing to act on. ?>
+                                <a class="btn btn-primary small notification-cta" href="/?page=notifications&amp;open_notification_id=<?= (int) ($notification['id'] ?? 0) ?>"><?= e(t($pendingCta)) ?></a>
+                            <?php endif; ?>
                             <?php if (!$isRead): ?>
-                                <form method="post" action="/?page=notifications" data-notification-form>
+                                <form method="post" action="/?page=notifications" data-notification-form data-allow-multi-submit>
                                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                                     <input type="hidden" name="action" value="mark_notification_read">
                                     <input type="hidden" name="notification_id" value="<?= (int) ($notification['id'] ?? 0) ?>">
                                     <button class="notification-action-btn notification-action-read" type="submit" aria-label="<?= e(t('notifications.mark_read')) ?>" title="<?= e(t('notifications.mark_read')) ?>"><?= $checkIcon ?></button>
                                 </form>
                             <?php endif; ?>
-                            <form method="post" action="/?page=notifications" data-notification-form>
+                            <form method="post" action="/?page=notifications" data-notification-form data-allow-multi-submit>
                                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                                 <input type="hidden" name="action" value="delete_notification">
                                 <input type="hidden" name="notification_id" value="<?= (int) ($notification['id'] ?? 0) ?>">

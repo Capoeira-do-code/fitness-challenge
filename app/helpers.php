@@ -993,3 +993,32 @@ function activity_icon_svg(string $name): string
 
     return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' . $p . '</svg>';
 }
+
+/**
+ * Notifications split in two: a handful carry a pending decision, the rest are news.
+ * Returning null means "nothing to do here" - which is what stops an informational
+ * notification from showing anything that could be mistaken for an accept button.
+ */
+function notification_pending_action(string $kind): ?string
+{
+    return match ($kind) {
+        'friend_request' => 'notifications.cta_friend_request',
+        'duel_challenge' => 'notifications.cta_duel',
+        'comp_invite' => 'notifications.cta_competition',
+        'strike_review_request' => 'notifications.cta_review',
+        default => null,
+    };
+}
+
+/** Icon per notification kind, so the list is scannable without reading every title. */
+function notification_icon(string $kind): string
+{
+    return match ($kind) {
+        'friend_request', 'friend_accepted' => 'users',
+        'duel_challenge', 'duel_accepted', 'duel_finished' => 'sword',
+        'comp_invite', 'comp_accepted', 'comp_finished', 'squad_added' => 'trophy',
+        'team_goal_completed' => 'target',
+        'strike_review_request', 'strike_review_resolved' => 'check',
+        default => 'spark',
+    };
+}

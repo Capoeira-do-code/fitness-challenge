@@ -6352,16 +6352,40 @@ function user_max_weekly_log_days(PDO $pdo, int $userId): int
     return $byWeek !== [] ? max($byWeek) : 0;
 }
 
+/**
+ * A "clean" week has to be earned, not merely un-penalised.
+ *
+ * The old test was `penalty <= 0`, but penalty is hard-zeroed for every week while the
+ * penalties feature is off (challenge.php), so every week of the challenge counted -
+ * including the weeks before the account existed. A brand-new user therefore unlocked
+ * "no strike week" + "two clean weeks" (50 XP each) on their first page load and
+ * landed on level 4 with no data at all.
+ */
 function user_clean_week_count(array $metric): int
 {
     $count = 0;
     foreach ((array) ($metric['weekly'] ?? []) as $week) {
-        if ((string) ($week['status'] ?? '') === 'complete' && (float) ($week['penalty'] ?? 0) <= 0.0) {
-            $count++;
+        if ((string) ($week['status'] ?? '') !== 'complete') {
+            continue;
         }
+        if ((int) ($week['total_failures'] ?? 0) !== 0) {
+            continue;
+        }
+        if (!week_has_activity($week)) {
+            continue;
+        }
+        $count++;
     }
 
     return $count;
+}
+
+/** Did the user actually do anything that week? An empty week is not an achievement. */
+function week_has_activity(array $week): bool
+{
+    return (int) ($week['steps'] ?? 0) > 0
+        || (float) ($week['distance_km'] ?? $week['km'] ?? 0) > 0
+        || (int) ($week['workouts'] ?? $week['workout_success'] ?? 0) > 0;
 }
 
 function user_perfect_week_count(array $metric): int
@@ -6598,6 +6622,12 @@ function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $t
     foreach ($metricsByUser as $metric) {
         $userId = (int) $metric['user']['id'];
 
+        // Nothing logged, nothing earned. This kills the whole class of "zero-data
+        // unlock" bugs, not just the two that were found.
+        if (db_fetch_one($pdo, 'SELECT id FROM daily_logs WHERE user_id = :user_id LIMIT 1', [':user_id' => $userId]) === null) {
+            continue;
+        }
+
         if (isset($byTrigger['first_log']) && db_fetch_one($pdo, 'SELECT id FROM daily_logs WHERE user_id = :user_id LIMIT 1', [':user_id' => $userId]) !== null) {
             award_achievement($pdo, (int) $byTrigger['first_log']['id'], $userId, null, null, 'Automatic unlock.');
         }
@@ -6614,7 +6644,9 @@ function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $t
         }
         if (isset($byTrigger['no_strike_week'])) {
             foreach (($metric['weekly'] ?? []) as $week) {
-                if (($week['status'] ?? '') === 'complete' && (int) ($week['penalty'] ?? 0) === 0) {
+                if (($week['status'] ?? '') === 'complete'
+                    && (int) ($week['total_failures'] ?? 0) === 0
+                    && week_has_activity($week)) {
                     award_achievement($pdo, (int) $byTrigger['no_strike_week']['id'], $userId, null, null, 'Automatic unlock.');
                     break;
                 }

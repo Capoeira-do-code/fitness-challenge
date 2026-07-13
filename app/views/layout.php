@@ -47,9 +47,11 @@ $mobileNavItems = [
 ];
 $topbarControls = $topbarControls ?? '';
 $unreadNotificationsCount = $loggedIn ? user_unread_notifications_count($GLOBALS['pdo'], (int) ($currentUser['id'] ?? 0)) : 0;
-$themeMode = $loggedIn ? (string) ($currentUser['theme_mode'] ?? 'auto') : 'auto';
+// Light is the default look: "auto" handed people a dark app because their OS said so,
+// which is not what this product is.
+$themeMode = $loggedIn ? (string) ($currentUser['theme_mode'] ?? 'light') : 'light';
 if (!in_array($themeMode, ['auto', 'light', 'dark'], true)) {
-    $themeMode = 'auto';
+    $themeMode = 'light';
 }
 $penaltiesEnabledForLayout = $loggedIn ? penalties_enabled($GLOBALS['pdo']) : false;
 $isNavActive = static function (string $pageKey) use ($currentPage): bool {
@@ -156,12 +158,52 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
 
         <div class="topbar-actions">
             <?= $topbarControls ?>
-            <a class="topbar-notif-btn" href="/?page=notifications" aria-label="<?= e(t('nav.notifications')) ?><?= $unreadNotificationsCount > 0 ? ' (' . (int) $unreadNotificationsCount . ')' : '' ?>">
+            <?php // Desktop: a preview dropdown, so a notification can be read (and dismissed)
+                  // without leaving the page. Mobile keeps the plain link - a dropdown that
+                  // tall on a phone is just a worse version of the page it links to. ?>
+            <a class="topbar-notif-btn topbar-notif-link" href="/?page=notifications" aria-label="<?= e(t('nav.notifications')) ?><?= $unreadNotificationsCount > 0 ? ' (' . (int) $unreadNotificationsCount . ')' : '' ?>">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                 <?php if ($unreadNotificationsCount > 0): ?>
                     <span class="topbar-notif-badge" data-notification-badge><?= (int) min(99, $unreadNotificationsCount) ?></span>
                 <?php endif; ?>
             </a>
+            <?php $notifPreview = $loggedIn ? user_notifications($GLOBALS['pdo'], (int) ($currentUser['id'] ?? 0), 5, true) : []; ?>
+            <details class="notif-menu">
+                <summary class="topbar-notif-btn" aria-label="<?= e(t('nav.notifications')) ?><?= $unreadNotificationsCount > 0 ? ' (' . (int) $unreadNotificationsCount . ')' : '' ?>">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    <?php if ($unreadNotificationsCount > 0): ?>
+                        <span class="topbar-notif-badge" data-notification-badge><?= (int) min(99, $unreadNotificationsCount) ?></span>
+                    <?php endif; ?>
+                </summary>
+                <div class="notif-menu-panel">
+                    <div class="notif-menu-head">
+                        <strong><?= e(t('nav.notifications')) ?></strong>
+                        <?php if ($unreadNotificationsCount > 0): ?>
+                            <form method="post" action="/?page=notifications" class="inline-form">
+                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="mark_all_notifications_read">
+                                <button class="btn btn-ghost small" type="submit"><?= e(t('notifications.mark_all_read')) ?></button>
+                            </form>
+                        <?php endif; ?>
+                    </div>
+                    <?php if ($notifPreview === []): ?>
+                        <p class="muted small notif-menu-empty"><?= e(t('notifications.empty')) ?></p>
+                    <?php else: ?>
+                        <ul class="notif-menu-list">
+                            <?php foreach ($notifPreview as $notifItem): ?>
+                                <li class="notif-menu-item<?= empty($notifItem['read_at']) ? ' is-unread' : '' ?>">
+                                    <a href="/?page=notifications&open_notification_id=<?= (int) $notifItem['id'] ?>">
+                                        <strong><?= e((string) ($notifItem['title'] ?? '')) ?></strong>
+                                        <span><?= e((string) ($notifItem['message'] ?? '')) ?></span>
+                                        <small class="muted"><?= e(human_time_ago((string) ($notifItem['created_at'] ?? ''))) ?></small>
+                                    </a>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                    <a class="btn btn-ghost small btn-block notif-menu-all" href="/?page=notifications"><?= e(t('common.view_all')) ?></a>
+                </div>
+            </details>
             <details class="add-menu topbar-add-menu">
                 <summary class="btn btn-primary add-menu-trigger btn-add" data-add-button aria-label="<?= e(t('entries.title')) ?>">
                     <span aria-hidden="true">+</span>
@@ -200,7 +242,6 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                     <a href="/?page=friends"><?= e(t('nav.friends')) ?></a>
                     <a href="/?page=duels"><?= e(t('nav.duels')) ?></a>
                     <a href="/?page=competitions"><?= e(t('nav.competitions')) ?></a>
-                    <a href="/?page=notifications"><?= e(t('nav.notifications')) ?><?php if ($unreadNotificationsCount > 0): ?> (<?= (int) $unreadNotificationsCount ?>)<?php endif; ?></a>
                     <a href="/?page=settings"><?= e(t('nav.settings')) ?></a>
                     <button type="button" class="user-menu-theme-toggle" data-theme-toggle data-csrf="<?= e(csrf_token()) ?>" data-label-dark="<?= e(t('nav.theme_toggle_dark')) ?>" data-label-light="<?= e(t('nav.theme_toggle_light')) ?>" aria-pressed="<?= $themeMode === 'dark' ? 'true' : 'false' ?>">
                         <span class="theme-toggle-icon theme-toggle-icon-sun" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg></span>
