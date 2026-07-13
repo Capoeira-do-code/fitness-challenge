@@ -19419,3 +19419,40 @@ img.is-broken {
     text-overflow: ellipsis;
     overflow-wrap: anywhere;
 }
+
+/* iOS Safari zooms the whole page in when you focus a field smaller than 16px, and
+   it never zooms back out. Every input in the app was 12.5-14.4px, so tapping any
+   field on a phone left the layout stranded mid-zoom.
+
+   Scoped to coarse pointers: real touch devices get 16px fields (where they should
+   be bigger anyway), while a narrow desktop window keeps the dense look. */
+@media (max-width: 899px) and (pointer: coarse) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    select,
+    textarea {
+        font-size: 16px;
+    }
+}
+
+/* On a phone 100vh counts the browser chrome that is not actually on screen, so
+   full-height shells overflow and drawers/panels run past the visible area. Use the
+   dynamic/small viewport units where they exist, keeping the vh value as fallback
+   (declaration order does the work: older engines ignore what they cannot parse). */
+body {
+    min-height: 100svh;
+}
+
+.auth-wrap {
+    min-height: calc(100svh - 3rem);
+}
+
+.auth-wrap-login {
+    min-height: calc(100svh - 1.75rem);
+}
+
+@media (max-width: 899px) {
+    .app-modal-card,
+    .app-drawer-card {
+        max-height: calc(100dvh - 2rem);
+    }
+}

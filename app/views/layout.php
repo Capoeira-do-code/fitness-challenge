@@ -78,7 +78,11 @@ $renderMobileIcon = static function (string $icon): string {
 <html lang="<?= e($activeLocale) ?>">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <?php // Pinch-zoom stays available: blocking it fails WCAG 1.4.4 and makes the dense
+          // training table unusable for anyone who needs to zoom. The reason people disable
+          // it - iOS auto-zooming on focus - is fixed properly instead, by giving touch
+          // devices 16px fields. ?>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title><?= e($pageTitle) ?></title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
