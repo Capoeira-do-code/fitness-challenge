@@ -241,7 +241,6 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                     <a href="/?page=workouts"><?= e(t('nav.workouts')) ?></a>
                     <a href="/?page=friends"><?= e(t('nav.friends')) ?></a>
                     <a href="/?page=duels"><?= e(t('nav.duels')) ?></a>
-                    <a href="/?page=competitions"><?= e(t('nav.competitions')) ?></a>
                     <a href="/?page=settings"><?= e(t('nav.settings')) ?></a>
                     <button type="button" class="user-menu-theme-toggle" data-theme-toggle data-csrf="<?= e(csrf_token()) ?>" data-label-dark="<?= e(t('nav.theme_toggle_dark')) ?>" data-label-light="<?= e(t('nav.theme_toggle_light')) ?>" aria-pressed="<?= $themeMode === 'dark' ? 'true' : 'false' ?>">
                         <span class="theme-toggle-icon theme-toggle-icon-sun" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg></span>

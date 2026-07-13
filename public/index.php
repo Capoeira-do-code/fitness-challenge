@@ -4949,6 +4949,40 @@ if ($page === 'team') {
         $currentUser['active_team_id'] = (int) $team['id'];
     }
 
+    // A saved team layout only stores the widgets that were visible when it was saved, so
+    // a widget added afterwards (competitions) would never appear. Append the ones this
+    // user has never been offered, and remember the full set so a deliberately hidden
+    // widget is not resurrected on the next release.
+    $teamAllWidgets = team_layout_widgets_default();
+    $teamKnown = json_decode((string) ($currentUser['team_widgets_known'] ?? ''), true);
+    $teamKnown = is_array($teamKnown) ? array_map('strval', $teamKnown) : [];
+    $teamUnknown = array_values(array_diff($teamAllWidgets, $teamKnown));
+    if ($teamUnknown !== []) {
+        $savedTeamLayout = json_decode((string) ($currentUser['team_layout_json'] ?? ''), true);
+        if (is_array($savedTeamLayout) && $savedTeamLayout !== []) {
+            $mergedTeamLayout = array_values(array_unique(array_merge(
+                array_map('strval', $savedTeamLayout),
+                array_values(array_diff($teamUnknown, $savedTeamLayout))
+            )));
+            db_execute(
+                $pdo,
+                'UPDATE users SET team_layout_json = :layout, team_widgets_known = :known WHERE id = :id',
+                [
+                    ':layout' => json_encode($mergedTeamLayout, JSON_UNESCAPED_SLASHES),
+                    ':known' => json_encode($teamAllWidgets, JSON_UNESCAPED_SLASHES),
+                    ':id' => (int) $currentUser['id'],
+                ]
+            );
+            $currentUser['team_layout_json'] = json_encode($mergedTeamLayout, JSON_UNESCAPED_SLASHES);
+        } else {
+            db_execute(
+                $pdo,
+                'UPDATE users SET team_widgets_known = :known WHERE id = :id',
+                [':known' => json_encode($teamAllWidgets, JSON_UNESCAPED_SLASHES), ':id' => (int) $currentUser['id']]
+            );
+        }
+    }
+
     $settings = challenge_settings($pdo, $config);
     if (!challenge_is_active($settings)) {
         render_view('team_inactive', [
@@ -5701,7 +5735,27 @@ if ($page === 'team') {
         'metricsOrdered' => $metricsOrdered,
         'teamSummary' => $teamSummary,
         'teamView' => $teamView,
-        'teamMissions' => $teamMissions,
+        // Competitions render inside the team page now, so the team route has to carry
+        // them. Same shape the competitions page builds, trimmed to what the panel shows.
+        'teamCompetitions' => (static function () use ($pdo, $config, $currentUser): array {
+            $rows = [];
+            foreach (comp_for_user($pdo, (int) $currentUser['id']) as $comp) {
+                $status = (string) ($comp['status'] ?? '');
+                if (!in_array($status, ['active', 'pending'], true)) {
+                    continue;
+                }
+                $standing = comp_standing($pdo, $config, (array) $comp);
+                $challenger = (string) ((($standing['challenger_squad'] ?? [])['name']) ?? '');
+                $opponent = (string) ((($standing['opponent_squad'] ?? [])['name']) ?? '');
+                $rows[] = [
+                    'title' => trim($challenger . ' vs ' . $opponent),
+                    'meta' => duels_metric_label((string) ($comp['metric'] ?? ''))
+                        . ' · ' . ($status === 'active' ? t('competitions.active') : t('duels.waiting')),
+                ];
+            }
+
+            return $rows;
+        })(),
         'teamLayoutEditMode' => $teamLayoutEditMode,
         'teamLayoutLabels' => $teamLayoutLabels,
         'teamWeekOptions' => $weekOptions,

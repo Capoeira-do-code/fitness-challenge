@@ -715,6 +715,9 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     // The team whose data the user is currently looking at. Persisted so every page
     // agrees on which team is active instead of silently falling back to the first.
     ensure_column($pdo, 'users', 'active_team_id', 'INTEGER');
+    // Which team widgets this user has already been offered. A saved layout only lists
+    // the visible ones, so a widget added later would stay hidden forever without this.
+    ensure_column($pdo, 'users', 'team_widgets_known', 'TEXT');
     ensure_column($pdo, 'users', 'meal_calendar_view', 'TEXT NOT NULL DEFAULT "week"');
     ensure_column($pdo, 'users', 'maintenance_calories', 'REAL');
     ensure_column($pdo, 'users', 'calorie_burn_goal', 'REAL');
@@ -1040,6 +1043,12 @@ function seed_default_achievements(PDO $pdo): void
         'reading_25_total' => 'sparkles',
         'morning_logs_5' => 'calendar-check',
         'consistent_week_logger' => 'calendar-check',
+        'duel_first_win' => 'medal',
+        'duel_three_wins' => 'medal',
+        'duel_ten_duels' => 'sword',
+        'comp_first_win' => 'trophy',
+        'comp_three_wins' => 'trophy',
+        'comp_first_join' => 'users',
         'team_active' => 'users',
         'team_first_challenge' => 'flag',
         'team_challenge_complete' => 'trophy',
@@ -1409,6 +1418,39 @@ function seed_default_achievements(PDO $pdo): void
             'en' => ['Team Burn 1000', 'The team logged 1,000 training calories burned.', ''],
             'es' => ['Quema 1000 de equipo', 'El equipo registro 1.000 calorias de entreno quemadas.', ''],
             'it' => ['Team burn 1000', 'Il team ha registrato 1.000 calorie allenamento bruciate.', ''],
+        ]],
+        // Duels and competitions had no achievements at all: you could win ten duels and
+        // the trophy case would not know. All six read finished rows, so none of them can
+        // be unlocked without actually having competed.
+        ['duel_first_win', 'user', 'duel_first_win', [
+            'en' => ['First Blood', 'Win your first duel.', ''],
+            'es' => ['Primera victoria', 'Gana tu primer duelo.', ''],
+            'it' => ['Prima vittoria', 'Vinci il tuo primo duello.', ''],
+        ]],
+        ['duel_three_wins', 'user', 'duel_three_wins', [
+            'en' => ['Duelist', 'Win three duels.', ''],
+            'es' => ['Duelista', 'Gana tres duelos.', ''],
+            'it' => ['Duellante', 'Vinci tre duelli.', ''],
+        ]],
+        ['duel_ten_duels', 'user', 'duel_ten_duels', [
+            'en' => ['Always Up For It', 'Finish ten duels, win or lose.', ''],
+            'es' => ['Siempre listo', 'Termina diez duelos, ganes o pierdas.', ''],
+            'it' => ['Sempre pronto', 'Concludi dieci duelli, vinti o persi.', ''],
+        ]],
+        ['comp_first_join', 'user', 'comp_first_join', [
+            'en' => ['Team Player', 'Take part in your first team competition.', ''],
+            'es' => ['Jugador de equipo', 'Participa en tu primera competicion de equipos.', ''],
+            'it' => ['Giocatore di squadra', 'Partecipa alla tua prima competizione a squadre.', ''],
+        ]],
+        ['comp_first_win', 'user', 'comp_first_win', [
+            'en' => ['Squad Victory', 'Win a team competition.', ''],
+            'es' => ['Victoria de escuadra', 'Gana una competicion de equipos.', ''],
+            'it' => ['Vittoria di squadra', 'Vinci una competizione a squadre.', ''],
+        ]],
+        ['comp_three_wins', 'user', 'comp_three_wins', [
+            'en' => ['Dynasty', 'Win three team competitions.', ''],
+            'es' => ['Dinastia', 'Gana tres competiciones de equipos.', ''],
+            'it' => ['Dinastia', 'Vinci tre competizioni a squadre.', ''],
         ]],
     ];
 

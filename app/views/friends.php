@@ -122,10 +122,23 @@ $fmtVal = static function (string $fmt, $v): string {
                     $mePct = max(0, min(100, ($mine / $barMax) * 100));
                     $theirPct = max(0, min(100, ($theirs / $barMax) * 100));
                     ?>
-                    <div class="friends-compare-row">
+                    <?php
+                    // The two numbers alone made you do the subtraction in your head. State
+                    // the gap, and who it belongs to.
+                    $gap = abs($mine - $theirs);
+                    $gapText = $gap > 0 ? $fmtVal($row['fmt'], $gap) : '';
+                    ?>
+                    <div class="friends-compare-row<?= $meWin ? ' me-leads' : ($friendWin ? ' them-lead' : ' tied') ?>">
                         <div class="friends-compare-line">
                             <span class="friends-compare-val<?= $meWin ? ' is-win' : '' ?>"><?= e($fmtVal($row['fmt'], $mine)) ?></span>
-                            <span class="friends-compare-metric"><?= e($row['label']) ?></span>
+                            <span class="friends-compare-metric">
+                                <?= e($row['label']) ?>
+                                <?php if ($gapText !== ''): ?>
+                                    <small class="friends-compare-gap"><?= e($meWin ? '+' . $gapText : '-' . $gapText) ?></small>
+                                <?php else: ?>
+                                    <small class="friends-compare-gap"><?= e(t('duels.tie')) ?></small>
+                                <?php endif; ?>
+                            </span>
                             <span class="friends-compare-val<?= $friendWin ? ' is-win' : '' ?>"><?= e($fmtVal($row['fmt'], $theirs)) ?></span>
                         </div>
                         <div class="friends-compare-bars" aria-hidden="true">
@@ -138,6 +151,11 @@ $fmtVal = static function (string $fmt, $v): string {
                         </div>
                     </div>
                 <?php endforeach; ?>
+            </div>
+
+            <div class="friends-compare-cta">
+                <p class="muted small"><?= e(t('friends.compare_cta_hint')) ?></p>
+                <a class="btn btn-primary small" href="/?page=duels"><?= e(t('friends.compare_cta')) ?></a>
             </div>
         </article>
     <?php endif; ?>

@@ -2985,6 +2985,9 @@ function team_layout_widgets_default(): array
         'cumulative_distance',
         'weekly_charts',
         'achievements',
+        // Competitions are a team activity, so they live on the team page rather than
+        // behind their own top-level menu entry.
+        'competitions',
     ];
 }
 
@@ -6652,6 +6655,58 @@ function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $t
                 }
             }
         }
+        // --- duels & competitions -------------------------------------------------
+        // Read the finished rows, so nothing here can unlock without having competed.
+        $duelWins = (int) (db_fetch_one(
+            $pdo,
+            "SELECT COUNT(1) AS c FROM user_duels WHERE status = 'completed' AND winner_id = :u",
+            [':u' => $userId]
+        )['c'] ?? 0);
+        $duelsFinished = (int) (db_fetch_one(
+            $pdo,
+            "SELECT COUNT(1) AS c FROM user_duels
+             WHERE status = 'completed' AND (challenger_id = :u OR opponent_id = :u)",
+            [':u' => $userId]
+        )['c'] ?? 0);
+
+        if (isset($byTrigger['duel_first_win']) && $duelWins >= 1) {
+            award_achievement($pdo, (int) $byTrigger['duel_first_win']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['duel_three_wins']) && $duelWins >= 3) {
+            award_achievement($pdo, (int) $byTrigger['duel_three_wins']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['duel_ten_duels']) && $duelsFinished >= 10) {
+            award_achievement($pdo, (int) $byTrigger['duel_ten_duels']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+
+        // A competition belongs to a squad, so "my competitions" means the ones whose
+        // squads I am a member of.
+        $compPlayed = (int) (db_fetch_one(
+            $pdo,
+            "SELECT COUNT(1) AS c FROM squad_competitions c
+             WHERE c.status = 'completed'
+               AND (c.challenger_squad_id IN (SELECT squad_id FROM squad_members WHERE user_id = :u)
+                 OR c.opponent_squad_id IN (SELECT squad_id FROM squad_members WHERE user_id = :u))",
+            [':u' => $userId]
+        )['c'] ?? 0);
+        $compWins = (int) (db_fetch_one(
+            $pdo,
+            "SELECT COUNT(1) AS c FROM squad_competitions c
+             WHERE c.status = 'completed'
+               AND c.winner_squad_id IN (SELECT squad_id FROM squad_members WHERE user_id = :u)",
+            [':u' => $userId]
+        )['c'] ?? 0);
+
+        if (isset($byTrigger['comp_first_join']) && $compPlayed >= 1) {
+            award_achievement($pdo, (int) $byTrigger['comp_first_join']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['comp_first_win']) && $compWins >= 1) {
+            award_achievement($pdo, (int) $byTrigger['comp_first_win']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['comp_three_wins']) && $compWins >= 3) {
+            award_achievement($pdo, (int) $byTrigger['comp_three_wins']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+
         if (isset($byTrigger['step_streak']) && (int) ($metric['steps_success'] ?? 0) >= 5) {
             award_achievement($pdo, (int) $byTrigger['step_streak']['id'], $userId, null, null, 'Automatic unlock.');
         }

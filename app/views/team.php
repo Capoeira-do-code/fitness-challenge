@@ -153,6 +153,7 @@ $teamLayoutLabels = is_array($teamLayoutLabels ?? null) ? (array) $teamLayoutLab
     'cumulative_distance' => t('team.widget_cumulative_distance'),
     'weekly_charts' => t('team.widget_weekly_charts'),
     'achievements' => t('team.widget_achievements'),
+    'competitions' => t('nav.competitions'),
 ];
 $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($teamLayoutIndex): string {
     if (!isset($teamLayoutIndex[$widget])) {
@@ -914,8 +915,39 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     </div>
                 <?php endif; ?>
             </article>
+            <?php // Competitions used to be a separate top-level page. They are a team
+                  // activity, so they surface here, with the full manager one click away. ?>
+                <article class="panel team-layout-item team-widget-competitions" data-team-widget="competitions" style="<?= e($teamWidgetStyle('competitions', 55)) ?>">
+                    <div class="panel-head">
+                        <div>
+                            <p class="eyebrow"><?= e(t('friends.eyebrow')) ?></p>
+                            <h2><?= e(t('nav.competitions')) ?></h2>
+                        </div>
+                        <a class="btn btn-ghost small" href="/?page=competitions"><?= e(t('common.view_all')) ?></a>
+                    </div>
+                    <?php $teamComp = (array) ($teamCompetitions ?? []); ?>
+                    <?php if ($teamComp === []): ?>
+                        <div class="empty-state">
+                            <span class="empty-state-icon"><?= activity_icon_svg('trophy') ?></span>
+                            <p class="muted"><?= e(t('competitions.no_active')) ?></p>
+                            <a class="btn btn-primary small" href="/?page=competitions"><?= e(t('competitions.create_team')) ?></a>
+                        </div>
+                    <?php else: ?>
+                        <ul class="team-comp-list">
+                            <?php foreach ($teamComp as $tc): ?>
+                                <li class="team-comp-row">
+                                    <span class="team-comp-name"><?= e((string) ($tc['title'] ?? '')) ?></span>
+                                    <span class="team-comp-meta"><?= e((string) ($tc['meta'] ?? '')) ?></span>
+                                    <a class="btn btn-ghost small" href="/?page=competitions"><?= e(t('common.open')) ?></a>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                </article>
+
             <?php $missions = (array) ($teamMissions ?? []); ?>
             <?php if ($missions !== []): ?>
+
                 <?php // Missions ride along with the members widget (same visibility, rendered just
                       // before it). It is not a layout item of its own, so it follows rather than
                       // competing for a slot in the drag order. ?>

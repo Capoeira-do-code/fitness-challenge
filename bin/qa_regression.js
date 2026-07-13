@@ -218,11 +218,14 @@ const saveRowAs = async (page, userId) => {
             continue;
         }
 
+        // Drop onto the LOWER half of a card two slots down. Dropping on the immediate
+        // neighbour's upper half means "insert before it", which is where the card
+        // already was - a no-op that looks exactly like a broken drag.
         const first = page.locator(target.item).first();
-        const second = page.locator(target.item).nth(1);
+        const targetCard = page.locator(target.item).nth(Math.min(2, before.length - 1));
         await first.scrollIntoViewIfNeeded();
         const a = await first.boundingBox();
-        const b = await second.boundingBox();
+        const b = await targetCard.boundingBox();
         await page.mouse.move(a.x + a.width / 2, a.y + 20);
         await page.mouse.down();
         await page.mouse.move(a.x + a.width / 2 + 20, a.y + 40, { steps: 5 });
