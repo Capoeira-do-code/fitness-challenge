@@ -19366,15 +19366,39 @@ img.is-broken {
         white-space: nowrap;
     }
 
-    /* Hero copy that only restated the page name is redundant now. */
+    /* The page name is redundant (it is in the topbar now) but the one-line
+       description is not: it is the only place that says what the page is for. Keep
+       it as a single compact line instead of a title block. */
+    .hero-copy-page-title > .eyebrow,
+    .hero-copy-page-title > h1 {
+        display: none;
+    }
+
     .hero-copy-page-title {
+        display: block;
+        min-width: 0;
+    }
+
+    .hero-copy-page-title > p.muted {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        margin: 0;
+        font-size: 0.78rem;
+        line-height: 1.3;
+    }
+
+    /* Nothing but the name to show: no description, no reason to keep the panel. */
+    .hero-copy-page-title:not(:has(p.muted)) {
         display: none;
     }
 
     /* Where the heading is data (a person, a team) keep the heading, drop the
        category label and the description. */
-    .hero-copy > .eyebrow,
-    .hero-copy > p.muted:not(.profile-hero-message) {
+    .hero-copy:not(.hero-copy-page-title) > .eyebrow,
+    .hero-copy:not(.hero-copy-page-title) > p.muted:not(.profile-hero-message) {
         display: none;
     }
 
@@ -19395,12 +19419,12 @@ img.is-broken {
 
     /* Nothing left to show at all: collapse it entirely rather than leaving an
        empty bar floating above the content. */
-    .hero-panel:empty,
-    .hero-panel:has(> .hero-copy-page-title:only-child) {
+    .hero-panel:empty {
         display: none;
     }
 
-    .page-hero:has(> .hero-copy-page-title:only-child) {
+    .hero-panel:has(> .hero-copy-page-title:only-child:not(:has(p.muted))),
+    .page-hero:has(> .hero-copy-page-title:only-child:not(:has(p.muted))) {
         display: none;
     }
 }
@@ -19454,5 +19478,20 @@ body {
     .app-modal-card,
     .app-drawer-card {
         max-height: calc(100dvh - 2rem);
+    }
+}
+
+/* A celebration toast is pinned to the bottom with a higher z-index than the layout
+   editbar, so an unlock landing mid-edit painted over the Save button. Editor
+   controls always win; while editing, the toasts move out of their way to the top. */
+@media (max-width: 899px) {
+    body.layout-edit-active .layout-editbar,
+    body.layout-edit-active .dashboard-layout-editbar {
+        z-index: 10090;
+    }
+
+    body.layout-edit-active .celebration-stack {
+        top: calc(4.8rem + env(safe-area-inset-top));
+        bottom: auto;
     }
 }
