@@ -1331,8 +1331,6 @@ def main() -> int:
                 force=bool(args.force),
                 wait_timeout_s=max(10, int(args.wait_timeout_s)),
                 wait_interval_ms=max(50, int(args.wait_interval_ms)),
-                launch_telegram_bot=bool(args.telegram_bot),
-                launch_notion_sync=bool(args.notion_sync),
             )
             return exit_code
 

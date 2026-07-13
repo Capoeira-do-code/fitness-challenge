@@ -71,18 +71,32 @@ declare(strict_types=1);
         </article>
     </div>
 
-    <article class="panel">
+    <div class="grid-two team-settings-secondary">
+    <article class="panel join-requests-panel">
         <div class="panel-head"><div><p class="eyebrow"><?= e(t('common.pending')) ?></p><h2><?= e(t('team.join_requests')) ?></h2></div><span class="badge"><?= count($joinRequests ?? []) ?></span></div>
-        <div class="card-list">
-            <?php if (($joinRequests ?? []) === []): ?><p class="muted"><?= e(t('dashboard.approvals_empty')) ?></p><?php endif; ?>
+        <div class="join-requests-list">
+            <?php if (($joinRequests ?? []) === []): ?><p class="muted join-requests-empty"><?= e(t('dashboard.approvals_empty')) ?></p><?php endif; ?>
             <?php foreach (($joinRequests ?? []) as $request): ?>
-                <form method="post" action="/?page=team_settings&team_id=<?= (int) $team['id'] ?>" class="mini-card">
+                <form method="post" action="/?page=team_settings&team_id=<?= (int) $team['id'] ?>" class="join-request-row">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="resolve_join_request">
                     <input type="hidden" name="request_id" value="<?= (int) $request['id'] ?>">
-                    <div><strong><?= e((string) $request['display_name']) ?></strong><span><?= e(format_date_eu((string) $request['requested_at'])) ?></span></div>
-                    <button class="btn small btn-primary" name="decision" value="approve" type="submit"><?= e(t('common.approve')) ?></button>
-                    <button class="btn small btn-ghost" name="decision" value="reject" type="submit"><?= e(t('common.reject')) ?></button>
+                    <div class="join-request-meta">
+                        <?php $joinReqAvatar = avatar_url($request); ?>
+                        <?php if ($joinReqAvatar !== ''): ?>
+                            <img class="member-avatar" src="<?= e($joinReqAvatar) ?>" alt="<?= e((string) $request['display_name']) ?>">
+                        <?php else: ?>
+                            <span class="member-avatar member-avatar-initials"><?= e(initials_for((string) $request['display_name'])) ?></span>
+                        <?php endif; ?>
+                        <div class="join-request-text">
+                            <strong><?= e((string) $request['display_name']) ?></strong>
+                            <span><?= e(format_date_eu((string) $request['requested_at'])) ?></span>
+                        </div>
+                    </div>
+                    <div class="join-request-actions">
+                        <button class="btn small btn-primary" name="decision" value="approve" type="submit" aria-label="<?= e(t('common.approve')) ?>"><?= e(t('common.approve')) ?></button>
+                        <button class="btn small btn-ghost" name="decision" value="reject" type="submit" aria-label="<?= e(t('common.reject')) ?>"><?= e(t('common.reject')) ?></button>
+                    </div>
                 </form>
             <?php endforeach; ?>
         </div>
@@ -143,4 +157,5 @@ declare(strict_types=1);
             <p class="muted"><?= e(t('team.default_no_delete')) ?></p>
         <?php endif; ?>
     </article>
+    </div>
 </section>

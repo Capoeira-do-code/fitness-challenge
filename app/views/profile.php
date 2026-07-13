@@ -68,6 +68,61 @@ $profileUrl = static function (string $section = '', array $extra = []) use ($pr
 
     return '/?' . http_build_query($query);
 };
+
+// #15 — customizable Profile home layout. Order comes from the profile owner's
+// saved arrangement; default (no saved layout) keeps the original DOM order.
+$profileLayoutBlocks = ['goals', 'friends', 'achievements', 'duels', 'competitions', 'setup', 'activity'];
+$profileLayoutLabels = [
+    'goals' => t('goals.personal'),
+    'friends' => t('nav.friends'),
+    'achievements' => t('profile.achievements'),
+    'duels' => t('nav.duels'),
+    'competitions' => t('nav.competitions'),
+    'setup' => t('profile.current_config'),
+    'activity' => t('profile.recent_activity'),
+];
+$profileSavedLayout = json_decode((string) ($profileUser['profile_layout_json'] ?? ''), true);
+$profileBlockOrder = [];
+$profileOrderIndex = 0;
+if (is_array($profileSavedLayout)) {
+    foreach ($profileSavedLayout as $blockKey) {
+        if (is_string($blockKey) && in_array($blockKey, $profileLayoutBlocks, true) && !isset($profileBlockOrder[$blockKey])) {
+            $profileBlockOrder[$blockKey] = ++$profileOrderIndex;
+        }
+    }
+}
+foreach ($profileLayoutBlocks as $blockKey) {
+    if (!isset($profileBlockOrder[$blockKey])) {
+        $profileBlockOrder[$blockKey] = ++$profileOrderIndex;
+    }
+}
+// A saved layout lists exactly the blocks the user kept. Anything saved is visible;
+// blocks missing from a *saved* layout were deliberately hidden. With no saved
+// layout at all, everything shows.
+$profileHiddenBlocks = [];
+if (is_array($profileSavedLayout) && $profileSavedLayout !== []) {
+    $profileHiddenBlocks = array_values(array_diff(
+        $profileLayoutBlocks,
+        array_map('strval', $profileSavedLayout)
+    ));
+}
+$profileBlockVisible = static function (string $key) use ($profileHiddenBlocks): bool {
+    return !in_array($key, $profileHiddenBlocks, true);
+};
+$profileBlockStyle = static function (string $key) use ($profileBlockOrder, $profileHiddenBlocks): string {
+    if (in_array($key, $profileHiddenBlocks, true)) {
+        return 'display:none;';
+    }
+
+    return isset($profileBlockOrder[$key]) ? 'order:' . (int) $profileBlockOrder[$key] . ';' : '';
+};
+// Blocks in their current (saved or default) order, for the editor list.
+$profileOrderedBlocks = $profileLayoutBlocks;
+usort($profileOrderedBlocks, static function (string $a, string $b) use ($profileBlockOrder): int {
+    return ($profileBlockOrder[$a] ?? 99) <=> ($profileBlockOrder[$b] ?? 99);
+});
+$profileLayoutEditMode = !empty($isOwnProfile) && (string) ($_GET['layout_edit'] ?? '') === '1' && ($activeSection ?? '') === '';
+
 $profileFriendAvatar = static function (array $user): void {
     $url = avatar_url($user);
     $name = (string) ($user['display_name'] ?? $user['username'] ?? '');
@@ -480,14 +535,14 @@ if ($profileWeightChart !== []) {
 }
 $profileWorkoutTotal = (int) max((int) ($profileMetric['workout_count'] ?? 0), (int) ($profileMetric['workout_success'] ?? 0));
 $profileDataCards = [
-    ['label' => t('metric.steps'), 'value' => number_format((int) ($profileMetric['total_steps'] ?? 0), 0, '.', ''), 'meta' => t('metric.total')],
-    ['label' => t('metric.total_km'), 'value' => number_format((float) ($profileMetric['total_km'] ?? 0), 2, '.', '') . ' km', 'meta' => t('metric.distance_km')],
-    ['label' => t('metric.workouts'), 'value' => (string) $profileWorkoutTotal, 'meta' => t('metric.total')],
-    ['label' => t('metric.score'), 'value' => number_format((float) ($profileMetric['score'] ?? 0), 1, '.', ''), 'meta' => t('metric.current_value')],
+    ['label' => t('metric.steps'), 'value' => number_format((int) ($profileMetric['total_steps'] ?? 0), 0, '.', ''), 'meta' => t('metric.total'), 'metric' => 'steps'],
+    ['label' => t('metric.total_km'), 'value' => number_format((float) ($profileMetric['total_km'] ?? 0), 2, '.', '') . ' km', 'meta' => t('metric.distance_km'), 'metric' => 'distance'],
+    ['label' => t('metric.workouts'), 'value' => (string) $profileWorkoutTotal, 'meta' => t('metric.total'), 'metric' => 'workouts'],
+    ['label' => t('metric.score'), 'value' => number_format((float) ($profileMetric['score'] ?? 0), 1, '.', ''), 'meta' => t('metric.current_value'), 'metric' => 'score'],
 ];
 if ($penaltiesEnabled) {
-    $profileDataCards[] = ['label' => t('metric.strikes'), 'value' => (string) (int) ($profileMetric['current_strikes'] ?? 0), 'meta' => t('metric.current_value')];
-    $profileDataCards[] = ['label' => t('metric.penalty'), 'value' => "\u{20AC}" . number_format((float) ($profileMetric['total_penalty'] ?? 0), 2, '.', ''), 'meta' => t('metric.total')];
+    $profileDataCards[] = ['label' => t('metric.strikes'), 'value' => (string) (int) ($profileMetric['current_strikes'] ?? 0), 'meta' => t('metric.current_value'), 'metric' => 'strikes'];
+    $profileDataCards[] = ['label' => t('metric.penalty'), 'value' => "\u{20AC}" . number_format((float) ($profileMetric['total_penalty'] ?? 0), 2, '.', ''), 'meta' => t('metric.total'), 'metric' => 'money'];
 }
 if ($latestWeight !== null) {
     $profileDataCards[] = ['label' => t('profile.latest_weight'), 'value' => number_format($latestWeight, 1, '.', '') . ' kg', 'meta' => t('metric.weight')];
@@ -578,23 +633,46 @@ $profileSetupRows = [
     <div class="hero-panel profile-hero">
         <div class="profile-title">
             <?php $profileAvatarUrl = avatar_url($profileUser); ?>
-            <?php if ($profileAvatarUrl !== ''): ?>
-                <img class="profile-avatar" src="<?= e($profileAvatarUrl) ?>" alt="<?= e((string) $profileUser['display_name']) ?>">
+            <?php $profileFrameClass = cosmetic_frame_class($profileUser); ?>
+            <?php if (!empty($isOwnProfile)): ?>
+                <?php // Tapping your own avatar opens the picture / frame chooser. ?>
+                <button type="button" class="profile-avatar-trigger" data-app-modal-open="profile-avatar-modal"
+                        aria-haspopup="dialog" aria-label="<?= e(t('profile.avatar_menu')) ?>">
+                    <?php if ($profileAvatarUrl !== ''): ?>
+                        <img class="profile-avatar<?= e($profileFrameClass) ?>" src="<?= e($profileAvatarUrl) ?>" alt="<?= e((string) $profileUser['display_name']) ?>">
+                    <?php else: ?>
+                        <span class="profile-avatar initials<?= e($profileFrameClass) ?>"><?= e(initials_for((string) $profileUser['display_name'])) ?></span>
+                    <?php endif; ?>
+                    <span class="profile-avatar-edit-hint" aria-hidden="true">&#9998;</span>
+                </button>
+            <?php elseif ($profileAvatarUrl !== ''): ?>
+                <img class="profile-avatar<?= e($profileFrameClass) ?>" src="<?= e($profileAvatarUrl) ?>" alt="<?= e((string) $profileUser['display_name']) ?>">
             <?php else: ?>
-                <span class="profile-avatar initials"><?= e(initials_for((string) $profileUser['display_name'])) ?></span>
+                <span class="profile-avatar initials<?= e($profileFrameClass) ?>"><?= e(initials_for((string) $profileUser['display_name'])) ?></span>
             <?php endif; ?>
-            <div>
+            <div class="hero-copy">
                 <p class="eyebrow"><?= e(t('nav.profile')) ?></p>
                 <h1><?= e((string) $profileUser['display_name']) ?></h1>
                 <p class="muted">@<?= e((string) $profileUser['username']) ?> &middot; <?= e($profileHeroMessage) ?><?php if (!$isOwnProfile): ?> &middot; <?= e(t('profile.read_only')) ?><?php endif; ?></p>
-                <?php $xp = (array) ($profileXp ?? []); ?>
-                <div class="profile-level" title="<?= e(t('xp.level') . ' ' . (int) ($xp['level'] ?? 1)) ?>">
-                    <span class="profile-level-badge"><?= e(t('xp.level_short')) ?> <?= (int) ($xp['level'] ?? 1) ?></span>
-                    <div class="profile-xp">
-                        <div class="profile-xp-bar"><span style="width: <?= max(0, min(100, (int) ($xp['progress_pct'] ?? 0))) ?>%"></span></div>
-                        <span class="profile-xp-label"><?= e(number_format((int) ($xp['total_xp'] ?? 0))) ?> <?= e(t('xp.points')) ?> &middot; <?= e(t('xp.to_next', ['xp' => number_format((int) ($xp['xp_to_next'] ?? 0))])) ?></span>
+                <?php $profileTeamsList = (array) ($profileTeams ?? []); ?>
+                <?php if ($profileTeamsList !== []): ?>
+                    <div class="profile-team-badges" aria-label="<?= e(t('nav.team')) ?>">
+                        <?php foreach ($profileTeamsList as $profileTeamItem): ?>
+                            <a class="profile-team-badge" href="/?page=team&team_id=<?= (int) ($profileTeamItem['id'] ?? 0) ?>">
+                                <span class="profile-team-badge-dot" aria-hidden="true"></span>
+                                <?= e((string) ($profileTeamItem['name'] ?? '')) ?>
+                            </a>
+                        <?php endforeach; ?>
                     </div>
-                </div>
+                <?php endif; ?>
+                <?php $xp = (array) ($profileXp ?? []); ?>
+                <button type="button" class="profile-level profile-level-trigger" data-app-modal-open="profile-level-modal" title="<?= e(t('xp.progress_title')) ?>" aria-haspopup="dialog">
+                    <span class="profile-level-badge"><?= e(t('xp.level_short')) ?> <?= (int) ($xp['level'] ?? 1) ?></span>
+                    <span class="profile-xp">
+                        <span class="profile-xp-bar"><span style="width: <?= max(0, min(100, (int) ($xp['progress_pct'] ?? 0))) ?>%"></span></span>
+                        <span class="profile-xp-label"><?= e(number_format((int) ($xp['total_xp'] ?? 0))) ?> <?= e(t('xp.points')) ?> &middot; <?= e(t('xp.to_next', ['xp' => number_format((int) ($xp['xp_to_next'] ?? 0))])) ?></span>
+                    </span>
+                </button>
             </div>
         </div>
         <?php if ($isOwnProfile || !empty($canExportProfilePdf) || $showProfileFriendActions): ?>
@@ -611,35 +689,47 @@ $profileSetupRows = [
             }
             ?>
             <div class="<?= e(implode(' ', $profileHeroActionClasses)) ?>">
-                <?php if (!empty($canExportProfilePdf)): ?>
-                    <button class="btn btn-primary profile-pdf-export-btn" type="button" data-profile-pdf-export>
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg>
-                        <span data-profile-pdf-export-label><?= e(t('profile.export_pdf')) ?></span>
-                    </button>
-                <?php endif; ?>
                 <?php if ($showProfileFriendActions): ?>
                     <div class="profile-friend-actions profile-friend-actions-hero" aria-label="<?= e(t('profile.friendship')) ?>">
                         <span class="profile-friend-status"><?= e($profileFriendStatusText) ?></span>
                         <?php $renderProfileFriendActions($profileFriendStatus, (int) $profileUser['id'], 'profile-friend-hero-action'); ?>
                     </div>
                 <?php endif; ?>
-                <?php if ($isOwnProfile): ?>
-                    <details class="profile-tagline-editor">
-                        <summary class="btn btn-ghost icon-btn profile-tagline-edit" aria-label="<?= e(t('profile.edit_tagline')) ?>">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.7-1.2L19 8.5 15.5 5 5.2 15.3 4 20Z"/><path d="m14 6 4 4"/></svg>
-                        </summary>
-                        <form method="post" action="<?= e($profileUrl()) ?>" class="profile-tagline-form">
-                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                            <input type="hidden" name="action" value="update_profile_tagline">
-                            <label>
-                                <?= e(t('profile.custom_message')) ?>
-                                <input type="text" name="profile_tagline" maxlength="160" value="<?= e($profileTagline) ?>" placeholder="<?= e(t('profile.subtitle')) ?>">
-                            </label>
-                            <div class="profile-tagline-actions">
-                                <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
-                            </div>
-                        </form>
-                    </details>
+                <?php if ($isOwnProfile || !empty($canExportProfilePdf)): ?>
+                    <?php
+                    $profileMenuItems = [];
+                    if ($isOwnProfile) {
+                        $profileMenuItems[] = [
+                            'label' => t('nav.workouts'),
+                            'href' => '/?page=workouts',
+                        ];
+                        $profileMenuItems[] = [
+                            'label' => t('profile.edit_profile'),
+                            'href' => '/?page=settings',
+                        ];
+                        $profileMenuItems[] = [
+                            'label' => t('profile.edit_tagline'),
+                            'attrs' => ['data-app-modal-open' => 'profile-tagline-modal'],
+                        ];
+                    }
+                    if (!empty($canExportProfilePdf)) {
+                        $profileMenuItems[] = [
+                            'label' => t('profile.export_data'),
+                            'attrs' => ['data-profile-pdf-export' => ''],
+                        ];
+                    }
+                    if ($isOwnProfile) {
+                        $profileMenuItems[] = [
+                            'label' => t('profile.customize_layout'),
+                            'href' => $profileUrl('', ['layout_edit' => '1']),
+                        ];
+                    }
+                    echo render_kebab_menu($profileMenuItems, [
+                        'label' => t('profile.manage'),
+                        'align' => 'end',
+                        'class' => 'profile-hero-menu',
+                    ]);
+                    ?>
                 <?php endif; ?>
             </div>
         <?php endif; ?>
@@ -738,18 +828,84 @@ $profileSetupRows = [
         </div>
         <div class="profile-data-grid">
             <?php foreach ($profileDataCards as $card): ?>
-                <article class="profile-data-card">
-                    <span><?= e((string) $card['label']) ?></span>
-                    <strong><?= e((string) $card['value']) ?></strong>
-                    <small><?= e((string) $card['meta']) ?></small>
-                </article>
+                <?php
+                $cardMetric = (string) ($card['metric'] ?? '');
+                $cardMetricHref = '';
+                if ($cardMetric !== '' && $isOwnProfile) {
+                    // My Data shows challenge totals, so open the detail in the
+                    // matching "total" view rather than the user's dashboard view.
+                    $cardMetricHref = '/?' . http_build_query([
+                        'page' => 'metric',
+                        'user_id' => (int) ($profileUser['id'] ?? 0),
+                        'metric' => $cardMetric,
+                        'view' => 'total',
+                    ]);
+                }
+                ?>
+                <?php if ($cardMetricHref !== ''): ?>
+                    <a class="profile-data-card profile-data-card-link" href="<?= e($cardMetricHref) ?>" aria-label="<?= e((string) $card['label']) ?>">
+                        <span><?= e((string) $card['label']) ?></span>
+                        <strong><?= e((string) $card['value']) ?></strong>
+                        <small><?= e((string) $card['meta']) ?></small>
+                        <span class="profile-data-card-go" aria-hidden="true">›</span>
+                    </a>
+                <?php else: ?>
+                    <article class="profile-data-card">
+                        <span><?= e((string) $card['label']) ?></span>
+                        <strong><?= e((string) $card['value']) ?></strong>
+                        <small><?= e((string) $card['meta']) ?></small>
+                    </article>
+                <?php endif; ?>
             <?php endforeach; ?>
         </div>
     </article>
     <?php endif; ?>
 
+    <?php if ($profileLayoutEditMode): ?>
+        <?php // Same compact editbar as Home and Analytics. The old fixed panel sat
+              // underneath the edit-mode blur overlay, so its Save button could not be
+              // tapped on a phone at all. ?>
+        <div class="layout-editbar dashboard-layout-editbar profile-layout-editbar" data-spa-home-extra>
+            <form method="post" action="<?= e($profileUrl()) ?>" class="dashboard-layout-editor" data-profile-layout-editor>
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="save_profile_layout">
+
+                <div class="dashboard-editbar-row">
+                    <p class="dashboard-editbar-hint">
+                        <strong><?= e(t('profile.customize_layout')) ?></strong>
+                        <small><?= e(t('profile.customize_hint')) ?></small>
+                    </p>
+                    <div class="dashboard-editbar-actions">
+                        <a class="btn btn-ghost small" href="<?= e($profileUrl()) ?>"><?= e(t('common.cancel')) ?></a>
+                        <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
+                    </div>
+                </div>
+
+                <details class="dashboard-layout-visibility" open>
+                    <summary><?= e(t('dashboard.visible_widgets')) ?></summary>
+                    <div class="team-layout-editor-list dashboard-layout-editor-list" data-profile-layout-list>
+                        <?php foreach ($profileOrderedBlocks as $idx => $blk): ?>
+                            <div class="team-layout-editor-item dashboard-layout-editor-item" data-profile-layout-item>
+                                <div class="dashboard-layout-mobile-actions team-layout-mobile-actions">
+                                    <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="<?= e(t('common.previous')) ?>">&uarr;</button>
+                                    <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="<?= e(t('common.next')) ?>">&darr;</button>
+                                </div>
+                                <label class="dashboard-layout-toggle">
+                                    <input type="checkbox" name="profile_blocks[]" value="<?= e($blk) ?>" <?= $profileBlockVisible($blk) ? 'checked' : '' ?>>
+                                    <span><?= e((string) ($profileLayoutLabels[$blk] ?? $blk)) ?></span>
+                                </label>
+                                <input type="hidden" name="profile_order[<?= e($blk) ?>]" value="<?= (int) $idx + 1 ?>" data-profile-order-input>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <button class="btn btn-ghost small dashboard-editbar-reset" type="submit" name="reset_profile_layout" value="1"><?= e(t('dashboard.reset_layout')) ?></button>
+                </details>
+            </form>
+        </div>
+    <?php endif; ?>
+
     <section class="profile-home-grid<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-main <?= $activeSection !== '' ? 'hidden' : '' ?>>
-        <article class="panel profile-home-card profile-home-goals">
+        <article class="panel profile-home-card profile-home-goals" data-profile-block="goals" style="<?= e($profileBlockStyle('goals')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow"><?= count($profileActiveGoalCards) ?> <?= e(t('profile.active_goals_suffix')) ?> · <?= count($profileCompletedGoalCards) ?> <?= e(t('settings.completed_goals')) ?></p>
@@ -780,11 +936,18 @@ $profileSetupRows = [
                     <?php endforeach; ?>
                 </div>
             <?php else: ?>
-                <p class="muted"><?= e(t('goals.empty')) ?></p>
+                <div class="empty-state profile-goals-empty">
+                    <span class="empty-state-icon"><?= activity_icon_svg('target') ?></span>
+                    <p><strong><?= e(t('goals.empty')) ?></strong></p>
+                    <p class="muted small"><?= e(t('goals.empty_hint')) ?></p>
+                    <?php if ($canEditProfile): ?>
+                        <a class="btn btn-primary small" href="<?= e($profileUrl('goals', ['goal_new' => 1])) ?>" data-spa-link><?= e(t('profile.new_goal')) ?></a>
+                    <?php endif; ?>
+                </div>
             <?php endif; ?>
         </article>
 
-        <article class="panel profile-home-card profile-friends-card">
+        <article class="panel profile-home-card profile-friends-card" data-profile-block="friends" style="<?= e($profileBlockStyle('friends')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow">
@@ -796,9 +959,7 @@ $profileSetupRows = [
                     <h2><?= e($isOwnProfile ? t('friends.your_friends') : t('profile.friends_of', ['name' => (string) ($profileUser['display_name'] ?? '')])) ?></h2>
                 </div>
                 <div class="inline-actions-mini">
-                    <?php if ($isOwnProfile): ?>
-                        <a class="btn btn-ghost small" href="/?page=friends" data-spa-link><?= e(t('profile.manage_friends')) ?></a>
-                    <?php else: ?>
+                    <?php if (!$isOwnProfile): ?>
                         <span class="profile-friend-status compact"><?= e($profileFriendStatusText) ?></span>
                     <?php endif; ?>
                 </div>
@@ -852,39 +1013,9 @@ $profileSetupRows = [
                 <?php endif; ?>
             <?php endif; ?>
 
-            <?php if ($isOwnProfile): ?>
-                <div class="profile-friend-add">
-                    <div>
-                        <strong><?= e(t('friends.add_title')) ?></strong>
-                        <?php if ($profileFriendOutgoingCount > 0): ?>
-                            <small><?= e(t('profile.friend_outgoing_count', ['count' => $profileFriendOutgoingCount])) ?></small>
-                        <?php else: ?>
-                            <small><?= e(t('profile.friend_add_hint')) ?></small>
-                        <?php endif; ?>
-                    </div>
-                    <?php if ($profileFriendAddable === []): ?>
-                        <p class="muted small"><?= e(t('friends.add_none')) ?></p>
-                    <?php else: ?>
-                        <form method="post" action="<?= e($profileUrl()) ?>" class="profile-friends-add-form">
-                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                            <input type="hidden" name="action" value="friend_request">
-                            <label>
-                                <span class="sr-only"><?= e(t('friends.add_title')) ?></span>
-                                <select name="user_id" required>
-                                    <option value=""><?= e(t('friends.add_placeholder')) ?></option>
-                                    <?php foreach ($profileFriendAddable as $candidate): ?>
-                                        <option value="<?= (int) ($candidate['id'] ?? 0) ?>"><?= e((string) ($candidate['display_name'] ?? $candidate['username'] ?? '')) ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </label>
-                            <button class="btn btn-primary small" type="submit"><?= e(t('friends.send_request')) ?></button>
-                        </form>
-                    <?php endif; ?>
-                </div>
-            <?php endif; ?>
         </article>
 
-        <article class="panel profile-home-card">
+        <article class="panel profile-home-card" data-profile-block="achievements" style="<?= e($profileBlockStyle('achievements')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow"><?= e((string) $achievementCount) ?> <?= e(t('profile.unlocked_suffix')) ?></p>
@@ -906,7 +1037,44 @@ $profileSetupRows = [
             <?php endif; ?>
         </article>
 
-        <article class="panel profile-home-card profile-current-setup-card">
+        <?php if ($isOwnProfile): ?>
+            <div class="profile-home-block-wrap" data-profile-block="duels" style="<?= e($profileBlockStyle('duels')) ?>">
+            <?php
+            $pDuels = (array) ($profileDuelsSummary ?? []);
+            echo render_status_summary_card(
+                t('nav.duels'),
+                t('nav.duels'),
+                [
+                    ['label' => t('common.active'), 'value' => (int) ($pDuels['active'] ?? 0), 'tone' => 'active'],
+                    ['label' => t('common.pending'), 'value' => (int) ($pDuels['pending'] ?? 0), 'tone' => 'pending'],
+                    ['label' => t('common.won'), 'value' => (int) ($pDuels['won'] ?? 0), 'tone' => 'won'],
+                ],
+                '/?page=duels',
+                t('common.view_all'),
+                'profile-home-card'
+            );
+            ?>
+            </div>
+            <div class="profile-home-block-wrap" data-profile-block="competitions" style="<?= e($profileBlockStyle('competitions')) ?>">
+            <?php
+            $pComps = (array) ($profileCompetitionsSummary ?? []);
+            echo render_status_summary_card(
+                t('nav.competitions'),
+                t('nav.competitions'),
+                [
+                    ['label' => t('common.active'), 'value' => (int) ($pComps['active'] ?? 0), 'tone' => 'active'],
+                    ['label' => t('common.pending'), 'value' => (int) ($pComps['pending'] ?? 0), 'tone' => 'pending'],
+                    ['label' => t('common.won'), 'value' => (int) ($pComps['won'] ?? 0), 'tone' => 'won'],
+                ],
+                '/?page=competitions',
+                t('common.view_all'),
+                'profile-home-card'
+            );
+            ?>
+            </div>
+        <?php endif; ?>
+
+        <article class="panel profile-home-card profile-current-setup-card" data-profile-block="setup" style="<?= e($profileBlockStyle('setup')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow"><?= e(t('profile.current_config')) ?></p>
@@ -945,7 +1113,7 @@ $profileSetupRows = [
             </dl>
         </article>
 
-        <article class="panel profile-home-card">
+        <article class="panel profile-home-card" data-profile-block="activity" style="<?= e($profileBlockStyle('activity')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow"><?= e((string) $activityCount) ?> events</p>
@@ -953,17 +1121,32 @@ $profileSetupRows = [
                 </div>
                 <a class="btn btn-ghost small" href="<?= e($profileUrl('activity')) ?>" data-spa-link><?= e(t('common.view_all')) ?></a>
             </div>
-            <?php if ($latestActivity === []): ?>
-                <p class="muted"><?= e(t('audit.empty')) ?></p>
-            <?php else: ?>
-                <div class="profile-home-list profile-home-activity">
-                    <?php foreach ($latestActivity as $item): ?>
-                        <div>
-                            <strong><?= e((string) ($item['summary'] ?? '')) ?></strong>
-                            <span><?= e((string) ($item['action'] ?? '')) ?> · <?= e(format_date_eu((string) ($item['created_at'] ?? ''))) ?></span>
-                        </div>
-                    <?php endforeach; ?>
+            <?php
+            $humanActivity = [];
+            foreach ($latestActivity as $item) {
+                $h = humanize_activity_item((array) $item, (int) ($currentUser['id'] ?? 0));
+                if ($h !== null) {
+                    $humanActivity[] = $h;
+                }
+            }
+            ?>
+            <?php if ($humanActivity === []): ?>
+                <div class="empty-state empty-state-compact">
+                    <span class="empty-state-icon"><?= activity_icon_svg('spark') ?></span>
+                    <p class="muted"><?= e(t('activity.empty')) ?></p>
                 </div>
+            <?php else: ?>
+                <ul class="activity-feed">
+                    <?php foreach ($humanActivity as $h): ?>
+                        <li class="activity-item">
+                            <span class="activity-item-icon"><?= activity_icon_svg((string) $h['icon']) ?></span>
+                            <span class="activity-item-body">
+                                <strong><?= e((string) $h['text']) ?></strong>
+                                <?php if ((string) $h['when'] !== ''): ?><span class="activity-item-when"><?= e((string) $h['when']) ?></span><?php endif; ?>
+                            </span>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
             <?php endif; ?>
         </article>
     </section>
@@ -1044,7 +1227,7 @@ $profileSetupRows = [
             <div class="stack goal-subview profile-detail-view" data-spa-param-show="goal_id" data-spa-value="<?= (int) $goal['id'] ?>" <?= $isActiveGoalDetail ? '' : 'hidden' ?>>
                 <div class="panel-head compact-head">
                     <h3><?= e((string) $goal['title']) ?></h3>
-                    <a class="btn btn-ghost" href="<?= e($profileUrl('goals')) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+                    <a class="btn btn-ghost" href="<?= e($profileUrl('goals')) ?>" data-spa-back data-spa-history aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
                 </div>
 
                 <article class="mini-card goal-detail-card goal-detail-summary">
@@ -1082,7 +1265,10 @@ $profileSetupRows = [
                     </div>
                     <?php if ($canEditProfile): ?>
                         <div class="goal-detail-actions">
-                            <button class="btn small btn-ghost" type="button" data-goal-edit-toggle data-target="<?= e($editFormId) ?>"><?= e(t('common.edit')) ?></button>
+                            <?php // Editing opens in a modal. It used to unfold inside the goal card,
+                                  // which shoved the rest of the page down and left you editing in the
+                                  // middle of the thing you were reading. ?>
+                            <button class="btn small btn-ghost" type="button" data-app-modal-open="goal-edit-modal-<?= (int) $goal['id'] ?>" aria-haspopup="dialog"><?= e(t('common.edit')) ?></button>
                             <?php if ((string) ($goal['status'] ?? 'active') !== 'complete'): ?>
                                 <form method="post" action="<?= e($profileUrl('goals')) ?>">
                                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -1105,7 +1291,16 @@ $profileSetupRows = [
                 </article>
 
                 <?php if ($canEditProfile): ?>
-                    <form method="post" action="<?= e($profileUrl('goals')) ?>" class="mini-card editable-card goal-editor" id="<?= e($editFormId) ?>" data-goal-edit-form hidden>
+                <div class="app-modal" id="goal-edit-modal-<?= (int) $goal['id'] ?>" hidden role="dialog" aria-modal="true" aria-labelledby="goal-edit-title-<?= (int) $goal['id'] ?>">
+                    <div class="app-modal-card">
+                        <div class="app-modal-head">
+                            <div>
+                                <p class="eyebrow"><?= e(t('goals.personal')) ?></p>
+                                <h2 id="goal-edit-title-<?= (int) $goal['id'] ?>"><?= e((string) $goal['title']) ?></h2>
+                            </div>
+                            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.cancel')) ?>">&times;</button>
+                        </div>
+                    <form method="post" action="<?= e($profileUrl('goals')) ?>" class="goal-editor" id="<?= e($editFormId) ?>" data-goal-edit-form>
                         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                         <input type="hidden" name="action" value="update_goal">
                         <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
@@ -1135,9 +1330,11 @@ $profileSetupRows = [
                         </div>
                         <div class="goal-editor-actions">
                             <button class="btn small btn-primary" type="submit"><?= e(t('common.save')) ?></button>
-                            <button class="btn small btn-ghost" type="button" data-goal-edit-cancel data-target="<?= e($editFormId) ?>"><?= e(t('common.cancel')) ?></button>
+                            <button class="btn small btn-ghost" type="button" data-app-modal-close><?= e(t('common.cancel')) ?></button>
                         </div>
                     </form>
+                    </div>
+                </div>
                 <?php endif; ?>
             </div>
         <?php endforeach; ?>
@@ -1152,9 +1349,9 @@ $profileSetupRows = [
             <?php if (($userAchievements ?? []) === []): ?>
                 <p class="muted"><?= e(t('achievements.empty')) ?></p>
             <?php else: ?>
-                <?php foreach ($userAchievements as $achievement): ?>
+                <?php foreach ($userAchievements as $achievementIndex => $achievement): ?>
                     <?php $awardId = (int) ($achievement['award_id'] ?? $achievement['id'] ?? 0); ?>
-                    <?php $deleteFormId = 'delete-achievement-profile-' . $awardId; ?>
+                    <?php $deleteFormId = 'delete-achievement-profile-' . $awardId . '-' . (int) $achievementIndex; ?>
                     <article class="achievement-card profile-achievement-card" <?= achievement_modal_attrs($achievement) ?>>
                         <?= achievement_visual_html($achievement, 'achievement-visual profile-achievement-media') ?>
                         <div class="profile-achievement-content">
@@ -1341,14 +1538,145 @@ $profileSetupRows = [
                 <a class="btn btn-ghost" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
             </div>
         </div>
-        <div class="audit-list">
-            <?php foreach (($recentActivity ?? []) as $item): ?>
-                <article><strong><?= e((string) $item['summary']) ?></strong><span><?= e((string) $item['action']) ?> · <?= e(format_date_eu((string) $item['created_at'])) ?></span></article>
-            <?php endforeach; ?>
-            <?php if (($recentActivity ?? []) === []): ?><p class="muted"><?= e(t('audit.empty')) ?></p><?php endif; ?>
-        </div>
+        <?php
+        $humanActivityFull = [];
+        foreach (($recentActivity ?? []) as $item) {
+            $h = humanize_activity_item((array) $item, (int) ($currentUser['id'] ?? 0));
+            if ($h !== null) {
+                $humanActivityFull[] = $h;
+            }
+        }
+        ?>
+        <?php if ($humanActivityFull === []): ?>
+            <div class="empty-state">
+                <span class="empty-state-icon"><?= activity_icon_svg('spark') ?></span>
+                <p class="muted"><?= e(t('activity.empty')) ?></p>
+            </div>
+        <?php else: ?>
+            <ul class="activity-feed">
+                <?php foreach ($humanActivityFull as $h): ?>
+                    <li class="activity-item">
+                        <span class="activity-item-icon"><?= activity_icon_svg((string) $h['icon']) ?></span>
+                        <span class="activity-item-body">
+                            <strong><?= e((string) $h['text']) ?></strong>
+                            <?php if ((string) $h['when'] !== ''): ?><span class="activity-item-when"><?= e((string) $h['when']) ?></span><?php endif; ?>
+                        </span>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
     </article>
 </section>
+
+<?php $xp = (array) ($profileXp ?? []); ?>
+<div class="app-modal" id="profile-level-modal" hidden role="dialog" aria-modal="true" aria-labelledby="profile-level-modal-title">
+    <div class="app-modal-card">
+        <div class="app-modal-head">
+            <div>
+                <p class="eyebrow"><?= e(t('xp.level')) ?> <?= (int) ($xp['level'] ?? 1) ?></p>
+                <h2 id="profile-level-modal-title"><?= e(t('xp.progress_title')) ?></h2>
+            </div>
+            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.back')) ?>">&times;</button>
+        </div>
+        <div class="level-progress-ring-wrap">
+            <div class="profile-xp-bar level-progress-bar-lg"><span style="width: <?= max(0, min(100, (int) ($xp['progress_pct'] ?? 0))) ?>%"></span></div>
+            <p class="level-progress-pct"><?= (int) ($xp['progress_pct'] ?? 0) ?>%</p>
+        </div>
+        <div class="level-progress-stats">
+            <div class="level-progress-stat">
+                <span class="level-progress-stat-label"><?= e(t('xp.total_xp')) ?></span>
+                <strong><?= e(number_format((int) ($xp['total_xp'] ?? 0))) ?></strong>
+            </div>
+            <div class="level-progress-stat">
+                <span class="level-progress-stat-label"><?= e(t('xp.into_level')) ?></span>
+                <strong><?= e(number_format((int) ($xp['into_level'] ?? 0))) ?> / <?= e(number_format((int) ($xp['level_span'] ?? 0))) ?></strong>
+            </div>
+            <div class="level-progress-stat">
+                <span class="level-progress-stat-label"><?= e(t('xp.needed_next', ['level' => (int) ($xp['level'] ?? 1) + 1])) ?></span>
+                <strong><?= e(number_format((int) ($xp['xp_to_next'] ?? 0))) ?> <?= e(t('xp.points')) ?></strong>
+            </div>
+        </div>
+        <p class="muted level-progress-hint"><?= e(t('xp.progress_hint')) ?></p>
+
+    </div>
+</div>
+
+<?php if (!empty($isOwnProfile)): ?>
+<div class="app-modal" id="profile-tagline-modal" hidden role="dialog" aria-modal="true" aria-labelledby="profile-tagline-modal-title">
+    <div class="app-modal-card">
+        <div class="app-modal-head">
+            <h2 id="profile-tagline-modal-title"><?= e(t('profile.tagline_modal_title')) ?></h2>
+            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.back')) ?>">&times;</button>
+        </div>
+        <form method="post" action="<?= e($profileUrl()) ?>" class="stack profile-tagline-form">
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="update_profile_tagline">
+            <label>
+                <?= e(t('profile.custom_message')) ?>
+                <input type="text" name="profile_tagline" maxlength="160" value="<?= e($profileTagline) ?>" placeholder="<?= e(t('profile.subtitle')) ?>">
+            </label>
+            <div class="profile-tagline-actions">
+                <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
 <?php if (!empty($canExportProfilePdf)): ?>
 <script id="profile-pdf-data" type="application/json"><?= $profileExportJson ?></script>
+<?php endif; ?>
+
+<?php if (!empty($isOwnProfile)): ?>
+<div class="app-modal" id="profile-avatar-modal" hidden role="dialog" aria-modal="true" aria-labelledby="profile-avatar-modal-title">
+    <div class="app-modal-card">
+        <div class="app-modal-head">
+            <div>
+                <p class="eyebrow"><?= e(t('nav.profile')) ?></p>
+                <h2 id="profile-avatar-modal-title"><?= e(t('profile.avatar_menu')) ?></h2>
+            </div>
+            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('celebration.dismiss')) ?>">&times;</button>
+        </div>
+
+        <?php // Two clearly separate things: the picture itself, and the frame around it. ?>
+        <a class="avatar-menu-option" href="/?page=settings#avatar">
+            <span class="avatar-menu-icon" aria-hidden="true">&#128247;</span>
+            <span class="avatar-menu-copy">
+                <strong><?= e(t('settings.change_avatar')) ?></strong>
+                <small><?= e(t('profile.avatar_photo_hint')) ?></small>
+            </span>
+        </a>
+
+        <?php $cosmetics = (array) ($profileCosmetics ?? []); ?>
+        <?php if ($cosmetics !== []): ?>
+            <form method="post" action="<?= e($profileUrl()) ?>" class="cosmetics-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="equip_frame">
+                <p class="cosmetics-title"><?= e(t('cosmetic.title')) ?></p>
+                <p class="muted small cosmetics-subtitle"><?= e(t('profile.avatar_frame_hint')) ?></p>
+                <div class="cosmetics-grid">
+                    <?php foreach ($cosmetics as $cosmetic): ?>
+                        <label class="cosmetic-option<?= empty($cosmetic['unlocked']) ? ' is-locked' : '' ?><?= !empty($cosmetic['equipped']) ? ' is-equipped' : '' ?>"
+                               title="<?= e((string) ($cosmetic['hint'] !== '' ? $cosmetic['hint'] : $cosmetic['label'])) ?>">
+                            <input type="radio" name="frame" value="<?= e((string) $cosmetic['key']) ?>"
+                                   <?= !empty($cosmetic['equipped']) ? 'checked' : '' ?>
+                                   <?= empty($cosmetic['unlocked']) ? 'disabled' : '' ?>>
+                            <span class="cosmetic-swatch avatar-frame frame-<?= e((string) $cosmetic['key']) ?>" aria-hidden="true">
+                                <?= empty($cosmetic['unlocked']) ? '&#128274;' : '' ?>
+                            </span>
+                            <span class="cosmetic-label"><?= e((string) $cosmetic['label']) ?></span>
+                            <?php if (!empty($cosmetic['hint'])): ?>
+                                <small class="cosmetic-hint"><?= e((string) $cosmetic['hint']) ?></small>
+                            <?php endif; ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <div class="cosmetics-actions">
+                    <button class="btn btn-primary small" type="submit"><?= e(t('cosmetic.equip')) ?></button>
+                    <button class="btn btn-ghost small" type="submit" name="frame" value="none"><?= e(t('cosmetic.reset')) ?></button>
+                </div>
+            </form>
+        <?php endif; ?>
+    </div>
+</div>
 <?php endif; ?>

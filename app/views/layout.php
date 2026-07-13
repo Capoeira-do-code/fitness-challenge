@@ -47,9 +47,11 @@ $mobileNavItems = [
 ];
 $topbarControls = $topbarControls ?? '';
 $unreadNotificationsCount = $loggedIn ? user_unread_notifications_count($GLOBALS['pdo'], (int) ($currentUser['id'] ?? 0)) : 0;
-$themeMode = $loggedIn ? (string) ($currentUser['theme_mode'] ?? 'auto') : 'auto';
+// Light is the default look: "auto" handed people a dark app because their OS said so,
+// which is not what this product is.
+$themeMode = $loggedIn ? (string) ($currentUser['theme_mode'] ?? 'light') : 'light';
 if (!in_array($themeMode, ['auto', 'light', 'dark'], true)) {
-    $themeMode = 'auto';
+    $themeMode = 'light';
 }
 $penaltiesEnabledForLayout = $loggedIn ? penalties_enabled($GLOBALS['pdo']) : false;
 $isNavActive = static function (string $pageKey) use ($currentPage): bool {
@@ -73,12 +75,21 @@ $renderMobileIcon = static function (string $icon): string {
         default => '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>',
     };
 };
+$renderQuickActionIcon = static function (string $mode): string {
+    return $mode === 'meal'
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v7M3.5 3v5a2.5 2.5 0 0 0 5 0V3M6 10v11M15 3v18M15 3c3 1.5 4 4.5 4 8h-4"/></svg>'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8v8M3 10v4M18 8v8M21 10v4M6 12h12"/></svg>';
+};
 ?>
 <!doctype html>
 <html lang="<?= e($activeLocale) ?>">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <?php // Pinch-zoom stays available: blocking it fails WCAG 1.4.4 and makes the dense
+          // training table unusable for anyone who needs to zoom. The reason people disable
+          // it - iOS auto-zooming on focus - is fixed properly instead, by giving touch
+          // devices 16px fields. ?>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title><?= e($pageTitle) ?></title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
@@ -100,7 +111,22 @@ if (!$loggedIn && $currentPage === 'login') {
 if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     $bodyClasses[] = 'login-body-has-bg';
 }
-if ($loggedIn && (string) ($_GET['layout_edit'] ?? '') === '1') {
+if (!$loggedIn && $currentPage === 'login' && (string) ($loginStyle ?? '') === 'spotlight') {
+    $bodyClasses[] = 'login-variant-spotlight-body';
+}
+$layoutEditRequested = $loggedIn
+    && (string) ($_GET['layout_edit'] ?? '') === '1'
+    && in_array((string) $currentPage, ['dashboard', 'analytics', 'team', 'profile'], true);
+if ($layoutEditRequested && $currentPage === 'profile') {
+    $profileSectionForLayout = trim((string) ($_GET['section'] ?? ''));
+    $profileUserIdForLayout = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) ($currentUser['id'] ?? 0);
+    $layoutEditRequested = $profileSectionForLayout === '' && $profileUserIdForLayout === (int) ($currentUser['id'] ?? 0);
+}
+if ($layoutEditRequested && $currentPage === 'team') {
+    $layoutEditRequested = trim((string) ($_GET['section'] ?? '')) === ''
+        && trim((string) ($_GET['metric'] ?? '')) === '';
+}
+if ($layoutEditRequested) {
     $bodyClasses[] = 'layout-edit-active';
 }
 $bodyStyle = '';
@@ -117,8 +143,14 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
             <?php else: ?>
                 <span class="brand-mark"><?= e(initials_for($appName)) ?></span>
             <?php endif; ?>
-            <span><?= e($appName) ?></span>
+            <span class="brand-name"><?= e($appName) ?></span>
         </a>
+
+        <?php // On a phone the page name lives here instead of in a hero panel that ate a
+              // quarter of the screen. The app name is already implied by the icon next to it.
+              // It is a real <h1>: the hero heading it replaces is display:none on mobile, so
+              // without this the page would have no heading at all for a screen reader. ?>
+        <h1 class="topbar-page-title"><?= e((string) ($title ?? '')) ?></h1>
 
         <nav class="nav-links nav-desktop" aria-label="Primary">
             <?php foreach ($desktopNavItems as $pageKey => $item): ?>
@@ -131,29 +163,76 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
 
         <div class="topbar-actions">
             <?= $topbarControls ?>
+            <?php // Desktop: a preview dropdown, so a notification can be read (and dismissed)
+                  // without leaving the page. Mobile keeps the plain link - a dropdown that
+                  // tall on a phone is just a worse version of the page it links to. ?>
+            <a class="topbar-notif-btn topbar-notif-link" href="/?page=notifications" aria-label="<?= e(t('nav.notifications')) ?><?= $unreadNotificationsCount > 0 ? ' (' . (int) $unreadNotificationsCount . ')' : '' ?>">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                <?php if ($unreadNotificationsCount > 0): ?>
+                    <span class="topbar-notif-badge" data-notification-badge><?= (int) min(99, $unreadNotificationsCount) ?></span>
+                <?php endif; ?>
+            </a>
+            <?php $notifPreview = $loggedIn ? user_notifications($GLOBALS['pdo'], (int) ($currentUser['id'] ?? 0), 5, true) : []; ?>
+            <details class="notif-menu">
+                <summary class="topbar-notif-btn" aria-label="<?= e(t('nav.notifications')) ?><?= $unreadNotificationsCount > 0 ? ' (' . (int) $unreadNotificationsCount . ')' : '' ?>">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    <?php if ($unreadNotificationsCount > 0): ?>
+                        <span class="topbar-notif-badge" data-notification-badge><?= (int) min(99, $unreadNotificationsCount) ?></span>
+                    <?php endif; ?>
+                </summary>
+                <div class="notif-menu-panel">
+                    <div class="notif-menu-head">
+                        <strong><?= e(t('nav.notifications')) ?></strong>
+                        <?php if ($unreadNotificationsCount > 0): ?>
+                            <form method="post" action="/?page=notifications" class="inline-form">
+                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="mark_all_notifications_read">
+                                <button class="btn btn-ghost small" type="submit"><?= e(t('notifications.mark_all_read')) ?></button>
+                            </form>
+                        <?php endif; ?>
+                    </div>
+                    <?php if ($notifPreview === []): ?>
+                        <p class="muted small notif-menu-empty"><?= e(t('notifications.empty')) ?></p>
+                    <?php else: ?>
+                        <ul class="notif-menu-list">
+                            <?php foreach ($notifPreview as $notifItem): ?>
+                                <li class="notif-menu-item<?= empty($notifItem['read_at']) ? ' is-unread' : '' ?>">
+                                    <a href="/?page=notifications&open_notification_id=<?= (int) $notifItem['id'] ?>">
+                                        <strong><?= e((string) ($notifItem['title'] ?? '')) ?></strong>
+                                        <span><?= e((string) ($notifItem['message'] ?? '')) ?></span>
+                                        <small class="muted"><?= e(human_time_ago((string) ($notifItem['created_at'] ?? ''))) ?></small>
+                                    </a>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                    <a class="btn btn-ghost small btn-block notif-menu-all" href="/?page=notifications"><?= e(t('common.view_all')) ?></a>
+                </div>
+            </details>
             <details class="add-menu topbar-add-menu">
                 <summary class="btn btn-primary add-menu-trigger btn-add" data-add-button aria-label="<?= e(t('entries.title')) ?>">
                     <span aria-hidden="true">+</span>
                     <span class="sr-only"><?= e(t('entries.title')) ?></span>
                 </summary>
                 <div class="add-menu-panel">
-                    <a class="btn btn-ghost" href="/?page=entries&mode=data"><?= e(t('entries.quick_data')) ?></a>
-                    <a class="btn btn-ghost" href="/?page=entries&mode=meal"><?= e(t('entries.quick_meal')) ?></a>
+                    <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><?= e(t('entries.quick_data')) ?></span></a>
+                    <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=meal"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
                 </div>
             </details>
             <details class="user-menu">
-                <summary class="user-menu-trigger">
+                <summary class="user-menu-trigger" aria-label="<?= e(t('nav.user_menu', ['name' => (string) $currentUser['display_name']])) ?>">
                     <?php $currentUserAvatarUrl = avatar_url($currentUser); ?>
+                    <?php $currentUserFrameClass = cosmetic_frame_class($currentUser); ?>
                     <?php if ($currentUserAvatarUrl !== ''): ?>
-                        <img src="<?= e($currentUserAvatarUrl) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
+                        <img class="<?= e(trim($currentUserFrameClass)) ?>" src="<?= e($currentUserAvatarUrl) ?>" alt="<?= e((string) $currentUser['display_name']) ?>">
                     <?php else: ?>
-                        <span><?= e(initials_for((string) $currentUser['display_name'])) ?></span>
+                        <span class="<?= e(trim($currentUserFrameClass)) ?>"><?= e(initials_for((string) $currentUser['display_name'])) ?></span>
                     <?php endif; ?>
                     <?php if ($unreadNotificationsCount > 0): ?>
                         <span class="user-menu-unread-badge" data-notification-badge aria-label="<?= e(t('nav.notifications')) ?>: <?= (int) $unreadNotificationsCount ?>"><?= (int) min(99, $unreadNotificationsCount) ?></span>
                     <?php endif; ?>
                 </summary>
-                <div class="user-menu-panel">
+                <nav class="user-menu-panel" aria-label="<?= e(t('nav.user_menu', ['name' => (string) $currentUser['display_name']])) ?>">
                     <?php if (function_exists('xp_user_level_info')): $menuXp = xp_user_level_info($GLOBALS['pdo'], (int) $currentUser['id']); ?>
                         <a class="user-menu-level" href="/?page=profile" title="<?= e(t('xp.level') . ' ' . (int) $menuXp['level']) ?>">
                             <span class="profile-level-badge"><?= e(t('xp.level_short')) ?> <?= (int) $menuXp['level'] ?></span>
@@ -163,23 +242,22 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                             </span>
                         </a>
                     <?php endif; ?>
-                    <a href="/?page=profile"><?= e(t('nav.profile')) ?></a>
-                    <a href="/?page=friends"><?= e(t('nav.friends')) ?></a>
-                    <a href="/?page=duels"><?= e(t('nav.duels')) ?></a>
-                    <a href="/?page=competitions"><?= e(t('nav.competitions')) ?></a>
-                    <a href="/?page=notifications"><?= e(t('nav.notifications')) ?><?php if ($unreadNotificationsCount > 0): ?> (<?= (int) $unreadNotificationsCount ?>)<?php endif; ?></a>
-                    <a href="/?page=settings"><?= e(t('nav.settings')) ?></a>
+                    <a href="/?page=profile"<?= $currentPage === 'profile' ? ' aria-current="page"' : '' ?>><?= e(t('nav.profile')) ?></a>
+                    <a href="/?page=workouts"<?= $currentPage === 'workouts' ? ' aria-current="page"' : '' ?>><?= e(t('nav.workouts')) ?></a>
+                    <a href="/?page=friends"<?= $currentPage === 'friends' ? ' aria-current="page"' : '' ?>><?= e(t('nav.friends')) ?></a>
+                    <a href="/?page=duels"<?= $currentPage === 'duels' ? ' aria-current="page"' : '' ?>><?= e(t('nav.duels')) ?></a>
+                    <a href="/?page=settings"<?= $currentPage === 'settings' ? ' aria-current="page"' : '' ?>><?= e(t('nav.settings')) ?></a>
                     <button type="button" class="user-menu-theme-toggle" data-theme-toggle data-csrf="<?= e(csrf_token()) ?>" data-label-dark="<?= e(t('nav.theme_toggle_dark')) ?>" data-label-light="<?= e(t('nav.theme_toggle_light')) ?>" aria-pressed="<?= $themeMode === 'dark' ? 'true' : 'false' ?>">
                         <span class="theme-toggle-icon theme-toggle-icon-sun" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg></span>
                         <span class="theme-toggle-icon theme-toggle-icon-moon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></span>
                         <span class="theme-toggle-label" data-theme-toggle-label><?= e($themeMode === 'dark' ? t('nav.theme_toggle_light') : t('nav.theme_toggle_dark')) ?></span>
                     </button>
                     <?php if (is_admin($currentUser)): ?>
-                        <a href="/?page=admin"><?= e(t('nav.admin')) ?></a>
+                        <a href="/?page=admin"<?= $currentPage === 'admin' ? ' aria-current="page"' : '' ?>><?= e(t('nav.admin')) ?></a>
                     <?php endif; ?>
                     <a href="/?page=settings&view=avatar#avatar"><?= e(t('settings.change_avatar')) ?></a>
                     <a href="/?page=logout"><?= e(t('nav.logout')) ?></a>
-                </div>
+                </nav>
             </details>
         </div>
     </header>
@@ -209,8 +287,8 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     <details class="floating-log add-menu">
         <summary class="add-menu-trigger" aria-label="<?= e(t('entries.title')) ?>">+</summary>
         <div class="add-menu-panel floating-add-panel">
-            <a class="btn btn-ghost" href="/?page=entries&mode=data"><?= e(t('entries.quick_data')) ?></a>
-            <a class="btn btn-ghost" href="/?page=entries&mode=meal"><?= e(t('entries.quick_meal')) ?></a>
+            <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><?= e(t('entries.quick_data')) ?></span></a>
+            <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=meal"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
         </div>
     </details>
     <nav class="bottom-nav mobile-liquid-nav" aria-label="Primary mobile">
@@ -229,11 +307,44 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                 <span><?= e(t('common.create')) ?></span>
             </summary>
             <div class="add-menu-panel bottom-nav-plus-menu">
-                <a class="btn btn-ghost" href="/?page=entries&mode=data"><?= e(t('entries.quick_data')) ?></a>
-                <a class="btn btn-ghost" href="/?page=entries&mode=meal"><?= e(t('entries.quick_meal')) ?></a>
+                <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><?= e(t('entries.quick_data')) ?></span></a>
+                <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=meal"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
             </div>
         </details>
     </nav>
+<?php endif; ?>
+
+<?php if ($loggedIn): ?>
+    <button type="button" class="to-top-btn" data-to-top hidden aria-label="<?= e(t('common.back_to_top')) ?>">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+    </button>
+<?php endif; ?>
+
+<?php
+// Unlock celebrations. Drained here (not in a page view) so a quest completed on
+// any page is celebrated on the very next render, exactly once.
+$celebrations = [];
+$celebrationPdo = db_current();
+if ($loggedIn && $celebrationPdo instanceof PDO && isset($currentUser['id'])) {
+    $celebrations = celebrations_drain($celebrationPdo, (int) $currentUser['id']);
+}
+?>
+<?php if ($celebrations !== []): ?>
+    <div class="celebration-stack" data-celebrations aria-live="polite">
+        <?php foreach ($celebrations as $celebration): ?>
+            <div class="celebration-toast celebration-<?= e((string) $celebration['kind']) ?>" role="status">
+                <span class="celebration-spark" aria-hidden="true">&#127881;</span>
+                <span class="celebration-body">
+                    <strong><?= e(t('celebration.' . $celebration['kind'])) ?></strong>
+                    <span><?= e((string) $celebration['label']) ?></span>
+                </span>
+                <?php if ((int) $celebration['xp'] > 0): ?>
+                    <span class="celebration-xp">+<?= (int) $celebration['xp'] ?> XP</span>
+                <?php endif; ?>
+                <button type="button" class="celebration-close" data-celebration-close aria-label="<?= e(t('celebration.dismiss')) ?>">&times;</button>
+            </div>
+        <?php endforeach; ?>
+    </div>
 <?php endif; ?>
 
 <script src="<?= e($mainJsAssetUrl) ?>"></script>

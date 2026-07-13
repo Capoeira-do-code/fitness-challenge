@@ -390,6 +390,81 @@ try {
         $notion = is_array($notionSettings ?? null) ? (array) $notionSettings : [];
         $notionConfigured = ($notion['token'] ?? '') !== '' && ($notion['database_id'] ?? '') !== '';
         ?>
+        <?php
+        $nStatus = is_array($notionStatus ?? null) ? (array) $notionStatus : [];
+        $nCounts = (array) ($nStatus['counts'] ?? []);
+        $nError = trim((string) ($nStatus['error'] ?? ''));
+        $nLast = trim((string) ($nStatus['last_sync_at'] ?? ''));
+        $nState = $nError !== '' ? 'error' : ($nLast !== '' ? 'ok' : 'never');
+        ?>
+        <section class="notion-status-card is-<?= e($nState) ?>">
+            <div class="notion-status-head">
+                <span class="notion-status-dot" aria-hidden="true"></span>
+                <div>
+                    <strong><?= e(t('admin.notion_status_' . $nState)) ?></strong>
+                    <span class="muted small">
+                        <?php if ($nLast !== ''): ?>
+                            <?= e(t('admin.notion_last_sync')) ?>: <?= e(human_time_ago($nLast)) ?>
+                        <?php else: ?>
+                            <?= e(t('admin.notion_never_synced')) ?>
+                        <?php endif; ?>
+                        &middot; <?= e(t('admin.notion_direction')) ?>: <?= e((string) ($notionSettings['direction'] ?? 'push')) ?>
+                    </span>
+                </div>
+                <form method="post" action="/?page=admin" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="notion_sync_now">
+                    <button class="btn btn-primary small" type="submit"><?= e(t('admin.notion_sync_now')) ?></button>
+                </form>
+            </div>
+
+            <?php if ($nCounts !== []): ?>
+                <div class="notion-status-counts">
+                    <?php foreach (['created', 'updated', 'pulled', 'skipped', 'failed', 'remaining'] as $ck): ?>
+                        <span class="notion-count<?= $ck === 'failed' && (int) ($nCounts[$ck] ?? 0) > 0 ? ' is-bad' : '' ?>">
+                            <strong><?= (int) ($nCounts[$ck] ?? 0) ?></strong>
+                            <small><?= e(t('admin.notion_count_' . $ck)) ?></small>
+                        </span>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+
+            <p class="muted small notion-status-records">
+                <?= e(t('admin.notion_synced_records', ['n' => (int) ($nStatus['synced_records'] ?? 0)])) ?>
+                <?php if ((int) ($nStatus['pending_records'] ?? 0) > 0): ?>
+                    &middot; <?= e(t('admin.notion_pending_records', ['n' => (int) $nStatus['pending_records']])) ?>
+                <?php endif; ?>
+            </p>
+
+            <?php $nFields = (array) ($nStatus['fields'] ?? []); ?>
+            <?php if ($nFields !== []): ?>
+                <details class="notion-field-detail">
+                    <summary><?= e(t('admin.notion_fields_title')) ?></summary>
+                    <?php if (empty($nStatus['schema_known'])): ?>
+                        <p class="muted small"><?= e(t('admin.notion_schema_unknown')) ?></p>
+                    <?php endif; ?>
+                    <ul class="notion-field-list">
+                        <?php foreach ($nFields as $nf): ?>
+                            <li class="notion-field-row<?= !empty($nf['missing_property']) ? ' is-bad' : '' ?>">
+                                <span class="notion-field-name"><?= e((string) $nf['label']) ?></span>
+                                <span class="notion-field-prop">
+                                    <?= (string) $nf['property'] !== '' ? e((string) $nf['property']) : '&mdash;' ?>
+                                </span>
+                                <span class="notion-field-dir dir-<?= e((string) $nf['direction']) ?>">
+                                    <?= e(t('admin.notion_dir_' . (string) $nf['direction'])) ?>
+                                </span>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                    <p class="muted small"><?= e(t('admin.notion_fields_hint')) ?></p>
+                </details>
+            <?php endif; ?>
+
+            <?php if ($nError !== ''): ?>
+                <p class="notion-status-error"><?= e($nError) ?></p>
+            <?php endif; ?>
+        </section>
+
         <div class="admin-notion-panel">
             <h3><?= e(t('admin.notion_title')) ?></h3>
             <p class="muted small"><?= e(t('admin.notion_hint')) ?></p>
@@ -726,6 +801,45 @@ try {
                 <input type="hidden" name="action" value="clear_login_background">
                 <button class="btn btn-ghost small" type="submit"><?= e(t('admin.login_background_clear')) ?></button>
             </form>
+        </section>
+
+        <section class="stack compact-form admin-login-style admin-subsection">
+            <div class="panel-head">
+                <div>
+                    <h3><?= e(t('admin.login_style_title')) ?></h3>
+                    <p class="muted"><?= e(t('admin.login_style_subtitle')) ?></p>
+                </div>
+            </div>
+
+            <?php
+            $currentLoginStyle = login_style_normalize($loginStyle ?? 'split');
+            $loginStyleChoices = [
+                'split' => ['label' => t('admin.login_style_split'), 'hint' => t('admin.login_style_split_hint')],
+                'centered' => ['label' => t('admin.login_style_centered'), 'hint' => t('admin.login_style_centered_hint')],
+                'spotlight' => ['label' => t('admin.login_style_spotlight'), 'hint' => t('admin.login_style_spotlight_hint')],
+            ];
+            ?>
+            <div class="admin-login-style-grid">
+                <?php foreach ($loginStyleChoices as $styleKey => $styleMeta): ?>
+                    <?php $isActiveStyle = $currentLoginStyle === $styleKey; ?>
+                    <form method="post" action="/?page=admin" class="admin-login-style-item<?= $isActiveStyle ? ' is-active' : '' ?>">
+                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                        <input type="hidden" name="action" value="set_login_style">
+                        <input type="hidden" name="login_style" value="<?= e($styleKey) ?>">
+                        <span class="admin-login-style-preview admin-login-style-preview-<?= e($styleKey) ?>" aria-hidden="true">
+                            <span class="admin-login-style-preview-panel"></span>
+                            <span class="admin-login-style-preview-card"></span>
+                        </span>
+                        <span class="admin-login-style-meta">
+                            <strong><?= e($styleMeta['label']) ?></strong>
+                            <span class="muted"><?= e($styleMeta['hint']) ?></span>
+                        </span>
+                        <button class="btn <?= $isActiveStyle ? 'btn-primary' : 'btn-ghost' ?> small" type="submit"<?= $isActiveStyle ? ' aria-current="true"' : '' ?>>
+                            <?= e($isActiveStyle ? t('common.active') : t('admin.login_style_apply')) ?>
+                        </button>
+                    </form>
+                <?php endforeach; ?>
+            </div>
         </section>
     </article>
 
@@ -1452,13 +1566,14 @@ try {
             'duel_win' => t('admin.xp_action_duel_win'),
         ];
         ?>
-        <section class="admin-subsection">
+        <div class="grid-two admin-xp-forms">
+        <section class="admin-subsection admin-xp-card">
             <h3><?= e(t('admin.xp_amounts_title')) ?></h3>
             <p class="muted small"><?= e(t('admin.xp_amounts_help')) ?></p>
             <form method="post" action="/?page=admin" class="stack compact-form">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="update_xp_amounts">
-                <div class="grid-inline three xp-amounts-grid">
+                <div class="xp-amounts-grid xp-input-grid">
                     <?php foreach ($xpActionLabels as $action => $label): ?>
                         <label><?= e($label) ?><input type="number" name="xp_amounts[<?= e($action) ?>]" min="0" max="100000" value="<?= (int) ($xpAmounts[$action] ?? 0) ?>"></label>
                     <?php endforeach; ?>
@@ -1467,13 +1582,13 @@ try {
             </form>
         </section>
 
-        <section class="admin-subsection">
+        <section class="admin-subsection admin-xp-card">
             <h3><?= e(t('admin.xp_adjust_title')) ?></h3>
             <p class="muted small"><?= e(t('admin.xp_adjust_help')) ?></p>
             <form method="post" action="/?page=admin" class="stack compact-form">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="adjust_user_xp">
-                <div class="grid-inline three xp-adjust-grid">
+                <div class="xp-adjust-grid xp-input-grid">
                     <label><?= e(t('common.user')) ?>
                         <select name="user_id" required>
                             <option value=""><?= e(t('admin.xp_select_user')) ?></option>
@@ -1489,10 +1604,11 @@ try {
                 <button class="btn btn-primary" type="submit"><?= e(t('admin.xp_apply')) ?></button>
             </form>
         </section>
+        </div>
 
         <section class="admin-subsection">
             <h3><?= e(t('admin.xp_users_title')) ?></h3>
-            <div class="card-list xp-user-list">
+            <div class="card-list xp-user-list xp-user-grid">
                 <?php foreach ((array) ($xpUsers ?? []) as $xpUser): ?>
                     <article class="mini-card xp-user-item">
                         <div>

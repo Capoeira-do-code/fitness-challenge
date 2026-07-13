@@ -49,7 +49,25 @@ function db_connect(array $config): PDO
         throw $exception;
     }
 
+    db_current($pdo);
+
     return $pdo;
+}
+
+/**
+ * The connection db_connect() already opened, for callers that have no $config
+ * at hand (views, in particular, only receive the params they were rendered
+ * with). Returns null before the first connect.
+ */
+function db_current(?PDO $pdo = null): ?PDO
+{
+    static $current = null;
+
+    if ($pdo instanceof PDO) {
+        $current = $pdo;
+    }
+
+    return $current;
 }
 
 function initialize_database(PDO $pdo, array $config): void
@@ -75,7 +93,7 @@ function initialize_database(PDO $pdo, array $config): void
             calorie_consumed_max REAL,
             motivation_quote TEXT DEFAULT "",
             profile_tagline TEXT,
-            theme_mode TEXT NOT NULL DEFAULT "auto",
+            theme_mode TEXT NOT NULL DEFAULT "light",
             locale TEXT NOT NULL DEFAULT "en",
             avatar_path TEXT,
             primary_goal_type TEXT NOT NULL DEFAULT "steps",
@@ -685,11 +703,21 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'primary_goal_value', 'REAL');
     ensure_column($pdo, 'users', 'primary_goals_spec', 'TEXT');
     ensure_column($pdo, 'users', 'profile_tagline', 'TEXT');
-    ensure_column($pdo, 'users', 'theme_mode', 'TEXT NOT NULL DEFAULT "auto"');
+    ensure_column($pdo, 'users', 'theme_mode', 'TEXT NOT NULL DEFAULT "light"');
     ensure_column($pdo, 'users', 'dashboard_view', 'TEXT NOT NULL DEFAULT "current_week"');
     ensure_column($pdo, 'users', 'dashboard_layout_json', 'TEXT');
+    ensure_column($pdo, 'users', 'dashboard_widgets_known', 'TEXT');
     ensure_column($pdo, 'users', 'team_layout_json', 'TEXT');
     ensure_column($pdo, 'users', 'analytics_layout_json', 'TEXT');
+    ensure_column($pdo, 'users', 'analytics_view', 'TEXT NOT NULL DEFAULT "total"');
+    ensure_column($pdo, 'users', 'profile_layout_json', 'TEXT');
+    ensure_column($pdo, 'users', 'avatar_frame', "TEXT NOT NULL DEFAULT 'none'");
+    // The team whose data the user is currently looking at. Persisted so every page
+    // agrees on which team is active instead of silently falling back to the first.
+    ensure_column($pdo, 'users', 'active_team_id', 'INTEGER');
+    // Which team widgets this user has already been offered. A saved layout only lists
+    // the visible ones, so a widget added later would stay hidden forever without this.
+    ensure_column($pdo, 'users', 'team_widgets_known', 'TEXT');
     ensure_column($pdo, 'users', 'meal_calendar_view', 'TEXT NOT NULL DEFAULT "week"');
     ensure_column($pdo, 'users', 'maintenance_calories', 'REAL');
     ensure_column($pdo, 'users', 'calorie_burn_goal', 'REAL');
@@ -699,6 +727,12 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'telegram_reminders_enabled', 'INTEGER NOT NULL DEFAULT 0');
     ensure_column($pdo, 'users', 'telegram_motivation_enabled', 'INTEGER NOT NULL DEFAULT 0');
     ensure_column($pdo, 'users', 'telegram_reminder_time', "TEXT NOT NULL DEFAULT '20:00'");
+    ensure_column($pdo, 'users', 'telegram_quiet_start', "TEXT NOT NULL DEFAULT ''");
+    ensure_column($pdo, 'users', 'telegram_quiet_end', "TEXT NOT NULL DEFAULT ''");
+    ensure_column($pdo, 'users', 'telegram_weekends_off', 'INTEGER NOT NULL DEFAULT 0');
+    ensure_column($pdo, 'users', 'telegram_tz', "TEXT NOT NULL DEFAULT ''");
+    ensure_column($pdo, 'users', 'telegram_notify_duel', 'INTEGER NOT NULL DEFAULT 1');
+    ensure_column($pdo, 'users', 'telegram_notify_streak', 'INTEGER NOT NULL DEFAULT 1');
     ensure_column($pdo, 'users', 'telegram_last_reminded_on', 'TEXT');
     ensure_column($pdo, 'users', 'telegram_last_reminded_at', 'TEXT');
     ensure_column($pdo, 'users', 'telegram_reminder_count', 'INTEGER NOT NULL DEFAULT 0');
@@ -802,6 +836,7 @@ function ensure_column(PDO $pdo, string $table, string $column, string $definiti
 function ensure_indexes(PDO $pdo): void
 {
     deduplicate_achievement_awards($pdo);
+    repair_zero_data_achievement_awards($pdo);
     deduplicate_achievement_suppressions($pdo);
     deduplicate_approval_requests($pdo);
 
@@ -1008,6 +1043,12 @@ function seed_default_achievements(PDO $pdo): void
         'reading_25_total' => 'sparkles',
         'morning_logs_5' => 'calendar-check',
         'consistent_week_logger' => 'calendar-check',
+        'duel_first_win' => 'medal',
+        'duel_three_wins' => 'medal',
+        'duel_ten_duels' => 'sword',
+        'comp_first_win' => 'trophy',
+        'comp_three_wins' => 'trophy',
+        'comp_first_join' => 'users',
         'team_active' => 'users',
         'team_first_challenge' => 'flag',
         'team_challenge_complete' => 'trophy',
@@ -1377,6 +1418,39 @@ function seed_default_achievements(PDO $pdo): void
             'en' => ['Team Burn 1000', 'The team logged 1,000 training calories burned.', ''],
             'es' => ['Quema 1000 de equipo', 'El equipo registro 1.000 calorias de entreno quemadas.', ''],
             'it' => ['Team burn 1000', 'Il team ha registrato 1.000 calorie allenamento bruciate.', ''],
+        ]],
+        // Duels and competitions had no achievements at all: you could win ten duels and
+        // the trophy case would not know. All six read finished rows, so none of them can
+        // be unlocked without actually having competed.
+        ['duel_first_win', 'user', 'duel_first_win', [
+            'en' => ['First Blood', 'Win your first duel.', ''],
+            'es' => ['Primera victoria', 'Gana tu primer duelo.', ''],
+            'it' => ['Prima vittoria', 'Vinci il tuo primo duello.', ''],
+        ]],
+        ['duel_three_wins', 'user', 'duel_three_wins', [
+            'en' => ['Duelist', 'Win three duels.', ''],
+            'es' => ['Duelista', 'Gana tres duelos.', ''],
+            'it' => ['Duellante', 'Vinci tre duelli.', ''],
+        ]],
+        ['duel_ten_duels', 'user', 'duel_ten_duels', [
+            'en' => ['Always Up For It', 'Finish ten duels, win or lose.', ''],
+            'es' => ['Siempre listo', 'Termina diez duelos, ganes o pierdas.', ''],
+            'it' => ['Sempre pronto', 'Concludi dieci duelli, vinti o persi.', ''],
+        ]],
+        ['comp_first_join', 'user', 'comp_first_join', [
+            'en' => ['Team Player', 'Take part in your first team competition.', ''],
+            'es' => ['Jugador de equipo', 'Participa en tu primera competicion de equipos.', ''],
+            'it' => ['Giocatore di squadra', 'Partecipa alla tua prima competizione a squadre.', ''],
+        ]],
+        ['comp_first_win', 'user', 'comp_first_win', [
+            'en' => ['Squad Victory', 'Win a team competition.', ''],
+            'es' => ['Victoria de escuadra', 'Gana una competicion de equipos.', ''],
+            'it' => ['Vittoria di squadra', 'Vinci una competizione a squadre.', ''],
+        ]],
+        ['comp_three_wins', 'user', 'comp_three_wins', [
+            'en' => ['Dynasty', 'Win three team competitions.', ''],
+            'es' => ['Dinastia', 'Gana tres competiciones de equipos.', ''],
+            'it' => ['Dinastia', 'Vinci tre competizioni a squadre.', ''],
         ]],
     ];
 
@@ -1765,4 +1839,40 @@ function db_profile_snapshot(): array
         'query_time_ms' => round((float) ($profile['query_time_ms'] ?? 0.0), 2),
         'slow_queries' => array_values((array) ($profile['slow_queries'] ?? [])),
     ];
+}
+
+/**
+ * One-off repair: revoke achievements that were unlocked with no data behind them.
+ *
+ * While penalties are disabled every week's penalty is zero, and two achievements
+ * ("no strike week", "two clean weeks") gated on nothing but that. So an account that
+ * had never logged a single day unlocked both on its first page load, banked 100 XP and
+ * started at level 4. The gate is fixed in evaluate_automatic_achievements(); this
+ * removes the awards (and the XP they minted) that already landed.
+ *
+ * Only touches users with zero daily_logs, so a real unlock is never revoked. Idempotent:
+ * once the rows are gone there is nothing left to delete, and the fixed gate will not
+ * re-grant them.
+ */
+function repair_zero_data_achievement_awards(PDO $pdo): void
+{
+    $rows = db_fetch_all(
+        $pdo,
+        "SELECT aw.id AS award_id, aw.user_id, aw.achievement_id, a.trigger_key
+         FROM achievement_awards aw
+         JOIN achievements a ON a.id = aw.achievement_id
+         WHERE a.trigger_key IN ('no_strike_week', 'clean_two_weeks')
+           AND NOT EXISTS (SELECT 1 FROM daily_logs dl WHERE dl.user_id = aw.user_id)"
+    );
+
+    foreach ($rows as $row) {
+        db_execute($pdo, 'DELETE FROM achievement_awards WHERE id = :id', [':id' => (int) $row['award_id']]);
+        // xp_award() keys these as "achievement:<id>", so the ledger row goes with it and
+        // the unique_key is free again if the user later earns it for real.
+        db_execute(
+            $pdo,
+            'DELETE FROM xp_events WHERE user_id = :u AND unique_key = :k',
+            [':u' => (int) $row['user_id'], ':k' => 'achievement:' . (int) $row['achievement_id']]
+        );
+    }
 }

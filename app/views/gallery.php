@@ -128,11 +128,32 @@ $topbarControls = ob_get_clean();
             <?php else: ?>
                 <div class="calendar-visible-period" data-meal-calendar-visible-period><?= e($calendarVisibleLabel) ?></div>
             <?php endif; ?>
+            <?php if ($calendarView === 'month'): ?>
+                <?php
+                // Weekday header for the compact mobile month grid (Mon-first).
+                $weekdayLabels = [t('cal.mon'), t('cal.tue'), t('cal.wed'), t('cal.thu'), t('cal.fri'), t('cal.sat'), t('cal.sun')];
+                ?>
+                <div class="gallery-cal-weekdays" aria-hidden="true">
+                    <?php foreach ($weekdayLabels as $wd): ?><span><?= e($wd) ?></span><?php endforeach; ?>
+                </div>
+            <?php endif; ?>
             <div class="meal-calendar meal-calendar-<?= e($calendarView) ?><?= $calendarView === 'month' ? ' meal-calendar-month' : '' ?> entries-calendar" data-meal-calendar-days>
+                <?php $calendarDayIndex = 0; ?>
                 <?php foreach ($mealCalendar as $dateKey => $day): ?>
                     <?php
                     $photoCount = (int) ($day['count'] ?? 0);
                     $hasLog = $photoCount > 0;
+                    // Offset the first cell so day 1 lands under its weekday.
+                    $calendarDayIndex++;
+                    $cellStyle = '';
+                    if ($calendarView === 'month' && $calendarDayIndex === 1) {
+                        try {
+                            $cellStyle = 'grid-column-start: ' . (int) (new DateTimeImmutable((string) $dateKey))->format('N') . ';';
+                        } catch (Throwable) {
+                            $cellStyle = '';
+                        }
+                    }
+                    $isToday = (string) $dateKey === date('Y-m-d');
                     $preview = is_array($day['preview'] ?? null) ? (array) $day['preview'] : null;
                     $previewPhotoId = (int) ($preview['id'] ?? 0);
                     try {
@@ -161,9 +182,17 @@ $topbarControls = ob_get_clean();
                         ? '/?page=photo&photo_id=' . $previewPhotoId
                         : '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey);
                     ?>
-                    <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?><?= (string) $dateKey === $selectedDate ? ' is-selected' : '' ?>" href="<?= e($calendarDayUrl) ?>">
+                    <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?><?= (string) $dateKey === $selectedDate ? ' is-selected' : '' ?><?= $isToday ? ' is-today' : '' ?>"
+                       href="<?= e($calendarDayUrl) ?>"
+                       style="<?= e($cellStyle) ?>"
+                       data-no-pjax
+                       data-cal-day="<?= e((string) $dateKey) ?>"
+                       data-cal-count="<?= $photoCount ?>"
+                       data-cal-label="<?= e(format_date_eu((string) $dateKey)) ?>"
+                       data-cal-all="<?= e('/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey)) ?>">
                         <article>
                             <strong><?= e($calendarDayLabel) ?></strong>
+                            <span class="gallery-cal-dot" aria-hidden="true"></span>
                             <?php if ($previewPhotos !== []): ?>
                                 <div class="entries-calendar-collage collage-count-<?= min(3, count($previewPhotos)) ?>">
                                     <?php foreach ($previewPhotos as $previewPhotoImage): ?>
@@ -233,3 +262,20 @@ $topbarControls = ob_get_clean();
         </div>
     <?php endif; ?>
 </section>
+
+<!-- Mobile day sheet (#12): tapping a calendar day opens this instead of
+     jumping straight to a photo, so a day with several photos is browsable. -->
+<div class="app-drawer gallery-day-sheet" id="gallery-day-sheet" hidden role="dialog" aria-modal="true" aria-labelledby="gallery-day-sheet-title">
+    <div class="app-drawer-card">
+        <div class="app-modal-head">
+            <div>
+                <p class="eyebrow" data-day-sheet-count></p>
+                <h2 id="gallery-day-sheet-title" data-day-sheet-title></h2>
+            </div>
+            <button type="button" class="app-drawer-close" data-app-modal-close aria-label="<?= e(t('common.back')) ?>">&times;</button>
+        </div>
+        <div class="gallery-day-sheet-grid" data-day-sheet-grid data-photos-label="<?= e(t('gallery.day_photos')) ?>"></div>
+        <p class="muted gallery-day-sheet-empty" data-day-sheet-empty hidden><?= e(t('gallery.no_photos_day')) ?></p>
+        <a class="btn btn-primary btn-block" data-day-sheet-open href="#"><?= e(t('gallery.open_day')) ?></a>
+    </div>
+</div>

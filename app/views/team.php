@@ -136,7 +136,12 @@ $isTeamOverview = $teamSection === '' && $teamMetricDetail === null;
 $teamLayoutWidgets = normalize_team_layout_widgets((string) ($currentUser['team_layout_json'] ?? ''));
 $teamLayoutIndex = array_flip($teamLayoutWidgets);
 $teamLayoutEditMode = !empty($teamLayoutEditMode) && $isTeamOverview;
-$teamLayoutEditorWidgets = team_layout_widgets_default();
+$teamLayoutEditorWidgets = $teamLayoutWidgets;
+foreach (team_layout_widgets_default() as $widget) {
+    if (!in_array($widget, $teamLayoutEditorWidgets, true)) {
+        $teamLayoutEditorWidgets[] = $widget;
+    }
+}
 $teamLayoutLabels = is_array($teamLayoutLabels ?? null) ? (array) $teamLayoutLabels : [
     'metrics' => t('team.widget_metrics'),
     'active_challenge' => t('team.widget_active_challenge'),
@@ -148,6 +153,7 @@ $teamLayoutLabels = is_array($teamLayoutLabels ?? null) ? (array) $teamLayoutLab
     'cumulative_distance' => t('team.widget_cumulative_distance'),
     'weekly_charts' => t('team.widget_weekly_charts'),
     'achievements' => t('team.widget_achievements'),
+    'competitions' => t('nav.competitions'),
 ];
 $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($teamLayoutIndex): string {
     if (!isset($teamLayoutIndex[$widget])) {
@@ -164,7 +170,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
 ?>
 <section class="screen stack-lg<?= $teamSection === 'member' ? ' team-member-detail-screen' : '' ?>">
     <div class="hero-panel">
-        <div>
+        <div class="hero-copy">
             <p class="eyebrow"><?= e(t('nav.team')) ?></p>
             <h1><?= e((string) $team['name']) ?></h1>
             <p class="muted"><?= e((string) (($team['description'] ?? '') !== '' ? $team['description'] : t('team.subtitle'))) ?></p>
@@ -178,9 +184,6 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             <?php endif; ?>
         </div>
         <div class="team-hero-actions inline-actions-mini">
-            <?php if (!empty($canManageTeam)): ?>
-                <a class="btn btn-secondary small team-settings-top" href="/?page=team_settings&team_id=<?= (int) $team['id'] ?>" aria-label="<?= e(t('team.settings')) ?>"><?= e(t('team.settings_short')) ?></a>
-            <?php endif; ?>
             <?php if (($joinableTeams ?? []) !== []): ?>
                 <details class="team-join-more">
                     <summary class="btn btn-ghost small"><?= e(t('team.join_another')) ?></summary>
@@ -197,14 +200,32 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     </form>
                 </details>
             <?php endif; ?>
-            <form method="post" action="/?page=team" class="team-leave-form" onsubmit="return confirm('<?= e(!empty($canManageTeam) ? t('team.leave_admin_confirm') : t('team.leave_confirm')) ?>');">
-                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="leave_team">
-                <input type="hidden" name="team_id" value="<?= (int) $team['id'] ?>">
-                <button class="btn btn-ghost small btn-danger-ghost" type="submit"><?= e(t('team.leave')) ?></button>
-            </form>
+            <?php
+            $teamHeroMenuItems = [];
+            if (!empty($canManageTeam)) {
+                $teamHeroMenuItems[] = [
+                    'label' => t('team.settings'),
+                    'href' => '/?page=team_settings&team_id=' . (int) $team['id'],
+                ];
+            }
+            $teamHeroMenuItems[] = [
+                'label' => t('team.leave'),
+                'danger' => true,
+                'type' => 'submit',
+                'attrs' => ['form' => 'team-leave-form'],
+            ];
+            echo render_kebab_menu($teamHeroMenuItems, [
+                'align' => 'end',
+                'class' => 'team-hero-menu',
+            ]);
+            ?>
         </div>
     </div>
+    <form id="team-leave-form" method="post" action="/?page=team" class="team-leave-form" hidden onsubmit="return confirm('<?= e(!empty($canManageTeam) ? t('team.leave_admin_confirm') : t('team.leave_confirm')) ?>');">
+        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+        <input type="hidden" name="action" value="leave_team">
+        <input type="hidden" name="team_id" value="<?= (int) $team['id'] ?>">
+    </form>
 
     <?php if ($teamLayoutEditMode): ?>
         <article class="panel team-layout-edit-mode-panel">
@@ -294,7 +315,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         $activeProgressDebug = is_array($activeChallenge['progress_debug'] ?? null) ? (array) $activeChallenge['progress_debug'] : [];
         ob_start();
         ?>
-        <article class="panel team-layout-item team-widget-active-challenge team-active-challenge-panel<?= $activeIsExpired ? ' is-expired' : '' ?><?= $activeIsPreStart ? ' is-pending' : '' ?>" data-active-challenge-panel style="<?= e($teamWidgetStyle('active_challenge', 20)) ?>">
+        <article class="panel team-layout-item team-widget-active-challenge team-active-challenge-panel<?= $activeIsExpired ? ' is-expired' : '' ?><?= $activeIsPreStart ? ' is-pending' : '' ?>" data-active-challenge-panel data-team-widget="active_challenge" style="<?= e($teamWidgetStyle('active_challenge', 20)) ?>">
             <div class="panel-head team-active-challenge-head">
                 <div>
                     <p class="eyebrow"><?= e(t('team.active_challenge_title')) ?></p>
@@ -592,7 +613,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             : 0;
         ?>
         <div class="team-layout-grid">
-        <div class="metric-grid team-layout-item team-widget-metrics" style="<?= e($teamWidgetStyle('metrics', 10)) ?>">
+        <div class="metric-grid team-layout-item team-widget-metrics" data-team-widget="metrics" style="<?= e($teamWidgetStyle('metrics', 10)) ?>">
             <a class="metric-card metric-card-link team-metric-steps" href="<?= e($teamMetricUrl('steps')) ?>">
                 <div class="progress-ring" style="--value: 100;"><span><?= e($formatInt($summarySteps)) ?></span></div>
                 <div><span><?= e(t('metric.total_steps')) ?></span><strong><?= e($formatInt($summarySteps)) ?></strong><p><?= e(t('team.all_members')) ?></p></div>
@@ -639,7 +660,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             <?= $activeChallengeHero ?>
         <?php endif; ?>
 
-        <article class="panel team-layout-item team-widget-leaderboard team-leaderboard-panel" style="<?= e($teamWidgetStyle('leaderboard', 30)) ?>">
+        <article class="panel team-layout-item team-widget-leaderboard team-leaderboard-panel" data-team-widget="leaderboard" style="<?= e($teamWidgetStyle('leaderboard', 30)) ?>">
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('dashboard.ranking')) ?></p>
@@ -692,7 +713,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             </div>
         </article>
 
-            <article class="panel team-layout-item team-widget-challenges team-challenges-panel" style="<?= e($teamWidgetStyle('challenges', 40)) ?>">
+            <article class="panel team-layout-item team-widget-challenges team-challenges-panel" data-team-widget="challenges" style="<?= e($teamWidgetStyle('challenges', 40)) ?>">
                 <div class="panel-head">
                     <div>
                         <p class="eyebrow"><?= e(t('team.challenges')) ?></p>
@@ -894,7 +915,73 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     </div>
                 <?php endif; ?>
             </article>
-            <article class="panel team-layout-item team-widget-members team-members-panel" style="<?= e($teamWidgetStyle('members', 50)) ?>">
+            <?php // Competitions used to be a separate top-level page. They are a team
+                  // activity, so they surface here, with the full manager one click away. ?>
+                <article class="panel team-layout-item team-widget-competitions" data-team-widget="competitions" style="<?= e($teamWidgetStyle('competitions', 55)) ?>">
+                    <div class="panel-head">
+                        <div>
+                            <p class="eyebrow"><?= e(t('friends.eyebrow')) ?></p>
+                            <h2><?= e(t('nav.competitions')) ?></h2>
+                        </div>
+                        <a class="btn btn-ghost small" href="/?page=competitions"><?= e(t('common.view_all')) ?></a>
+                    </div>
+                    <?php $teamComp = (array) ($teamCompetitions ?? []); ?>
+                    <?php if ($teamComp === []): ?>
+                        <div class="empty-state">
+                            <span class="empty-state-icon"><?= activity_icon_svg('trophy') ?></span>
+                            <p class="muted"><?= e(t('competitions.no_active')) ?></p>
+                            <a class="btn btn-primary small" href="/?page=competitions"><?= e(t('competitions.create_team')) ?></a>
+                        </div>
+                    <?php else: ?>
+                        <ul class="team-comp-list">
+                            <?php foreach ($teamComp as $tc): ?>
+                                <li class="team-comp-row">
+                                    <span class="team-comp-name"><?= e((string) ($tc['title'] ?? '')) ?></span>
+                                    <span class="team-comp-meta"><?= e((string) ($tc['meta'] ?? '')) ?></span>
+                                    <a class="btn btn-ghost small" href="/?page=competitions"><?= e(t('common.open')) ?></a>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                </article>
+
+            <?php $missions = (array) ($teamMissions ?? []); ?>
+            <?php if ($missions !== []): ?>
+
+                <?php // Missions ride along with the members widget (same visibility, rendered just
+                      // before it). It is not a layout item of its own, so it follows rather than
+                      // competing for a slot in the drag order. ?>
+                <article class="panel team-layout-item team-missions-panel" data-team-follows="members" style="<?= e($teamWidgetStyle('members', 45)) ?>">
+                    <div class="panel-head">
+                        <div>
+                            <p class="eyebrow"><?= e(t('common.week')) ?></p>
+                            <h2><?= e(t('team_mission.title')) ?></h2>
+                        </div>
+                    </div>
+                    <div class="team-missions-list">
+                        <?php foreach ($missions as $m): ?>
+                            <article class="team-mission<?= !empty($m['completed']) ? ' is-done' : '' ?>">
+                                <div class="team-mission-head">
+                                    <span class="quest-icon"><?= activity_icon_svg((string) $m['icon']) ?></span>
+                                    <strong><?= e((string) $m['label']) ?></strong>
+                                    <span class="team-mission-count"><?= (int) $m['progress'] ?>/<?= (int) $m['target'] ?></span>
+                                </div>
+                                <span class="quest-bar"><span style="width: <?= (int) $m['pct'] ?>%"></span></span>
+                                <details class="team-mission-contrib">
+                                    <summary><?= e(t('team_mission.contributions')) ?></summary>
+                                    <ul>
+                                        <?php foreach ((array) $m['contributions'] as $c): ?>
+                                            <li><span><?= e((string) $c['name']) ?></span><strong><?= (int) $c['value'] ?></strong></li>
+                                        <?php endforeach; ?>
+                                    </ul>
+                                </details>
+                            </article>
+                        <?php endforeach; ?>
+                    </div>
+                </article>
+            <?php endif; ?>
+
+            <article class="panel team-layout-item team-widget-members team-members-panel" data-team-widget="members" style="<?= e($teamWidgetStyle('members', 50)) ?>">
                 <div class="panel-head">
                     <div>
                         <p class="eyebrow"><?= e(t('team.members')) ?></p>
@@ -904,7 +991,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 </div>
                 <div class="card-list">
                     <?php foreach (($members ?? []) as $member): ?>
-                        <article class="mini-card member-card">
+                        <a class="mini-card member-card member-card-link" href="<?= e($teamMemberUrl((int) $member['user_id'])) ?>" aria-label="<?= e(t('team.view_member_detail', ['name' => (string) $member['display_name']])) ?>">
                             <div class="member-card-title">
                                 <?php $teamMemberAvatarUrl = avatar_url($member); ?>
                                 <?php if ($teamMemberAvatarUrl !== ''): ?>
@@ -913,17 +1000,17 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                     <span class="member-avatar member-avatar-initials"><?= e(initials_for((string) $member['display_name'])) ?></span>
                                 <?php endif; ?>
                             </div>
-                            <div>
+                            <div class="member-card-body">
                                 <strong><?= e((string) $member['display_name']) ?></strong>
-                                <span><?= e((string) $member['username']) ?> · <?= e((string) $member['role']) ?></span>
+                                <span class="member-card-meta"><?= e((string) $member['username']) ?> · <?= e((string) $member['role']) ?></span>
                             </div>
-                            <a class="btn small btn-ghost" href="/?page=profile&user_id=<?= (int) $member['user_id'] ?>" aria-label="<?= e(t('team.view_profile_of', ['name' => (string) $member['username']])) ?>"><?= e(t('team.view_profile')) ?></a>
-                        </article>
+                            <span class="member-card-go" aria-hidden="true">›</span>
+                        </a>
                     <?php endforeach; ?>
                 </div>
             </article>
 
-        <div class="grid-two team-layout-item team-widget-daily-charts" style="<?= e($teamWidgetStyle('daily_charts', 60)) ?>">
+        <div class="grid-two team-layout-item team-widget-daily-charts" data-team-widget="daily_charts" style="<?= e($teamWidgetStyle('daily_charts', 60)) ?>">
             <article class="panel chart-card">
                 <h2><?= e(t('team.steps_over_time')) ?></h2>
                 <canvas id="teamStepsChart" height="170"></canvas>
@@ -934,16 +1021,16 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             </article>
         </div>
 
-        <article class="panel chart-card team-layout-item team-widget-cumulative-steps team-cumulative-chart-card" style="<?= e($teamWidgetStyle('cumulative_steps', 70)) ?>">
+        <article class="panel chart-card team-layout-item team-widget-cumulative-steps team-cumulative-chart-card" data-team-widget="cumulative_steps" style="<?= e($teamWidgetStyle('cumulative_steps', 70)) ?>">
             <h2><?= e(t('team.cumulative_steps')) ?></h2>
             <canvas id="teamCumulativeStepsChart" height="170"></canvas>
         </article>
-        <article class="panel chart-card team-layout-item team-widget-cumulative-distance team-cumulative-chart-card" style="<?= e($teamWidgetStyle('cumulative_distance', 80)) ?>">
+        <article class="panel chart-card team-layout-item team-widget-cumulative-distance team-cumulative-chart-card" data-team-widget="cumulative_distance" style="<?= e($teamWidgetStyle('cumulative_distance', 80)) ?>">
             <h2><?= e(t('team.cumulative_distance')) ?></h2>
             <canvas id="teamCumulativeDistanceChart" height="170"></canvas>
         </article>
 
-        <div class="grid-two team-layout-item team-widget-weekly-charts" style="<?= e($teamWidgetStyle('weekly_charts', 90)) ?>">
+        <div class="grid-two team-layout-item team-widget-weekly-charts" data-team-widget="weekly_charts" style="<?= e($teamWidgetStyle('weekly_charts', 90)) ?>">
             <article class="panel chart-card">
                 <h2><?= e(t('team.workouts_over_time')) ?></h2>
                 <canvas id="teamWorkoutsChart" height="170"></canvas>
@@ -956,7 +1043,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             <?php endif; ?>
         </div>
 
-        <article class="panel team-layout-item team-widget-achievements team-achievements-panel" style="<?= e($teamWidgetStyle('achievements', 100)) ?>">
+        <article class="panel team-layout-item team-widget-achievements team-achievements-panel" data-team-widget="achievements" style="<?= e($teamWidgetStyle('achievements', 100)) ?>">
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('achievements.title')) ?></p>
@@ -968,8 +1055,8 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 <?php if (($teamAchievements ?? []) === []): ?>
                     <p class="muted"><?= e(t('achievements.empty')) ?></p>
                 <?php else: ?>
-                    <?php foreach ($teamAchievements as $achievement): ?>
-                        <?php $deleteFormId = 'delete-achievement-team-' . (int) $achievement['id']; ?>
+                    <?php foreach ($teamAchievements as $achievementIndex => $achievement): ?>
+                        <?php $deleteFormId = 'delete-achievement-team-' . (int) $achievement['id'] . '-' . (int) $achievementIndex; ?>
                         <article class="achievement-card team-achievement-card" <?= achievement_modal_attrs($achievement) ?>>
                             <?= achievement_visual_html($achievement, 'achievement-visual team-achievement-media') ?>
                             <div class="team-achievement-body">

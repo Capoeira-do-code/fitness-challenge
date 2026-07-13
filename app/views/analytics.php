@@ -312,7 +312,7 @@ ob_start();
 <a class="btn btn-ghost btn-topbar" href="<?= e($analyticsCancelEditLayoutUrl) ?>"><?= e(t('common.back')) ?></a>
 <?php else: ?>
 <details class="topbar-context analytics-view-menu">
-    <summary class="btn btn-ghost btn-topbar">View</summary>
+    <summary class="btn btn-ghost btn-topbar"><?= e(t('common.view')) ?></summary>
     <div class="topbar-context-panel analytics-view-panel">
         <form method="get" action="/" class="analytics-controls analytics-filter-panel analytics-filter-panel-topbar" data-analytics-filter>
             <input type="hidden" name="page" value="analytics">
@@ -372,44 +372,53 @@ $topbarControls = ob_get_clean();
 ?>
 <section class="screen stack-lg analytics-page" data-analytics-page>
     <?php if ($analyticsLayoutEditMode): ?>
-        <article class="panel analytics-layout-edit-mode-panel">
-            <form id="analytics-layout-edit-form" method="post" action="/?page=analytics" class="team-layout-editor analytics-layout-editor analytics-layout-editor-mobile" data-analytics-layout-editor>
+        <?php // Same compact editor as Home: a sticky bar with the section list tucked
+              // into a "visible widgets" disclosure. The old full panel was caught by the
+              // mobile edit-mode blur rule, which made it unusable on a phone. ?>
+        <div class="layout-editbar dashboard-layout-editbar analytics-layout-editbar">
+            <form id="analytics-layout-edit-form" method="post" action="/?page=analytics" class="dashboard-layout-editor analytics-layout-editor" data-analytics-layout-editor>
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="save_analytics_layout">
                 <input type="hidden" name="redirect_user_id" value="<?= (int) ($selectedUser['id'] ?? 0) ?>">
                 <input type="hidden" name="analytics_period" value="<?= e($analyticsPeriod) ?>">
                 <input type="hidden" name="analytics_week" value="<?= e($analyticsWeek) ?>">
                 <input type="hidden" name="analytics_month" value="<?= e($analyticsMonth) ?>">
-                <div class="team-layout-editor-head">
-                    <strong><?= e(t('dashboard.edit_layout')) ?></strong>
-                    <small><?= e(t('analytics.layout_hint')) ?></small>
+
+                <div class="dashboard-editbar-row">
+                    <p class="dashboard-editbar-hint">
+                        <strong><?= e(t('dashboard.edit_layout')) ?></strong>
+                        <small><?= e(t('analytics.layout_hint')) ?></small>
+                    </p>
+                    <div class="dashboard-editbar-actions">
+                        <a class="btn btn-ghost small" href="<?= e($analyticsCancelEditLayoutUrl) ?>"><?= e(t('common.cancel')) ?></a>
+                        <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
+                    </div>
                 </div>
-                <div class="team-layout-editor-list analytics-layout-editor-list" data-analytics-layout-list>
-                    <?php foreach ($analyticsLayoutEditorSections as $idx => $section): ?>
-                        <div class="team-layout-editor-item analytics-layout-editor-item analytics-layout-edit-card" draggable="true" data-analytics-layout-item>
-                            <span class="team-layout-drag-handle" aria-hidden="true">::</span>
-                            <label class="dashboard-layout-toggle">
-                                <input type="checkbox" name="analytics_sections[]" value="<?= e($section) ?>" <?= $showAnalyticsSection((string) $section) ? 'checked' : '' ?>>
-                                <span><?= e((string) ($analyticsSectionLabels[$section] ?? $section)) ?></span>
-                            </label>
-                            <div class="dashboard-layout-mobile-actions analytics-layout-mobile-actions">
-                                <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="<?= e(t('common.previous')) ?>">&uarr;</button>
-                                <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="<?= e(t('common.next')) ?>">&darr;</button>
+
+                <details class="dashboard-layout-visibility" open>
+                    <summary><?= e(t('dashboard.visible_widgets')) ?></summary>
+                    <div class="team-layout-editor-list analytics-layout-editor-list dashboard-layout-editor-list" data-analytics-layout-list>
+                        <?php foreach ($analyticsLayoutEditorSections as $idx => $section): ?>
+                            <div class="team-layout-editor-item analytics-layout-editor-item analytics-layout-edit-card" data-analytics-layout-item>
+                                <div class="dashboard-layout-mobile-actions analytics-layout-mobile-actions">
+                                    <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="<?= e(t('common.previous')) ?>">&uarr;</button>
+                                    <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="<?= e(t('common.next')) ?>">&darr;</button>
+                                </div>
+                                <label class="dashboard-layout-toggle">
+                                    <input type="checkbox" name="analytics_sections[]" value="<?= e($section) ?>" <?= $showAnalyticsSection((string) $section) ? 'checked' : '' ?>>
+                                    <span><?= e((string) ($analyticsSectionLabels[$section] ?? $section)) ?></span>
+                                </label>
+                                <input type="hidden" name="analytics_order[<?= e($section) ?>]" value="<?= e((string) ($idx + 1)) ?>" data-analytics-order-input>
                             </div>
-                            <input type="hidden" name="analytics_order[<?= e($section) ?>]" value="<?= e((string) ($idx + 1)) ?>" data-analytics-order-input>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-                <div class="team-layout-editor-actions">
-                    <a class="btn btn-ghost small" href="<?= e($analyticsCancelEditLayoutUrl) ?>"><?= e(t('common.back')) ?></a>
-                    <button class="btn btn-ghost small" type="submit" name="reset_analytics_layout" value="1"><?= e(t('dashboard.reset_layout')) ?></button>
-                    <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
-                </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <button class="btn btn-ghost small dashboard-editbar-reset" type="submit" name="reset_analytics_layout" value="1"><?= e(t('dashboard.reset_layout')) ?></button>
+                </details>
             </form>
-        </article>
+        </div>
     <?php endif; ?>
 
-    <section class="analytics-section analytics-summary-section analytics-layout-item" style="<?= e($analyticsSectionStyle('summary')) ?>">
+    <section class="analytics-section analytics-summary-section analytics-layout-item" data-analytics-section="summary" style="<?= e($analyticsSectionStyle('summary')) ?>">
         <div class="analytics-section-title">
             <h2><?= e(t('analytics.section_summary')) ?></h2>
             <span class="badge"><?= e($analyticsRangeText) ?></span>
@@ -425,7 +434,7 @@ $topbarControls = ob_get_clean();
         </div>
     </section>
 
-    <section class="analytics-section analytics-layout-item" style="<?= e($analyticsSectionStyle('activity')) ?>">
+    <section class="analytics-section analytics-layout-item" data-analytics-section="activity" style="<?= e($analyticsSectionStyle('activity')) ?>">
         <div class="analytics-section-title">
             <h2><?= e(t('dashboard.analytics_activity')) ?></h2>
             <span class="badge"><?= e(t('metric.steps')) ?> / <?= e(t('metric.distance_km')) ?></span>
@@ -451,7 +460,7 @@ $topbarControls = ob_get_clean();
         </div>
     </section>
 
-    <section class="analytics-section analytics-layout-item" style="<?= e($analyticsSectionStyle('nutrition')) ?>">
+    <section class="analytics-section analytics-layout-item" data-analytics-section="nutrition" style="<?= e($analyticsSectionStyle('nutrition')) ?>">
         <div class="analytics-section-title">
             <h2><?= e(t('analytics.section_nutrition')) ?></h2>
             <span class="badge"><?= e((string) ($calorieStats['tracked_days'] ?? 0)) ?> <?= e(t('dashboard.calories_tracked_days')) ?></span>
@@ -482,7 +491,7 @@ $topbarControls = ob_get_clean();
         </div>
     </section>
 
-    <section class="analytics-section analytics-layout-item" style="<?= e($analyticsSectionStyle('food')) ?>">
+    <section class="analytics-section analytics-layout-item" data-analytics-section="food" style="<?= e($analyticsSectionStyle('food')) ?>">
         <div class="analytics-section-title">
             <h2><?= e(t('analytics.section_food')) ?></h2>
             <span class="badge"><?= e((string) ((int) ($foodStats['photo_count'] ?? 0))) ?> <?= e(t('entries.photo_plural')) ?></span>
@@ -516,7 +525,7 @@ $topbarControls = ob_get_clean();
         </div>
     </section>
 
-    <section class="analytics-section analytics-layout-item" style="<?= e($analyticsSectionStyle('body')) ?>">
+    <section class="analytics-section analytics-layout-item" data-analytics-section="body" style="<?= e($analyticsSectionStyle('body')) ?>">
         <div class="analytics-section-title">
             <h2><?= e(t('analytics.section_body')) ?></h2>
             <span class="badge"><?= e(t('metric.weight')) ?></span>
@@ -536,7 +545,7 @@ $topbarControls = ob_get_clean();
         </div>
     </section>
 
-    <section class="analytics-section analytics-layout-item" style="<?= e($analyticsSectionStyle('comparison')) ?>">
+    <section class="analytics-section analytics-layout-item" data-analytics-section="comparison" style="<?= e($analyticsSectionStyle('comparison')) ?>">
         <div class="analytics-section-title">
             <h2><?= e(t('dashboard.analytics_comparison')) ?></h2>
             <a class="btn btn-ghost small" href="<?= e($comparisonDetailHref) ?>"><?= e(t('dashboard.view_full_breakdown')) ?></a>

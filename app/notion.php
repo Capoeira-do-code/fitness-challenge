@@ -1073,6 +1073,83 @@ function notion_record_run(PDO $pdo, array $summary, ?int $actorUserId): void
     set_app_setting_silent($pdo, 'notion_last_sync_at', now_iso(), $actor);
     set_app_setting_silent($pdo, 'notion_last_status', (string) ($summary['status'] ?? ''), $actor);
     set_app_setting_silent($pdo, 'notion_last_summary', (string) ($summary['message'] ?? ''), $actor);
+    // Keep the per-run counters so the admin can see what actually moved (#15).
+    set_app_setting_silent($pdo, 'notion_last_counts', json_encode([
+        'created' => (int) ($summary['created'] ?? 0),
+        'updated' => (int) ($summary['updated'] ?? 0),
+        'skipped' => (int) ($summary['skipped'] ?? 0),
+        'failed' => (int) ($summary['failed'] ?? 0),
+        'pulled' => (int) ($summary['pulled'] ?? 0),
+        'remaining' => (int) ($summary['remaining'] ?? 0),
+    ], JSON_UNESCAPED_SLASHES), $actor);
+    // Only overwrite the stored error when this run actually failed, so a
+    // successful run clears it and a transient failure stays visible.
+    $failed = (string) ($summary['status'] ?? '') === 'error' || (int) ($summary['failed'] ?? 0) > 0;
+    set_app_setting_silent($pdo, 'notion_last_error', $failed ? (string) ($summary['message'] ?? '') : '', $actor);
+}
+
+/**
+ * Sync health for the admin panel (#15): when it last ran, what moved, and
+ * whether the last run errored.
+ *
+ * @return array{last_sync_at:string,status:string,summary:string,error:string,counts:array<string,int>,synced_records:int}
+ */
+function notion_sync_status(PDO $pdo): array
+{
+    notion_ensure_schema($pdo);
+    $counts = json_decode((string) (app_setting($pdo, 'notion_last_counts', '') ?? ''), true);
+    $records = db_fetch_one($pdo, 'SELECT COUNT(*) AS c FROM notion_sync_state');
+
+    $settings = notion_settings($pdo);
+    $schema = notion_schema_cache($pdo);
+    $fieldMap = notion_field_map($pdo);
+    $active = notion_active_field_map($fieldMap, $schema);
+    $labels = notion_field_labels();
+    $twoWay = $settings['direction'] === 'two_way';
+    $pullable = notion_pull_updatable_fields();
+
+    // Which fields actually travel, and which way. A field only syncs if it is
+    // mapped AND the mapped Notion property still exists in the cached schema,
+    // so a renamed property shows up here as a broken mapping instead of failing
+    // silently at push time. When the schema has never been read we cannot know
+    // that, so we report the mapping as configured rather than crying wolf.
+    $schemaKnown = $schema !== [];
+    $fields = [];
+    foreach ($labels as $field => $label) {
+        $property = (string) ($fieldMap[$field] ?? '');
+        $isActive = $schemaKnown ? isset($active[$field]) : $property !== '';
+        $fields[] = [
+            'field' => $field,
+            'label' => $label,
+            'property' => $property,
+            'active' => $isActive,
+            'direction' => !$isActive
+                ? 'off'
+                : (($twoWay && in_array($field, $pullable, true)) ? 'two_way' : 'push'),
+            'missing_property' => $schemaKnown && $property !== '' && !isset($active[$field]),
+        ];
+    }
+
+    // Records the next run still has to touch. notion_sync_state holds one row
+    // per pushed log, so anything logged since the last run is pending.
+    $total = db_fetch_one($pdo, 'SELECT COUNT(*) AS c FROM daily_logs');
+    $pending = max(0, (int) ($total['c'] ?? 0) - (int) ($records['c'] ?? 0));
+
+    return [
+        'last_sync_at' => trim((string) (app_setting($pdo, 'notion_last_sync_at', '') ?? '')),
+        'status' => trim((string) (app_setting($pdo, 'notion_last_status', '') ?? '')),
+        'summary' => trim((string) (app_setting($pdo, 'notion_last_summary', '') ?? '')),
+        'error' => trim((string) (app_setting($pdo, 'notion_last_error', '') ?? '')),
+        'counts' => is_array($counts) ? array_map('intval', $counts) : [],
+        'synced_records' => (int) ($records['c'] ?? 0),
+        'pending_records' => $pending,
+        'fields' => $fields,
+        'direction' => (string) $settings['direction'],
+        'frequency' => (string) $settings['frequency'],
+        'run_time' => (string) $settings['run_time'],
+        'external' => !empty($settings['external']),
+        'schema_known' => $schemaKnown,
+    ];
 }
 
 /**

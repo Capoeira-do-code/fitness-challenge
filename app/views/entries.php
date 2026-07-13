@@ -286,6 +286,7 @@ if ($entryMode === 'calendar') {
                                             <?php foreach (($workoutTypes ?? []) as $type): ?>
                                                 <option value="<?= (int) $type['id'] ?>" <?= $selectValue === (string) ((int) $type['id']) ? 'selected' : '' ?>><?= e((string) $type['name']) ?></option>
                                             <?php endforeach; ?>
+                                            <?= wk_routine_options_html((array) ($userRoutines ?? []), (string) ($workoutSelectionValue ?? '')) ?>
                                             <option value="__custom__" <?= $selectValue === '__custom__' ? 'selected' : '' ?>><?= e(t('entries.workout_other')) ?></option>
                                         </select>
                                     </label>
@@ -331,6 +332,7 @@ if ($entryMode === 'calendar') {
                                     <?php foreach (($workoutTypes ?? []) as $type): ?>
                                         <option value="<?= (int) $type['id'] ?>"><?= e((string) $type['name']) ?></option>
                                     <?php endforeach; ?>
+                                    <?= wk_routine_options_html((array) ($userRoutines ?? []), (string) ($workoutSelectionValue ?? '')) ?>
                                     <option value="__custom__"><?= e(t('entries.workout_other')) ?></option>
                                 </select>
                             </label>

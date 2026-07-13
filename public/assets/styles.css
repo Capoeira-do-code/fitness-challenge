@@ -872,7 +872,12 @@ body.theme-active-dark .theme-toggle-icon-moon {
 }
 
 .screen {
-    animation: screenIn 0.22s ease both;
+    /* `both` retains the final keyframe forever, and a retained transform - even the
+       identity - makes .screen a containing block for every position:fixed descendant.
+       That is why modals inside a page were being centred against the page instead of
+       the viewport (visible as a card hanging off-screen in landscape). `backwards`
+       animates identically and drops the transform once the animation ends. */
+    animation: screenIn 0.22s ease backwards;
 }
 
 @keyframes screenIn {
@@ -9498,7 +9503,7 @@ body.is-transitioning::after {
         -webkit-backdrop-filter: blur(12px) saturate(1.22);
     }
 
-    body.layout-edit-active .screen > :not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel) {
+    body.layout-edit-active .screen > :not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel):not(.profile-layout-edit-mode-panel) {
         filter: blur(8px);
         opacity: 0.42;
         pointer-events: none;
@@ -9506,7 +9511,8 @@ body.is-transitioning::after {
     }
 
     body.layout-edit-active .dashboard-layout-edit-mode-panel,
-    body.layout-edit-active .team-layout-edit-mode-panel {
+    body.layout-edit-active .team-layout-edit-mode-panel,
+    body.layout-edit-active .profile-layout-edit-mode-panel {
         position: fixed;
         left: 0.7rem;
         right: 0.7rem;
@@ -14423,6 +14429,7 @@ body[data-theme="dark"][data-page="gallery"] .gallery-month-label {
 
 @media (max-width: 899px) {
   .team-layout-edit-mode-panel,
+  .profile-layout-edit-mode-panel,
   body.layout-edit-active .team-layout-item {
     padding: 0 !important;
   }
@@ -14437,7 +14444,7 @@ body[data-theme="dark"][data-page="gallery"] .gallery-month-label {
     -webkit-backdrop-filter: blur(8px) saturate(1.08) !important;
   }
 
-  body.layout-edit-active .screen > :not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel) {
+  body.layout-edit-active .screen > :not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel):not(.profile-layout-edit-mode-panel) {
     visibility: hidden !important;
     opacity: 0 !important;
     pointer-events: none !important;
@@ -14446,7 +14453,8 @@ body[data-theme="dark"][data-page="gallery"] .gallery-month-label {
   }
 
   body.layout-edit-active .dashboard-layout-edit-mode-panel,
-  body.layout-edit-active .team-layout-edit-mode-panel {
+  body.layout-edit-active .team-layout-edit-mode-panel,
+  body.layout-edit-active .profile-layout-edit-mode-panel {
     position: fixed !important;
     left: 0.7rem !important;
     right: 0.7rem !important;
@@ -14467,8 +14475,10 @@ body[data-theme="dark"][data-page="gallery"] .gallery-month-label {
 
   body.layout-edit-active.theme-active-dark .dashboard-layout-edit-mode-panel,
   body.layout-edit-active.theme-active-dark .team-layout-edit-mode-panel,
+  body.layout-edit-active.theme-active-dark .profile-layout-edit-mode-panel,
   body.layout-edit-active[data-theme="dark"] .dashboard-layout-edit-mode-panel,
-  body.layout-edit-active[data-theme="dark"] .team-layout-edit-mode-panel {
+  body.layout-edit-active[data-theme="dark"] .team-layout-edit-mode-panel,
+  body.layout-edit-active[data-theme="dark"] .profile-layout-edit-mode-panel {
     background: var(--dark-ui-surface-strong, #16222e) !important;
     border: 1px solid var(--dark-ui-border, rgba(170, 193, 204, 0.2)) !important;
   }
@@ -15948,5 +15958,4360 @@ body.theme-active-dark .profile-challenge-history-metrics span {
     nav.bottom-nav.mobile-liquid-nav .liquid-nav-item,
     nav.bottom-nav.mobile-liquid-nav .liquid-nav-item .nav-label {
         letter-spacing: 0 !important;
+    }
+}
+
+/* ==========================================================================
+   Login page redesign — variants, dark mode & Remember Me fix (#1)
+   ========================================================================== */
+
+.login-variant {
+    --login-card-width: 400px;
+}
+
+.login-variant .auth-shell-login {
+    width: min(1040px, 100%);
+    display: grid;
+    gap: 1.5rem;
+    align-items: center;
+}
+
+/* Shared brand block (external copy) */
+.login-variant .auth-copy-login {
+    display: grid;
+    gap: 0.75rem;
+    align-content: center;
+    padding: 1.4rem 1.2rem;
+}
+
+.login-variant .login-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+}
+
+.login-variant .login-headline {
+    margin: 0;
+    color: #fff;
+    font-size: clamp(2rem, 4.5vw, 3rem);
+    line-height: 1.04;
+}
+
+.login-variant .login-tagline {
+    margin: 0;
+    max-width: 42ch;
+    color: rgba(233, 243, 240, 0.92);
+    font-size: 1.05rem;
+    line-height: 1.5;
+}
+
+/* Card */
+.login-variant .auth-card-login {
+    width: 100%;
+    max-width: var(--login-card-width);
+    margin-inline: auto;
+    padding: clamp(1.4rem, 3vw, 2rem);
+    border-radius: var(--radius-xl);
+}
+
+.login-variant .auth-card-header {
+    display: grid;
+    justify-items: center;
+    gap: 0.35rem;
+    margin-bottom: 1.2rem;
+    text-align: center;
+}
+
+.login-variant .login-card-logo,
+.login-variant .login-card-logo-mark {
+    width: 58px;
+    height: 58px;
+    border-radius: 16px;
+    object-fit: cover;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.35rem;
+}
+
+.login-variant .auth-card-title {
+    margin: 0;
+    font-size: 1.35rem;
+    line-height: 1.15;
+}
+
+.login-variant .auth-card-subtitle {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.94rem;
+}
+
+.login-variant .auth-form {
+    gap: 0.85rem;
+}
+
+.login-variant .auth-field span {
+    display: block;
+    margin-bottom: 0.3rem;
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.login-variant .auth-field input {
+    width: 100%;
+}
+
+/* Remember Me — subtle, theme-aware (fixes unreadable dark-mode text) */
+.login-variant .remember-me-check {
+    min-height: 40px;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+    cursor: pointer;
+}
+
+.login-variant .remember-me-check span {
+    font-weight: 600;
+    color: var(--ink);
+}
+
+/* ---- Variant: split (default) ---- */
+@media (min-width: 861px) {
+    .login-variant-split .auth-shell-login {
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 2.4rem;
+    }
+    .login-variant-split .auth-card-login {
+        margin-inline: 0 auto;
+    }
+}
+
+.login-variant-split .auth-card-header {
+    text-align: left;
+    justify-items: start;
+}
+
+.login-variant-split .auth-card-header .login-card-logo,
+.login-variant-split .auth-card-header .login-card-logo-mark {
+    display: none;
+}
+
+/* ---- Variant: centered ---- */
+.login-variant-centered .auth-shell-login {
+    grid-template-columns: minmax(0, 440px);
+    justify-content: center;
+    gap: 1rem;
+}
+
+.login-variant-centered .auth-copy-login {
+    display: none;
+}
+
+.login-variant-centered .auth-card-login {
+    --login-card-width: 440px;
+}
+
+/* ---- Variant: spotlight ---- */
+.login-variant-spotlight .auth-shell-login {
+    grid-template-columns: minmax(0, 420px);
+    justify-content: center;
+}
+
+.login-variant-spotlight .auth-copy-login {
+    display: none;
+}
+
+.login-variant-spotlight .auth-card-login {
+    --login-card-width: 420px;
+    border-radius: 26px;
+    box-shadow: 0 30px 80px rgba(4, 10, 18, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+body.login-body.login-variant-spotlight-body {
+    background:
+        linear-gradient(160deg, rgba(6, 12, 20, 0.58), rgba(8, 18, 26, 0.62)),
+        var(--login-bg-image, linear-gradient(140deg, #0c141d, #0f2027)) center / cover no-repeat fixed;
+}
+
+/* Dark-mode / auto refinements for the login card internals */
+body[data-theme="dark"] .login-variant .remember-me-check,
+body[data-theme="dark"] .login-variant .auth-field span,
+body[data-theme="dark"] .login-variant .auth-card-title {
+    color: var(--ink);
+}
+
+body[data-theme="dark"] .login-variant .remember-me-check {
+    border-color: rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+    body[data-theme="auto"] .login-variant .remember-me-check {
+        border-color: rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.06);
+    }
+    body[data-theme="auto"] .login-variant .remember-me-check span,
+    body[data-theme="auto"] .login-variant .auth-field span {
+        color: var(--ink);
+    }
+}
+
+@media (max-width: 860px) {
+    .login-variant .auth-shell-login {
+        width: 100%;
+        max-width: 440px;
+        grid-template-columns: minmax(0, 1fr);
+        justify-content: center;
+    }
+    .login-variant .auth-copy-login,
+    .login-variant .auth-card-login {
+        min-width: 0;
+        width: min(100%, calc(100vw - 2rem));
+        max-width: calc(100vw - 2rem);
+        justify-self: center;
+    }
+    .login-variant-split .auth-copy-login {
+        text-align: center;
+        justify-items: center;
+        padding-bottom: 0.4rem;
+    }
+    .login-variant-split .login-brand {
+        justify-content: center;
+    }
+    .login-variant-split .login-tagline {
+        margin-inline: auto;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+}
+
+@media (max-width: 520px) {
+    body.login-body .container {
+        width: min(100%, calc(100vw - 1rem));
+    }
+    .login-variant .auth-copy-login {
+        padding-inline: 0.45rem;
+    }
+    .login-variant .auth-card-login {
+        padding: 1.25rem 1.1rem;
+    }
+    .login-variant .login-headline {
+        font-size: 1.8rem;
+    }
+}
+
+/* ---- Admin: login style picker ---- */
+.admin-login-style-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem;
+}
+
+.admin-login-style-item {
+    display: grid;
+    gap: 0.6rem;
+    padding: 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+
+.admin-login-style-item.is-active {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+.admin-login-style-preview {
+    position: relative;
+    display: block;
+    height: 74px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: linear-gradient(140deg, #12303a, #0f2027);
+}
+
+.admin-login-style-preview-card {
+    position: absolute;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3);
+}
+
+.admin-login-style-preview-panel {
+    position: absolute;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.admin-login-style-preview-split .admin-login-style-preview-panel {
+    left: 8px; top: 14px; width: 40%; height: 46px;
+}
+.admin-login-style-preview-split .admin-login-style-preview-card {
+    right: 8px; top: 14px; width: 40%; height: 46px;
+}
+
+.admin-login-style-preview-centered .admin-login-style-preview-panel { display: none; }
+.admin-login-style-preview-centered .admin-login-style-preview-card {
+    left: 50%; top: 14px; transform: translateX(-50%); width: 46%; height: 46px;
+}
+
+.admin-login-style-preview-spotlight {
+    background: linear-gradient(140deg, #1a3d47, #0b1a22);
+}
+.admin-login-style-preview-spotlight .admin-login-style-preview-panel { display: none; }
+.admin-login-style-preview-spotlight .admin-login-style-preview-card {
+    left: 50%; top: 12px; transform: translateX(-50%); width: 40%; height: 50px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(4px);
+}
+
+.admin-login-style-meta {
+    display: grid;
+    gap: 0.15rem;
+}
+
+.admin-login-style-meta strong { font-size: 0.95rem; }
+.admin-login-style-meta .muted { font-size: 0.8rem; }
+
+/* ==========================================================================
+   Reusable UI components: kebab menu, modal, drawer (shared)
+   ========================================================================== */
+
+/* ---- Kebab (three-dot) menu ---- */
+.kebab-menu {
+    position: relative;
+    display: inline-block;
+}
+
+.kebab-menu > summary.kebab-menu-trigger {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    padding: 0;
+    cursor: pointer;
+}
+
+.kebab-menu > summary.kebab-menu-trigger::-webkit-details-marker { display: none; }
+.kebab-menu > summary.kebab-menu-trigger::marker { content: ""; }
+
+.kebab-menu-dots {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.kebab-menu-dots span {
+    width: 4px;
+    height: 4px;
+    border-radius: 999px;
+    background: currentColor;
+    display: block;
+}
+
+.kebab-menu-panel {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    z-index: 50;
+    min-width: 190px;
+    display: grid;
+    gap: 0.18rem;
+    padding: 0.4rem;
+    border: 1px solid var(--glass-border, var(--line));
+    border-radius: 14px;
+    background: var(--glass-strong, var(--surface));
+    box-shadow: var(--glass-shadow-deep, 0 16px 34px rgba(15, 23, 42, 0.16));
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    animation: kebabMenuIn 0.14s ease both;
+}
+.kebab-menu[data-align="end"] .kebab-menu-panel { right: 0; }
+.kebab-menu[data-align="start"] .kebab-menu-panel { left: 0; }
+
+@keyframes kebabMenuIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.kebab-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    min-height: 38px;
+    padding: 0.5rem 0.6rem;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+}
+.kebab-menu-item:hover,
+.kebab-menu-item:focus-visible {
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.kebab-menu-item.is-danger { color: var(--bad, #df4c43); }
+.kebab-menu-item.is-danger:hover { background: color-mix(in srgb, var(--bad, #df4c43) 14%, transparent); }
+
+/* Mobile: kebab panel becomes a bottom sheet for easy reach */
+@media (max-width: 600px) {
+    .kebab-menu[open] .kebab-menu-panel {
+        position: fixed;
+        left: 0.6rem;
+        right: 0.6rem;
+        bottom: calc(0.6rem + env(safe-area-inset-bottom));
+        top: auto;
+        min-width: 0;
+        gap: 0.25rem;
+        padding: 0.5rem;
+        border-radius: 18px;
+        animation: kebabSheetIn 0.18s ease both;
+    }
+    .kebab-menu-item { min-height: 46px; font-size: 1rem; }
+    @keyframes kebabSheetIn {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+}
+
+/* ---- App modal & drawer ---- */
+.app-modal,
+.app-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    padding: 1rem;
+    background: rgba(8, 14, 22, 0.5);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+.app-modal[hidden],
+.app-drawer[hidden] { display: none; }
+.app-modal.is-open,
+.app-drawer.is-open { opacity: 1; }
+
+.app-modal { align-items: center; justify-content: center; }
+
+.app-modal-card {
+    width: min(560px, 100%);
+    max-height: calc(100vh - 2rem);
+    overflow: auto;
+    padding: clamp(1.2rem, 3vw, 1.6rem);
+    border: 1px solid var(--glass-border, var(--line));
+    border-radius: var(--radius-lg, 20px);
+    background: var(--glass-strong, var(--surface));
+    box-shadow: var(--glass-shadow-deep, 0 28px 78px rgba(15, 23, 42, 0.22));
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+    backdrop-filter: blur(22px) saturate(140%);
+    transform: translateY(10px) scale(0.98);
+    transition: transform 0.2s ease;
+}
+.app-modal.is-open .app-modal-card { transform: translateY(0) scale(1); }
+
+.app-modal-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.8rem;
+    margin-bottom: 0.9rem;
+}
+.app-modal-head h2, .app-modal-head h3 { margin: 0; }
+
+.app-modal-close,
+.app-drawer-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ink);
+    font-size: 1.15rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.app-modal-close:hover,
+.app-drawer-close:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+
+/* Drawer: from right on desktop, bottom sheet on mobile */
+.app-drawer { align-items: stretch; justify-content: flex-end; padding: 0; }
+.app-drawer-card {
+    width: min(440px, 100%);
+    height: 100%;
+    overflow: auto;
+    padding: clamp(1.2rem, 3vw, 1.6rem);
+    border-left: 1px solid var(--glass-border, var(--line));
+    background: var(--glass-strong, var(--surface));
+    box-shadow: var(--glass-shadow-deep, 0 28px 78px rgba(15, 23, 42, 0.22));
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+    backdrop-filter: blur(22px) saturate(140%);
+    transform: translateX(24px);
+    transition: transform 0.22s ease;
+}
+.app-drawer.is-open .app-drawer-card { transform: translateX(0); }
+
+@media (max-width: 600px) {
+    .app-drawer { align-items: flex-end; }
+    .app-drawer-card {
+        width: 100%;
+        height: auto;
+        max-height: 88vh;
+        border-left: 0;
+        border-top-left-radius: 22px;
+        border-top-right-radius: 22px;
+        transform: translateY(24px);
+    }
+    .app-drawer.is-open .app-drawer-card { transform: translateY(0); }
+}
+
+body.app-scroll-locked { overflow: hidden; }
+
+/* ==========================================================================
+   Photo Post — Instagram-style polish + round avatars (#7)
+   ========================================================================== */
+.photo-post-author .profile-avatar,
+.photo-comment-author .profile-avatar,
+.gallery-post-author .profile-avatar {
+    border-radius: 999px;
+    border: 2px solid color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+.photo-post-author {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+}
+.photo-post-author strong {
+    font-size: 0.98rem;
+    letter-spacing: -0.01em;
+}
+
+/* Cleaner post meta card header row */
+.photo-post-meta-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+.photo-post-tags {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+/* Post media framing — Instagram-like square-ish, centered */
+.photo-post-media {
+    border-radius: var(--radius-lg, 18px);
+    overflow: hidden;
+    background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+.photo-post-media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.photo-post-caption {
+    line-height: 1.5;
+}
+
+/* ==========================================================================
+   Level clickable -> XP progress modal (#21)
+   ========================================================================== */
+button.profile-level-trigger {
+    border: 0;
+    background: transparent;
+    padding: 0.3rem 0.4rem 0.3rem 0.3rem;
+    margin-top: 0.5rem;
+    border-radius: 12px;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    transition: background 0.16s ease, transform 0.16s ease;
+}
+button.profile-level-trigger:hover {
+    background: color-mix(in srgb, var(--ink) 6%, transparent);
+    transform: translateY(-1px);
+}
+button.profile-level-trigger:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+.level-progress-ring-wrap {
+    display: grid;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+}
+.level-progress-bar-lg {
+    height: 12px !important;
+    border-radius: 999px;
+}
+.level-progress-pct {
+    margin: 0;
+    font-weight: 800;
+    font-size: 1.4rem;
+    text-align: center;
+}
+.level-progress-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.6rem;
+}
+.level-progress-stat {
+    display: grid;
+    gap: 0.15rem;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.level-progress-stat-label {
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+.level-progress-stat strong { font-size: 1.05rem; }
+.level-progress-hint { margin: 1rem 0 0; font-size: 0.86rem; }
+
+/* ==========================================================================
+   Team Settings — 2-col secondary grid (#10) + compact Join Requests (#12)
+   ========================================================================== */
+.team-settings-secondary {
+    align-items: start;
+}
+
+.join-requests-list {
+    display: grid;
+    gap: 0.4rem;
+    max-height: 360px;
+    overflow-y: auto;
+}
+.join-requests-empty { margin: 0.3rem 0; }
+
+.join-request-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin: 0;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--ink) 2.5%, transparent);
+}
+.join-request-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+}
+.join-request-meta .member-avatar {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border-radius: 999px;
+}
+.join-request-text {
+    display: grid;
+    gap: 0.05rem;
+    min-width: 0;
+}
+.join-request-text strong {
+    font-size: 0.92rem;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.join-request-text span {
+    color: var(--muted);
+    font-size: 0.76rem;
+}
+.join-request-actions {
+    display: flex;
+    gap: 0.35rem;
+    flex: 0 0 auto;
+}
+.join-request-actions .btn.small {
+    min-height: 32px;
+    padding-inline: 0.6rem;
+}
+
+@media (max-width: 480px) {
+    .join-request-row { flex-wrap: wrap; }
+    .join-request-actions { width: 100%; }
+    .join-request-actions .btn { flex: 1; }
+}
+
+/* ==========================================================================
+   Team members — clickable rows, name-only on mobile (#11)
+   ========================================================================== */
+a.member-card-link {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    transition: transform 0.14s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+a.member-card-link:hover {
+    transform: translateY(-1px);
+}
+.member-card-body {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+    flex: 1;
+}
+.member-card-body strong {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.member-card-meta {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+.member-card-go {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 1.3rem;
+    line-height: 1;
+    opacity: 0.7;
+}
+
+@media (max-width: 600px) {
+    /* Name-focused compact rows on mobile */
+    .team-members-panel .member-card-meta { display: none; }
+    .team-members-panel a.member-card-link {
+        padding-block: 0.55rem;
+        gap: 0.55rem;
+    }
+    .team-members-panel .member-card-title .member-avatar {
+        width: 30px;
+        height: 30px;
+        flex: 0 0 30px;
+    }
+}
+
+/* ==========================================================================
+   Analytics — default Total view is server-side (#8). Mobile summary fonts.
+   ========================================================================== */
+@media (max-width: 600px) {
+    .analytics-summary-section .analytics-stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.55rem;
+    }
+    .analytics-summary-section .analytics-stat-card strong,
+    .analytics-stat-grid .analytics-stat-card strong {
+        font-size: 1.05rem;
+        line-height: 1.15;
+        word-break: break-word;
+    }
+    .analytics-stat-grid .analytics-stat-card {
+        padding: 0.6rem 0.65rem;
+    }
+    .analytics-stat-card .analytics-stat-label,
+    .analytics-stat-card span {
+        font-size: 0.72rem;
+    }
+    .analytics-section-title h2 {
+        font-size: 1.05rem;
+    }
+}
+
+/* Keep analytics sections visually consistent with the page's panels so they
+   don't read as detached patches (#8). */
+.analytics-section {
+    border-radius: var(--radius-lg, 18px);
+}
+
+/* ==========================================================================
+   Profile My Data — clickable metric cards -> detail (#16)
+   ========================================================================== */
+a.profile-data-card-link {
+    position: relative;
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    transition: transform 0.14s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+a.profile-data-card-link:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+    box-shadow: 0 12px 26px rgba(15, 23, 42, 0.1);
+}
+a.profile-data-card-link:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+.profile-data-card-go {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.6rem;
+    color: var(--muted);
+    font-size: 1.15rem;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+}
+a.profile-data-card-link:hover .profile-data-card-go {
+    opacity: 0.75;
+    transform: translateX(2px);
+}
+
+/* ==========================================================================
+   Training Overview — compact single-line habit chips (#4) + overflow guards (#3)
+   ========================================================================== */
+.training-habit-chips-compact {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 42px;
+    overflow: visible;
+}
+.training-habit-chips-compact .training-habit-chip {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+}
+.training-habit-chips-compact .training-habit-chip-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.training-habit-more { flex: 0 0 auto; }
+.training-habit-more > summary.training-habit-more-btn {
+    width: auto;
+    min-width: 42px;
+    height: 34px;
+    padding-inline: 0.6rem;
+    font-weight: 800;
+}
+.training-habit-more-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+}
+
+/* #3 — keep training bars/tables within their container, never push right */
+.training-summary-controls,
+.training-sheet-view-tabs {
+    max-width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+.training-sheet-view-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+.training-summary-weeks-panel .table-wrap,
+.training-overview .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+}
+/* grid-two children must be allowed to shrink so tables/bars don't force
+   horizontal page overflow */
+.grid-two > * { min-width: 0; }
+
+/* ==========================================================================
+   Custom Habit form opens as a floating popover, not inline in the table (#5)
+   so the sheet row height never changes when it opens.
+   ========================================================================== */
+.week-help-wrap .week-custom-habit:not([hidden]) {
+    position: absolute;
+    z-index: 60;
+    top: calc(100% + 6px);
+    right: 0;
+    width: min(280px, calc(100vw - 2rem));
+    border: 1px solid var(--glass-border, var(--line));
+    border-radius: 14px;
+    background: var(--glass-strong, #fff);
+    box-shadow: var(--glass-shadow-deep, 0 18px 40px rgba(15, 23, 42, 0.2));
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(18px) saturate(140%);
+}
+/* Let the popover escape the habit cell without expanding the row */
+.sheet-habits-cell { overflow: visible; }
+
+/* ==========================================================================
+   Training Overview — clearer visual hierarchy (#6)
+   ========================================================================== */
+.training-result-stat {
+    position: relative;
+    transition: transform 0.14s ease, box-shadow 0.16s ease;
+}
+.training-result-stat::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0.7rem; bottom: 0.7rem;
+    width: 3px;
+    border-radius: 999px;
+    background: var(--good, #19a974);
+    opacity: 0.55;
+}
+.training-result-stat.is-warn::before { background: var(--bad, #ef4444); opacity: 0.7; }
+.training-result-stat { padding-left: 1rem; }
+.training-result-stat.is-ok .training-result-value { color: var(--good, #19a974); }
+.training-result-stat:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.07);
+}
+.training-result-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: 0.72rem;
+}
+/* Consistent spacing between the overview panels */
+.training-summary-weeks-panel { margin-top: 0.2rem; }
+
+/* ==========================================================================
+   Status summary cards — Duels / Competitions on Profile & Dashboard (#19/#20)
+   ========================================================================== */
+.status-summary-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+    gap: 0.6rem;
+}
+.status-summary-stat {
+    display: grid;
+    gap: 0.1rem;
+    padding: 0.7rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+    text-align: center;
+}
+.status-summary-value {
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--ink);
+}
+.status-summary-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+}
+.status-summary-stat.is-active { border-color: color-mix(in srgb, var(--primary) 40%, var(--line)); }
+.status-summary-stat.is-active .status-summary-value { color: var(--primary); }
+.status-summary-stat.is-won .status-summary-value { color: var(--good, #19a974); }
+.status-summary-stat.is-pending .status-summary-value { color: var(--warning, #f5b94b); }
+
+/* ==========================================================================
+   Profile — team badges in hero (#19)
+   ========================================================================== */
+.profile-team-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.55rem;
+}
+.profile-team-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.28rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--ink);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition: transform 0.14s ease, background 0.16s ease;
+}
+.profile-team-badge:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--primary) 16%, transparent); }
+.profile-team-badge-dot {
+    width: 8px; height: 8px; border-radius: 999px;
+    background: var(--primary);
+}
+
+/* Dashboard duels/competitions widgets sit in the layout grid (#20) */
+.dashboard-versus-widget { min-width: 0; }
+.dashboard-versus-widget .status-summary-card { height: 100%; }
+
+/* ==========================================================================
+   Friends — motivating comparator + desktop grid (#18)
+   ========================================================================== */
+.friends-compare-lead {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin: 0.4rem 0 1rem;
+    padding: 0.7rem 1rem;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.friends-compare-lead-score {
+    font-size: 1.9rem;
+    font-weight: 900;
+    line-height: 1;
+    min-width: 2ch;
+    text-align: center;
+    color: var(--muted);
+}
+.friends-compare-lead.is-me .friends-compare-lead-score:first-child,
+.friends-compare-lead.is-friend .friends-compare-lead-score:last-child {
+    color: var(--primary);
+}
+.friends-compare-lead-label {
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-size: 0.82rem;
+    text-align: center;
+}
+
+.friends-compare-row { display: grid; gap: 0.35rem; padding: 0.4rem 0; }
+.friends-compare-line {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 0.6rem;
+}
+.friends-compare-line .friends-compare-val:first-child { text-align: right; }
+.friends-compare-line .friends-compare-val:last-child { text-align: left; }
+.friends-compare-metric {
+    font-size: 0.74rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+    white-space: nowrap;
+}
+.friends-compare-val.is-win { color: var(--primary); font-weight: 900; }
+
+.friends-compare-bars {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.35rem;
+    align-items: center;
+}
+.friends-compare-bar-track {
+    height: 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 8%, transparent);
+    overflow: hidden;
+    display: flex;
+}
+.friends-compare-bar-me { justify-content: flex-end; }
+.friends-compare-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 28%, transparent);
+}
+.friends-compare-bar-fill.is-win { background: var(--primary); }
+
+/* Desktop: friend lists as a responsive grid to use the width */
+@media (min-width: 720px) {
+    .friends-panel .card-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 0.6rem;
+    }
+    .friends-panel .friends-row { margin: 0; }
+}
+
+/* ==========================================================================
+   Admin — Levels & XP compact layout, uses full desktop width (#22)
+   ========================================================================== */
+.admin-xp-forms { align-items: start; }
+.admin-xp-card {
+    padding: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--ink) 2.5%, transparent);
+}
+.admin-xp-card h3 { margin-top: 0; }
+.xp-input-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.6rem;
+    align-items: end;
+}
+.xp-input-grid label {
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    min-width: 0;
+}
+.xp-input-grid input,
+.xp-input-grid select { width: 100%; }
+
+.xp-user-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.5rem;
+}
+.xp-user-grid .xp-user-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0.6rem 0.75rem;
+}
+.xp-user-grid .xp-user-item strong {
+    display: block;
+    font-size: 0.92rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ==========================================================================
+   Profile — customizable home layout (#15)
+   ========================================================================== */
+.profile-home-block-wrap {
+    min-width: 0;
+    display: flex;
+}
+.profile-home-block-wrap > .status-summary-card { width: 100%; }
+.profile-layout-editor-panel { margin-bottom: 0.2rem; }
+.profile-layout-editor-label { flex: 1; font-weight: 700; min-width: 0; }
+
+/* ==========================================================================
+   Notification center — dedicated bell in topbar, visible on mobile too (#13)
+   ========================================================================== */
+.topbar-notif-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--glass, rgba(255, 255, 255, 0.6));
+    color: var(--ink);
+    text-decoration: none;
+    transition: transform 0.14s ease, background 0.16s ease;
+}
+.topbar-notif-btn:hover { transform: translateY(-1px); }
+.topbar-notif-btn svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.topbar-notif-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: var(--coral, #ff6b4a);
+    color: #fff;
+    font-size: 0.66rem;
+    font-weight: 800;
+    line-height: 1;
+    box-shadow: 0 0 0 2px var(--surface, #fff);
+}
+
+/* ==========================================================================
+   Dark mode fix — base .check had a hardcoded #fff background (same family
+   as the Remember Me bug): week editor habits, entries toggles, pill toggles.
+   ========================================================================== */
+body[data-theme="dark"] .check,
+body.theme-active-dark .check {
+    color: var(--ink);
+    border-color: rgba(174, 194, 203, 0.22);
+    background: rgba(18, 27, 36, 0.92);
+}
+
+@media (prefers-color-scheme: dark) {
+    body[data-theme="auto"] .check {
+        color: var(--ink);
+        border-color: rgba(174, 194, 203, 0.22);
+        background: rgba(18, 27, 36, 0.92);
+    }
+}
+
+/* Hero panels that host a kebab menu must not clip its dropdown
+   (.hero-panel has overflow:hidden by default). */
+.hero-panel:has(.kebab-menu) {
+    overflow: visible;
+    position: relative;
+    z-index: 30;
+}
+
+@media (max-width: 719px) {
+    .profile-hero:has(.profile-hero-menu),
+    .hero-panel:has(.team-hero-actions > .team-hero-menu):not(:has(.team-join-more)) {
+        padding-right: 4.25rem;
+    }
+
+    .profile-hero-actions:has(> .profile-hero-menu):not(.has-friend-actions),
+    .team-hero-actions:has(> .team-hero-menu):not(:has(> .team-join-more)) {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        z-index: 45;
+        width: auto;
+        min-width: 0;
+        display: inline-flex;
+        justify-self: auto;
+        align-self: auto;
+    }
+}
+
+/* ==========================================================================
+   Deep UX pass — Apple-inspired polish + acceptance fixes
+   ========================================================================== */
+
+/* #9 — Avatar must be a perfect circle on every device. The mobile override
+   set width/height:60px but left flex-basis:82px from the base rule, so the
+   box became non-square (oval/faceted). Lock aspect-ratio + flex at the base. */
+.profile-avatar,
+.member-avatar,
+.settings-avatar-preview,
+.settings-avatar-preview-round {
+    aspect-ratio: 1 / 1;
+    flex-shrink: 0;
+    border-radius: 50%;
+    -webkit-mask-image: -webkit-radial-gradient(white, black); /* Safari clip fix */
+}
+@media (max-width: 600px) {
+    .settings-avatar-preview-round,
+    .settings-avatar-preview,
+    .profile-avatar {
+        flex: 0 0 60px !important;
+        min-height: 60px !important;
+    }
+}
+
+/* #9 — Profile/Team hero kebab must be TOP-right on desktop. The hero-panel is
+   a 2-col grid with align-items:end (≥680px), which pushed the actions column
+   to the bottom. Pin the kebab-bearing action cluster to the top. */
+@media (min-width: 680px) {
+    .profile-hero-actions:has(.kebab-menu),
+    .team-hero-actions:has(.kebab-menu) {
+        align-self: start;
+    }
+}
+
+/* #10 — Panel/summary-card headers keep title + action on ONE row until it
+   truly can't fit, then wrap gracefully. Fixes the Duels "Duels / View All"
+   double-line height jump. */
+.status-summary-card .panel-head,
+.panel > .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.status-summary-card .panel-head > div:first-child,
+.panel > .panel-head > div:first-child {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+.status-summary-card .panel-head .btn,
+.panel > .panel-head > .btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+.status-summary-card .panel-head h2,
+.status-summary-card .panel-head h3 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* #8 — Analytics sections: clearer card vs page separation on mobile (subtle
+   but visible border + soft shadow, coherent radius). No heavy glass. */
+@media (max-width: 600px) {
+    .analytics-section,
+    .analytics-summary-section,
+    .analytics-layout-item {
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg, 16px);
+        background: var(--surface);
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.05);
+        padding: 0.85rem;
+    }
+}
+body[data-theme="dark"] .analytics-section,
+body.theme-active-dark .analytics-section,
+body[data-theme="dark"] .analytics-summary-section,
+body.theme-active-dark .analytics-summary-section {
+    border-color: var(--dark-ui-border);
+    background: var(--dark-ui-surface);
+    box-shadow: none;
+}
+
+/* Respect reduced-motion across the new interactive components (#16). */
+@media (prefers-reduced-motion: reduce) {
+    .kebab-menu-panel,
+    .app-modal,
+    .app-drawer,
+    .app-modal-card,
+    .app-drawer-card,
+    .friends-compare-bar-fill,
+    .profile-data-card-link,
+    .member-card-link,
+    .status-summary-card,
+    .to-top-btn {
+        transition: none !important;
+        animation: none !important;
+    }
+}
+
+/* Back-to-top floating button (#9 — long settings/config pages) */
+.to-top-btn {
+    position: fixed;
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: calc(1rem + env(safe-area-inset-bottom) + var(--mobile-bottom-nav-height, 0px));
+    z-index: 120;
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--glass-strong, var(--surface));
+    color: var(--ink);
+    box-shadow: var(--glass-shadow, 0 10px 26px rgba(15, 23, 42, 0.16));
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
+    cursor: pointer;
+    opacity: 0;
+    transform: translateY(8px) scale(0.9);
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.to-top-btn.is-visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+.to-top-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ==========================================================================
+   Human activity feed (#11) + shared empty states (#16)
+   ========================================================================== */
+.activity-feed {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.15rem;
+}
+.activity-item {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.55rem 0.35rem;
+    border-radius: 12px;
+}
+.activity-item + .activity-item { border-top: 1px solid color-mix(in srgb, var(--ink) 7%, transparent); }
+.activity-item-icon {
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: var(--primary);
+}
+.activity-item-icon svg { width: 18px; height: 18px; }
+.activity-item-body { display: grid; gap: 0.05rem; min-width: 0; }
+.activity-item-body strong {
+    font-weight: 600;
+    font-size: 0.92rem;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.activity-item-when { color: var(--muted); font-size: 0.76rem; }
+
+.empty-state {
+    display: grid;
+    justify-items: center;
+    gap: 0.5rem;
+    padding: 1.6rem 1rem;
+    text-align: center;
+}
+.empty-state-compact { padding: 1rem 0.6rem; }
+.empty-state-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    height: 46px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 6%, transparent);
+    color: var(--muted);
+}
+.empty-state-icon svg { width: 24px; height: 24px; }
+.empty-state p { margin: 0; max-width: 30ch; }
+
+/* ==========================================================================
+   Workouts subsystem (#5) — routines, session logger
+   ========================================================================== */
+.workouts-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+}
+@media (min-width: 680px) { .workouts-stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.workouts-stat-card {
+    display: grid;
+    gap: 0.15rem;
+    padding: 0.85rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg, 16px);
+    background: var(--surface);
+}
+.workouts-stat-value { font-size: 1.6rem; font-weight: 900; line-height: 1; }
+.workouts-stat-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
+
+.workouts-routine-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 0.7rem;
+}
+.workouts-routine-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg, 16px);
+    background: var(--surface);
+    transition: transform 0.14s ease, box-shadow 0.16s ease;
+}
+.workouts-routine-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08); }
+.workouts-routine-card.is-favorite { border-color: color-mix(in srgb, var(--warning, #f5b94b) 55%, var(--line)); }
+.workouts-routine-card-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.workouts-routine-title { display: inline-flex; align-items: center; gap: 0.35rem; min-width: 0; text-decoration: none; color: inherit; }
+.workouts-routine-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workouts-fav-star { color: var(--warning, #f5b94b); }
+.workouts-routine-desc { margin: 0; }
+.workouts-routine-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: auto; }
+.workouts-list-actions { margin-top: 0.8rem; }
+
+.workouts-archived { margin-top: 0.9rem; }
+.workouts-archived summary { cursor: pointer; font-weight: 700; color: var(--muted); }
+.workouts-archived-list { display: grid; gap: 0.4rem; margin-top: 0.5rem; }
+.workouts-archived-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.4rem 0.55rem; border: 1px solid var(--line); border-radius: 10px; }
+
+.workouts-pr-list, .workouts-session-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; }
+.workouts-pr-list li { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.45rem 0.1rem; border-bottom: 1px solid color-mix(in srgb, var(--ink) 7%, transparent); }
+.workouts-session-list li { display: grid; gap: 0.05rem; padding: 0.4rem 0.1rem; border-bottom: 1px solid color-mix(in srgb, var(--ink) 7%, transparent); }
+
+.workouts-exercise-list { list-style: none; margin: 0 0 0.8rem; padding: 0; display: grid; gap: 0.35rem; }
+.workouts-exercise-row { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.55rem 0.6rem; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--ink) 2.5%, transparent); }
+.workouts-exercise-info { display: grid; gap: 0.1rem; min-width: 0; }
+.workouts-exercise-info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-icon { min-width: 34px; padding-inline: 0.5rem; }
+
+.workouts-add-exercise-grid { display: grid; grid-template-columns: 1fr; gap: 0.5rem; margin-bottom: 0.6rem; }
+@media (min-width: 620px) { .workouts-add-exercise-grid { grid-template-columns: 2fr 1fr 1fr 1fr; align-items: end; } }
+.workouts-custom-exercise { margin-top: 0.8rem; }
+.workouts-custom-exercise summary { cursor: pointer; font-weight: 700; }
+.workouts-routine-danger .inline-actions { justify-content: flex-end; }
+
+/* Session logger — one-handed mobile friendly */
+.workouts-session-exercises { display: grid; gap: 0.7rem; }
+.workouts-session-exercise { padding: 0.75rem; border: 1px solid var(--line); border-radius: var(--radius-lg, 16px); background: var(--surface); }
+.workouts-session-exercise-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+.workouts-set-rows { display: grid; gap: 0.4rem; }
+.workouts-set-row { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
+.workouts-set-row.is-done { opacity: 0.72; }
+.workouts-set-index { flex: 0 0 24px; text-align: center; font-weight: 800; color: var(--muted); }
+.workouts-set-field { flex: 1; min-width: 0; }
+.workouts-set-field input { width: 100%; text-align: center; min-height: 44px; font-size: 1rem; }
+.workouts-set-x { color: var(--muted); font-weight: 700; }
+.workouts-set-done { flex: 0 0 46px; min-height: 44px; font-size: 1.1rem; }
+.workouts-add-set-btn { margin-top: 0.4rem; }
+.workouts-session-add-exercise { display: flex; gap: 0.5rem; margin-top: 0.9rem; flex-wrap: wrap; }
+.workouts-session-add-exercise select { flex: 1; min-width: 0; }
+.workouts-session-footer { display: flex; gap: 0.6rem; justify-content: space-between; margin-top: 1rem; position: sticky; bottom: calc(0.6rem + env(safe-area-inset-bottom) + var(--mobile-bottom-nav-height, 0px)); }
+.workouts-session-footer form { flex: 1; }
+.workouts-session-footer .btn { width: 100%; }
+
+body[data-theme="dark"] .workouts-stat-card,
+body.theme-active-dark .workouts-stat-card,
+body[data-theme="dark"] .workouts-routine-card,
+body.theme-active-dark .workouts-routine-card,
+body[data-theme="dark"] .workouts-session-exercise,
+body.theme-active-dark .workouts-session-exercise {
+    background: var(--dark-ui-surface);
+    border-color: var(--dark-ui-border);
+}
+
+/* ==========================================================================
+   Workout analytics (#6) — CSS bar chart, messages, muscle distribution
+   ========================================================================== */
+.workouts-messages { display: grid; gap: 0.5rem; }
+.workouts-message {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--line));
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
+    font-weight: 600;
+}
+.workouts-message-icon {
+    flex: 0 0 30px; width: 30px; height: 30px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 999px; background: color-mix(in srgb, var(--primary) 16%, transparent); color: var(--primary);
+}
+.workouts-message-icon svg { width: 17px; height: 17px; }
+
+.workouts-bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.4rem;
+    height: 180px;
+    padding-top: 0.5rem;
+}
+.workouts-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; height: 100%; min-width: 0; justify-content: flex-end; }
+.workouts-bar {
+    width: 100%;
+    max-width: 42px;
+    border-radius: 8px 8px 3px 3px;
+    background: linear-gradient(180deg, var(--primary), color-mix(in srgb, var(--primary) 65%, #0d7d6c));
+    min-height: 2px;
+    transition: height 0.3s ease;
+}
+.workouts-bar-label { font-size: 0.68rem; color: var(--muted); white-space: nowrap; }
+.workouts-bar-sub { font-size: 0.7rem; font-weight: 800; color: var(--ink); }
+
+.workouts-muscle-list { display: grid; gap: 0.5rem; }
+.workouts-muscle-row { display: grid; grid-template-columns: 5.5rem 1fr 2.5rem; align-items: center; gap: 0.5rem; }
+.workouts-muscle-name { font-size: 0.82rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workouts-muscle-bar { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 8%, transparent); overflow: hidden; }
+.workouts-muscle-bar span { display: block; height: 100%; border-radius: 999px; background: var(--primary); }
+.workouts-muscle-pct { font-size: 0.78rem; font-weight: 800; text-align: right; color: var(--muted); }
+
+/* ==========================================================================
+   Layout edit mode — root-cause fix (#2)
+
+   `.screen` runs `animation: screenIn ... both`. With fill-mode `both` the
+   final keyframe's transform sticks around forever, so `.screen` permanently
+   creates a containing block AND a stacking context. That trapped the fixed
+   edit panels inside it: their z-index only counted *within* `.screen`, so the
+   root-level `body::before` blur overlay painted over them — the panel was
+   visible in the DOM but unclickable ("only blur appears" on mobile).
+
+   Dropping the transform while editing lets the panels be truly viewport-fixed
+   and lifts their z-index into the root stacking context. Fixes dashboard,
+   team and profile layout editing in one place.
+   ========================================================================== */
+body.layout-edit-active .screen {
+    animation: none !important;
+    transform: none !important;
+    filter: none !important;
+    will-change: auto !important;
+}
+
+/* ==========================================================================
+   Dashboard direct drag-and-drop (#2)
+   ========================================================================== */
+body.layout-edit-active .dashboard-layout > [data-dashboard-widget] {
+    position: relative;
+    cursor: grab;
+    touch-action: none;          /* let the pointer drag win over page scroll */
+    user-select: none;
+    outline: 2px dashed color-mix(in srgb, var(--primary) 45%, transparent);
+    outline-offset: 3px;
+    border-radius: var(--radius-lg, 16px);
+    transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+body.layout-edit-active .dashboard-layout > [data-dashboard-widget]::before {
+    content: "⠿";
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    z-index: 5;
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: var(--primary);
+    color: #fff;
+    font-size: 0.8rem;
+    line-height: 1;
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.2);
+    pointer-events: none;
+}
+body.layout-edit-active .dashboard-layout > [data-dashboard-widget]:active { cursor: grabbing; }
+
+.dashboard-layout > [data-dashboard-widget].is-dragging {
+    cursor: grabbing;
+    opacity: 0.95;
+    transform: scale(1.02);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+    outline-color: var(--primary);
+}
+
+.dashboard-drop-placeholder {
+    border: 2px dashed var(--primary);
+    border-radius: var(--radius-lg, 16px);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    min-width: 0;
+    animation: dropPulse 0.9s ease-in-out infinite;
+}
+@keyframes dropPulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 0.9; }
+}
+
+body.layout-dragging { cursor: grabbing; }
+body.layout-dragging * { cursor: grabbing !important; }
+
+/* Unsaved-changes hint on the save button */
+body.layout-has-unsaved [data-dashboard-layout-editor] button[type="submit"] {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning, #f5b94b) 55%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dashboard-drop-placeholder { animation: none; }
+    .dashboard-layout > [data-dashboard-widget] { transition: none; }
+}
+
+/* ==========================================================================
+   Dashboard edit mode on mobile (#2) — no more full-screen takeover.
+
+   The old behaviour hid the whole dashboard behind a blur and offered only an
+   abstract list. Instead we keep the REAL widget cards on screen so they can be
+   dragged directly, and demote the editor to a compact bottom sheet holding the
+   toggles / reset / save. Scoped to the dashboard so team & profile keep their
+   current (now working) editors untouched.
+   ========================================================================== */
+@media (max-width: 899px) {
+    body.layout-edit-active[data-page="dashboard"]::before {
+        display: none !important;
+    }
+
+    body.layout-edit-active[data-page="dashboard"] .screen > :not(.dashboard-layout-edit-mode-panel) {
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        filter: none !important;
+    }
+
+    body.layout-edit-active[data-page="dashboard"] .dashboard-layout-edit-mode-panel {
+        position: fixed !important;
+        inset: auto 0 0 0 !important;
+        top: auto !important;
+        max-height: 40vh !important;
+        overflow: auto !important;
+        z-index: 10060 !important;
+        border-radius: 22px 22px 0 0 !important;
+        padding: 0.75rem !important;
+        padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)) !important;
+        box-shadow: 0 -14px 40px rgba(15, 23, 42, 0.22) !important;
+    }
+
+    /* Sheet grab affordance */
+    body.layout-edit-active[data-page="dashboard"] .dashboard-layout-edit-mode-panel::before {
+        content: "";
+        display: block;
+        width: 38px;
+        height: 4px;
+        margin: 0 auto 0.6rem;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--ink) 22%, transparent);
+    }
+
+    /* Keep the last card reachable above the sheet */
+    body.layout-edit-active[data-page="dashboard"] .dashboard-layout {
+        padding-bottom: 44vh !important;
+    }
+}
+
+/* In edit mode a widget is a draggable object, not a live control surface.
+   Neutralising its inner links/buttons means (a) the whole card is grabbable
+   and (b) you can't accidentally navigate away while rearranging. */
+body.layout-edit-active .dashboard-layout > [data-dashboard-widget] :where(a, button, input, select, textarea, summary, details, canvas) {
+    pointer-events: none !important;
+}
+
+/* The legacy mobile rule hides `.screen` children with three :not() clauses,
+   giving it a higher specificity than a shorter override. Match its :not chain
+   (plus [data-page]) so the dashboard's real cards stay visible and draggable
+   while editing. */
+@media (max-width: 899px) {
+    body.layout-edit-active[data-page="dashboard"] .screen
+        > :not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel):not(.profile-layout-edit-mode-panel) {
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        filter: none !important;
+    }
+}
+
+/* ==========================================================================
+   Gallery calendar on mobile (#12)
+
+   The month view was `display:none` below 900px with nothing in its place, so
+   switching to Calendar View on a phone showed an empty 137px panel. Desktop
+   keeps its rich photo-collage grid; mobile gets a real, weekday-aligned month
+   calendar with dot indicators, and tapping a day opens a bottom sheet.
+   ========================================================================== */
+/* The month grid is 7 columns at every breakpoint, so the weekday header
+   belongs everywhere — desktop never had one and its day 1 was not aligned to
+   its real weekday, which made the whole month read wrong. */
+.gallery-calendar-panel .gallery-cal-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.5rem;
+    padding: 0 0.1rem 0.4rem;
+}
+.gallery-calendar-panel .gallery-cal-weekdays span {
+    text-align: center;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+@media (max-width: 899px) {
+    /* Bring the month grid back, as a proper 7-column calendar. */
+    .gallery-calendar-panel .entries-calendar.meal-calendar-month {
+        display: grid !important;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 4px;
+        padding: 0.25rem;
+    }
+
+    .gallery-calendar-panel .gallery-cal-weekdays {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 4px;
+        padding: 0 0.25rem 0.3rem;
+    }
+    .gallery-calendar-panel .gallery-cal-weekdays span {
+        text-align: center;
+        font-size: 0.68rem;
+        font-weight: 800;
+        color: var(--muted);
+        text-transform: uppercase;
+    }
+
+    /* Compact square cells: day number + a dot. No collage, no badge. */
+    .gallery-calendar-panel .entries-calendar-day {
+        min-height: 0;
+        text-decoration: none;
+    }
+    .gallery-calendar-panel .entries-calendar-day article {
+        display: grid;
+        place-items: center;
+        gap: 2px;
+        aspect-ratio: 1 / 1;
+        min-height: 0;
+        padding: 2px;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        background: color-mix(in srgb, var(--ink) 4%, transparent);
+    }
+    .gallery-calendar-panel .entries-calendar-day strong {
+        font-size: 0.82rem;
+        font-weight: 600;
+        line-height: 1;
+    }
+    .gallery-calendar-panel .entries-calendar-day .entries-calendar-collage,
+    .gallery-calendar-panel .entries-calendar-day .entries-calendar-empty,
+    .gallery-calendar-panel .entries-calendar-day .badge {
+        display: none !important;
+    }
+
+    /* Dot indicator instead of the content preview */
+    .gallery-cal-dot {
+        width: 5px;
+        height: 5px;
+        border-radius: 999px;
+        background: transparent;
+    }
+    .gallery-calendar-panel .entries-calendar-day.has-log .gallery-cal-dot {
+        background: var(--primary);
+    }
+    .gallery-calendar-panel .entries-calendar-day.has-log article {
+        background: color-mix(in srgb, var(--primary) 12%, transparent);
+        border-color: color-mix(in srgb, var(--primary) 28%, transparent);
+    }
+    .gallery-calendar-panel .entries-calendar-day.is-today article {
+        border-color: var(--primary);
+        font-weight: 800;
+    }
+    .gallery-calendar-panel .entries-calendar-day.is-selected article {
+        background: var(--primary);
+        border-color: var(--primary);
+    }
+    .gallery-calendar-panel .entries-calendar-day.is-selected strong { color: #fff; }
+    .gallery-calendar-panel .entries-calendar-day.is-selected .gallery-cal-dot { background: #fff; }
+}
+
+/* Day bottom sheet contents */
+.gallery-day-sheet-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+    margin-bottom: 0.9rem;
+}
+.gallery-day-sheet-grid a {
+    display: block;
+    aspect-ratio: 1 / 1;
+    border-radius: 10px;
+    overflow: hidden;
+}
+.gallery-day-sheet-grid img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.gallery-day-sheet-empty { margin: 0 0 0.9rem; }
+
+/* ==========================================================================
+   Quests / RPG board (#14)
+   ========================================================================== */
+.quests-streak {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--coral, #ff6b4a) 40%, var(--line));
+    background: color-mix(in srgb, var(--coral, #ff6b4a) 12%, transparent);
+    font-weight: 900;
+}
+.quests-streak-flame { font-size: 0.95rem; line-height: 1; }
+
+.quests-group-label {
+    margin: 0.7rem 0 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+}
+.quests-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+
+.quest-item {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.6rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+    transition: border-color 0.16s ease, background 0.16s ease;
+}
+.quest-item.is-done {
+    border-color: color-mix(in srgb, var(--good, #19a974) 45%, transparent);
+    background: color-mix(in srgb, var(--good, #19a974) 10%, transparent);
+}
+.quest-icon {
+    flex: 0 0 34px;
+    width: 34px; height: 34px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary) 14%, transparent);
+    color: var(--primary);
+}
+.quest-item.is-done .quest-icon {
+    background: color-mix(in srgb, var(--good, #19a974) 18%, transparent);
+    color: var(--good, #19a974);
+}
+.quest-icon svg { width: 17px; height: 17px; }
+
+.quest-body { display: grid; gap: 0.25rem; min-width: 0; flex: 1; }
+.quest-top { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.quest-top strong { font-size: 0.9rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quest-xp {
+    flex: 0 0 auto;
+    font-size: 0.72rem;
+    font-weight: 900;
+    color: var(--primary);
+    white-space: nowrap;
+}
+.quest-bar {
+    display: block;
+    height: 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 9%, transparent);
+    overflow: hidden;
+}
+.quest-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--primary);
+    transition: width 0.35s ease;
+}
+.quest-item.is-done .quest-bar > span { background: var(--good, #19a974); }
+.quest-meta { color: var(--muted); font-size: 0.72rem; }
+.quest-done { flex: 0 0 auto; color: var(--good, #19a974); font-weight: 900; font-size: 1.1rem; }
+.quests-next-rank { margin: 0.7rem 0 0; }
+
+@media (min-width: 900px) {
+    .quests-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .quest-bar > span { transition: none; }
+}
+
+body[data-theme="dark"] .quest-item,
+body.theme-active-dark .quest-item {
+    background: var(--dark-ui-row);
+    border-color: var(--dark-ui-border);
+}
+
+/* ==========================================================================
+   Notion sync status card (#15)
+   ========================================================================== */
+.notion-status-card {
+    display: grid;
+    gap: 0.7rem;
+    padding: 0.9rem 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.notion-status-card.is-ok { border-color: color-mix(in srgb, var(--good, #19a974) 40%, var(--line)); }
+.notion-status-card.is-error { border-color: color-mix(in srgb, var(--bad, #df4c43) 45%, var(--line)); }
+
+.notion-status-head {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+}
+.notion-status-head > div { flex: 1; min-width: 0; display: grid; gap: 0.1rem; }
+.notion-status-head form { flex: 0 0 auto; }
+
+.notion-status-dot {
+    flex: 0 0 10px;
+    width: 10px; height: 10px;
+    border-radius: 999px;
+    background: var(--muted);
+}
+.notion-status-card.is-ok .notion-status-dot { background: var(--good, #19a974); }
+.notion-status-card.is-error .notion-status-dot { background: var(--bad, #df4c43); }
+
+.notion-status-counts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+    gap: 0.4rem;
+}
+.notion-count {
+    display: grid;
+    gap: 0.05rem;
+    padding: 0.45rem 0.4rem;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--ink) 5%, transparent);
+    text-align: center;
+}
+.notion-count strong { font-size: 1.05rem; font-weight: 900; }
+.notion-count small { font-size: 0.66rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
+.notion-count.is-bad strong { color: var(--bad, #df4c43); }
+
+.notion-status-records { margin: 0; }
+.notion-status-error {
+    margin: 0;
+    padding: 0.55rem 0.7rem;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bad, #df4c43) 12%, transparent);
+    color: var(--bad, #df4c43);
+    font-size: 0.84rem;
+    word-break: break-word;
+}
+
+/* ==========================================================================
+   Badges + team missions (#14 phase 2)
+   ========================================================================== */
+.badge-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.4rem;
+}
+.badge-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+    min-width: 0;
+}
+.badge-chip.is-locked { opacity: 0.55; }
+.badge-chip.is-earned.tier-bronze { border-color: #b87333; background: color-mix(in srgb, #b87333 12%, transparent); }
+.badge-chip.is-earned.tier-silver { border-color: #9aa7b2; background: color-mix(in srgb, #9aa7b2 14%, transparent); }
+.badge-chip.is-earned.tier-gold { border-color: #e0a422; background: color-mix(in srgb, #e0a422 14%, transparent); }
+
+.badge-chip-icon {
+    flex: 0 0 28px;
+    width: 28px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 8%, transparent);
+    color: var(--muted);
+}
+.badge-chip.is-earned .badge-chip-icon { background: color-mix(in srgb, var(--primary) 16%, transparent); color: var(--primary); }
+.badge-chip-icon svg { width: 15px; height: 15px; }
+.badge-chip-body { display: grid; gap: 0.05rem; min-width: 0; }
+.badge-chip-body strong { font-size: 0.8rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge-chip-body small { font-size: 0.68rem; color: var(--muted); font-weight: 800; }
+.badge-chip.is-earned .badge-chip-body small { color: var(--primary); }
+
+.team-missions-list { display: grid; gap: 0.6rem; }
+.team-mission {
+    display: grid;
+    gap: 0.4rem;
+    padding: 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.team-mission.is-done {
+    border-color: color-mix(in srgb, var(--good, #19a974) 45%, transparent);
+    background: color-mix(in srgb, var(--good, #19a974) 10%, transparent);
+}
+.team-mission-head { display: flex; align-items: center; gap: 0.55rem; }
+.team-mission-head strong { flex: 1; min-width: 0; font-size: 0.9rem; font-weight: 600; }
+.team-mission-count { flex: 0 0 auto; font-weight: 900; font-size: 0.85rem; color: var(--muted); }
+.team-mission.is-done .team-mission-count { color: var(--good, #19a974); }
+.team-mission.is-done .quest-bar > span { background: var(--good, #19a974); }
+
+.team-mission-contrib summary { cursor: pointer; font-size: 0.74rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
+.team-mission-contrib ul { list-style: none; margin: 0.4rem 0 0; padding: 0; display: grid; gap: 0.2rem; }
+.team-mission-contrib li { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.84rem; padding: 0.2rem 0; }
+
+body[data-theme="dark"] .badge-chip,
+body.theme-active-dark .badge-chip,
+body[data-theme="dark"] .team-mission,
+body.theme-active-dark .team-mission {
+    background: var(--dark-ui-row);
+    border-color: var(--dark-ui-border);
+}
+
+/* --- Season widget ------------------------------------------------------- */
+.season-countdown {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--surface-2, rgba(127, 127, 127, 0.12));
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.season-your-xp {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 14px;
+}
+
+.season-your-xp strong {
+    font-size: 1.35rem;
+    letter-spacing: -0.02em;
+}
+
+.season-board {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+}
+
+.season-row {
+    display: grid;
+    grid-template-columns: 2.2rem minmax(72px, 1fr) minmax(60px, 2fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    min-width: 0;
+}
+
+.season-row.is-me {
+    background: var(--surface-2, rgba(127, 127, 127, 0.12));
+}
+
+.season-rank {
+    font-weight: 700;
+    font-size: 0.82rem;
+    opacity: 0.7;
+}
+
+.season-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.season-bar {
+    display: block;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--surface-2, rgba(127, 127, 127, 0.16));
+    overflow: hidden;
+}
+
+.season-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent, #4f7cff), var(--accent-2, #8b5cf6));
+    transition: width 0.35s ease;
+}
+
+.season-xp {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.season-hint {
+    margin: 12px 0 0;
+}
+
+@media (max-width: 640px) {
+    .season-row {
+        grid-template-columns: 1.9rem 1fr auto;
+    }
+
+    .season-bar {
+        grid-column: 1 / -1;
+    }
+}
+
+/* --- Unlock celebrations -------------------------------------------------- */
+.celebration-stack {
+    position: fixed;
+    left: 50%;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
+    transform: translateX(-50%);
+    z-index: 10080;
+    display: grid;
+    gap: 10px;
+    width: min(420px, calc(100vw - 32px));
+    pointer-events: none;
+}
+
+@media (min-width: 900px) {
+    .celebration-stack {
+        left: auto;
+        right: 24px;
+        bottom: 24px;
+        transform: none;
+    }
+}
+
+.celebration-toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, rgba(127, 127, 127, 0.22));
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+    animation: celebrationIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.celebration-toast.is-leaving {
+    animation: celebrationOut 0.24s ease forwards;
+}
+
+@keyframes celebrationIn {
+    from { opacity: 0; transform: translateY(14px) scale(0.96); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes celebrationOut {
+    to { opacity: 0; transform: translateY(8px) scale(0.98); }
+}
+
+.celebration-spark {
+    font-size: 1.4rem;
+    line-height: 1;
+}
+
+.celebration-body {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.celebration-body strong {
+    font-size: 0.9rem;
+}
+
+.celebration-body span {
+    font-size: 0.82rem;
+    opacity: 0.75;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.celebration-xp {
+    font-weight: 700;
+    font-size: 0.82rem;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent, #4f7cff), var(--accent-2, #8b5cf6));
+    color: #fff;
+    white-space: nowrap;
+}
+
+.celebration-close {
+    border: 0;
+    background: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 4px;
+    color: inherit;
+    opacity: 0.5;
+}
+
+.celebration-close:hover { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+    .celebration-toast,
+    .celebration-toast.is-leaving { animation: none; }
+}
+
+/* --- Compact dashboard layout edit bar ------------------------------------ */
+.layout-editbar,
+.dashboard-layout-editbar {
+    position: sticky;
+    top: 8px;
+    z-index: 30;
+    margin-bottom: 4px;
+}
+
+.layout-editbar .dashboard-layout-editor,
+.dashboard-layout-editbar .dashboard-layout-editor {
+    display: grid;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 18px;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, rgba(127, 127, 127, 0.22));
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+}
+
+.dashboard-editbar-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.dashboard-editbar-hint {
+    display: grid;
+    gap: 2px;
+    margin: 0;
+    min-width: 0;
+}
+
+.dashboard-editbar-hint small {
+    opacity: 0.7;
+}
+
+.dashboard-editbar-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.dashboard-layout-visibility > summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 6px 0;
+    list-style: none;
+}
+
+.dashboard-layout-visibility > summary::-webkit-details-marker { display: none; }
+
+.dashboard-layout-visibility > summary::before {
+    content: "\25B8";
+    display: inline-block;
+    margin-right: 6px;
+    transition: transform 0.18s ease;
+}
+
+.dashboard-layout-visibility[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+.dashboard-layout-visibility .dashboard-layout-editor-list {
+    margin-top: 8px;
+}
+
+.dashboard-editbar-reset {
+    margin-top: 10px;
+}
+
+/* --- Notion field detail --------------------------------------------------- */
+.notion-field-detail {
+    margin-top: 12px;
+}
+
+.notion-field-detail > summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 6px 0;
+}
+
+.notion-field-list {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.notion-field-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: 10px;
+    background: var(--surface-2, rgba(127, 127, 127, 0.08));
+    font-size: 0.82rem;
+}
+
+.notion-field-row.is-bad {
+    background: rgba(220, 78, 65, 0.12);
+}
+
+.notion-field-name { font-weight: 600; }
+
+.notion-field-name,
+.notion-field-prop {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.notion-field-prop {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    opacity: 0.75;
+}
+
+.notion-field-dir {
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.notion-field-dir.dir-off { background: rgba(127, 127, 127, 0.18); opacity: 0.7; }
+.notion-field-dir.dir-push { background: rgba(79, 124, 255, 0.18); }
+.notion-field-dir.dir-two_way { background: rgba(52, 168, 110, 0.2); }
+
+@media (max-width: 640px) {
+    .notion-field-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .notion-field-prop {
+        grid-column: 1 / -1;
+    }
+}
+
+/* --- Cosmetics: avatar frames --------------------------------------------- */
+.avatar-frame {
+    position: relative;
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+}
+
+.avatar-frame.frame-steel {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #9aa5b1, #d7dde3, #8d99a6);
+}
+
+.avatar-frame.frame-ember {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #ff7a18, #ff3d54, #ffb03a);
+}
+
+.avatar-frame.frame-aurora {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #35e0c0, #4f7cff, #a855f7);
+}
+
+.avatar-frame.frame-gold {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #f7c948, #fff0b3, #d99e0b);
+}
+
+.avatar-frame.frame-legend {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #ff3d54, #ffb03a, #4f7cff, #a855f7);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 6px 18px rgba(168, 85, 247, 0.32);
+}
+
+.avatar-frame.frame-iron {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #4b5563, #9ca3af, #374151);
+}
+
+.avatar-frame.frame-streaker {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #f97316, #fbbf24);
+}
+
+.cosmetics-form {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+    display: grid;
+    gap: 12px;
+    justify-items: start;
+}
+
+.cosmetics-title {
+    margin: 0;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.cosmetics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: 10px;
+    width: 100%;
+}
+
+.cosmetic-option {
+    display: grid;
+    justify-items: center;
+    gap: 5px;
+    padding: 10px 6px;
+    border-radius: 14px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    text-align: center;
+    min-width: 0;
+}
+
+.cosmetic-option:hover { background: var(--surface-2, rgba(127, 127, 127, 0.08)); }
+
+.cosmetic-option.is-equipped {
+    border-color: var(--accent, #4f7cff);
+    background: var(--surface-2, rgba(79, 124, 255, 0.1));
+}
+
+.cosmetic-option.is-locked {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.cosmetic-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.cosmetic-swatch {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    background-color: var(--surface-2, rgba(127, 127, 127, 0.14));
+    font-size: 0.9rem;
+}
+
+.cosmetic-swatch.frame-none {
+    border: 3px dashed var(--border, rgba(127, 127, 127, 0.35));
+}
+
+.cosmetic-label {
+    font-size: 0.76rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+.cosmetic-hint {
+    font-size: 0.68rem;
+    opacity: 0.7;
+    line-height: 1.25;
+}
+
+/* A tall modal on mobile used to end up underneath the fixed bottom nav, so its
+   last control (Save/Equip) could not be tapped at all. Reserve the nav's height
+   inside the scroll area rather than shortening the card, so the content still
+   scrolls all the way. */
+@media (max-width: 860px) {
+    .app-modal-card {
+        max-height: calc(100dvh - 2rem);
+        padding-bottom: calc(clamp(1.2rem, 3vw, 1.6rem) + 84px + env(safe-area-inset-bottom, 0px));
+    }
+}
+
+/* =========================================================================
+   Round 2 fixes
+   ========================================================================= */
+
+/* #1 Achievements: the widget head used to give the action a full-width row,
+   which pushed "View All" onto a second line. Keep title left / action right. */
+@media (max-width: 700px) {
+    .dashboard-achievements-panel .panel-head {
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 0.5rem;
+    }
+
+    .dashboard-achievements-panel .panel-head > div:first-child {
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .dashboard-achievements-panel .panel-head > div:first-child .eyebrow,
+    .dashboard-achievements-panel .panel-head > div:first-child .muted {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .dashboard-achievements-summary {
+        width: auto;
+        flex: 0 0 auto;
+        margin-left: auto;
+        justify-content: flex-end;
+        flex-wrap: nowrap;
+    }
+
+    .dashboard-achievements-summary .btn,
+    .dashboard-achievements-summary .dashboard-panel-action {
+        margin-left: 0;
+        white-space: nowrap;
+    }
+
+    /* The three counters stacked into one column; keep them on one row and
+       shrink the type instead, so nothing is hidden. */
+    .achievement-summary-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.4rem;
+    }
+
+    .achievement-summary-card {
+        justify-items: center;
+        padding: 0.6rem 0.4rem;
+        text-align: center;
+    }
+
+    .achievement-summary-card strong {
+        font-size: 1.05rem;
+    }
+
+    .achievement-summary-card small {
+        font-size: 0.6rem;
+        letter-spacing: 0;
+        line-height: 1.15;
+    }
+}
+
+@media (max-width: 360px) {
+    .achievement-summary-card {
+        padding: 0.5rem 0.25rem;
+    }
+
+    .achievement-summary-card small {
+        font-size: 0.55rem;
+    }
+}
+
+/* #2 Mobile edit layout: direct drag never actually worked on touch (the page is
+   blurred behind an overlay there), so showing a grab handle was a lie. Drop the
+   handle and the grab affordance below 900px — reordering happens in the
+   "Visible widgets" list, which does work. Desktop keeps direct drag. */
+@media (max-width: 899px) {
+    body.layout-edit-active .dashboard-layout > [data-dashboard-widget]::before {
+        content: none !important;
+        display: none !important;
+    }
+
+    body.layout-edit-active .dashboard-layout > [data-dashboard-widget] {
+        cursor: default;
+        touch-action: auto;
+        outline-style: solid;
+        outline-width: 1px;
+        outline-color: color-mix(in srgb, var(--primary) 30%, transparent);
+    }
+
+    /* The compact edit bar replaced the old edit-mode panel, so it needs the same
+       "stays on top of the blurred page" treatment its predecessor had. */
+    /* The bar is a grid item, and a sticky grid item has nothing to stick to: its
+       containing block is its own grid area. It scrolled away with the page. Pin it
+       to the bottom instead - within thumb reach, and clear of the fixed topbar. */
+    body.layout-edit-active .layout-editbar,
+    body.layout-edit-active .dashboard-layout-editbar {
+        position: fixed;
+        left: 0.6rem;
+        right: 0.6rem;
+        bottom: calc(0.6rem + env(safe-area-inset-bottom));
+        top: auto;
+        z-index: var(--z-edit-panel, 10060);
+        max-height: 70vh;
+        overflow-y: auto;
+        box-shadow: 0 -12px 40px rgba(15, 23, 42, 0.22);
+    }
+
+    /* The bottom nav (z-index 9999) painted straight over the pinned bar, swallowing
+       every tap. Navigating away mid-edit is not the point of this mode anyway, so it
+       stands down while editing. !important because the nav's own rules are stronger. */
+    body.layout-edit-active .bottom-nav,
+    body.layout-edit-active .bottom-nav.mobile-liquid-nav {
+        display: none !important;
+    }
+
+    /* Keep the last card reachable above the pinned bar. */
+    body.layout-edit-active .screen {
+        padding-bottom: 42vh;
+    }
+
+    body.layout-edit-active .screen > .layout-editbar,
+    body.layout-edit-active .screen > .dashboard-layout-editbar {
+        filter: none !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        visibility: visible !important;
+    }
+
+    body.layout-edit-active .layout-editbar .dashboard-layout-editor-list,
+    body.layout-edit-active .dashboard-layout-editbar .dashboard-layout-editor-list {
+        max-height: 46vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Touch targets for the reorder arrows. */
+    body.layout-edit-active .dashboard-layout-mobile-actions .btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
+
+/* A widget unchecked in the editor is previewed as dimmed rather than removed,
+   so the layout does not jump around while you are still deciding. */
+body.layout-edit-active .dashboard-layout > [data-dashboard-widget].is-layout-hidden {
+    display: block !important;
+    opacity: 0.32;
+    filter: grayscale(1);
+}
+body.layout-edit-active .dashboard-layout > [data-dashboard-widget][hidden] {
+    display: block;
+}
+
+/* #4 Habits in the training sheet.
+
+   The list was a 4-column grid capped at max-height:32px while each row is 36px
+   tall, so rows were silently clipped (measured: scrollHeight 36 > clientHeight
+   32). Nothing is hidden now: the list scrolls inside its cell instead. */
+.sheet-habits-list {
+    max-height: 68px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+@media (max-width: 899px) {
+    /* One habit per row so a long name never breaks the whole row, with a real
+       44px touch target on the checkbox. */
+    .sheet-habits-list {
+        display: grid;
+        grid-template-columns: 1fr;
+        width: 100%;
+        max-width: 220px;
+        max-height: 148px;
+        margin-left: 0;
+        gap: 0.15rem;
+    }
+
+    .training-sheet-table .sheet-habits-list .check {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        min-height: 44px;
+        padding: 0.25rem 0.35rem;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        line-height: 1.2;
+    }
+
+    .training-sheet-table .sheet-habits-list .check input[type="checkbox"] {
+        flex: 0 0 auto;
+        width: 20px;
+        height: 20px;
+    }
+
+    .training-sheet-table .sheet-habits-cell > .week-help-wrap {
+        display: block;
+        width: auto;
+        margin-bottom: 0.35rem;
+    }
+
+    .training-sheet-table .sheet-custom-habit-toggle {
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
+
+/* #5 Custom habit panel: existing habits first, creation as a second step. */
+.week-custom-habit {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+    padding: 0.6rem;
+    border: 1px solid var(--line, rgba(127, 127, 127, 0.2));
+    border-radius: 14px;
+    background: var(--surface, #fff);
+    min-width: 220px;
+}
+
+.custom-habit-section-label {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    opacity: 0.65;
+}
+
+.custom-habit-existing.is-collapsed {
+    display: none;
+}
+
+.custom-habit-list {
+    list-style: none;
+    margin: 0.35rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.25rem;
+    max-height: 168px;
+    overflow-y: auto;
+}
+
+.custom-habit-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.custom-habit-pick {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 40px;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--line, rgba(127, 127, 127, 0.2));
+    border-radius: 10px;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.custom-habit-pick span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.custom-habit-pick:hover { background: var(--surface-2, rgba(127, 127, 127, 0.08)); }
+.custom-habit-pick.is-active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
+
+.custom-habit-remove {
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: inherit;
+    opacity: 0.55;
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+.custom-habit-remove:hover { opacity: 1; background: var(--surface-2, rgba(127, 127, 127, 0.1)); }
+
+.custom-habit-create-trigger {
+    justify-self: start;
+}
+
+.custom-habit-empty {
+    margin: 0.35rem 0 0;
+}
+
+/* The custom-habit panel stays in flow inside its cell (the row simply grows).
+   An absolutely positioned popover ended up painted underneath the next row's
+   habit labels, because each table row is its own stacking context. */
+.training-sheet-table .week-custom-habit {
+    width: 250px;
+    max-width: min(250px, 78vw);
+    margin-top: 0.4rem;
+}
+
+/* #6 Read-only training sheet (viewing someone else's data). */
+.sheet-fieldset {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.sheet-readonly-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.75rem;
+    padding: 0.6rem 0.85rem;
+    border-radius: 12px;
+    background: var(--surface-2, rgba(127, 127, 127, 0.12));
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.sheet-fieldset[disabled] .training-sheet-table input,
+.sheet-fieldset[disabled] .training-sheet-table select,
+.sheet-fieldset[disabled] .training-sheet-table textarea {
+    opacity: 0.75;
+    cursor: not-allowed;
+}
+
+/* #7 Photo post header: title, back link and the kebab all belong on the top row.
+   They wrapped onto a second line on mobile, which pushed the kebab away from the
+   title it acts on. */
+@media (max-width: 700px) {
+    .photo-post-head {
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 0.5rem;
+    }
+
+    .photo-post-head > div:first-child {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .photo-post-title {
+        margin: 0;
+        font-size: 1.05rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .photo-post-head-actions {
+        flex: 0 0 auto;
+        width: auto;
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 0.35rem;
+    }
+
+    .photo-back-btn {
+        white-space: nowrap;
+        padding: 0.35rem 0.55rem;
+        font-size: 0.78rem;
+    }
+}
+
+/* Below ~400px the words do not fit next to the kebab. Keep the control (and its
+   44px target), drop only the label - the kebab must never be pushed off-screen. */
+@media (max-width: 400px) {
+    .photo-back-btn {
+        min-width: 44px;
+        min-height: 40px;
+        display: inline-grid;
+        place-items: center;
+        font-size: 0;
+        padding: 0.3rem;
+    }
+
+    .photo-back-btn::before {
+        content: "\2190";
+        font-size: 1.05rem;
+    }
+}
+
+/* The legacy mobile edit-mode rule hides every .screen child except three named
+   panels, using three :not() clauses (specificity 0,5,1). The analytics editbar is
+   none of those, so it was rendered invisible and unclickable. Match that chain so
+   the shared editbar survives on every page that uses it. */
+@media (max-width: 899px) {
+    body.layout-edit-active .screen
+        > .layout-editbar:not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel):not(.profile-layout-edit-mode-panel) {
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        filter: none !important;
+        user-select: auto !important;
+    }
+}
+
+/* The full-screen blur backdrop belongs to the old "modal editor" model. Pages that
+   use the compact editbar (Home, Analytics) do not need it, and it was swallowing
+   clicks aimed at the bar. */
+@media (max-width: 899px) {
+    body.layout-edit-active[data-page="analytics"]::before {
+        display: none !important;
+    }
+
+    body.layout-edit-active[data-page="analytics"] .screen
+        > :not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel):not(.profile-layout-edit-mode-panel) {
+        opacity: 1 !important;
+        filter: none !important;
+        pointer-events: auto !important;
+        visibility: visible !important;
+    }
+}
+
+/* #14 Personal goals header: counters, title and the two actions used to break onto
+   separate lines. Keep them on one row (counters + title stacked tight on the left,
+   actions right), and only wrap the actions when there is genuinely no room. */
+@media (max-width: 700px) {
+    .profile-home-card-head {
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 0.4rem;
+    }
+
+    .profile-home-card-head > div:first-child {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .profile-home-card-head h2 {
+        font-size: 0.98rem;
+        line-height: 1.2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .profile-home-card-head .eyebrow {
+        font-size: 0.62rem;
+        letter-spacing: 0.02em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .profile-home-card-head .inline-actions-mini {
+        flex: 0 0 auto;
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 0.3rem;
+    }
+
+    .profile-home-card-head .inline-actions-mini .btn {
+        white-space: nowrap;
+        padding: 0.34rem 0.5rem;
+        font-size: 0.74rem;
+        min-height: 34px;
+    }
+}
+
+@media (max-width: 380px) {
+    .profile-home-card-head .inline-actions-mini .btn {
+        padding: 0.32rem 0.42rem;
+        font-size: 0.7rem;
+    }
+}
+
+/* #11 Profile grid on mobile: the cards were sized for desktop, so every block ate
+   most of the screen. Tighten padding and inner gaps (touch targets untouched). */
+@media (max-width: 700px) {
+    .profile-home-grid {
+        gap: 0.6rem;
+    }
+
+    .profile-home-card {
+        gap: 0.5rem;
+        padding: 0.75rem 0.8rem;
+    }
+
+    .profile-home-goal-row,
+    .profile-home-card .status-summary-card {
+        padding: 0.5rem 0.6rem;
+    }
+
+    .profile-data-overview {
+        gap: 0.55rem;
+    }
+
+    .profile-data-overview .panel-head {
+        margin-bottom: 0.4rem;
+    }
+
+    .profile-home-card h2 {
+        font-size: 0.98rem;
+    }
+
+    .profile-home-card .muted.small,
+    .profile-home-card small {
+        font-size: 0.72rem;
+    }
+}
+
+/* Profile edit mode uses the compact editbar too, so it no longer needs (or wants)
+   the blur backdrop that used to eat clicks on its Save button. */
+@media (max-width: 899px) {
+    body.layout-edit-active[data-page="profile"]::before {
+        display: none !important;
+    }
+
+    body.layout-edit-active[data-page="profile"] .screen
+        > :not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel):not(.profile-layout-edit-mode-panel) {
+        opacity: 1 !important;
+        filter: none !important;
+        pointer-events: auto !important;
+        visibility: visible !important;
+    }
+}
+
+/* #13 Avatar menu: the picture and the frame are different things, so they are
+   different rows in the same sheet. */
+.profile-avatar-trigger {
+    position: relative;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    line-height: 0;
+    border-radius: 50%;
+}
+
+.profile-avatar-trigger:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 3px;
+}
+
+.profile-avatar-edit-hint {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    font-size: 0.72rem;
+    line-height: 1;
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.22);
+}
+
+.avatar-menu-option {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.8rem;
+    border: 1px solid var(--line, rgba(127, 127, 127, 0.2));
+    border-radius: 14px;
+    color: inherit;
+    text-decoration: none;
+    min-height: 56px;
+}
+
+.avatar-menu-option:hover {
+    background: var(--surface-2, rgba(127, 127, 127, 0.08));
+}
+
+.avatar-menu-icon {
+    font-size: 1.3rem;
+}
+
+.avatar-menu-copy {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.avatar-menu-copy small {
+    opacity: 0.7;
+}
+
+.cosmetics-subtitle {
+    margin: 0;
+}
+
+.cosmetics-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* #15 Workouts: one primary action, and every button says what it does. */
+.workouts-resume-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.85rem 1rem;
+    border-radius: 16px;
+    border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent);
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: inherit;
+    text-decoration: none;
+}
+
+.workouts-resume-dot {
+    width: 10px;
+    height: 10px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--primary);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 60%, transparent);
+    animation: wkPulse 1.8s ease-out infinite;
+}
+
+@keyframes wkPulse {
+    to { box-shadow: 0 0 0 10px transparent; }
+}
+
+.workouts-resume-copy {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.workouts-resume-copy small {
+    opacity: 0.75;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workouts-resume-go {
+    font-size: 1.1rem;
+    opacity: 0.7;
+}
+
+.workouts-start-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 0.7rem;
+}
+
+.workouts-start-card {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.85rem;
+    border-radius: 16px;
+    border: 1px solid var(--line, rgba(127, 127, 127, 0.2));
+    background: var(--surface, #fff);
+    min-width: 0;
+}
+
+.workouts-start-icon {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 auto;
+    border-radius: 12px;
+    background: var(--surface-2, rgba(127, 127, 127, 0.1));
+}
+
+.workouts-start-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+.workouts-start-copy {
+    display: grid;
+    gap: 1px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.workouts-start-copy small {
+    opacity: 0.7;
+    font-size: 0.76rem;
+    line-height: 1.25;
+}
+
+.workouts-start-card .btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    min-height: 40px;
+}
+
+.workouts-start-card .btn[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+    .workouts-start-card {
+        flex-wrap: wrap;
+    }
+
+    .workouts-start-card .btn {
+        width: 100%;
+    }
+}
+
+/* #17 Duels: state the standing in words, not just with a colour. */
+.duel-standing {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin: 0.5rem 0 0;
+    padding: 0.5rem 0.7rem;
+    border-radius: 12px;
+    background: var(--surface-2, rgba(127, 127, 127, 0.1));
+    font-size: 0.82rem;
+}
+
+.duel-standing-lead {
+    font-weight: 700;
+    min-width: 0;
+}
+
+.duel-standing-time {
+    opacity: 0.7;
+    white-space: nowrap;
+}
+
+/* #19 Creating another team is a deliberate secondary action once you have one. */
+.squad-create-secondary > summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.88rem;
+    padding: 0.2rem 0;
+}
+
+.squad-create-secondary[open] > summary {
+    margin-bottom: 0.6rem;
+}
+
+/* Keyboard focus for the new controls. The cosmetic radios are visually hidden, so
+   without this the focus ring vanished while tabbing through the frames. */
+.cosmetic-option:has(input:focus-visible),
+.custom-habit-pick:focus-visible,
+.custom-habit-remove:focus-visible,
+.avatar-menu-option:focus-visible,
+.workouts-resume-banner:focus-visible,
+.workouts-start-card .btn:focus-visible,
+.dashboard-layout-visibility > summary:focus-visible,
+.notion-field-detail > summary:focus-visible,
+.celebration-close:focus-visible,
+.season-row a:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: 10px;
+}
+
+/* Broken media should read as "missing photo", not as a torn icon. */
+img.is-broken {
+    display: grid;
+    place-items: center;
+    min-height: 96px;
+    border-radius: 14px;
+    background: var(--surface-2, rgba(127, 127, 127, 0.12));
+    color: var(--muted, #6b7280);
+    font-size: 0.72rem;
+}
+
+/* Icon-only controls were 22-24px squares: fine with a mouse, a coin toss with a
+   thumb. Give them a real target on touch widths without changing how they look. */
+@media (max-width: 899px) {
+    .achievement-delete-btn,
+    .squad-member-x,
+    .custom-habit-remove,
+    .team-member-remove,
+    .week-help-wrap > .week-help-trigger {
+        min-width: 34px;
+        min-height: 34px;
+        display: inline-grid;
+        place-items: center;
+    }
+}
+
+@media (max-width: 899px) {
+    .metric-help-popover > summary {
+        min-width: 34px;
+        min-height: 34px;
+        display: inline-grid;
+        place-items: center;
+    }
+
+    .team-mission-contrib > summary {
+        min-height: 34px;
+        display: flex;
+        align-items: center;
+    }
+}
+
+/* The sheet compresses its checkboxes to 32px for density; on touch that is below
+   the comfortable target, and these are the controls people tap most. */
+@media (max-width: 899px) {
+    .training-sheet-table .check,
+    .training-sheet-table .sheet-checkbox {
+        min-height: 44px;
+    }
+}
+
+/* =========================================================================
+   Mobile: the page name moves into the topbar
+   -------------------------------------------------------------------------
+   Every page opened with a hero panel repeating its own name, a category
+   eyebrow and a one-line description: measured at 157-247px, i.e. 19-29% of a
+   phone screen, before any content. The name now sits in the topbar (where the
+   app icon already says which app this is) and the duplicated copy is dropped.
+   Hero *actions* and page-specific content (avatar, team switcher) stay.
+   ========================================================================= */
+.topbar-page-title {
+    display: none;
+}
+
+@media (max-width: 899px) {
+    .brand .brand-name {
+        display: none;
+    }
+
+    .topbar-page-title {
+        display: block;
+        margin: 0;
+        flex: 1 1 auto;
+        min-width: 0;
+        margin-left: 0.1rem;
+        font-family: "Plus Jakarta Sans", "Manrope", sans-serif;
+        font-size: 1.02rem;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        color: var(--ink);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* The page name is redundant (it is in the topbar now) but the one-line
+       description is not: it is the only place that says what the page is for. Keep
+       it as a single compact line instead of a title block. */
+    .hero-copy-page-title > .eyebrow,
+    .hero-copy-page-title > h1 {
+        display: none;
+    }
+
+    .hero-copy-page-title {
+        display: block;
+        min-width: 0;
+    }
+
+    .hero-copy-page-title > p.muted {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        margin: 0;
+        font-size: 0.78rem;
+        line-height: 1.3;
+    }
+
+    /* Nothing but the name to show: no description, no reason to keep the panel. */
+    .hero-copy-page-title:not(:has(p.muted)) {
+        display: none;
+    }
+
+    /* Where the heading is data (a person, a team) keep the heading, drop the
+       category label and the description. */
+    .hero-copy:not(.hero-copy-page-title) > .eyebrow,
+    .hero-copy:not(.hero-copy-page-title) > p.muted:not(.profile-hero-message) {
+        display: none;
+    }
+
+    .hero-copy > h1 {
+        font-size: 1.15rem;
+        line-height: 1.25;
+    }
+
+    /* A hero left with only actions should not keep a full panel's padding. */
+    .hero-panel {
+        padding: 0.6rem 0.75rem;
+        gap: 0.5rem;
+    }
+
+    .hero-panel:not(:has(.hero-copy > h1)):not(:has(.profile-title)) {
+        padding: 0.45rem 0.6rem;
+    }
+
+    /* Nothing left to show at all: collapse it entirely rather than leaving an
+       empty bar floating above the content. */
+    .hero-panel:empty {
+        display: none;
+    }
+
+    .hero-panel:has(> .hero-copy-page-title:only-child:not(:has(p.muted))),
+    .page-hero:has(> .hero-copy-page-title:only-child:not(:has(p.muted))) {
+        display: none;
+    }
+}
+
+/* Achievement names were clamped to a single line with text-overflow:clip, so
+   anything longer than ~18 chars ("Clean Choices Plus") was cut mid-word with no
+   ellipsis to say so. Two lines fit inside the existing card height; longer names
+   still get an ellipsis rather than a silent cut. */
+.profile-achievement-content strong,
+.team-achievement-body strong,
+.achievement-card > strong,
+.achievement-list-content h3,
+.dashboard-achievement-title-row strong {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
+}
+
+/* iOS Safari zooms the whole page in when you focus a field smaller than 16px, and
+   it never zooms back out. Every input in the app was 12.5-14.4px, so tapping any
+   field on a phone left the layout stranded mid-zoom.
+
+   Scoped to coarse pointers: real touch devices get 16px fields (where they should
+   be bigger anyway), while a narrow desktop window keeps the dense look. */
+@media (max-width: 899px) and (pointer: coarse) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    select,
+    textarea {
+        font-size: 16px;
+    }
+}
+
+/* On a phone 100vh counts the browser chrome that is not actually on screen, so
+   full-height shells overflow and drawers/panels run past the visible area. Use the
+   dynamic/small viewport units where they exist, keeping the vh value as fallback
+   (declaration order does the work: older engines ignore what they cannot parse). */
+body {
+    min-height: 100svh;
+}
+
+.auth-wrap {
+    min-height: calc(100svh - 3rem);
+}
+
+.auth-wrap-login {
+    min-height: calc(100svh - 1.75rem);
+}
+
+@media (max-width: 899px) {
+    .app-modal-card,
+    .app-drawer-card {
+        max-height: calc(100dvh - 2rem);
+    }
+}
+
+/* A celebration toast is pinned to the bottom with a higher z-index than the layout
+   editbar, so an unlock landing mid-edit painted over the Save button. Editor
+   controls always win; while editing, the toasts move out of their way to the top. */
+@media (max-width: 899px) {
+    body.layout-edit-active .layout-editbar,
+    body.layout-edit-active .dashboard-layout-editbar {
+        z-index: 10090;
+    }
+
+    body.layout-edit-active .celebration-stack {
+        top: calc(4.8rem + env(safe-area-inset-top));
+        bottom: auto;
+    }
+}
+
+/* A tall modal scrolls inside its card, and the close button lived at the top of that
+   scroll area: scroll down to reach the frames and the X was gone. Pin the header. */
+.app-modal-card > .app-modal-head {
+    position: sticky;
+    top: calc(-1 * clamp(1.2rem, 3vw, 1.6rem));
+    z-index: 2;
+    margin-top: calc(-1 * clamp(1.2rem, 3vw, 1.6rem));
+    padding-top: clamp(1.2rem, 3vw, 1.6rem);
+    padding-bottom: 0.5rem;
+    background: inherit;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+/* ==========================================================================
+   Visual layout editing on desktop: analytics, profile and team join the dashboard
+
+   Same affordance everywhere, so "edit layout" means the same thing on every page:
+   the real cards get a grab handle and are dragged into place. Desktop only - on a
+   phone the editor covers the page and a card cannot be grabbed, so the handle
+   would be a lie (the "Visible widgets" list reorders there).
+   ========================================================================== */
+@media (min-width: 900px) {
+    body.layout-edit-active .analytics-page > [data-analytics-section],
+    body.layout-edit-active .profile-home-grid > [data-profile-block],
+    body.layout-edit-active .team-layout-grid > [data-team-widget] {
+        position: relative;
+        cursor: grab;
+        touch-action: none;
+        user-select: none;
+        outline: 2px dashed color-mix(in srgb, var(--primary) 45%, transparent);
+        outline-offset: 3px;
+        border-radius: var(--radius-lg, 16px);
+        transition: transform 0.16s ease, box-shadow 0.16s ease;
+    }
+
+    body.layout-edit-active .analytics-page > [data-analytics-section]::before,
+    body.layout-edit-active .profile-home-grid > [data-profile-block]::before,
+    body.layout-edit-active .team-layout-grid > [data-team-widget]::before {
+        content: "⠿";
+        position: absolute;
+        top: 6px;
+        right: 8px;
+        z-index: 5;
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        background: var(--primary);
+        color: #fff;
+        font-size: 0.8rem;
+        line-height: 1;
+        box-shadow: 0 4px 10px rgba(15, 23, 42, 0.2);
+        pointer-events: none;
+    }
+
+    body.layout-edit-active .analytics-page > [data-analytics-section]:active,
+    body.layout-edit-active .profile-home-grid > [data-profile-block]:active,
+    body.layout-edit-active .team-layout-grid > [data-team-widget]:active {
+        cursor: grabbing;
+    }
+
+    /* While editing, a card is an object to move, not a live control surface:
+       neutralising its inner controls makes the whole card grabbable and stops an
+       accidental navigation mid-rearrange. */
+    body.layout-edit-active .analytics-page > [data-analytics-section] :where(a, button, input, select, textarea, summary, details, canvas),
+    body.layout-edit-active .profile-home-grid > [data-profile-block] :where(a, button, input, select, textarea, summary, details, canvas),
+    body.layout-edit-active .team-layout-grid > [data-team-widget] :where(a, button, input, select, textarea, summary, details, canvas) {
+        pointer-events: none !important;
+    }
+}
+
+[data-analytics-section].is-dragging,
+[data-profile-block].is-dragging,
+[data-team-widget].is-dragging {
+    cursor: grabbing;
+    opacity: 0.95;
+    transform: scale(1.02);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+    outline-color: var(--primary);
+}
+
+/* The handle is a desktop-only promise. */
+@media (max-width: 899px) {
+    body.layout-edit-active .analytics-page > [data-analytics-section]::before,
+    body.layout-edit-active .profile-home-grid > [data-profile-block]::before,
+    body.layout-edit-active .team-layout-grid > [data-team-widget]::before {
+        content: none;
+        display: none;
+    }
+}
+
+/* ==========================================================================
+   Notification bell: same size as the other topbar icons, plus a desktop preview
+   ========================================================================== */
+.topbar-notif-btn {
+    width: 46px;
+    height: 46px;
+    flex: 0 0 46px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.topbar-notif-btn::-webkit-details-marker { display: none; }
+
+.topbar-notif-btn svg {
+    width: 22px;
+    height: 22px;
+}
+
+.notif-menu {
+    position: relative;
+}
+
+/* One control, two behaviours: the dropdown on desktop, the plain link on mobile. */
+.notif-menu { display: none; }
+.topbar-notif-link { display: inline-flex; }
+
+@media (min-width: 900px) {
+    .notif-menu { display: block; }
+    .topbar-notif-link { display: none; }
+}
+
+.notif-menu-panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.5rem);
+    z-index: 200;
+    width: min(360px, 90vw);
+    display: grid;
+    gap: 0.4rem;
+    padding: 0.7rem;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: var(--surface, #fff);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+}
+
+.notif-menu-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.notif-menu-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.25rem;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.notif-menu-item > a {
+    display: grid;
+    gap: 2px;
+    padding: 0.55rem 0.6rem;
+    border-radius: 12px;
+    color: inherit;
+    text-decoration: none;
+}
+
+.notif-menu-item > a:hover { background: var(--surface-2, rgba(127, 127, 127, 0.1)); }
+
+.notif-menu-item strong { font-size: 0.88rem; }
+
+.notif-menu-item span {
+    font-size: 0.8rem;
+    opacity: 0.8;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.notif-menu-item small { font-size: 0.7rem; }
+
+.notif-menu-item.is-unread > a {
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
+    box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.notif-menu-empty { margin: 0.4rem 0; }
+
+/* The visually-hidden frame radios were position:absolute inside a label that was not
+   position:relative, so they anchored to the modal card and stretched it 110px past
+   its own width - that was the modal's mystery horizontal scrollbar. */
+.cosmetic-option {
+    position: relative;
+}
+
+.cosmetic-option input[type="radio"] {
+    width: 1px;
+    height: 1px;
+    top: 0;
+    left: 0;
+    margin: 0;
+}
+
+/* Belt and braces: a modal is a column of content, never a horizontal scroller. */
+.app-modal-card {
+    overflow-x: hidden;
+}
+
+/* The sticky modal header rendered as a flat white bar over the glass card. Use the
+   themed surface so it reads as part of the card in both themes. */
+.app-modal-card > .app-modal-head {
+    background: var(--surface, #fff);
+    border-bottom: 1px solid var(--line, rgba(127, 127, 127, 0.16));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    margin-bottom: 0.6rem;
+}
+
+/* Six more frames. Same construction as the first wave: a gradient ring around the
+   card surface, so they sit on any background and adapt to the theme. */
+.avatar-frame.frame-mint {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #34d399, #a7f3d0, #10b981);
+}
+
+.avatar-frame.frame-ocean {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #0ea5e9, #38bdf8, #1d4ed8);
+}
+
+.avatar-frame.frame-sunset {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #fb7185, #fb923c, #fde047);
+}
+
+.avatar-frame.frame-carbon {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #111827, #4b5563, #0f172a);
+}
+
+.avatar-frame.frame-titan {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #94a3b8, #e2e8f0, #64748b, #cbd5e1);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.avatar-frame.frame-marathon {
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
+        linear-gradient(135deg, #f43f5e, #f59e0b, #22c55e, #3b82f6);
+    box-shadow: 0 6px 18px rgba(244, 63, 94, 0.25);
+}
+
+/* ==========================================================================
+   Training sheet on mobile: reclaim the screen
+
+   Measured before: the sheet header alone was 262px and every row 206px, inside a
+   main that keeps 11.5px of padding on each side of an already-cramped table.
+   ========================================================================== */
+@media (max-width: 899px) {
+    /* The sheet is a horizontal scroller; let it use the full width of the device
+       rather than sitting inside the page gutter. */
+    .training-sheet-wrap {
+        margin-inline: -11.5px;
+        padding-inline: 0;
+        width: calc(100% + 23px);
+    }
+
+    /* Controls stack into a compact two-column grid instead of a tall column. */
+    .training-sheet-head,
+    .panel-head.training-sheet-head {
+        gap: 0.4rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .training-sheet-controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.35rem 0.5rem;
+        align-items: end;
+    }
+
+    .training-sheet-controls > label {
+        display: grid;
+        gap: 0.15rem;
+        min-width: 0;
+        font-size: 0.72rem;
+    }
+
+    .training-sheet-view-tabs {
+        grid-column: 1 / -1;
+    }
+
+    .training-sheet-head .btn,
+    .training-sheet-controls select,
+    .training-sheet-controls input {
+        min-height: 40px;
+    }
+
+    /* Rows were as tall as their tallest cell, and that cell was the habits list. */
+    .sheet-habits-list {
+        max-height: 96px;
+    }
+
+    .training-sheet-table .sheet-day-cell {
+        padding: 0.35rem 0.45rem;
+    }
+
+    .training-sheet-table td,
+    .training-sheet-table th {
+        padding-block: 0.3rem;
+    }
+}
+
+/* The week/scope tabs sit between the two selects in the DOM, so a two-column grid
+   was forced into three rows (select / tabs / week). Send the tabs to the end and the
+   two selects share a row. */
+@media (max-width: 899px) {
+    .training-sheet-controls > label {
+        order: 1;
+    }
+
+    .training-sheet-view-tabs {
+        order: 2;
+    }
+
+    .training-sheet-controls select,
+    .training-sheet-controls input[type="week"] {
+        height: 40px;
+        min-height: 40px;
+    }
+}
+
+/* ==========================================================================
+   Duels: say what the thing does, and use the width on desktop
+   ========================================================================== */
+.duels-how {
+    list-style: none;
+    margin: 0;
+    padding: 0.85rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.7rem;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: var(--surface-2, rgba(127, 127, 127, 0.06));
+}
+
+.duels-how li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    min-width: 0;
+}
+
+.duels-how-step {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.duels-how li > span:last-child {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+}
+
+.duels-how strong { font-size: 0.86rem; }
+.duels-how small { font-size: 0.76rem; opacity: 0.75; line-height: 1.3; }
+
+.duels-columns {
+    display: grid;
+    gap: 0.85rem;
+}
+
+@media (min-width: 1000px) {
+    .duels-columns {
+        grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr);
+        align-items: start;
+    }
+
+    .duels-col-main { grid-column: 1; }
+
+    .duels-col-side {
+        grid-column: 2;
+        grid-row: 1 / span 3;
+        position: sticky;
+        top: 5.5rem;
+    }
+}
+
+/* Competitions inside the team page. */
+.team-comp-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.4rem;
+}
+
+.team-comp-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.6rem 0.7rem;
+    border-radius: 12px;
+    background: var(--surface-2, rgba(127, 127, 127, 0.08));
+    min-width: 0;
+}
+
+.team-comp-name {
+    font-weight: 600;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.team-comp-meta {
+    font-size: 0.76rem;
+    opacity: 0.75;
+    white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+    .team-comp-row { flex-wrap: wrap; }
+    .team-comp-meta { flex: 1 1 100%; }
+}
+
+/* Friends comparison: the gap, stated, and a way out of the page. */
+.friends-compare-metric {
+    display: grid;
+    gap: 1px;
+    justify-items: center;
+    text-align: center;
+}
+
+.friends-compare-gap {
+    font-size: 0.68rem;
+    font-weight: 700;
+    opacity: 0.7;
+    letter-spacing: 0;
+}
+
+.friends-compare-row.me-leads .friends-compare-gap { color: var(--primary); opacity: 1; }
+.friends-compare-row.them-lead .friends-compare-gap { color: var(--danger, #e05260); opacity: 1; }
+
+.friends-compare-row {
+    padding: 0.5rem 0.6rem;
+    border-radius: 12px;
+}
+
+.friends-compare-row.me-leads { background: color-mix(in srgb, var(--primary) 7%, transparent); }
+
+.friends-compare-cta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+    margin-top: 0.9rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--line);
+}
+
+.friends-compare-cta p { margin: 0; min-width: 0; }
+
+/* ==========================================================================
+   Notifications: readable at a glance
+
+   Unread was signalled by rgba(255,255,255,0.46) against a transparent card - a
+   difference you had to look for. Now: an icon per kind, a coloured rail on unread,
+   and the pending-decision ones stand apart from the news.
+   ========================================================================== */
+.notification-card {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+    padding: 0.8rem;
+    gap: 0.7rem;
+    border-radius: 14px;
+    border-bottom: 1px solid var(--line, rgba(148, 163, 184, 0.2));
+}
+
+.notification-icon {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 auto;
+    border-radius: 10px;
+    background: var(--surface-2, rgba(127, 127, 127, 0.1));
+    color: var(--ink);
+}
+
+.notification-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.notification-card.is-unread {
+    background: color-mix(in srgb, var(--primary) 7%, transparent);
+    box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.notification-card.is-read .notification-icon {
+    opacity: 0.55;
+}
+
+/* A notification that still wants a decision should not look like yesterday's news. */
+.notification-card.needs-action {
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.notification-card.needs-action .notification-icon {
+    background: var(--primary);
+    color: #fff;
+    opacity: 1;
+}
+
+.notification-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.notification-cta {
+    white-space: nowrap;
+}
+
+.notification-time {
+    font-size: 0.72rem;
+}
+
+@media (max-width: 620px) {
+    .notification-card {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .notification-actions {
+        grid-column: 2;
+        justify-content: flex-start;
+    }
+
+    .notification-cta {
+        order: -1;
+    }
+}
+
+/* ==========================================================================
+   Touch ergonomics
+
+   Compact desktop controls were still only 35-40px tall on phones. Keep the
+   dense desktop layout, but give touch users a reliable 44px hit area without
+   inflating checkboxes/radios inside their already-clickable labels.
+   ========================================================================== */
+@media (max-width: 899px) and (pointer: coarse) {
+    .btn,
+    button:not([hidden]),
+    input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    select,
+    textarea {
+        min-height: 44px;
+    }
+
+    .brand {
+        min-width: 44px;
+        min-height: 44px;
+        justify-content: center;
+    }
+
+    .entry-day-arrow,
+    .to-top-btn {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+    }
+
+    .entry-data-form .check,
+    .remember-me-check {
+        min-height: 44px;
+    }
+}
+
+/* ==========================================================================
+   Narrow-phone and dark-mode polish
+   ========================================================================== */
+body[data-theme="dark"] .brand-mark,
+body.theme-active-dark .brand-mark {
+    color: #102028 !important;
+    background: #edf7f4 !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    body[data-theme="auto"] .brand-mark {
+        color: #102028 !important;
+        background: #edf7f4 !important;
+    }
+}
+
+@media (max-width: 899px) {
+    /* The same title was already present in the fixed topbar. Keep only the
+       unread counter in the page panel so mobile users do not read it twice. */
+    .notifications-header > div,
+    .notifications-header h1,
+    .notifications-header .eyebrow {
+        display: none;
+    }
+
+    .notifications-header {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 360px) {
+    .topbar {
+        gap: 0.4rem;
+        padding-inline: 0.5rem;
+    }
+
+    .topbar-actions {
+        gap: 0.3rem;
+    }
+
+    .dashboard-controls-trigger {
+        gap: 0.25rem;
+        padding-inline: 0.45rem;
+        font-size: 0.78rem;
+    }
+
+    /* A date, two 44px day controls and the time field cannot remain legible
+       in one 288px row. Stack the time field and give the date the full row. */
+    .entry-date-time-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .entry-date-nav {
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
+    }
+
+    .entry-date-nav input {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    nav.bottom-nav.mobile-liquid-nav .liquid-nav-item,
+    nav.bottom-nav.mobile-liquid-nav .liquid-nav-item .nav-label {
+        font-size: 9px !important;
+        letter-spacing: -0.1px !important;
+    }
+
+    nav.bottom-nav.mobile-liquid-nav .liquid-nav-item .nav-label {
+        text-overflow: clip;
+    }
+}
+
+/* ==========================================================================
+   Mobile menu sheets
+   ========================================================================== */
+.quick-entry-action {
+    display: flex !important;
+    align-items: center;
+    gap: 0.65rem;
+    text-align: left;
+}
+
+.quick-entry-icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    color: var(--primary-dark);
+    background: rgba(20, 163, 139, 0.13);
+}
+
+.quick-entry-icon svg {
+    width: 21px;
+    height: 21px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+@media (max-width: 520px) {
+    .topbar-context[open] .topbar-context-panel,
+    .topbar .user-menu[open] .user-menu-panel {
+        background: rgba(255, 255, 255, 0.96) !important;
+    }
+
+    .topbar-context .topbar-context-panel {
+        max-height: calc(100dvh - 170px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+    }
+
+    .topbar .user-menu-panel {
+        position: fixed;
+        top: calc(74px + env(safe-area-inset-top));
+        left: max(8px, env(safe-area-inset-left));
+        right: max(8px, env(safe-area-inset-right));
+        width: auto;
+        min-width: 0;
+        max-height: calc(100dvh - 170px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 4px;
+        padding: 10px;
+        border-radius: 24px;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+    }
+
+    .topbar .user-menu-panel > * {
+        min-width: 0;
+        margin: 0;
+    }
+
+    .topbar .user-menu-panel .user-menu-level {
+        grid-column: 1 / -1;
+        min-height: 54px;
+    }
+
+    .topbar .user-menu-panel a,
+    .topbar .user-menu-panel .user-menu-theme-toggle {
+        min-height: 48px;
+        padding: 0.65rem 0.72rem;
+        border: 0;
+        border-radius: 14px;
+        line-height: 1.18;
+    }
+
+    .topbar .user-menu-panel a[aria-current="page"] {
+        color: var(--primary-dark);
+        background: rgba(20, 163, 139, 0.13);
+        box-shadow: inset 0 0 0 1px rgba(20, 163, 139, 0.18);
+    }
+
+    nav.bottom-nav.mobile-liquid-nav .bottom-nav-plus-menu,
+    nav.bottom-nav.mobile-liquid-nav .add-menu-panel {
+        position: absolute !important;
+        left: auto !important;
+        right: 0 !important;
+        bottom: calc(100% + 10px) !important;
+        width: calc(100vw - 20px) !important;
+        max-width: calc(100vw - 20px) !important;
+        min-width: 0 !important;
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        padding: 10px !important;
+    }
+
+    nav.bottom-nav.mobile-liquid-nav .bottom-nav-plus-menu a,
+    nav.bottom-nav.mobile-liquid-nav .add-menu-panel a {
+        min-width: 0;
+        min-height: 54px;
+        padding: 0.55rem 0.65rem !important;
+        white-space: normal !important;
+    }
+
+    nav.bottom-nav.mobile-liquid-nav .liquid-nav-plus[open] .bottom-nav-plus-icon {
+        transform: rotate(45deg) !important;
+    }
+}
+
+@media (max-width: 899px) {
+    .topbar-context-panel .analytics-period-segments a,
+    .topbar-context-panel .calendar-view-segments a {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+}
+
+body[data-theme="dark"] .quick-entry-icon,
+body.theme-active-dark .quick-entry-icon {
+    color: #74e3d0;
+    background: rgba(45, 212, 191, 0.14);
+}
+
+body[data-theme="dark"] .topbar .user-menu-panel a[aria-current="page"],
+body.theme-active-dark .topbar .user-menu-panel a[aria-current="page"] {
+    color: #8debdc;
+    background: rgba(45, 212, 191, 0.15);
+    box-shadow: inset 0 0 0 1px rgba(94, 234, 212, 0.18);
+}
+
+@media (max-width: 520px) {
+    body[data-theme="dark"] .topbar-context[open] .topbar-context-panel,
+    body[data-theme="dark"] .topbar .user-menu[open] .user-menu-panel,
+    body.theme-active-dark .topbar-context[open] .topbar-context-panel,
+    body.theme-active-dark .topbar .user-menu[open] .user-menu-panel {
+        color: #f8fafc;
+        background: rgba(15, 23, 42, 0.96) !important;
     }
 }

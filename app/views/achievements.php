@@ -65,7 +65,7 @@ $renderAchievementCard = static function (array $achievement) use ($achievements
 
 <section class="page-hero achievements-page-hero<?= $achievementScope === 'team' ? ' achievements-page-hero-team' : '' ?>">
     <a class="btn btn-ghost achievements-back-btn" href="<?= e($backHref) ?>"><?= e(t('common.back')) ?></a>
-    <div>
+    <div class="hero-copy hero-copy-page-title">
         <p class="eyebrow"><?= e($achievementScope === 'team' ? t('nav.team') : t('common.user')) ?></p>
         <h1><?= e(t('achievements.all_title')) ?></h1>
     </div>

@@ -63,9 +63,9 @@ $renderVs = static function (array $vm) use ($duelAvatar): void {
     <?php
 };
 ?>
-<section class="screen stack-lg">
+<section class="screen stack-lg duels-page">
     <div class="hero-panel">
-        <div>
+        <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('friends.eyebrow')) ?></p>
             <h1><?= e(t('duels.title')) ?></h1>
             <p class="muted"><?= e(t('duels.subtitle')) ?></p>
@@ -73,8 +73,24 @@ $renderVs = static function (array $vm) use ($duelAvatar): void {
         <a class="btn btn-ghost small" href="/?page=friends"><?= e(t('nav.friends')) ?></a>
     </div>
 
+    <ol class="duels-how">
+        <li>
+            <span class="duels-how-step">1</span>
+            <span><strong><?= e(t('duels.how_1_title')) ?></strong><small><?= e(t('duels.how_1_body')) ?></small></span>
+        </li>
+        <li>
+            <span class="duels-how-step">2</span>
+            <span><strong><?= e(t('duels.how_2_title')) ?></strong><small><?= e(t('duels.how_2_body')) ?></small></span>
+        </li>
+        <li>
+            <span class="duels-how-step">3</span>
+            <span><strong><?= e(t('duels.how_3_title')) ?></strong><small><?= e(t('duels.how_3_body')) ?></small></span>
+        </li>
+    </ol>
+
+    <div class="duels-columns">
     <?php if ($incoming !== []): ?>
-        <article class="panel">
+        <article class="panel duels-col-main">
             <div class="panel-head"><h2><?= e(t('duels.incoming')) ?></h2><span class="badge"><?= count($incoming) ?></span></div>
             <div class="stack-md">
                 <?php foreach ($incoming as $vm): $d = (array) $vm['duel']; ?>
@@ -101,15 +117,42 @@ $renderVs = static function (array $vm) use ($duelAvatar): void {
         </article>
     <?php endif; ?>
 
-    <article class="panel">
+    <article class="panel duels-col-main">
         <div class="panel-head"><h2><?= e(t('duels.active')) ?></h2><span class="badge"><?= count($active) ?></span></div>
         <?php if ($active === []): ?>
             <p class="muted"><?= e(t('duels.no_active')) ?></p>
         <?php else: ?>
             <div class="stack-md">
                 <?php foreach ($active as $vm): $d = (array) $vm['duel']; ?>
+                    <?php
+                    // Who is ahead, and by how much, stated in words. The colour cue alone
+                    // did not answer "am I winning?" at a glance.
+                    $v = (array) $vm['values'];
+                    $metric = (string) $d['metric'];
+                    $cVal = (float) ($v['challenger'] ?? 0);
+                    $oVal = (float) ($v['opponent'] ?? 0);
+                    $leaderName = $cVal === $oVal
+                        ? ''
+                        : (string) (($cVal > $oVal ? ($v['challenger_user'] ?? []) : ($v['opponent_user'] ?? []))['display_name'] ?? '');
+                    $gap = duels_format_value($metric, abs($cVal - $oVal));
+                    try {
+                        $daysLeft = max(0, (int) (new DateTimeImmutable('today'))->diff(new DateTimeImmutable((string) ($d['end_date'] ?? 'today')))->days);
+                    } catch (Throwable) {
+                        $daysLeft = 0;
+                    }
+                    ?>
                     <div class="duel-card">
                         <?php $renderVs($vm); ?>
+                        <p class="duel-standing">
+                            <span class="duel-standing-lead">
+                                <?= $leaderName === ''
+                                    ? e(t('duels.tie'))
+                                    : e(t('duels.leading_by', ['name' => $leaderName, 'gap' => $gap])) ?>
+                            </span>
+                            <span class="duel-standing-time">
+                                <?= $daysLeft > 0 ? e(t('season.days_left', ['n' => $daysLeft])) : e(t('season.ends_today')) ?>
+                            </span>
+                        </p>
                         <p class="muted small"><?= e(t('duels.ends_on', ['date' => format_date_eu((string) ($d['end_date'] ?? '')) ])) ?></p>
                         <form method="post" action="/?page=duels" class="inline-form">
                             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -143,8 +186,13 @@ $renderVs = static function (array $vm) use ($duelAvatar): void {
         </article>
     <?php endif; ?>
 
-    <article class="panel">
-        <div class="panel-head"><h2><?= e(t('duels.create_title')) ?></h2></div>
+    <article class="panel duels-col-side">
+        <div class="panel-head">
+            <div>
+                <h2><?= e(t('duels.create_title')) ?></h2>
+                <p class="muted small"><?= e(t('duels.create_hint')) ?></p>
+            </div>
+        </div>
         <?php if ($duelFriends === []): ?>
             <p class="muted"><?= e(t('duels.need_friends')) ?> <a href="/?page=friends"><?= e(t('nav.friends')) ?></a>.</p>
         <?php else: ?>
@@ -176,6 +224,8 @@ $renderVs = static function (array $vm) use ($duelAvatar): void {
             </form>
         <?php endif; ?>
     </article>
+
+    </div>
 
     <?php if ($done !== []): ?>
         <article class="panel">

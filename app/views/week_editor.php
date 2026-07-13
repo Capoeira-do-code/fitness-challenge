@@ -9,6 +9,12 @@ for ($i = 0; $i < 7; $i++) {
 
 $trainingTableScope = (string) ($trainingTableScope ?? 'week');
 $isAllTrainingScope = $trainingTableScope === 'all';
+// Excuses only exist to justify a penalty. With penalties off there is nothing to
+// excuse, so the column is not rendered at all (not merely hidden with CSS).
+$canEditSheet = !isset($canEditSheet) || (bool) $canEditSheet;
+$penaltiesEnabled = isset($penaltiesEnabled)
+    ? (bool) $penaltiesEnabled
+    : penalties_enabled($GLOBALS['pdo']);
 $trainingRangeStart = (string) ($trainingRangeStart ?? $weekStart ?? to_date(null));
 $trainingRangeEnd = (string) ($trainingRangeEnd ?? $weekEnd ?? $trainingRangeStart);
 $allSheetUrl = '/?' . http_build_query([
@@ -69,7 +75,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
 ?>
 <section class="screen stack-lg">
     <div class="hero-panel">
-        <div>
+        <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('nav.table')) ?></p>
             <h1><?= e(t('table.editor_title')) ?></h1>
             <p class="muted">
@@ -115,7 +121,17 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
             <a class="btn btn-ghost small" href="<?= e($summaryUrl) ?>"><?= e($isAllTrainingScope ? t('table.all_summary') : t('table.week_summary')) ?></a>
         </div>
 
-        <div class="training-sheet-wrap week-editor-grid" id="week-editor-grid" data-step-goal="<?= $userStepGoal ?>" data-training-scope="<?= e($trainingTableScope) ?>">
+        <?php if (!$canEditSheet): ?>
+            <p class="sheet-readonly-banner" role="status">
+                <span aria-hidden="true">&#128274;</span>
+                <?= e(t('table.readonly_other_user', ['name' => (string) ($selectedUser['display_name'] ?? '')])) ?>
+            </p>
+        <?php endif; ?>
+
+        <div class="training-sheet-wrap week-editor-grid" id="week-editor-grid" data-step-goal="<?= $userStepGoal ?>" data-training-scope="<?= e($trainingTableScope) ?>" data-can-edit="<?= $canEditSheet ? '1' : '0' ?>">
+            <?php // A disabled fieldset disables every form control inside it natively, so
+                  // a read-only sheet cannot be typed into even if a rule is missed. ?>
+            <fieldset class="sheet-fieldset" <?= $canEditSheet ? '' : 'disabled' ?>>
             <table class="table compact training-sheet-table">
                 <thead>
                 <tr>
@@ -130,9 +146,9 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                     <th><?= e(t('metric.weight')) ?></th>
                     <th><?= e(t('table.junk')) ?></th>
                     <th><?= e(t('table.habits_section')) ?></th>
-                    <th><?= e(t('table.excuses_section')) ?></th>
+                    <?php if ($penaltiesEnabled): ?><th><?= e(t('table.excuses_section')) ?></th><?php endif; ?>
                     <th><?= e(t('common.notes')) ?></th>
-                    <th><?= e(t('common.save')) ?></th>
+                    <?php if ($canEditSheet): ?><th><?= e(t('common.save')) ?></th><?php endif; ?>
                 </tr>
                 </thead>
                 <tbody>
@@ -268,6 +284,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                                             <?php foreach ((array) ($workoutTypes ?? []) as $type): ?>
                                                 <option value="<?= (int) $type['id'] ?>" <?= $primarySelection['select_value'] === (string) ((int) $type['id']) ? 'selected' : '' ?>><?= e((string) $type['name']) ?></option>
                                             <?php endforeach; ?>
+                                            <?= wk_routine_options_html((array) ($userRoutines ?? []), (string) ($workoutSelectionValue ?? '')) ?>
                                             <option value="__custom__" <?= $primarySelection['is_custom'] ? 'selected' : '' ?>><?= e(t('entries.workout_other')) ?></option>
                                         </select>
                                         <div class="workout-type-custom" data-primary-workout-custom-wrap <?= $primarySelection['is_custom'] ? '' : 'hidden' ?>>
@@ -300,6 +317,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                                                     <?php foreach ((array) ($workoutTypes ?? []) as $type): ?>
                                                         <option value="<?= (int) $type['id'] ?>" <?= $extraSelection['select_value'] === (string) ((int) $type['id']) ? 'selected' : '' ?>><?= e((string) $type['name']) ?></option>
                                                     <?php endforeach; ?>
+                                                    <?= wk_routine_options_html((array) ($userRoutines ?? []), (string) ($workoutSelectionValue ?? '')) ?>
                                                     <option value="__custom__" <?= $extraSelection['is_custom'] ? 'selected' : '' ?>><?= e(t('entries.workout_other')) ?></option>
                                                 </select>
                                             </label>
@@ -322,6 +340,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                                             <?php foreach ((array) ($workoutTypes ?? []) as $type): ?>
                                                 <option value="<?= (int) $type['id'] ?>"><?= e((string) $type['name']) ?></option>
                                             <?php endforeach; ?>
+                                            <?= wk_routine_options_html((array) ($userRoutines ?? []), (string) ($workoutSelectionValue ?? '')) ?>
                                             <option value="__custom__"><?= e(t('entries.workout_other')) ?></option>
                                         </select>
                                     </label>
@@ -356,17 +375,48 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                         <td class="sheet-habits-cell" data-label="<?= e(t('table.habits_section')) ?>">
                             <div class="week-help-wrap" data-help="<?= e(t('table.week_help_habits')) ?>">
                                 <button type="button" class="btn btn-ghost small sheet-custom-habit-toggle" data-custom-habit-toggle><?= e(t('table.custom_habit')) ?></button>
-                                <div class="week-custom-habit" data-custom-habit-form hidden>
-                                    <label class="week-field">
-                                        <span><?= e(t('table.custom_habit')) ?></span>
-                                        <input type="text" data-custom-habit-input placeholder="<?= e(t('table.custom_habit_placeholder')) ?>" maxlength="60">
-                                    </label>
-                                    <div class="week-custom-habit-actions">
-                                        <button type="button" class="btn btn-primary small" data-custom-habit-save><?= e(t('common.create')) ?></button>
-                                        <button type="button" class="btn btn-ghost small" data-custom-habit-cancel><?= e(t('common.cancel')) ?></button>
+                            </div>
+                            <?php // The panel lives outside .week-help-wrap: that wrapper paints a
+                                  // tooltip layer over its own children, which swallowed clicks on
+                                  // the panel's buttons. ?>
+                            <div class="week-custom-habit" data-custom-habit-panel hidden>
+                                    <?php // Existing custom habits come first: creating a duplicate is the
+                                          // common mistake when the form opens straight away. ?>
+                                    <div class="custom-habit-existing" data-custom-habit-existing>
+                                        <p class="custom-habit-section-label"><?= e(t('table.custom_habit_existing')) ?></p>
+                                        <?php if ((array) ($customHabits ?? []) === []): ?>
+                                            <p class="muted small custom-habit-empty" data-custom-habit-empty><?= e(t('table.custom_habit_empty')) ?></p>
+                                        <?php else: ?>
+                                            <ul class="custom-habit-list" data-custom-habit-list>
+                                                <?php foreach ((array) ($customHabits ?? []) as $customHabit): ?>
+                                                    <li class="custom-habit-row" data-custom-habit-code="<?= e((string) $customHabit['code']) ?>">
+                                                        <button type="button" class="custom-habit-pick" data-custom-habit-pick="<?= e((string) $customHabit['code']) ?>">
+                                                            <span><?= e((string) $customHabit['label']) ?></span>
+                                                        </button>
+                                                        <?php if ((int) ($customHabit['created_by'] ?? 0) === (int) ($currentUser['id'] ?? 0) || is_admin($currentUser)): ?>
+                                                            <button type="button" class="custom-habit-remove" data-custom-habit-remove="<?= e((string) $customHabit['code']) ?>" aria-label="<?= e(t('common.delete')) ?>">&times;</button>
+                                                        <?php endif; ?>
+                                                    </li>
+                                                <?php endforeach; ?>
+                                            </ul>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <button type="button" class="btn btn-ghost small custom-habit-create-trigger" data-custom-habit-create>
+                                        + <?= e(t('table.custom_habit_create')) ?>
+                                    </button>
+
+                                    <div class="week-custom-habit-form" data-custom-habit-form hidden>
+                                        <label class="week-field">
+                                            <span><?= e(t('table.custom_habit')) ?></span>
+                                            <input type="text" data-custom-habit-input placeholder="<?= e(t('table.custom_habit_placeholder')) ?>" maxlength="60">
+                                        </label>
+                                        <div class="week-custom-habit-actions">
+                                            <button type="button" class="btn btn-primary small" data-custom-habit-save><?= e(t('common.create')) ?></button>
+                                            <button type="button" class="btn btn-ghost small" data-custom-habit-cancel><?= e(t('common.cancel')) ?></button>
+                                        </div>
                                     </div>
                                     <p class="muted small" data-custom-habit-status aria-live="polite"></p>
-                                </div>
                             </div>
                             <div class="week-day-habits sheet-habits-list" data-habits-list>
                                 <?php foreach ((array) ($habits ?? []) as $habit): ?>
@@ -378,6 +428,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                                 <?php endforeach; ?>
                             </div>
                         </td>
+                        <?php if ($penaltiesEnabled): ?>
                         <td class="sheet-review-cell" data-label="<?= e(t('table.excuses_section')) ?>">
                             <details class="sheet-review-details" <?= (!$isAllTrainingScope && $hasReviewDetail) ? 'open' : '' ?>>
                                 <summary>
@@ -413,18 +464,21 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                                 </div>
                             </details>
                         </td>
+                        <?php endif; ?>
                         <td class="sheet-notes-cell" data-label="<?= e(t('common.notes')) ?>">
                             <label class="sheet-field">
                                 <span class="sr-only"><?= e(t('common.notes')) ?></span>
                                 <input type="text" name="notes" value="<?= e((string) ($log['notes'] ?? '')) ?>">
                             </label>
                         </td>
+                        <?php if ($canEditSheet): ?>
                         <td class="sheet-actions-cell" data-label="<?= e(t('common.save')) ?>">
                             <div class="week-day-actions">
                                 <button class="btn small btn-primary js-save-row" type="button"><?= e(t('table.save_day')) ?></button>
                                 <span class="save-status" aria-live="polite"></span>
                             </div>
                         </td>
+                        <?php endif; ?>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
@@ -434,12 +488,15 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                     <option value="<?= e((string) $type['name']) ?>"></option>
                 <?php endforeach; ?>
             </datalist>
+            </fieldset>
         </div>
 
+        <?php if ($canEditSheet): ?>
         <div class="inline-actions week-save-all-row">
             <button class="btn btn-primary" type="button" id="save-all-rows" data-testid="save-all-rows"><?= e($isAllTrainingScope ? t('table.save_table') : t('table.save_week')) ?></button>
             <span id="save-all-status" class="save-all-status" aria-live="polite"></span>
         </div>
+        <?php endif; ?>
     </article>
 </section>
 
@@ -865,17 +922,52 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
         list.appendChild(wrapper);
     };
 
+    // Keep the "existing custom habits" list in sync after a creation, so the very
+    // next time the panel opens the new habit is already listed.
+    const addCustomHabitRow = (card, habit) => {
+        const wrap = card.querySelector('[data-custom-habit-existing]');
+        if (!(wrap instanceof HTMLElement)) {
+            return;
+        }
+        if (wrap.querySelector('[data-custom-habit-code="' + habit.code + '"]')) {
+            return;
+        }
+
+        let list = wrap.querySelector('[data-custom-habit-list]');
+        if (!list) {
+            const empty = wrap.querySelector('[data-custom-habit-empty]');
+            if (empty) {
+                empty.remove();
+            }
+            list = document.createElement('ul');
+            list.className = 'custom-habit-list';
+            list.setAttribute('data-custom-habit-list', '');
+            wrap.appendChild(list);
+        }
+
+        const row = document.createElement('li');
+        row.className = 'custom-habit-row';
+        row.setAttribute('data-custom-habit-code', habit.code);
+        row.innerHTML = '<button type="button" class="custom-habit-pick" data-custom-habit-pick="'
+            + habit.code + '"><span></span></button>';
+        row.querySelector('span').textContent = habit.label;
+        list.appendChild(row);
+    };
+
     const setupCustomHabitForm = (card, allCards) => {
         const toggle = card.querySelector('[data-custom-habit-toggle]');
+        const panel = card.querySelector('[data-custom-habit-panel]');
         const form = card.querySelector('[data-custom-habit-form]');
-        if (!(toggle instanceof HTMLButtonElement) || !(form instanceof HTMLElement)) {
+        if (!(toggle instanceof HTMLButtonElement) || !(panel instanceof HTMLElement) || !(form instanceof HTMLElement)) {
             return;
         }
 
         const input = form.querySelector('[data-custom-habit-input]');
         const saveButton = form.querySelector('[data-custom-habit-save]');
         const cancelButton = form.querySelector('[data-custom-habit-cancel]');
-        const status = form.querySelector('[data-custom-habit-status]');
+        const createTrigger = card.querySelector('[data-custom-habit-create]');
+        const status = card.querySelector('[data-custom-habit-status]');
+        const existingWrap = card.querySelector('[data-custom-habit-existing]');
 
         const setStatus = (message, className) => {
             if (!(status instanceof HTMLElement)) {
@@ -885,15 +977,81 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
             status.className = 'muted small ' + className;
         };
 
+        // The panel opens on the list of habits you already have. Creating is a
+        // deliberate second step, so you can no longer make a duplicate habit
+        // without first seeing that it exists.
         toggle.addEventListener('click', () => {
-            form.hidden = !form.hidden;
-            if (!form.hidden && input instanceof HTMLInputElement) {
+            panel.hidden = !panel.hidden;
+            if (!panel.hidden) {
+                form.hidden = true;
+                setStatus('', '');
+            }
+        });
+
+        createTrigger?.addEventListener('click', () => {
+            form.hidden = false;
+            if (existingWrap instanceof HTMLElement) {
+                existingWrap.classList.add('is-collapsed');
+            }
+            if (input instanceof HTMLInputElement) {
                 input.focus();
             }
         });
 
+        // Picking an existing custom habit just ticks it for this day.
+        card.querySelectorAll('[data-custom-habit-pick]').forEach((pick) => {
+            pick.addEventListener('click', () => {
+                const code = String(pick.getAttribute('data-custom-habit-pick') || '');
+                const box = card.querySelector('[data-habit-code="' + code + '"]');
+                if (box instanceof HTMLInputElement) {
+                    box.checked = !box.checked;
+                    pick.classList.toggle('is-active', box.checked);
+                    box.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+        });
+
+        card.querySelectorAll('[data-custom-habit-remove]').forEach((removeBtn) => {
+            removeBtn.addEventListener('click', async () => {
+                const code = String(removeBtn.getAttribute('data-custom-habit-remove') || '');
+                if (code === '' || !(removeBtn instanceof HTMLButtonElement)) {
+                    return;
+                }
+                removeBtn.disabled = true;
+                setStatus(labels.customHabitSaving, 'save-status saving');
+                try {
+                    const response = await fetch('/?page=api_delete_habit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                        body: JSON.stringify({ csrf_token: csrf, code: code }),
+                    });
+                    const json = await response.json();
+                    if (!response.ok || !json.ok) {
+                        setStatus(json.message || labels.customHabitError, 'save-status error');
+                        removeBtn.disabled = false;
+                        return;
+                    }
+                    // Drop it from every day card at once, so the sheet stays consistent.
+                    allCards.forEach((targetCard) => {
+                        targetCard.querySelectorAll('[data-custom-habit-code="' + code + '"]').forEach((row) => row.remove());
+                        const box = targetCard.querySelector('[data-habit-code="' + code + '"]');
+                        if (box instanceof HTMLInputElement && box.parentElement) {
+                            box.parentElement.remove();
+                        }
+                    });
+                    setStatus('', '');
+                } catch (error) {
+                    setStatus(labels.customHabitError, 'save-status error');
+                    removeBtn.disabled = false;
+                }
+            });
+        });
+
         cancelButton?.addEventListener('click', () => {
             form.hidden = true;
+            if (existingWrap instanceof HTMLElement) {
+                existingWrap.classList.remove('is-collapsed');
+            }
             if (input instanceof HTMLInputElement) {
                 input.value = '';
             }
@@ -935,11 +1093,15 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
 
                 allCards.forEach((targetCard) => {
                     addHabitToCard(targetCard, json.habit, targetCard === card);
+                    addCustomHabitRow(targetCard, json.habit);
                 });
 
                 setStatus(labels.customHabitCreated, 'save-status ok');
                 input.value = '';
                 form.hidden = true;
+                if (existingWrap instanceof HTMLElement) {
+                    existingWrap.classList.remove('is-collapsed');
+                }
             } catch (error) {
                 setStatus(labels.customHabitError, 'save-status error');
             } finally {

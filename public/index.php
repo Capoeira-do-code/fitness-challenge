@@ -259,6 +259,7 @@ if ($page === 'api_save_row') {
         json_response(['ok' => false, 'message' => t('flash.invalid_user')], 422);
     }
 
+    $excusesAllowed = penalties_enabled($pdo);
     $habitPayload = is_array($json['habits'] ?? null) ? (array) $json['habits'] : [];
     $hasWorkoutsPayload = is_array($json['workouts'] ?? null);
     $workoutsPayload = [];
@@ -294,10 +295,13 @@ if ($page === 'api_save_row') {
         'training_calories_burned' => ($json['training_calories_burned'] ?? '') !== '' ? (float) $json['training_calories_burned'] : null,
         'weight' => ($json['weight'] ?? '') !== '' ? (float) $json['weight'] : null,
         'notes' => trim((string) ($json['notes'] ?? '')),
-        'step_exception_reason' => trim((string) ($json['step_exception_reason'] ?? '')),
-        'distance_exception_reason' => trim((string) ($json['distance_exception_reason'] ?? '')),
-        'workout_exception_reason' => trim((string) ($json['workout_exception_reason'] ?? '')),
-        'resend_requests' => (int) ($json['resend_requests'] ?? 0) === 1 ? 1 : 0,
+        // Excuses only make sense while penalties are on. With the feature off the
+        // client cannot show the fields, and the server refuses to store them, so a
+        // crafted request cannot smuggle an excuse back in.
+        'step_exception_reason' => $excusesAllowed ? trim((string) ($json['step_exception_reason'] ?? '')) : '',
+        'distance_exception_reason' => $excusesAllowed ? trim((string) ($json['distance_exception_reason'] ?? '')) : '',
+        'workout_exception_reason' => $excusesAllowed ? trim((string) ($json['workout_exception_reason'] ?? '')) : '',
+        'resend_requests' => $excusesAllowed && (int) ($json['resend_requests'] ?? 0) === 1 ? 1 : 0,
         'morning_walk' => !empty($habitPayload['morning_walk']) || (int) ($json['morning_walk'] ?? 0) === 1 ? 1 : 0,
         'journaling' => !empty($habitPayload['journaling']) || (int) ($json['journaling'] ?? 0) === 1 ? 1 : 0,
         'evening_chores' => !empty($habitPayload['evening_chores']) || (int) ($json['evening_chores'] ?? 0) === 1 ? 1 : 0,
@@ -340,6 +344,47 @@ if ($page === 'api_save_row') {
     } catch (Throwable $e) {
         json_response(['ok' => false, 'message' => t('flash.save_failed')], 500);
     }
+
+    json_response(['ok' => true]);
+}
+
+if ($page === 'api_delete_habit') {
+    $currentUser = require_login($pdo);
+
+    if (!is_post()) {
+        json_response(['ok' => false, 'message' => t('flash.method_not_allowed')], 405);
+    }
+
+    $json = json_decode((string) file_get_contents('php://input'), true);
+    if (!is_array($json)) {
+        json_response(['ok' => false, 'message' => t('flash.invalid_json')], 400);
+    }
+    if (!isset($json['csrf_token']) || !is_string($json['csrf_token']) || !hash_equals((string) ($_SESSION['csrf_token'] ?? ''), $json['csrf_token'])) {
+        json_response(['ok' => false, 'message' => t('flash.csrf')], 419);
+    }
+
+    $code = trim((string) ($json['code'] ?? ''));
+    $habit = $code !== ''
+        ? db_fetch_one($pdo, 'SELECT * FROM habit_definitions WHERE code = :c', [':c' => $code])
+        : null;
+    if ($habit === null) {
+        json_response(['ok' => false, 'message' => t('table.custom_habit_error')], 404);
+    }
+
+    // Only custom habits can be removed, and only by the person who created them
+    // (or an admin). The seeded habits belong to the challenge, not to a user.
+    $createdBy = (int) ($habit['created_by'] ?? 0);
+    if ($createdBy <= 0 || ($createdBy !== (int) $currentUser['id'] && !is_admin($currentUser))) {
+        json_response(['ok' => false, 'message' => t('flash.no_permission')], 403);
+    }
+
+    // Deactivate rather than delete: the daily_log_habits rows already logged
+    // against it stay intact, so past days keep their history.
+    db_execute(
+        $pdo,
+        'UPDATE habit_definitions SET active = 0, updated_at = :now WHERE id = :id',
+        [':now' => now_iso(), ':id' => (int) $habit['id']]
+    );
 
     json_response(['ok' => true]);
 }
@@ -416,7 +461,13 @@ if ($page === 'login') {
             sync_session_cookie_lifetime($config, $rememberMe);
             $currentUser = current_user($pdo);
             set_current_locale(resolve_locale($config, $currentUser));
-            flash_set('success', t('flash.welcome'));
+            $welcomeName = trim((string) ($currentUser['display_name'] ?? ''));
+            if ($welcomeName === '') {
+                $welcomeName = trim((string) ($currentUser['username'] ?? ''));
+            }
+            flash_set('success', $welcomeName !== ''
+                ? t('flash.welcome_named', ['name' => $welcomeName])
+                : t('flash.welcome'));
             redirect('/?page=dashboard');
         }
 
@@ -461,6 +512,7 @@ if ($page === 'login') {
         $loginBackgroundUrl = with_cache_buster('/?page=login_background', $loginBackgroundVersion);
     }
     $loginRememberDefault = remember_me_cookie_is_enabled($config);
+    $loginStyle = login_style_normalize(app_setting($pdo, 'login_style', 'split'));
 
     render_view('login', [
         'title' => t('login.submit'),
@@ -469,6 +521,7 @@ if ($page === 'login') {
         'loginAppIconUrl' => $loginAppIconUrl,
         'loginBackgroundUrl' => $loginBackgroundUrl,
         'loginRememberDefault' => $loginRememberDefault,
+        'loginStyle' => $loginStyle,
         'config' => $config,
     ]);
 }
@@ -1151,6 +1204,7 @@ if ($page === 'entries') {
     $selectedDate = calendar_date_from_request($_GET, $calendarView, $calendarDateFallback);
     $currentLog = fetch_log($pdo, $selectedUserId, $selectedDate);
     $recentPhotos = fetch_recent_photos($pdo, 20, $selectedUserId);
+    workouts_ensure_schema($pdo);
     $workoutTypes = list_workout_types($pdo, true);
     $mealCalendar = [];
     if ($entryMode === 'calendar') {
@@ -1171,6 +1225,7 @@ if ($page === 'entries') {
         'mealCalendar' => $mealCalendar,
         'calendarView' => $calendarView,
         'workoutTypes' => $workoutTypes,
+        'userRoutines' => wk_routines_for_user($pdo, (int) $selectedUserId, false),
         'workoutTypeFields' => list_workout_type_fields_grouped($pdo, true),
         'habits' => list_habit_definitions($pdo, true),
         'entryPrimaryGoals' => user_primary_goals($currentUser),
@@ -1451,17 +1506,21 @@ if ($page === 'gallery') {
 }
 
 if ($page === 'table' || $page === 'week_editor') {
+    workouts_ensure_schema($pdo);
     $users = list_active_users($pdo);
 
     $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
-    if (!is_admin($currentUser) && $selectedUserId !== (int) $currentUser['id']) {
-        $selectedUserId = (int) $currentUser['id'];
-    }
+
+    // Anyone may look at another member's sheet, but only its owner (or an admin)
+    // may edit it. The read-only rendering is a courtesy; api_save_row enforces the
+    // same rule server-side, so a crafted request cannot write to someone else.
+    $canEditSheet = is_admin($currentUser) || $selectedUserId === (int) $currentUser['id'];
 
     $selectedUser = find_user_by_id($users, $selectedUserId);
     if ($selectedUser === null) {
         $selectedUser = $currentUser;
         $selectedUserId = (int) $selectedUser['id'];
+        $canEditSheet = true;
     }
 
     $settings = challenge_settings($pdo, $config);
@@ -1540,7 +1599,16 @@ if ($page === 'table' || $page === 'week_editor') {
         'approvalRequestsByDate' => $approvalRequestsByDate,
         'selectedMetric' => array_values($metrics)[0] ?? null,
         'workoutTypes' => list_workout_types($pdo, true),
+        'userRoutines' => wk_routines_for_user($pdo, (int) $selectedUserId, false),
         'habits' => list_habit_definitions($pdo, true),
+        // Custom habits are the user-created ones (the seeded challenge habits have
+        // no creator). The panel lists these before offering to create another.
+        'customHabits' => array_values(array_filter(
+            list_habit_definitions($pdo, true),
+            static fn (array $habit): bool => (int) ($habit['created_by'] ?? 0) > 0
+        )),
+        'penaltiesEnabled' => penalties_enabled($pdo),
+        'canEditSheet' => $canEditSheet,
         'config' => $config,
     ]);
 }
@@ -1693,6 +1761,7 @@ if ($page === 'friends') {
 if ($page === 'duels') {
     friends_ensure_schema($pdo);
     duels_ensure_schema($pdo);
+    workouts_ensure_schema($pdo);
     $meId = (int) $currentUser['id'];
 
     if (is_post()) {
@@ -1760,6 +1829,7 @@ if ($page === 'duels') {
 if ($page === 'competitions') {
     friends_ensure_schema($pdo);
     squads_ensure_schema($pdo);
+    workouts_ensure_schema($pdo);
     $meId = (int) $currentUser['id'];
 
     if (is_post()) {
@@ -1844,6 +1914,155 @@ if ($page === 'competitions') {
     ]);
 }
 
+if ($page === 'workouts') {
+    workouts_ensure_schema($pdo);
+    $meId = (int) $currentUser['id'];
+
+    if (is_post()) {
+        if (!csrf_verify()) {
+            flash_set('error', t('flash.csrf'));
+            redirect('/?page=workouts');
+        }
+        $wkAction = (string) ($_POST['action'] ?? '');
+        $backRoutine = (int) ($_POST['routine_id'] ?? 0);
+        $routineUrl = $backRoutine > 0 ? '/?page=workouts&routine_id=' . $backRoutine : '/?page=workouts';
+
+        switch ($wkAction) {
+            case 'routine_create':
+                $rid = wk_routine_create($pdo, $meId, (string) ($_POST['name'] ?? ''), (string) ($_POST['icon'] ?? 'dumbbell'), (string) ($_POST['description'] ?? ''));
+                flash_set($rid > 0 ? 'success' : 'error', $rid > 0 ? t('flash.saved') : t('flash.error'));
+                redirect($rid > 0 ? '/?page=workouts&routine_id=' . $rid : '/?page=workouts');
+                // no break (redirect exits)
+            case 'routine_update':
+                wk_routine_update($pdo, $backRoutine, $meId, [
+                    'name' => (string) ($_POST['name'] ?? ''),
+                    'icon' => (string) ($_POST['icon'] ?? 'dumbbell'),
+                    'description' => (string) ($_POST['description'] ?? ''),
+                ]);
+                flash_set('success', t('flash.saved'));
+                redirect($routineUrl);
+            case 'routine_favorite':
+                wk_routine_set_flag($pdo, $backRoutine, $meId, 'is_favorite', (int) ($_POST['value'] ?? 0));
+                redirect($routineUrl);
+            case 'routine_archive':
+                wk_routine_set_flag($pdo, $backRoutine, $meId, 'is_archived', (int) ($_POST['value'] ?? 1));
+                redirect('/?page=workouts');
+            case 'routine_delete':
+                wk_routine_delete($pdo, $backRoutine, $meId);
+                flash_set('success', t('flash.saved'));
+                redirect('/?page=workouts');
+            case 'routine_duplicate':
+                $dup = wk_routine_duplicate($pdo, $backRoutine, $meId);
+                redirect($dup > 0 ? '/?page=workouts&routine_id=' . $dup : '/?page=workouts');
+            case 'routine_reorder':
+                $ids = array_map('intval', (array) ($_POST['order'] ?? []));
+                wk_routine_reorder($pdo, $meId, $ids);
+                redirect('/?page=workouts');
+            case 'exercise_create':
+                $exId = wk_exercise_create($pdo, $meId, (string) ($_POST['name'] ?? ''), (string) ($_POST['muscle_group'] ?? ''), (string) ($_POST['exercise_type'] ?? 'strength'), (string) ($_POST['equipment'] ?? ''));
+                if ($exId > 0 && $backRoutine > 0 && wk_routine_get($pdo, $backRoutine, $meId) !== null) {
+                    wk_routine_add_exercise($pdo, $backRoutine, $exId);
+                }
+                redirect($routineUrl);
+            case 'routine_add_exercise':
+                if (wk_routine_get($pdo, $backRoutine, $meId) !== null) {
+                    wk_routine_add_exercise($pdo, $backRoutine, (int) ($_POST['exercise_def_id'] ?? 0), [
+                        'target_sets' => $_POST['target_sets'] ?? 3,
+                        'target_reps' => $_POST['target_reps'] ?? '',
+                        'target_weight' => $_POST['target_weight'] ?? '',
+                        'unit' => $_POST['unit'] ?? 'kg',
+                    ]);
+                }
+                redirect($routineUrl);
+            case 'routine_remove_exercise':
+                wk_routine_remove_exercise($pdo, (int) ($_POST['routine_exercise_id'] ?? 0), $backRoutine);
+                redirect($routineUrl);
+            case 'session_start':
+                $startRoutine = (int) ($_POST['routine_id'] ?? 0);
+                $sid = wk_session_start($pdo, $meId, $startRoutine > 0 ? $startRoutine : null, (string) ($_POST['title'] ?? ''));
+                redirect('/?page=workouts&session_id=' . $sid);
+            case 'session_add_set':
+                wk_set_add($pdo, (int) ($_POST['session_exercise_id'] ?? 0));
+                redirect('/?page=workouts&session_id=' . (int) ($_POST['session_id'] ?? 0));
+            case 'session_update_set':
+                wk_set_update($pdo, (int) ($_POST['set_id'] ?? 0), [
+                    'reps' => $_POST['reps'] ?? '',
+                    'weight' => $_POST['weight'] ?? '',
+                    'completed' => (int) ($_POST['completed'] ?? 0),
+                ]);
+                redirect('/?page=workouts&session_id=' . (int) ($_POST['session_id'] ?? 0));
+            case 'session_add_exercise':
+                wk_session_add_exercise($pdo, (int) ($_POST['session_id'] ?? 0), (int) ($_POST['exercise_def_id'] ?? 0));
+                redirect('/?page=workouts&session_id=' . (int) ($_POST['session_id'] ?? 0));
+            case 'session_finish':
+                wk_session_finish($pdo, (int) ($_POST['session_id'] ?? 0), $meId, (string) ($_POST['count_challenge'] ?? '1') === '1');
+                flash_set('success', t('flash.workout_saved'));
+                redirect('/?page=workouts');
+            case 'session_cancel':
+                wk_session_cancel($pdo, (int) ($_POST['session_id'] ?? 0), $meId);
+                redirect('/?page=workouts');
+            default:
+                redirect('/?page=workouts');
+        }
+    }
+
+    $routineId = isset($_GET['routine_id']) ? (int) $_GET['routine_id'] : 0;
+    $sessionId = isset($_GET['session_id']) ? (int) $_GET['session_id'] : 0;
+    $wantStats = (string) ($_GET['view'] ?? '') === 'stats';
+    $wkView = 'list';
+    $wkRoutine = null;
+    $wkRoutineExercises = [];
+    $wkSession = null;
+    $wkSessionExercises = [];
+    $wkStats = null;
+
+    if ($wantStats && $sessionId <= 0 && $routineId <= 0) {
+        $wkView = 'analytics';
+        $wkStats = [
+            'weekly' => wk_weekly_series($pdo, $meId, 8),
+            'streak' => wk_streak_days($pdo, $meId),
+            'frequent' => wk_frequent_exercises($pdo, $meId, 6),
+            'muscles' => wk_muscle_distribution($pdo, $meId),
+            'messages' => wk_motivational_messages($pdo, $meId),
+        ];
+    } elseif ($sessionId > 0) {
+        $wkSession = wk_session_get($pdo, $sessionId, $meId);
+        if ($wkSession === null) {
+            redirect('/?page=workouts');
+        }
+        $wkView = 'session';
+        $wkSessionExercises = wk_session_exercises($pdo, $sessionId);
+    } elseif ($routineId > 0) {
+        $wkRoutine = wk_routine_get($pdo, $routineId, $meId);
+        if ($wkRoutine === null) {
+            redirect('/?page=workouts');
+        }
+        $wkView = 'routine';
+        $wkRoutineExercises = wk_routine_exercises($pdo, $routineId);
+    }
+
+    $sinceMonth = (new DateTimeImmutable('first day of this month'))->format('Y-m-d 00:00:00');
+    render_view('workouts', [
+        'title' => t('workouts.title'),
+        'currentPage' => 'profile',
+        'currentUser' => $currentUser,
+        'wkView' => $wkView,
+        'wkStats' => $wkStats,
+        'wkRoutines' => wk_routines_for_user($pdo, $meId, true),
+        'wkRoutine' => $wkRoutine,
+        'wkRoutineExercises' => $wkRoutineExercises,
+        'wkSession' => $wkSession,
+        'wkSessionExercises' => $wkSessionExercises,
+        'wkExercises' => wk_exercises_for_user($pdo, $meId),
+        'wkActiveSession' => wk_session_active_for_user($pdo, $meId),
+        'wkRecentSessions' => wk_sessions_for_user($pdo, $meId, 8),
+        'wkPersonalRecords' => wk_personal_records_for_user($pdo, $meId, 8),
+        'wkSummaryMonth' => wk_summary_for_user($pdo, $meId, $sinceMonth),
+        'wkSummaryAll' => wk_summary_for_user($pdo, $meId, null),
+        'config' => $config,
+    ]);
+}
+
 if ($page === 'settings') {
     $settingsView = (string) ($_GET['view'] ?? '');
     if (!in_array($settingsView, ['avatar'], true)) {
@@ -1888,7 +2107,7 @@ if ($page === 'settings') {
             $layoutJson = (string) ($before['dashboard_layout_json'] ?? '[]');
             $hasWidgetPayload = array_key_exists('dashboard_widgets', $_POST) || array_key_exists('dashboard_order', $_POST);
             if ($hasWidgetPayload) {
-                $allowedWidgets = ['kpis', 'distance_walked', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories', 'achievements'];
+                $allowedWidgets = ['kpis', 'distance_walked', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories', 'achievements', 'duels', 'competitions', 'quests', 'season'];
                 $selectedWidgets = array_values(array_intersect(array_map('strval', (array) ($_POST['dashboard_widgets'] ?? [])), $allowedWidgets));
                 $selectedWidgets = array_values(array_unique(array_map(
                     static fn(string $widget): string => $widget === 'money' ? 'distance_walked' : $widget,
@@ -2230,6 +2449,55 @@ if ($page === 'profile') {
                 'Profile tagline updated.',
                 audit_snapshot($before, ['password_hash']),
                 audit_snapshot($after, ['password_hash'])
+            );
+            flash_set('success', t('flash.preferences_updated'));
+            redirect($profileUrl());
+        }
+
+        if ($action === 'equip_frame') {
+            if (!$isOwnProfile) {
+                flash_set('error', t('flash.no_permission'));
+                redirect($profileUrl());
+            }
+            // cosmetics_equip() re-checks the unlock, so a forged POST cannot equip
+            // a frame the user has not earned.
+            $equipped = cosmetics_equip($pdo, $currentUser, (string) ($_POST['frame'] ?? 'none'));
+            flash_set($equipped ? 'success' : 'error', t($equipped ? 'flash.preferences_updated' : 'cosmetic.locked'));
+            redirect($profileUrl());
+        }
+
+        if ($action === 'save_profile_layout') {
+            if (!$isOwnProfile) {
+                flash_set('error', t('flash.no_permission'));
+                redirect($profileUrl());
+            }
+            $allowedProfileBlocks = ['goals', 'friends', 'achievements', 'duels', 'competitions', 'setup', 'activity'];
+            $resetProfileLayout = bool_from_form('reset_profile_layout') === 1;
+            $layoutValue = null;
+            if (!$resetProfileLayout) {
+                $orderInput = (array) ($_POST['profile_order'] ?? []);
+                $blocks = array_values(array_intersect(
+                    array_map('strval', (array) ($_POST['profile_blocks'] ?? [])),
+                    $allowedProfileBlocks
+                ));
+                $blocks = array_values(array_unique($blocks));
+                usort($blocks, static function (string $left, string $right) use ($orderInput, $allowedProfileBlocks): int {
+                    $leftOrder = isset($orderInput[$left]) ? (int) $orderInput[$left] : (int) array_search($left, $allowedProfileBlocks, true);
+                    $rightOrder = isset($orderInput[$right]) ? (int) $orderInput[$right] : (int) array_search($right, $allowedProfileBlocks, true);
+                    return $leftOrder <=> $rightOrder;
+                });
+                if ($blocks !== []) {
+                    $layoutValue = json_encode($blocks, JSON_UNESCAPED_SLASHES) ?: null;
+                }
+            }
+            db_execute(
+                $pdo,
+                'UPDATE users SET profile_layout_json = :layout, updated_at = :updated_at WHERE id = :id',
+                [
+                    ':layout' => $layoutValue,
+                    ':updated_at' => now_iso(),
+                    ':id' => (int) $profileUser['id'],
+                ]
             );
             flash_set('success', t('flash.preferences_updated'));
             redirect($profileUrl());
@@ -2969,6 +3237,11 @@ if ($page === 'profile') {
     $profileUser = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $profileUser['id']]) ?? $profileUser;
 
     $profileGoalCards = build_user_goal_view_models($personalGoals, is_array($profileMetric) ? $profileMetric : [], $habitDefinitions);
+    duels_ensure_schema($pdo);
+    squads_ensure_schema($pdo);
+    $profileDuelsSummary = duels_summary_for_user($pdo, (int) $profileUser['id']);
+    $profileCompetitionsSummary = comp_summary_for_user($pdo, (int) $profileUser['id']);
+    $profileTeams = list_user_teams($pdo, (int) $profileUser['id']);
     $profileFriends = friends_list($pdo, (int) $profileUser['id']);
     $profileFriendStatus = $isOwnProfile ? 'self' : friends_status($pdo, (int) $currentUser['id'], (int) $profileUser['id']);
     $profileFriendIncoming = $isOwnProfile ? friends_incoming($pdo, (int) $currentUser['id']) : [];
@@ -2982,6 +3255,7 @@ if ($page === 'profile') {
         'profileUser' => $profileUser,
         'profileMetric' => $profileMetric,
         'profileXp' => xp_user_level_info($pdo, (int) $profileUser['id']),
+        'profileCosmetics' => $isOwnProfile ? cosmetics_for_user($pdo, $currentUser) : [],
         'isOwnProfile' => $isOwnProfile,
         'canEditProfile' => $canEditProfile,
         'canExportProfilePdf' => $isOwnProfile || is_admin($currentUser),
@@ -3012,6 +3286,9 @@ if ($page === 'profile') {
         'profileFriendOutgoing' => $profileFriendOutgoing,
         'profileFriendAddable' => $profileFriendAddable,
         'userAchievements' => list_awarded_achievements($pdo, (int) $profileUser['id'], null),
+        'profileDuelsSummary' => $profileDuelsSummary,
+        'profileCompetitionsSummary' => $profileCompetitionsSummary,
+        'profileTeams' => $profileTeams,
         'canDeleteAchievements' => $canDeleteProfileAchievements,
         'recentActivity' => fetch_audit_logs($pdo, ['actor_user_id' => (int) $profileUser['id']], 30),
         'habits' => $habitDefinitions,
@@ -3935,6 +4212,13 @@ if ($page === 'admin') {
             redirect('/?page=admin&section=app');
         }
 
+        if ($action === 'set_login_style') {
+            $style = login_style_normalize($_POST['login_style'] ?? 'split');
+            set_app_setting($pdo, 'login_style', $style, (int) $currentUser['id']);
+            flash_set('success', t('flash.login_style_updated'));
+            redirect('/?page=admin&section=app');
+        }
+
         if ($action === 'upload_app_icon') {
             try {
                 $cropped = trim((string) ($_POST['app_icon_cropped'] ?? ''));
@@ -4069,6 +4353,7 @@ if ($page === 'admin') {
         'appNameSetting' => app_setting($pdo, 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge Tracker')),
         'penaltiesEnabled' => penalties_enabled($pdo),
         'notionSettings' => notion_settings($pdo),
+        'notionStatus' => notion_sync_status($pdo),
         'notionFieldLabels' => notion_field_labels(),
         'notionFieldMap' => notion_field_map($pdo),
         'notionSchemaCache' => notion_schema_cache($pdo),
@@ -4076,6 +4361,7 @@ if ($page === 'admin') {
         'telegramLinkedUsers' => telegram_linked_users($pdo),
         'loginBackgroundPath' => $loginBackgroundPath,
         'loginBackgroundLibrary' => $loginBackgroundLibrary,
+        'loginStyle' => login_style_normalize(app_setting($pdo, 'login_style', 'split')),
         'backupSettings' => $backupSettings,
         'systemBackups' => $systemBackups,
         'challengeSettings' => $challengeSettings,
@@ -4639,7 +4925,11 @@ if ($page === 'team') {
         ]);
     }
 
-    $teamId = isset($_GET['team_id']) ? (int) $_GET['team_id'] : (int) $userTeams[0]['id'];
+    // Active team: an explicit ?team_id wins, otherwise the one the user last chose,
+    // otherwise their first. Persisting it means the rest of the app stops silently
+    // defaulting to "whichever team came first out of the database".
+    $storedTeamId = (int) ($currentUser['active_team_id'] ?? 0);
+    $teamId = isset($_GET['team_id']) ? (int) $_GET['team_id'] : $storedTeamId;
     $team = null;
     foreach ($userTeams as $candidate) {
         if ((int) $candidate['id'] === $teamId) {
@@ -4649,6 +4939,48 @@ if ($page === 'team') {
     }
     if ($team === null) {
         $team = $userTeams[0];
+    }
+    if ((int) $team['id'] !== $storedTeamId) {
+        db_execute(
+            $pdo,
+            'UPDATE users SET active_team_id = :t WHERE id = :id',
+            [':t' => (int) $team['id'], ':id' => (int) $currentUser['id']]
+        );
+        $currentUser['active_team_id'] = (int) $team['id'];
+    }
+
+    // A saved team layout only stores the widgets that were visible when it was saved, so
+    // a widget added afterwards (competitions) would never appear. Append the ones this
+    // user has never been offered, and remember the full set so a deliberately hidden
+    // widget is not resurrected on the next release.
+    $teamAllWidgets = team_layout_widgets_default();
+    $teamKnown = json_decode((string) ($currentUser['team_widgets_known'] ?? ''), true);
+    $teamKnown = is_array($teamKnown) ? array_map('strval', $teamKnown) : [];
+    $teamUnknown = array_values(array_diff($teamAllWidgets, $teamKnown));
+    if ($teamUnknown !== []) {
+        $savedTeamLayout = json_decode((string) ($currentUser['team_layout_json'] ?? ''), true);
+        if (is_array($savedTeamLayout) && $savedTeamLayout !== []) {
+            $mergedTeamLayout = array_values(array_unique(array_merge(
+                array_map('strval', $savedTeamLayout),
+                array_values(array_diff($teamUnknown, $savedTeamLayout))
+            )));
+            db_execute(
+                $pdo,
+                'UPDATE users SET team_layout_json = :layout, team_widgets_known = :known WHERE id = :id',
+                [
+                    ':layout' => json_encode($mergedTeamLayout, JSON_UNESCAPED_SLASHES),
+                    ':known' => json_encode($teamAllWidgets, JSON_UNESCAPED_SLASHES),
+                    ':id' => (int) $currentUser['id'],
+                ]
+            );
+            $currentUser['team_layout_json'] = json_encode($mergedTeamLayout, JSON_UNESCAPED_SLASHES);
+        } else {
+            db_execute(
+                $pdo,
+                'UPDATE users SET team_widgets_known = :known WHERE id = :id',
+                [':known' => json_encode($teamAllWidgets, JSON_UNESCAPED_SLASHES), ':id' => (int) $currentUser['id']]
+            );
+        }
     }
 
     $settings = challenge_settings($pdo, $config);
@@ -5389,6 +5721,8 @@ if ($page === 'team') {
     <?php
     $teamTopbarControls = ob_get_clean();
 
+    $teamMissions = team_missions_for_team($pdo, (int) $team['id']);
+
     render_view('team', [
         'title' => t('team.title'),
         'currentPage' => 'team',
@@ -5401,6 +5735,27 @@ if ($page === 'team') {
         'metricsOrdered' => $metricsOrdered,
         'teamSummary' => $teamSummary,
         'teamView' => $teamView,
+        // Competitions render inside the team page now, so the team route has to carry
+        // them. Same shape the competitions page builds, trimmed to what the panel shows.
+        'teamCompetitions' => (static function () use ($pdo, $config, $currentUser): array {
+            $rows = [];
+            foreach (comp_for_user($pdo, (int) $currentUser['id']) as $comp) {
+                $status = (string) ($comp['status'] ?? '');
+                if (!in_array($status, ['active', 'pending'], true)) {
+                    continue;
+                }
+                $standing = comp_standing($pdo, $config, (array) $comp);
+                $challenger = (string) ((($standing['challenger_squad'] ?? [])['name']) ?? '');
+                $opponent = (string) ((($standing['opponent_squad'] ?? [])['name']) ?? '');
+                $rows[] = [
+                    'title' => trim($challenger . ' vs ' . $opponent),
+                    'meta' => duels_metric_label((string) ($comp['metric'] ?? ''))
+                        . ' · ' . ($status === 'active' ? t('competitions.active') : t('duels.waiting')),
+                ];
+            }
+
+            return $rows;
+        })(),
         'teamLayoutEditMode' => $teamLayoutEditMode,
         'teamLayoutLabels' => $teamLayoutLabels,
         'teamWeekOptions' => $weekOptions,
@@ -5438,61 +5793,6 @@ if ($page === 'metric') {
     if (!challenge_is_active($settings)) {
         flash_set('error', t('flash.challenge_inactive'));
         redirect('/?page=admin');
-    }
-
-    if (is_post()) {
-        if (!csrf_verify()) {
-            flash_set('error', t('flash.csrf'));
-            redirect('/?page=analytics');
-        }
-
-        $action = (string) ($_POST['action'] ?? '');
-        if ($action === 'save_analytics_layout') {
-            $allowedSections = analytics_layout_sections_default();
-            $resetLayout = !empty($_POST['reset_analytics_layout']);
-            $sections = [];
-            if (!$resetLayout) {
-                $sections = array_values(array_intersect(array_map('strval', (array) ($_POST['analytics_sections'] ?? [])), $allowedSections));
-                $sections = array_values(array_unique($sections));
-                $sectionOrder = (array) ($_POST['analytics_order'] ?? []);
-                usort($sections, static function (string $left, string $right) use ($sectionOrder, $allowedSections): int {
-                    $leftOrder = isset($sectionOrder[$left]) ? (int) $sectionOrder[$left] : (int) array_search($left, $allowedSections, true);
-                    $rightOrder = isset($sectionOrder[$right]) ? (int) $sectionOrder[$right] : (int) array_search($right, $allowedSections, true);
-
-                    return $leftOrder <=> $rightOrder;
-                });
-            }
-
-            db_execute(
-                $pdo,
-                'UPDATE users SET analytics_layout_json = :analytics_layout_json, updated_at = :updated_at WHERE id = :id',
-                [
-                    ':analytics_layout_json' => $resetLayout ? null : json_encode($sections, JSON_UNESCAPED_SLASHES),
-                    ':updated_at' => now_iso(),
-                    ':id' => (int) $currentUser['id'],
-                ]
-            );
-
-            $redirectParams = ['page' => 'analytics'];
-            if (!empty($_POST['redirect_user_id'])) {
-                $redirectParams['user_id'] = (int) $_POST['redirect_user_id'];
-            }
-            $redirectPeriod = (string) ($_POST['analytics_period'] ?? 'current_week');
-            if (in_array($redirectPeriod, ['current_week', 'week', 'month', 'total'], true)) {
-                $redirectParams['analytics_period'] = $redirectPeriod;
-            }
-            $redirectWeek = trim((string) ($_POST['analytics_week'] ?? ''));
-            if ($redirectWeek !== '') {
-                $redirectParams['analytics_week'] = to_date($redirectWeek);
-            }
-            $redirectMonth = trim((string) ($_POST['analytics_month'] ?? ''));
-            if (preg_match('/^\d{4}-\d{2}$/', $redirectMonth)) {
-                $redirectParams['analytics_month'] = $redirectMonth;
-            }
-
-            flash_set('success', t('analytics.layout_saved'));
-            redirect('/?' . http_build_query($redirectParams));
-        }
     }
 
     $team = default_team($pdo);
@@ -6169,6 +6469,61 @@ if ($page === 'analytics') {
         redirect('/?page=admin');
     }
 
+    if (is_post()) {
+        if (!csrf_verify()) {
+            flash_set('error', t('flash.csrf'));
+            redirect('/?page=analytics');
+        }
+
+        $action = (string) ($_POST['action'] ?? '');
+        if ($action === 'save_analytics_layout') {
+            $allowedSections = analytics_layout_sections_default();
+            $resetLayout = !empty($_POST['reset_analytics_layout']);
+            $sections = [];
+            if (!$resetLayout) {
+                $sections = array_values(array_intersect(array_map('strval', (array) ($_POST['analytics_sections'] ?? [])), $allowedSections));
+                $sections = array_values(array_unique($sections));
+                $sectionOrder = (array) ($_POST['analytics_order'] ?? []);
+                usort($sections, static function (string $left, string $right) use ($sectionOrder, $allowedSections): int {
+                    $leftOrder = isset($sectionOrder[$left]) ? (int) $sectionOrder[$left] : (int) array_search($left, $allowedSections, true);
+                    $rightOrder = isset($sectionOrder[$right]) ? (int) $sectionOrder[$right] : (int) array_search($right, $allowedSections, true);
+
+                    return $leftOrder <=> $rightOrder;
+                });
+            }
+
+            db_execute(
+                $pdo,
+                'UPDATE users SET analytics_layout_json = :analytics_layout_json, updated_at = :updated_at WHERE id = :id',
+                [
+                    ':analytics_layout_json' => $resetLayout ? null : json_encode($sections, JSON_UNESCAPED_SLASHES),
+                    ':updated_at' => now_iso(),
+                    ':id' => (int) $currentUser['id'],
+                ]
+            );
+
+            $redirectParams = ['page' => 'analytics'];
+            if (!empty($_POST['redirect_user_id'])) {
+                $redirectParams['user_id'] = (int) $_POST['redirect_user_id'];
+            }
+            $redirectPeriod = (string) ($_POST['analytics_period'] ?? 'current_week');
+            if (in_array($redirectPeriod, ['current_week', 'week', 'month', 'total'], true)) {
+                $redirectParams['analytics_period'] = $redirectPeriod;
+            }
+            $redirectWeek = trim((string) ($_POST['analytics_week'] ?? ''));
+            if ($redirectWeek !== '') {
+                $redirectParams['analytics_week'] = to_date($redirectWeek);
+            }
+            $redirectMonth = trim((string) ($_POST['analytics_month'] ?? ''));
+            if (preg_match('/^\d{4}-\d{2}$/', $redirectMonth)) {
+                $redirectParams['analytics_month'] = $redirectMonth;
+            }
+
+            flash_set('success', t('analytics.layout_saved'));
+            redirect('/?' . http_build_query($redirectParams));
+        }
+    }
+
     $team = default_team($pdo);
     $users = list_active_team_users($pdo, (int) $team['id']);
     if ($users === []) {
@@ -6227,9 +6582,25 @@ if ($page === 'analytics') {
         $challengeEndObj = $challengeStartObj;
     }
 
-    $analyticsPeriod = (string) ($_GET['analytics_period'] ?? 'current_week');
-    if (!in_array($analyticsPeriod, ['current_week', 'week', 'month', 'total'], true)) {
-        $analyticsPeriod = 'current_week';
+    // Per-user analytics view persistence (#8): default to the user's last
+    // selected view (falling back to "total"); when an explicit period is
+    // requested via the filter, remember it for next time.
+    $analyticsAllowedPeriods = ['current_week', 'week', 'month', 'total'];
+    $analyticsStoredView = (string) ($currentUser['analytics_view'] ?? 'total');
+    if (!in_array($analyticsStoredView, $analyticsAllowedPeriods, true)) {
+        $analyticsStoredView = 'total';
+    }
+    $analyticsPeriodExplicit = isset($_GET['analytics_period']);
+    $analyticsPeriod = (string) ($_GET['analytics_period'] ?? $analyticsStoredView);
+    if (!in_array($analyticsPeriod, $analyticsAllowedPeriods, true)) {
+        $analyticsPeriod = 'total';
+    }
+    if ($analyticsPeriodExplicit && $analyticsPeriod !== $analyticsStoredView) {
+        db_execute(
+            $pdo,
+            'UPDATE users SET analytics_view = :analytics_view WHERE id = :id',
+            [':analytics_view' => $analyticsPeriod, ':id' => (int) $currentUser['id']]
+        );
     }
     $analyticsWeek = $normalizeAnalyticsWeek((string) ($_GET['analytics_week'] ?? $selectedWeekStart), $selectedWeekStart);
     if (!in_array($analyticsWeek, $weekOptions, true) && $weekOptions !== []) {
@@ -6463,7 +6834,7 @@ if ($page === 'dashboard') {
         }
 
         if ($action === 'save_dashboard_layout' || $action === 'save_dashboard_prefs') {
-            $allowedWidgets = ['kpis', 'approvals', 'ranking', 'weekly', 'achievements'];
+            $allowedWidgets = ['kpis', 'approvals', 'ranking', 'weekly', 'achievements', 'duels', 'competitions', 'quests', 'season'];
             $resetLayout = bool_from_form('reset_dashboard_layout') === 1;
             $widgets = [];
             if (!$resetLayout) {
@@ -6676,10 +7047,69 @@ if ($page === 'dashboard') {
         ], JSON_UNESCAPED_SLASHES));
     }
 
+    duels_ensure_schema($pdo);
+    squads_ensure_schema($pdo);
+    $dashboardDuelsSummary = duels_summary_for_user($pdo, (int) $currentUser['id']);
+    $dashboardQuests = quests_for_user($pdo, $currentUser);
+    $dashboardQuestRank = quests_rank_for_level((int) xp_user_level_info($pdo, (int) $currentUser['id'])['level']);
+    $dashboardQuestStreak = quests_active_streak($pdo, (int) $currentUser['id']);
+    $dashboardBadges = badges_for_user($pdo, (int) $currentUser['id']);
+    $dashboardCompetitionsSummary = comp_summary_for_user($pdo, (int) $currentUser['id']);
+    $dashboardSeason = seasons_current($pdo);
+    $dashboardSeasonBoard = season_leaderboard($pdo, $dashboardSeason, 6);
+    $dashboardSeasonXp = season_xp_for_user($pdo, (int) $currentUser['id'], $dashboardSeason);
+    $dashboardSeasonDaysLeft = season_days_left($dashboardSeason);
+
+    // A saved dashboard layout only stores the *visible* widgets, so a widget
+    // added after the user last saved would stay invisible forever. Reconcile
+    // once: append widgets this user has never been offered, and remember the
+    // full set so a deliberately hidden widget is not resurrected later.
+    $dashAllWidgets = penalties_enabled($pdo)
+        ? ['kpis', 'quests', 'season', 'achievements', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
+        : ['kpis', 'quests', 'season', 'achievements', 'duels', 'competitions', 'ranking', 'weekly'];
+    $savedDashLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
+    $knownDashWidgets = json_decode((string) ($currentUser['dashboard_widgets_known'] ?? ''), true);
+    $knownDashWidgets = is_array($knownDashWidgets) ? $knownDashWidgets : [];
+    $unknownDashWidgets = array_values(array_diff($dashAllWidgets, $knownDashWidgets));
+    if ($unknownDashWidgets !== []) {
+        if (is_array($savedDashLayout) && $savedDashLayout !== []) {
+            $mergedDashLayout = array_values(array_unique(array_merge(
+                array_map('strval', $savedDashLayout),
+                array_values(array_diff($unknownDashWidgets, $savedDashLayout))
+            )));
+            db_execute(
+                $pdo,
+                'UPDATE users SET dashboard_layout_json = :layout, dashboard_widgets_known = :known WHERE id = :id',
+                [
+                    ':layout' => json_encode($mergedDashLayout, JSON_UNESCAPED_SLASHES),
+                    ':known' => json_encode($dashAllWidgets, JSON_UNESCAPED_SLASHES),
+                    ':id' => (int) $currentUser['id'],
+                ]
+            );
+            $currentUser['dashboard_layout_json'] = json_encode($mergedDashLayout, JSON_UNESCAPED_SLASHES);
+        } else {
+            db_execute(
+                $pdo,
+                'UPDATE users SET dashboard_widgets_known = :known WHERE id = :id',
+                [':known' => json_encode($dashAllWidgets, JSON_UNESCAPED_SLASHES), ':id' => (int) $currentUser['id']]
+            );
+        }
+    }
+
     render_view('dashboard', [
         'title' => t('nav.dashboard'),
         'currentPage' => 'dashboard',
         'currentUser' => $currentUser,
+        'dashboardDuelsSummary' => $dashboardDuelsSummary,
+        'dashboardQuests' => $dashboardQuests,
+        'dashboardQuestRank' => $dashboardQuestRank,
+        'dashboardQuestStreak' => $dashboardQuestStreak,
+        'dashboardBadges' => $dashboardBadges,
+        'dashboardCompetitionsSummary' => $dashboardCompetitionsSummary,
+        'dashboardSeason' => $dashboardSeason,
+        'dashboardSeasonBoard' => $dashboardSeasonBoard,
+        'dashboardSeasonXp' => $dashboardSeasonXp,
+        'dashboardSeasonDaysLeft' => $dashboardSeasonDaysLeft,
         'settings' => $settings,
         'users' => $users,
         'selectedMetric' => $selectedMetric,

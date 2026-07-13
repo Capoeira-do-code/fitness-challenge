@@ -336,6 +336,24 @@ function normalize_workout_row(PDO $pdo, array $row, ?int $actorUserId = null): 
     $rawType = trim((string) ($row['workout_type'] ?? ''));
     $skipTypePersist = !empty($row['skip_type_persist']);
 
+    // A personal workout routine picked from the daily-log dropdown arrives as
+    // "routine:<id>" (#13). Resolve it to its name and let the normal free-text
+    // path register it as a workout type, so routines and types stay coherent.
+    if (is_string($rawTypeId) && preg_match('/^routine:(\d+)$/', trim($rawTypeId), $routineMatch) === 1) {
+        $routineName = '';
+        if ($actorUserId !== null && function_exists('wk_routine_get')) {
+            $routine = wk_routine_get($pdo, (int) $routineMatch[1], $actorUserId);
+            $routineName = $routine !== null ? trim((string) ($routine['name'] ?? '')) : '';
+        }
+        if ($routineName === '') {
+            return null;
+        }
+        $rawTypeId = null;
+        if ($rawType === '') {
+            $rawType = $routineName;
+        }
+    }
+
     $workoutTypeId = null;
     if (is_int($rawTypeId) && $rawTypeId > 0) {
         $workoutTypeId = $rawTypeId;
@@ -2967,6 +2985,9 @@ function team_layout_widgets_default(): array
         'cumulative_distance',
         'weekly_charts',
         'achievements',
+        // Competitions are a team activity, so they live on the team page rather than
+        // behind their own top-level menu entry.
+        'competitions',
     ];
 }
 
@@ -6334,16 +6355,40 @@ function user_max_weekly_log_days(PDO $pdo, int $userId): int
     return $byWeek !== [] ? max($byWeek) : 0;
 }
 
+/**
+ * A "clean" week has to be earned, not merely un-penalised.
+ *
+ * The old test was `penalty <= 0`, but penalty is hard-zeroed for every week while the
+ * penalties feature is off (challenge.php), so every week of the challenge counted -
+ * including the weeks before the account existed. A brand-new user therefore unlocked
+ * "no strike week" + "two clean weeks" (50 XP each) on their first page load and
+ * landed on level 4 with no data at all.
+ */
 function user_clean_week_count(array $metric): int
 {
     $count = 0;
     foreach ((array) ($metric['weekly'] ?? []) as $week) {
-        if ((string) ($week['status'] ?? '') === 'complete' && (float) ($week['penalty'] ?? 0) <= 0.0) {
-            $count++;
+        if ((string) ($week['status'] ?? '') !== 'complete') {
+            continue;
         }
+        if ((int) ($week['total_failures'] ?? 0) !== 0) {
+            continue;
+        }
+        if (!week_has_activity($week)) {
+            continue;
+        }
+        $count++;
     }
 
     return $count;
+}
+
+/** Did the user actually do anything that week? An empty week is not an achievement. */
+function week_has_activity(array $week): bool
+{
+    return (int) ($week['steps'] ?? 0) > 0
+        || (float) ($week['distance_km'] ?? $week['km'] ?? 0) > 0
+        || (int) ($week['workouts'] ?? $week['workout_success'] ?? 0) > 0;
 }
 
 function user_perfect_week_count(array $metric): int
@@ -6580,6 +6625,12 @@ function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $t
     foreach ($metricsByUser as $metric) {
         $userId = (int) $metric['user']['id'];
 
+        // Nothing logged, nothing earned. This kills the whole class of "zero-data
+        // unlock" bugs, not just the two that were found.
+        if (db_fetch_one($pdo, 'SELECT id FROM daily_logs WHERE user_id = :user_id LIMIT 1', [':user_id' => $userId]) === null) {
+            continue;
+        }
+
         if (isset($byTrigger['first_log']) && db_fetch_one($pdo, 'SELECT id FROM daily_logs WHERE user_id = :user_id LIMIT 1', [':user_id' => $userId]) !== null) {
             award_achievement($pdo, (int) $byTrigger['first_log']['id'], $userId, null, null, 'Automatic unlock.');
         }
@@ -6596,12 +6647,66 @@ function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $t
         }
         if (isset($byTrigger['no_strike_week'])) {
             foreach (($metric['weekly'] ?? []) as $week) {
-                if (($week['status'] ?? '') === 'complete' && (int) ($week['penalty'] ?? 0) === 0) {
+                if (($week['status'] ?? '') === 'complete'
+                    && (int) ($week['total_failures'] ?? 0) === 0
+                    && week_has_activity($week)) {
                     award_achievement($pdo, (int) $byTrigger['no_strike_week']['id'], $userId, null, null, 'Automatic unlock.');
                     break;
                 }
             }
         }
+        // --- duels & competitions -------------------------------------------------
+        // Read the finished rows, so nothing here can unlock without having competed.
+        $duelWins = (int) (db_fetch_one(
+            $pdo,
+            "SELECT COUNT(1) AS c FROM user_duels WHERE status = 'completed' AND winner_id = :u",
+            [':u' => $userId]
+        )['c'] ?? 0);
+        $duelsFinished = (int) (db_fetch_one(
+            $pdo,
+            "SELECT COUNT(1) AS c FROM user_duels
+             WHERE status = 'completed' AND (challenger_id = :u OR opponent_id = :u)",
+            [':u' => $userId]
+        )['c'] ?? 0);
+
+        if (isset($byTrigger['duel_first_win']) && $duelWins >= 1) {
+            award_achievement($pdo, (int) $byTrigger['duel_first_win']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['duel_three_wins']) && $duelWins >= 3) {
+            award_achievement($pdo, (int) $byTrigger['duel_three_wins']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['duel_ten_duels']) && $duelsFinished >= 10) {
+            award_achievement($pdo, (int) $byTrigger['duel_ten_duels']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+
+        // A competition belongs to a squad, so "my competitions" means the ones whose
+        // squads I am a member of.
+        $compPlayed = (int) (db_fetch_one(
+            $pdo,
+            "SELECT COUNT(1) AS c FROM squad_competitions c
+             WHERE c.status = 'completed'
+               AND (c.challenger_squad_id IN (SELECT squad_id FROM squad_members WHERE user_id = :u)
+                 OR c.opponent_squad_id IN (SELECT squad_id FROM squad_members WHERE user_id = :u))",
+            [':u' => $userId]
+        )['c'] ?? 0);
+        $compWins = (int) (db_fetch_one(
+            $pdo,
+            "SELECT COUNT(1) AS c FROM squad_competitions c
+             WHERE c.status = 'completed'
+               AND c.winner_squad_id IN (SELECT squad_id FROM squad_members WHERE user_id = :u)",
+            [':u' => $userId]
+        )['c'] ?? 0);
+
+        if (isset($byTrigger['comp_first_join']) && $compPlayed >= 1) {
+            award_achievement($pdo, (int) $byTrigger['comp_first_join']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['comp_first_win']) && $compWins >= 1) {
+            award_achievement($pdo, (int) $byTrigger['comp_first_win']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+        if (isset($byTrigger['comp_three_wins']) && $compWins >= 3) {
+            award_achievement($pdo, (int) $byTrigger['comp_three_wins']['id'], $userId, null, null, 'Automatic unlock.');
+        }
+
         if (isset($byTrigger['step_streak']) && (int) ($metric['steps_success'] ?? 0) >= 5) {
             award_achievement($pdo, (int) $byTrigger['step_streak']['id'], $userId, null, null, 'Automatic unlock.');
         }
@@ -9821,4 +9926,24 @@ function is_valid_login_background_path(array $config, string $path): bool
     $absolutePath = resolve_media_storage_path($config, $normalized);
 
     return is_string($absolutePath) && $absolutePath !== '' && is_file($absolutePath);
+}
+
+/**
+ * Available login page style variants (admin-selectable).
+ *
+ * @return array<int, string>
+ */
+function login_style_options(): array
+{
+    return ['split', 'centered', 'spotlight'];
+}
+
+/**
+ * Normalize a stored/selected login style to a supported value.
+ */
+function login_style_normalize(mixed $value): string
+{
+    $value = is_string($value) ? trim($value) : '';
+
+    return in_array($value, login_style_options(), true) ? $value : 'split';
 }

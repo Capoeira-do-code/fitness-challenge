@@ -271,8 +271,17 @@
         }, true);
     };
 
-    const entryForm = document.querySelector('[data-testid="entry-form"]');
-    if (entryForm) {
+    // The entry form used to be wired up once, at script load. After an in-page
+    // (pjax) navigation to ?page=entries the form is a brand new DOM node, so none
+    // of these listeners existed - which is why "Add workout" did nothing when you
+    // reached the page through the app instead of a hard reload. It is an init
+    // function now, run on every page hydration.
+    const initEntryForm = () => {
+        const entryForm = document.querySelector('[data-testid="entry-form"]');
+        if (!entryForm || entryForm.dataset.entryFormReady === '1') {
+            return;
+        }
+        entryForm.dataset.entryFormReady = '1';
         const stepsInput = entryForm.querySelector('[name="steps"]');
         const kmInput = entryForm.querySelector('[name="distance_km"]');
         const missingReason = entryForm.querySelector('[data-reason="missing"]');
@@ -453,11 +462,47 @@
             if (customField instanceof HTMLElement) {
                 customField.hidden = !isCustom;
             }
-            if (!isCustom && customInput instanceof HTMLInputElement) {
-                customInput.value = '';
+            if (select instanceof HTMLSelectElement) {
+                select.required = isWorkoutEnabled();
+            }
+            if (customInput instanceof HTMLInputElement) {
+                customInput.required = isWorkoutEnabled() && isCustom;
+                if (!isCustom) {
+                    customInput.value = '';
+                }
             }
             buildWorkoutSubfields(row);
             updateWorkoutIndexes();
+        };
+
+        const focusWorkoutRow = (row) => {
+            if (!(row instanceof HTMLElement)) {
+                return;
+            }
+            const select = row.querySelector('[data-workout-select]');
+            if (!(select instanceof HTMLSelectElement)) {
+                return;
+            }
+
+            // A new account only has "None" and "Other". Sending the user to a
+            // two-option select in that state adds a pointless step and made the
+            // workout flow look broken. Open the custom field immediately; once a
+            // type or routine exists, keep the regular picker behaviour.
+            const hasPresetChoice = Array.from(select.options).some((option) => {
+                const value = String(option.value || '').trim();
+                return value !== '' && value !== '__custom__';
+            });
+            const customOption = Array.from(select.options).find((option) => option.value === '__custom__');
+            if (!hasPresetChoice && customOption) {
+                select.value = '__custom__';
+                updateWorkoutRowVisibility(row);
+                const customInput = row.querySelector('[data-workout-custom-input]');
+                if (customInput instanceof HTMLInputElement) {
+                    customInput.focus();
+                    return;
+                }
+            }
+            select.focus();
         };
 
         const ensureOneWorkoutRow = () => {
@@ -598,6 +643,7 @@
         }
 
         workoutAddButton?.addEventListener('click', () => {
+            const wasEnabled = isWorkoutEnabled();
             if (workoutEnabled instanceof HTMLInputElement && !workoutEnabled.checked) {
                 workoutEnabled.checked = true;
                 updateWorkoutPanelState();
@@ -605,16 +651,20 @@
             if (!(workoutRows instanceof HTMLElement) || !(workoutTemplate instanceof HTMLTemplateElement)) {
                 return;
             }
-            const fragment = workoutTemplate.content.cloneNode(true);
-            workoutRows.appendChild(fragment);
-            const rows = getWorkoutRows();
-            const lastRow = rows[rows.length - 1];
-            if (lastRow instanceof HTMLElement) {
-                updateWorkoutRowVisibility(lastRow);
-                const select = lastRow.querySelector('[data-workout-select]');
-                if (select instanceof HTMLSelectElement) {
-                    select.focus();
-                }
+            ensureOneWorkoutRow();
+            let rows = getWorkoutRows();
+
+            // The disabled form already keeps one template row ready. The first
+            // tap should reveal and use it, not create a second empty workout.
+            if (wasEnabled) {
+                const fragment = workoutTemplate.content.cloneNode(true);
+                workoutRows.appendChild(fragment);
+                rows = getWorkoutRows();
+            }
+            const rowToFocus = rows[rows.length - 1];
+            if (rowToFocus instanceof HTMLElement) {
+                updateWorkoutRowVisibility(rowToFocus);
+                focusWorkoutRow(rowToFocus);
             }
             updateWorkoutRemoveButtons();
             updateWorkoutIndexes();
@@ -640,7 +690,7 @@
         updateWorkoutIndexes();
         updateWorkoutPanelState();
         updateReasons();
-    }
+    };
 
     const proofPhotoForm = document.querySelector('[data-proof-photo-form]');
     if (proofPhotoForm) {
@@ -1293,14 +1343,21 @@
                         node.hidden = true;
                     });
                 }
+                // The goal editor lives in a modal now, and the modal owns its own
+                // visibility. Force-hiding the form here left its Save button collapsed
+                // to zero height inside an open dialog.
                 root.querySelectorAll('[data-goal-edit-form]').forEach((form) => {
-                    form.hidden = true;
+                    const dialog = form.closest('.app-modal');
+                    if (!dialog) {
+                        form.hidden = true;
+                    }
                 });
             }
         };
 
         const navigate = (root, href) => {
             document.body.classList.add('is-view-changing');
+            window.__fcSpaDepth = (window.__fcSpaDepth || 0) + 1;
             history.pushState({}, '', href);
             applyState(root, href);
             initAdminAchievementFields();
@@ -1329,6 +1386,14 @@
                     return;
                 }
                 event.preventDefault();
+                // Smart back: when there is in-app history, return to the exact
+                // previous view (e.g. a goal opened from Home returns to Home,
+                // one opened from the list returns to the list). Falls back to
+                // the static href on a deep link with no in-app history.
+                if (link.matches('[data-spa-history]') && (window.__fcSpaDepth || 0) > 0) {
+                    history.back();
+                    return;
+                }
                 navigate(root, link.href);
             });
         });
@@ -1337,6 +1402,7 @@
             window.removeEventListener('popstate', window.__fcSpaPopstateHandler);
         }
         window.__fcSpaPopstateHandler = () => {
+            window.__fcSpaDepth = Math.max(0, (window.__fcSpaDepth || 0) - 1);
             roots.forEach((root) => applyState(root, window.location.href));
             initAdminAchievementFields();
             clearMobileViewTransitionState(true);
@@ -4395,7 +4461,7 @@
     };
 
     const initTeamLayoutEditor = () => {
-        document.querySelectorAll('[data-team-layout-list], [data-dashboard-layout-list], [data-analytics-layout-list]').forEach((list) => {
+        document.querySelectorAll('[data-team-layout-list], [data-dashboard-layout-list], [data-analytics-layout-list], [data-profile-layout-list]').forEach((list) => {
             if (!(list instanceof HTMLElement)) {
                 return;
             }
@@ -4407,12 +4473,13 @@
             let dragged = null;
             const isDashboardLayout = list.hasAttribute('data-dashboard-layout-list');
             const isAnalyticsLayout = list.hasAttribute('data-analytics-layout-list');
+            const isProfileLayout = list.hasAttribute('data-profile-layout-list');
             const itemSelector = isDashboardLayout
                 ? '[data-dashboard-layout-item]'
-                : (isAnalyticsLayout ? '[data-analytics-layout-item]' : '[data-team-layout-item]');
+                : (isAnalyticsLayout ? '[data-analytics-layout-item]' : (isProfileLayout ? '[data-profile-layout-item]' : '[data-team-layout-item]'));
             const orderInputSelector = isDashboardLayout
                 ? '[data-dashboard-order-input]'
-                : (isAnalyticsLayout ? '[data-analytics-order-input]' : '');
+                : (isAnalyticsLayout ? '[data-analytics-order-input]' : (isProfileLayout ? '[data-profile-order-input]' : ''));
 
             const layoutItemMatches = (node) => node instanceof Element && node.matches(itemSelector);
             const layoutItems = () => [...list.querySelectorAll(itemSelector)].filter((node) => node instanceof HTMLElement);
@@ -4571,23 +4638,38 @@
         root.dataset.notificationsReady = '1';
 
         const replaceBadge = (doc) => {
-            const currentTrigger = document.querySelector('.user-menu-trigger');
-            if (!(currentTrigger instanceof HTMLElement)) {
-                return;
-            }
-            const currentBadge = currentTrigger.querySelector('[data-notification-badge]');
-            const nextBadge = doc.querySelector('.user-menu-trigger [data-notification-badge]');
-            if (nextBadge instanceof HTMLElement) {
-                const clone = nextBadge.cloneNode(true);
-                if (currentBadge instanceof HTMLElement) {
-                    currentBadge.replaceWith(clone);
-                } else {
-                    currentTrigger.appendChild(clone);
+            const syncBadge = (containerSelector) => {
+                const currentContainer = document.querySelector(containerSelector);
+                const nextContainer = doc.querySelector(containerSelector);
+                if (!(currentContainer instanceof HTMLElement) || !(nextContainer instanceof HTMLElement)) {
+                    return;
                 }
-                return;
-            }
-            if (currentBadge instanceof HTMLElement) {
-                currentBadge.remove();
+                if (nextContainer.hasAttribute('aria-label')) {
+                    currentContainer.setAttribute('aria-label', nextContainer.getAttribute('aria-label') || '');
+                }
+                const currentBadge = currentContainer.querySelector('[data-notification-badge]');
+                const nextBadge = nextContainer.querySelector('[data-notification-badge]');
+                if (nextBadge instanceof HTMLElement) {
+                    const clone = nextBadge.cloneNode(true);
+                    if (currentBadge instanceof HTMLElement) {
+                        currentBadge.replaceWith(clone);
+                    } else {
+                        currentContainer.appendChild(clone);
+                    }
+                    return;
+                }
+                if (currentBadge instanceof HTMLElement) {
+                    currentBadge.remove();
+                }
+            };
+
+            syncBadge('.topbar-notif-btn');
+            syncBadge('.user-menu-trigger');
+
+            const currentNotificationsLink = document.querySelector('.user-menu-panel a[href="/?page=notifications"]');
+            const nextNotificationsLink = doc.querySelector('.user-menu-panel a[href="/?page=notifications"]');
+            if (currentNotificationsLink instanceof HTMLElement && nextNotificationsLink instanceof HTMLElement) {
+                currentNotificationsLink.textContent = nextNotificationsLink.textContent;
             }
         };
 
@@ -5021,6 +5103,7 @@
         safeInit(initProfilePdfExport);
         safeInit(initTeamLayoutEditor);
         safeInit(initNotificationsAjax);
+        safeInit(initEntryForm);
         clearMobileViewTransitionState(true);
         queueMobileViewTransitionStateCleanup(350, true);
     };
@@ -5030,4 +5113,793 @@
     } else {
         runPageHydration(true);
     }
+})();
+
+/* ==========================================================================
+   Reusable UI controllers: kebab menu + app modal/drawer (#components)
+   ========================================================================== */
+(() => {
+    // ---- Dismissible menus (native <details>) ----
+    // A native <details> stays open until you click its own summary again, so every
+    // dropdown in the topbar - the bell, the + menu, the user menu, the view panel -
+    // was left hanging open when you clicked away or pressed Escape. They all behave
+    // like the kebab menus now: one open at a time, closed by an outside click or Escape.
+    const MENU_SELECTOR = 'details[data-kebab-menu], details.notif-menu, details.user-menu,'
+        + ' details.add-menu, details.topbar-context';
+
+    const closeAllKebabs = (except) => {
+        document.querySelectorAll(MENU_SELECTOR).forEach((el) => {
+            if (el !== except && el.open) el.removeAttribute('open');
+        });
+    };
+
+    document.addEventListener('toggle', (event) => {
+        const el = event.target;
+        if (el instanceof HTMLDetailsElement && el.matches(MENU_SELECTOR) && el.open) {
+            closeAllKebabs(el);
+        }
+    }, true);
+
+    // Close when clicking a menu item (buttons/links) or outside
+    document.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        const insideMenu = target.closest(MENU_SELECTOR);
+        if (!insideMenu) {
+            closeAllKebabs(null);
+            return;
+        }
+        // Clicking an actual item closes the menu (after its own handler runs). Controls
+        // that live inside a menu to be used there - selects, checkboxes, the layout
+        // editor - must not close it under the user's fingers.
+        const item = target.closest('.kebab-menu-item, .notif-menu-item a, .notif-menu-all, .user-menu-panel a, .add-menu-panel a');
+        if (item) {
+            setTimeout(() => insideMenu.removeAttribute('open'), 0);
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const openMenus = Array.from(document.querySelectorAll(MENU_SELECTOR))
+            .filter((menu) => menu instanceof HTMLDetailsElement && menu.open);
+        if (openMenus.length === 0) return;
+        event.preventDefault();
+        const menuToFocus = openMenus[openMenus.length - 1];
+        closeAllKebabs(null);
+        const summary = menuToFocus.querySelector(':scope > summary');
+        if (summary instanceof HTMLElement) {
+            try { summary.focus({ preventScroll: true }); } catch (_) { summary.focus(); }
+        }
+    });
+
+    // ---- App modal / drawer ----
+    const openOverlay = (overlay) => {
+        if (!overlay) return;
+        overlay.hidden = false;
+        // Force reflow so the transition runs
+        void overlay.offsetWidth;
+        overlay.classList.add('is-open');
+        document.body.classList.add('app-scroll-locked');
+        const focusable = overlay.querySelector('[autofocus], input, button, [tabindex]');
+        if (focusable instanceof HTMLElement) {
+            try { focusable.focus({ preventScroll: true }); } catch (_) {}
+        }
+    };
+
+    const closeOverlay = (overlay) => {
+        if (!overlay || overlay.hidden) return;
+        overlay.classList.remove('is-open');
+        const anyOpen = () => document.querySelector('.app-modal.is-open, .app-drawer.is-open');
+        const finish = () => {
+            overlay.hidden = true;
+            if (!anyOpen()) document.body.classList.remove('app-scroll-locked');
+        };
+        let done = false;
+        const onEnd = () => { if (done) return; done = true; finish(); };
+        overlay.addEventListener('transitionend', onEnd, { once: true });
+        setTimeout(onEnd, 260);
+    };
+
+    document.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+
+        const opener = target.closest('[data-app-modal-open]');
+        if (opener) {
+            const id = opener.getAttribute('data-app-modal-open');
+            const overlay = id ? document.getElementById(id) : null;
+            if (overlay) {
+                event.preventDefault();
+                openOverlay(overlay);
+                return;
+            }
+        }
+
+        const closer = target.closest('[data-app-modal-close]');
+        if (closer) {
+            event.preventDefault();
+            closeOverlay(closer.closest('.app-modal, .app-drawer'));
+            return;
+        }
+
+        // Backdrop click (clicking the overlay itself, not its card)
+        if (target.matches('.app-modal, .app-drawer') && target.classList.contains('is-open')) {
+            closeOverlay(target);
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const open = document.querySelector('.app-modal.is-open, .app-drawer.is-open');
+        if (open) closeOverlay(open);
+    });
+
+    // Expose for programmatic use elsewhere
+    window.AppOverlay = { open: openOverlay, close: closeOverlay };
+})();
+
+/* ==========================================================================
+   Back-to-top floating button (#9 long config/settings pages)
+   ========================================================================== */
+(() => {
+    const btn = document.querySelector('[data-to-top]');
+    if (!(btn instanceof HTMLElement)) return;
+    btn.hidden = false;
+    let ticking = false;
+    const threshold = 480;
+    const update = () => {
+        ticking = false;
+        const y = window.scrollY || document.documentElement.scrollTop || 0;
+        btn.classList.toggle('is-visible', y > threshold);
+    };
+    window.addEventListener('scroll', () => {
+        if (ticking) return;
+        ticking = true;
+        window.requestAnimationFrame(update);
+    }, { passive: true });
+    btn.addEventListener('click', () => {
+        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+    });
+    update();
+})();
+
+/* ==========================================================================
+   Workouts — kebab menu actions submit a POST form (#5)
+   ========================================================================== */
+(() => {
+    document.addEventListener('click', (event) => {
+        const el = event.target instanceof Element ? event.target.closest('[data-wk-submit]') : null;
+        if (!el) return;
+        const confirmMsg = el.getAttribute('data-wk-confirm');
+        if (confirmMsg && !window.confirm(confirmMsg)) {
+            event.preventDefault();
+            return;
+        }
+        event.preventDefault();
+        const csrfInput = document.querySelector('input[name="csrf_token"]');
+        const form = document.createElement('form');
+        form.method = 'post';
+        form.action = '/?page=workouts';
+        const add = (name, value) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value == null ? '' : String(value);
+            form.appendChild(input);
+        };
+        add('csrf_token', csrfInput instanceof HTMLInputElement ? csrfInput.value : '');
+        add('action', el.getAttribute('data-wk-submit') || '');
+        if (el.hasAttribute('data-wk-routine')) add('routine_id', el.getAttribute('data-wk-routine'));
+        if (el.hasAttribute('data-wk-value')) add('value', el.getAttribute('data-wk-value'));
+        document.body.appendChild(form);
+        form.submit();
+    });
+})();
+
+/* ==========================================================================
+   Visual layout editing: drag the real cards (desktop)
+
+   In layout-edit mode the CARDS themselves become draggable, so the user
+   rearranges the real page instead of an abstract list. One engine, four
+   registrations (dashboard, analytics, profile, team) - the pages differ only in
+   which container holds the cards, which attribute carries a card's key, and how
+   its editor form records the order.
+
+   Pointer Events give one code path for mouse and pen. A drag only starts after
+   the pointer passes a threshold, so a click never becomes an accidental drag.
+   Touch is deliberately excluded: on a phone the edit view puts the editor over
+   the page, so a card cannot be grabbed there - the "Visible widgets" list does
+   the reordering instead.
+   ========================================================================== */
+(() => {
+    const DRAG_THRESHOLD = 8; // px before a press becomes a drag
+    const isEditing = () => document.body.classList.contains('layout-edit-active');
+    const dragSupported = () => !window.matchMedia('(max-width: 899px)').matches;
+
+    const initLayoutDrag = (config) => {
+        const container = document.querySelector(config.container);
+        const forms = [...document.querySelectorAll(config.editor)];
+        if (!container || forms.length === 0) {
+            return;
+        }
+
+        // Only the cards that are actually laid out: a hidden widget has no place in
+        // the running order, and dropping onto one would be dropping into nothing.
+        const cards = () => [...container.querySelectorAll(config.item)]
+            .filter((el) => el.offsetParent !== null || el.getBoundingClientRect().height > 0);
+
+        const keyOf = (el) => el.getAttribute(config.keyAttr) || '';
+
+        let dirty = false;
+        const markDirty = () => {
+            dirty = true;
+            document.body.classList.add('layout-has-unsaved');
+        };
+
+        /* ---- the drag result has to reach the form, or Save saves the old order ----
+           Three things move together: the card's visual order, the matching row in the
+           editor list (team derives its order purely from that list's DOM order), and
+           the hidden order input where one exists. */
+        const syncOrder = () => {
+            cards().forEach((el, index) => {
+                const key = keyOf(el);
+                el.style.order = String((index + 1) * 10);
+
+                // A follower card (team missions rides with members) has no slot of its
+                // own: it takes the order of the card it belongs to, minus one, so a drag
+                // never leaves it stranded on the other side of the page.
+                container.querySelectorAll(`[data-team-follows="${CSS.escape(key)}"]`)
+                    .forEach((follower) => {
+                        follower.style.order = String((index + 1) * 10 - 1);
+                    });
+
+                forms.forEach((form) => {
+                    if (config.orderInput) {
+                        const input = form.querySelector(
+                            `[name="${config.orderInput}[${key}]"]`
+                        );
+                        if (input instanceof HTMLInputElement) {
+                            input.value = String(index + 1);
+                        }
+                    }
+
+                    const list = form.querySelector(config.list);
+                    if (!list) {
+                        return;
+                    }
+                    const row = list.querySelector(
+                        `input[type="checkbox"][value="${CSS.escape(key)}"]`
+                    );
+                    const item = row ? row.closest(config.listItem) : null;
+                    if (item) {
+                        list.appendChild(item); // append in card order -> list ends up sorted
+                    }
+                });
+            });
+            markDirty();
+        };
+
+        /* ---- unsaved-changes guard ---- */
+        forms.forEach((form) => {
+            form.addEventListener('change', markDirty);
+            form.addEventListener('submit', () => {
+                dirty = false;
+                document.body.classList.remove('layout-has-unsaved');
+            });
+        });
+
+        window.addEventListener('beforeunload', (event) => {
+            if (!dirty || !isEditing()) {
+                return;
+            }
+            event.preventDefault();
+            event.returnValue = '';
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!dirty || !isEditing()) {
+                return;
+            }
+            const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+            if (!link || link.closest(config.editor)) {
+                return;
+            }
+            if (link.target === '_blank' || link.href.startsWith('javascript:')) {
+                return;
+            }
+            const message = container.dataset.unsavedMessage
+                || 'You have unsaved layout changes. Leave without saving?';
+            if (!window.confirm(message)) {
+                event.preventDefault();
+                event.stopPropagation();
+            } else {
+                dirty = false;
+            }
+        }, true);
+
+        /* ---- pointer drag ---- */
+        let dragEl = null;
+        let placeholder = null;
+        let startX = 0;
+        let startY = 0;
+        let offX = 0;
+        let offY = 0;
+        let active = false;
+
+        const cleanup = () => {
+            if (dragEl) {
+                dragEl.classList.remove('is-dragging');
+                dragEl.style.position = '';
+                dragEl.style.left = '';
+                dragEl.style.top = '';
+                dragEl.style.width = '';
+                dragEl.style.zIndex = '';
+                dragEl.style.pointerEvents = '';
+            }
+            if (placeholder && placeholder.parentNode) {
+                placeholder.remove();
+            }
+            document.body.classList.remove('layout-dragging');
+            dragEl = null;
+            placeholder = null;
+            active = false;
+        };
+
+        container.addEventListener('pointerdown', (event) => {
+            if (!isEditing() || event.button !== 0 || !dragSupported()) {
+                return;
+            }
+            const el = event.target instanceof Element ? event.target.closest(config.item) : null;
+            if (!el || !container.contains(el)) {
+                return;
+            }
+            if (event.target instanceof Element && event.target.closest('a, button, input, select, textarea')) {
+                return;
+            }
+            dragEl = el;
+            const rect = el.getBoundingClientRect();
+            startX = event.clientX;
+            startY = event.clientY;
+            offX = event.clientX - rect.left;
+            offY = event.clientY - rect.top;
+            active = false;
+        });
+
+        window.addEventListener('pointermove', (event) => {
+            if (!dragEl) {
+                return;
+            }
+            if (!active) {
+                if (Math.hypot(event.clientX - startX, event.clientY - startY) < DRAG_THRESHOLD) {
+                    return;
+                }
+                active = true;
+                const rect = dragEl.getBoundingClientRect();
+                placeholder = document.createElement('div');
+                placeholder.className = 'dashboard-drop-placeholder';
+                placeholder.style.height = `${rect.height}px`;
+                placeholder.style.order = dragEl.style.order;
+                dragEl.parentNode.insertBefore(placeholder, dragEl);
+                dragEl.classList.add('is-dragging');
+                dragEl.style.width = `${rect.width}px`;
+                dragEl.style.position = 'fixed';
+                dragEl.style.zIndex = '9999';
+                dragEl.style.pointerEvents = 'none';
+                document.body.classList.add('layout-dragging');
+                try { dragEl.setPointerCapture(event.pointerId); } catch (_) { /* not fatal */ }
+            }
+            event.preventDefault();
+            dragEl.style.left = `${event.clientX - offX}px`;
+            dragEl.style.top = `${event.clientY - offY}px`;
+
+            // Pick the drop target by nearest centre rather than strict containment:
+            // these are grids, so the pointer often sits in the gutter between cards,
+            // where a contains() test finds nothing and the drag feels dead.
+            let over = null;
+            let best = Infinity;
+            for (const card of cards()) {
+                if (card === dragEl || card === placeholder) {
+                    continue;
+                }
+                const rect = card.getBoundingClientRect();
+                if (rect.width === 0 && rect.height === 0) {
+                    continue;
+                }
+                const distance = Math.hypot(
+                    event.clientX - (rect.left + rect.width / 2),
+                    event.clientY - (rect.top + rect.height / 2)
+                );
+                if (distance < best) {
+                    best = distance;
+                    over = card;
+                }
+            }
+            if (over && placeholder) {
+                const rect = over.getBoundingClientRect();
+                // Reading order: past the vertical midpoint (or, within the same row,
+                // past the horizontal midpoint) means "insert after".
+                const sameRow = Math.abs(event.clientY - (rect.top + rect.height / 2)) < rect.height / 2;
+                const after = sameRow
+                    ? event.clientX > rect.left + rect.width / 2
+                    : event.clientY > rect.top + rect.height / 2;
+                placeholder.style.order = over.style.order;
+                over.parentNode.insertBefore(placeholder, after ? over.nextSibling : over);
+            }
+        }, { passive: false });
+
+        window.addEventListener('pointerup', () => {
+            if (!dragEl) {
+                return;
+            }
+            if (active && placeholder) {
+                placeholder.parentNode.insertBefore(dragEl, placeholder);
+                cleanup();
+                syncOrder();
+            } else {
+                cleanup();
+            }
+        });
+
+        window.addEventListener('pointercancel', cleanup);
+    };
+
+    const LAYOUTS = [
+        {
+            container: '.dashboard-layout',
+            item: '[data-dashboard-widget]',
+            keyAttr: 'data-dashboard-widget',
+            editor: '[data-dashboard-layout-editor]',
+            list: '[data-dashboard-layout-list]',
+            listItem: '[data-dashboard-layout-item]',
+            orderInput: 'dashboard_order',
+        },
+        {
+            container: '.analytics-page',
+            item: '[data-analytics-section]',
+            keyAttr: 'data-analytics-section',
+            editor: '[data-analytics-layout-editor]',
+            list: '[data-analytics-layout-list]',
+            listItem: '[data-analytics-layout-item]',
+            orderInput: 'analytics_order',
+        },
+        {
+            container: '.profile-home-grid',
+            item: '[data-profile-block]',
+            keyAttr: 'data-profile-block',
+            editor: '[data-profile-layout-editor]',
+            list: '[data-profile-layout-list]',
+            listItem: '[data-profile-layout-item]',
+            orderInput: 'profile_order',
+        },
+        {
+            // Team has no order inputs: its running order is the DOM order of the
+            // checkboxes it submits, which syncOrder() rewrites for us.
+            container: '.team-layout-grid',
+            item: '[data-team-widget]',
+            keyAttr: 'data-team-widget',
+            editor: '[data-team-layout-editor]',
+            list: '[data-team-layout-list]',
+            listItem: '[data-team-layout-item]',
+            orderInput: '',
+        },
+    ];
+
+    const initAll = () => LAYOUTS.forEach(initLayoutDrag);
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initAll);
+    } else {
+        initAll();
+    }
+})();
+
+/* ==========================================================================
+   Gallery calendar — mobile day bottom sheet (#12)
+
+   On phones a day cell shows only a dot, so tapping it opens a sheet listing
+   that day's photos instead of jumping blindly to the first one. Desktop keeps
+   its existing behaviour (the cell is a plain link).
+   ========================================================================== */
+(() => {
+    const sheet = document.getElementById('gallery-day-sheet');
+    const panel = document.querySelector('.gallery-calendar-panel');
+    if (!sheet || !panel || !window.AppOverlay) return;
+
+    const grid = sheet.querySelector('[data-day-sheet-grid]');
+    const title = sheet.querySelector('[data-day-sheet-title]');
+    const countEl = sheet.querySelector('[data-day-sheet-count]');
+    const emptyEl = sheet.querySelector('[data-day-sheet-empty]');
+    const openLink = sheet.querySelector('[data-day-sheet-open]');
+    const isMobile = () => window.matchMedia('(max-width: 899px)').matches;
+
+    panel.addEventListener('click', (e) => {
+        if (!isMobile()) return;
+        const cell = e.target instanceof Element ? e.target.closest('.entries-calendar-day') : null;
+        if (!cell) return;
+        e.preventDefault();
+
+        const count = Number(cell.dataset.calCount || 0);
+        title.textContent = cell.dataset.calLabel || '';
+        countEl.textContent = count > 0 ? `${count} ${grid.dataset.photosLabel || ''}`.trim() : '';
+        openLink.href = cell.dataset.calAll || cell.href;
+
+        // Reuse the thumbnails the cell already carries — no extra request.
+        grid.innerHTML = '';
+        const thumbs = [...cell.querySelectorAll('.entries-calendar-collage img')];
+        thumbs.forEach((img) => {
+            const a = document.createElement('a');
+            a.href = cell.getAttribute('href') || '#';
+            const clone = document.createElement('img');
+            clone.src = img.currentSrc || img.src;
+            clone.alt = '';
+            clone.loading = 'lazy';
+            a.appendChild(clone);
+            grid.appendChild(a);
+        });
+        const hasPhotos = thumbs.length > 0;
+        grid.hidden = !hasPhotos;
+        emptyEl.hidden = hasPhotos;
+
+        window.AppOverlay.open(sheet);
+    });
+})();
+
+/* Unlock celebrations: auto-dismiss the toasts the server drained for us. The
+   queue is already marked shown server-side, so nothing to report back. */
+(function () {
+    'use strict';
+
+    function dismiss(toast) {
+        if (!toast || toast.classList.contains('is-leaving')) {
+            return;
+        }
+        toast.classList.add('is-leaving');
+        window.setTimeout(function () {
+            toast.remove();
+        }, 260);
+    }
+
+    function init(root) {
+        var stack = (root || document).querySelector('[data-celebrations]');
+        if (!stack || stack.dataset.celebrationsReady === '1') {
+            return;
+        }
+        stack.dataset.celebrationsReady = '1';
+
+        stack.addEventListener('click', function (event) {
+            var close = event.target.closest('[data-celebration-close]');
+            if (close) {
+                dismiss(close.closest('.celebration-toast'));
+            }
+        });
+
+        var toasts = Array.prototype.slice.call(stack.querySelectorAll('.celebration-toast'));
+        toasts.forEach(function (toast, index) {
+            window.setTimeout(function () {
+                dismiss(toast);
+            }, 5200 + (index * 900));
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () { init(document); });
+    } else {
+        init(document);
+    }
+
+    document.addEventListener('pjax:loaded', function () { init(document); });
+})();
+
+/* Live preview for the dashboard "Visible widgets" list (#2).
+
+   On touch the list is the only way to reorder, so reflect its order (and the
+   show/hide checkboxes) on the real cards immediately - otherwise you reorder
+   blind and only find out what you did after saving. */
+(function () {
+    'use strict';
+
+    function sync(list) {
+        var layout = document.querySelector('.dashboard-layout');
+        if (!layout) {
+            return;
+        }
+        var items = list.querySelectorAll('[data-dashboard-layout-item]');
+        items.forEach(function (item, index) {
+            var box = item.querySelector('input[type="checkbox"][name="dashboard_widgets[]"]');
+            if (!box) {
+                return;
+            }
+            var card = layout.querySelector('[data-dashboard-widget="' + box.value + '"]');
+            if (!card) {
+                return;
+            }
+            card.style.order = String(index + 1);
+            card.hidden = !box.checked;
+            card.classList.toggle('is-layout-hidden', !box.checked);
+        });
+    }
+
+    function init() {
+        document.querySelectorAll('[data-dashboard-layout-list]').forEach(function (list) {
+            if (list.dataset.livePreviewReady === '1') {
+                return;
+            }
+            list.dataset.livePreviewReady = '1';
+            list.addEventListener('click', function (event) {
+                if (event.target.closest('[data-layout-move]')) {
+                    window.setTimeout(function () { sync(list); }, 0);
+                }
+            });
+            list.addEventListener('change', function () { sync(list); });
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+    document.addEventListener('pjax:loaded', init);
+})();
+
+/* Double-submit guard (#10).
+
+   A slow save (photo upload, Notion push) left the submit button live, so a second
+   impatient tap posted the form twice. Lock the button for the duration of the
+   navigation; re-enable on bfcache restore so a Back button never lands the user on
+   a dead form. */
+(function () {
+    'use strict';
+
+    document.addEventListener('submit', function (event) {
+        var form = event.target;
+        if (!(form instanceof HTMLFormElement) || form.hasAttribute('data-allow-multi-submit')) {
+            return;
+        }
+        if (form.dataset.submitting === '1') {
+            event.preventDefault();
+            return;
+        }
+        form.dataset.submitting = '1';
+        window.setTimeout(function () {
+            form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function (btn) {
+                btn.disabled = true;
+                btn.classList.add('is-busy');
+            });
+        }, 0);
+    }, true);
+
+    var release = function () {
+        document.querySelectorAll('form[data-submitting="1"]').forEach(function (form) {
+            form.dataset.submitting = '';
+            form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function (btn) {
+                btn.disabled = false;
+                btn.classList.remove('is-busy');
+            });
+        });
+    };
+
+    window.addEventListener('pageshow', release);
+    document.addEventListener('fc:afterPageSwap', release);
+})();
+
+/* Unsaved-layout guard for the editors that are not the dashboard (#8/#12).
+
+   The dashboard has its own guard bundled with its drag handler. Analytics, profile
+   and team share this one, so leaving a layout half-edited warns you everywhere
+   instead of only on Home. */
+(function () {
+    'use strict';
+
+    var SELECTOR = '[data-analytics-layout-editor], [data-profile-layout-editor], [data-team-layout-editor]';
+
+    function init() {
+        var forms = Array.prototype.slice.call(document.querySelectorAll(SELECTOR));
+        if (forms.length === 0) {
+            return;
+        }
+
+        var dirty = false;
+        var editing = function () { return document.body.classList.contains('layout-edit-active'); };
+
+        forms.forEach(function (form) {
+            if (form.dataset.unsavedGuardReady === '1') {
+                return;
+            }
+            form.dataset.unsavedGuardReady = '1';
+            form.addEventListener('change', function () {
+                dirty = true;
+                document.body.classList.add('layout-has-unsaved');
+            });
+            form.addEventListener('click', function (event) {
+                if (event.target.closest('[data-layout-move]')) {
+                    dirty = true;
+                    document.body.classList.add('layout-has-unsaved');
+                }
+            });
+            form.addEventListener('submit', function () {
+                dirty = false;
+                document.body.classList.remove('layout-has-unsaved');
+            });
+        });
+
+        window.addEventListener('beforeunload', function (event) {
+            if (!dirty || !editing()) {
+                return;
+            }
+            event.preventDefault();
+            event.returnValue = '';
+        });
+
+        document.addEventListener('click', function (event) {
+            if (!dirty || !editing()) {
+                return;
+            }
+            var link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+            if (!link || link.closest(SELECTOR)) {
+                return;
+            }
+            if (link.target === '_blank' || link.href.indexOf('javascript:') === 0) {
+                return;
+            }
+            var message = document.body.dataset.unsavedLayoutMessage
+                || 'You have unsaved layout changes. Leave without saving?';
+            if (!window.confirm(message)) {
+                event.preventDefault();
+                event.stopPropagation();
+            } else {
+                dirty = false;
+            }
+        }, true);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+    document.addEventListener('fc:afterPageSwap', init);
+})();
+
+/* Missing media placeholder.
+
+   A thumbnail whose file is gone (restored DB, half-synced uploads folder) rendered
+   as a broken-image icon inside an otherwise fine card. Mark it instead, so the card
+   degrades to an empty tile with its alt text rather than looking corrupted. */
+(function () {
+    'use strict';
+
+    function mark(img) {
+        if (!(img instanceof HTMLImageElement) || img.classList.contains('is-broken')) {
+            return;
+        }
+        img.classList.add('is-broken');
+        img.removeAttribute('srcset');
+        if (!img.alt) {
+            img.alt = '';
+        }
+    }
+
+    document.addEventListener('error', function (event) {
+        mark(event.target);
+    }, true);
+
+    // Images decoded before this script ran already fired their error event, so a
+    // listener alone misses exactly the ones that were broken on first paint.
+    function sweep() {
+        document.querySelectorAll('img').forEach(function (img) {
+            if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) {
+                mark(img);
+            }
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', sweep);
+    } else {
+        sweep();
+    }
+    window.addEventListener('load', sweep);
+    document.addEventListener('fc:afterPageSwap', function () { window.setTimeout(sweep, 300); });
 })();
