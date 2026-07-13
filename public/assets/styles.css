@@ -18623,10 +18623,12 @@ body.theme-active-dark .team-mission {
         box-shadow: 0 -12px 40px rgba(15, 23, 42, 0.22);
     }
 
-    /* The bottom nav would sit on top of it, and navigating away mid-edit is not the
-       point of this mode anyway. */
-    body.layout-edit-active .bottom-nav {
-        display: none;
+    /* The bottom nav (z-index 9999) painted straight over the pinned bar, swallowing
+       every tap. Navigating away mid-edit is not the point of this mode anyway, so it
+       stands down while editing. !important because the nav's own rules are stronger. */
+    body.layout-edit-active .bottom-nav,
+    body.layout-edit-active .bottom-nav.mobile-liquid-nav {
+        display: none !important;
     }
 
     /* Keep the last card reachable above the pinned bar. */

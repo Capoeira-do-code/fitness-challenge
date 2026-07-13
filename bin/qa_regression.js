@@ -145,6 +145,33 @@ const saveRowAs = async (page, userId) => {
     await page.waitForTimeout(2000);
     check('Three rapid submits send exactly one POST', posts === 1, `posts: ${posts}`);
 
+    /* ---------------- Editor controls are actually reachable ------------------- */
+    // The recurring bug on this page was never logic: it was a fixed overlay (blur
+    // backdrop, bottom nav) painted over the editor, so taps never landed. Assert
+    // hit-testing, not just presence.
+    for (const target of ['dashboard', 'analytics', 'profile']) {
+        await page.goto(`${BASE}/?page=${target}&layout_edit=1`);
+        await page.waitForLoadState('networkidle');
+        const reachable = await page.evaluate(() => {
+            const bar = document.querySelector('.layout-editbar, .dashboard-layout-editbar');
+            if (!bar) {
+                return { ok: false, why: 'no editbar' };
+            }
+            const hit = (el) => {
+                const r = el.getBoundingClientRect();
+                const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+                return top === el || el.contains(top);
+            };
+            const save = bar.querySelector('button[type=submit]');
+            const summary = bar.querySelector('.dashboard-layout-visibility > summary');
+            return {
+                ok: hit(save) && (!summary || hit(summary)),
+                why: hit(save) ? 'visibility list covered' : 'Save button covered',
+            };
+        });
+        check(`Layout editor controls are tappable on ${target} (390px)`, reachable.ok, reachable.ok ? '' : reachable.why);
+    }
+
     /* ---------------- Layout persistence -------------------------------------- */
     await page.goto(`${BASE}/?page=dashboard&layout_edit=1`);
     await page.waitForLoadState('networkidle');
