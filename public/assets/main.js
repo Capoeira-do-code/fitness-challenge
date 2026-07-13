@@ -5601,3 +5601,81 @@
     window.addEventListener('pageshow', release);
     document.addEventListener('fc:afterPageSwap', release);
 })();
+
+/* Unsaved-layout guard for the editors that are not the dashboard (#8/#12).
+
+   The dashboard has its own guard bundled with its drag handler. Analytics, profile
+   and team share this one, so leaving a layout half-edited warns you everywhere
+   instead of only on Home. */
+(function () {
+    'use strict';
+
+    var SELECTOR = '[data-analytics-layout-editor], [data-profile-layout-editor], [data-team-layout-editor]';
+
+    function init() {
+        var forms = Array.prototype.slice.call(document.querySelectorAll(SELECTOR));
+        if (forms.length === 0) {
+            return;
+        }
+
+        var dirty = false;
+        var editing = function () { return document.body.classList.contains('layout-edit-active'); };
+
+        forms.forEach(function (form) {
+            if (form.dataset.unsavedGuardReady === '1') {
+                return;
+            }
+            form.dataset.unsavedGuardReady = '1';
+            form.addEventListener('change', function () {
+                dirty = true;
+                document.body.classList.add('layout-has-unsaved');
+            });
+            form.addEventListener('click', function (event) {
+                if (event.target.closest('[data-layout-move]')) {
+                    dirty = true;
+                    document.body.classList.add('layout-has-unsaved');
+                }
+            });
+            form.addEventListener('submit', function () {
+                dirty = false;
+                document.body.classList.remove('layout-has-unsaved');
+            });
+        });
+
+        window.addEventListener('beforeunload', function (event) {
+            if (!dirty || !editing()) {
+                return;
+            }
+            event.preventDefault();
+            event.returnValue = '';
+        });
+
+        document.addEventListener('click', function (event) {
+            if (!dirty || !editing()) {
+                return;
+            }
+            var link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+            if (!link || link.closest(SELECTOR)) {
+                return;
+            }
+            if (link.target === '_blank' || link.href.indexOf('javascript:') === 0) {
+                return;
+            }
+            var message = document.body.dataset.unsavedLayoutMessage
+                || 'You have unsaved layout changes. Leave without saving?';
+            if (!window.confirm(message)) {
+                event.preventDefault();
+                event.stopPropagation();
+            } else {
+                dirty = false;
+            }
+        }, true);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+    document.addEventListener('fc:afterPageSwap', init);
+})();

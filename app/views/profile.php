@@ -96,7 +96,24 @@ foreach ($profileLayoutBlocks as $blockKey) {
         $profileBlockOrder[$blockKey] = ++$profileOrderIndex;
     }
 }
-$profileBlockStyle = static function (string $key) use ($profileBlockOrder): string {
+// A saved layout lists exactly the blocks the user kept. Anything saved is visible;
+// blocks missing from a *saved* layout were deliberately hidden. With no saved
+// layout at all, everything shows.
+$profileHiddenBlocks = [];
+if (is_array($profileSavedLayout) && $profileSavedLayout !== []) {
+    $profileHiddenBlocks = array_values(array_diff(
+        $profileLayoutBlocks,
+        array_map('strval', $profileSavedLayout)
+    ));
+}
+$profileBlockVisible = static function (string $key) use ($profileHiddenBlocks): bool {
+    return !in_array($key, $profileHiddenBlocks, true);
+};
+$profileBlockStyle = static function (string $key) use ($profileBlockOrder, $profileHiddenBlocks): string {
+    if (in_array($key, $profileHiddenBlocks, true)) {
+        return 'display:none;';
+    }
+
     return isset($profileBlockOrder[$key]) ? 'order:' . (int) $profileBlockOrder[$key] . ';' : '';
 };
 // Blocks in their current (saved or default) order, for the editor list.
@@ -617,7 +634,18 @@ $profileSetupRows = [
         <div class="profile-title">
             <?php $profileAvatarUrl = avatar_url($profileUser); ?>
             <?php $profileFrameClass = cosmetic_frame_class($profileUser); ?>
-            <?php if ($profileAvatarUrl !== ''): ?>
+            <?php if (!empty($isOwnProfile)): ?>
+                <?php // Tapping your own avatar opens the picture / frame chooser. ?>
+                <button type="button" class="profile-avatar-trigger" data-app-modal-open="profile-avatar-modal"
+                        aria-haspopup="dialog" aria-label="<?= e(t('profile.avatar_menu')) ?>">
+                    <?php if ($profileAvatarUrl !== ''): ?>
+                        <img class="profile-avatar<?= e($profileFrameClass) ?>" src="<?= e($profileAvatarUrl) ?>" alt="<?= e((string) $profileUser['display_name']) ?>">
+                    <?php else: ?>
+                        <span class="profile-avatar initials<?= e($profileFrameClass) ?>"><?= e(initials_for((string) $profileUser['display_name'])) ?></span>
+                    <?php endif; ?>
+                    <span class="profile-avatar-edit-hint" aria-hidden="true">&#9998;</span>
+                </button>
+            <?php elseif ($profileAvatarUrl !== ''): ?>
                 <img class="profile-avatar<?= e($profileFrameClass) ?>" src="<?= e($profileAvatarUrl) ?>" alt="<?= e((string) $profileUser['display_name']) ?>">
             <?php else: ?>
                 <span class="profile-avatar initials<?= e($profileFrameClass) ?>"><?= e(initials_for((string) $profileUser['display_name'])) ?></span>
@@ -834,38 +862,46 @@ $profileSetupRows = [
     <?php endif; ?>
 
     <?php if ($profileLayoutEditMode): ?>
-        <article class="panel profile-layout-editor-panel profile-layout-edit-mode-panel" data-spa-home-extra>
-            <div class="panel-head">
-                <div>
-                    <p class="eyebrow"><?= e(t('profile.customize_layout')) ?></p>
-                    <h2><?= e(t('profile.customize_layout')) ?></h2>
-                    <p class="muted small"><?= e(t('profile.customize_hint')) ?></p>
-                </div>
-                <a class="btn btn-ghost small" href="<?= e($profileUrl()) ?>"><?= e(t('common.back')) ?></a>
-            </div>
-            <form method="post" action="<?= e($profileUrl()) ?>" class="team-layout-editor" data-profile-layout-editor>
+        <?php // Same compact editbar as Home and Analytics. The old fixed panel sat
+              // underneath the edit-mode blur overlay, so its Save button could not be
+              // tapped on a phone at all. ?>
+        <div class="layout-editbar dashboard-layout-editbar profile-layout-editbar" data-spa-home-extra>
+            <form method="post" action="<?= e($profileUrl()) ?>" class="dashboard-layout-editor" data-profile-layout-editor>
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="save_profile_layout">
-                <div class="team-layout-editor-list" data-profile-layout-list>
-                    <?php foreach ($profileOrderedBlocks as $idx => $blk): ?>
-                        <div class="team-layout-editor-item" draggable="true" data-profile-layout-item>
-                            <span class="team-layout-drag-handle" aria-hidden="true">::</span>
-                            <span class="profile-layout-editor-label"><?= e((string) ($profileLayoutLabels[$blk] ?? $blk)) ?></span>
-                            <div class="dashboard-layout-mobile-actions team-layout-mobile-actions">
-                                <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="<?= e(t('common.previous')) ?>">&uarr;</button>
-                                <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="<?= e(t('common.next')) ?>">&darr;</button>
+
+                <div class="dashboard-editbar-row">
+                    <p class="dashboard-editbar-hint">
+                        <strong><?= e(t('profile.customize_layout')) ?></strong>
+                        <small><?= e(t('profile.customize_hint')) ?></small>
+                    </p>
+                    <div class="dashboard-editbar-actions">
+                        <a class="btn btn-ghost small" href="<?= e($profileUrl()) ?>"><?= e(t('common.cancel')) ?></a>
+                        <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
+                    </div>
+                </div>
+
+                <details class="dashboard-layout-visibility" open>
+                    <summary><?= e(t('dashboard.visible_widgets')) ?></summary>
+                    <div class="team-layout-editor-list dashboard-layout-editor-list" data-profile-layout-list>
+                        <?php foreach ($profileOrderedBlocks as $idx => $blk): ?>
+                            <div class="team-layout-editor-item dashboard-layout-editor-item" data-profile-layout-item>
+                                <div class="dashboard-layout-mobile-actions team-layout-mobile-actions">
+                                    <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="<?= e(t('common.previous')) ?>">&uarr;</button>
+                                    <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="<?= e(t('common.next')) ?>">&darr;</button>
+                                </div>
+                                <label class="dashboard-layout-toggle">
+                                    <input type="checkbox" name="profile_blocks[]" value="<?= e($blk) ?>" <?= $profileBlockVisible($blk) ? 'checked' : '' ?>>
+                                    <span><?= e((string) ($profileLayoutLabels[$blk] ?? $blk)) ?></span>
+                                </label>
+                                <input type="hidden" name="profile_order[<?= e($blk) ?>]" value="<?= (int) $idx + 1 ?>" data-profile-order-input>
                             </div>
-                            <input type="hidden" name="profile_order[<?= e($blk) ?>]" value="<?= (int) $idx + 1 ?>" data-profile-order-input>
-                            <input type="hidden" name="profile_blocks[]" value="<?= e($blk) ?>">
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-                <div class="team-layout-editor-actions">
-                    <button class="btn btn-ghost small" type="submit" name="reset_profile_layout" value="1"><?= e(t('dashboard.reset_layout')) ?></button>
-                    <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
-                </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <button class="btn btn-ghost small dashboard-editbar-reset" type="submit" name="reset_profile_layout" value="1"><?= e(t('dashboard.reset_layout')) ?></button>
+                </details>
             </form>
-        </article>
+        </div>
     <?php endif; ?>
 
     <section class="profile-home-grid<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-main <?= $activeSection !== '' ? 'hidden' : '' ?>>
@@ -1573,32 +1609,6 @@ $profileSetupRows = [
         </div>
         <p class="muted level-progress-hint"><?= e(t('xp.progress_hint')) ?></p>
 
-        <?php $cosmetics = (array) ($profileCosmetics ?? []); ?>
-        <?php if (!empty($isOwnProfile) && $cosmetics !== []): ?>
-            <form method="post" action="<?= e($profileUrl()) ?>" class="cosmetics-form">
-                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="equip_frame">
-                <p class="cosmetics-title"><?= e(t('cosmetic.title')) ?></p>
-                <div class="cosmetics-grid">
-                    <?php foreach ($cosmetics as $cosmetic): ?>
-                        <label class="cosmetic-option<?= empty($cosmetic['unlocked']) ? ' is-locked' : '' ?><?= !empty($cosmetic['equipped']) ? ' is-equipped' : '' ?>"
-                               title="<?= e((string) ($cosmetic['hint'] !== '' ? $cosmetic['hint'] : $cosmetic['label'])) ?>">
-                            <input type="radio" name="frame" value="<?= e((string) $cosmetic['key']) ?>"
-                                   <?= !empty($cosmetic['equipped']) ? 'checked' : '' ?>
-                                   <?= empty($cosmetic['unlocked']) ? 'disabled' : '' ?>>
-                            <span class="cosmetic-swatch avatar-frame frame-<?= e((string) $cosmetic['key']) ?>" aria-hidden="true">
-                                <?= empty($cosmetic['unlocked']) ? '&#128274;' : '' ?>
-                            </span>
-                            <span class="cosmetic-label"><?= e((string) $cosmetic['label']) ?></span>
-                            <?php if (!empty($cosmetic['hint'])): ?>
-                                <small class="cosmetic-hint"><?= e((string) $cosmetic['hint']) ?></small>
-                            <?php endif; ?>
-                        </label>
-                    <?php endforeach; ?>
-                </div>
-                <button class="btn btn-primary small" type="submit"><?= e(t('cosmetic.equip')) ?></button>
-            </form>
-        <?php endif; ?>
     </div>
 </div>
 
@@ -1626,4 +1636,58 @@ $profileSetupRows = [
 
 <?php if (!empty($canExportProfilePdf)): ?>
 <script id="profile-pdf-data" type="application/json"><?= $profileExportJson ?></script>
+<?php endif; ?>
+
+<?php if (!empty($isOwnProfile)): ?>
+<div class="app-modal" id="profile-avatar-modal" hidden role="dialog" aria-modal="true" aria-labelledby="profile-avatar-modal-title">
+    <div class="app-modal-card">
+        <div class="app-modal-head">
+            <div>
+                <p class="eyebrow"><?= e(t('nav.profile')) ?></p>
+                <h2 id="profile-avatar-modal-title"><?= e(t('profile.avatar_menu')) ?></h2>
+            </div>
+            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('celebration.dismiss')) ?>">&times;</button>
+        </div>
+
+        <?php // Two clearly separate things: the picture itself, and the frame around it. ?>
+        <a class="avatar-menu-option" href="/?page=settings#avatar">
+            <span class="avatar-menu-icon" aria-hidden="true">&#128247;</span>
+            <span class="avatar-menu-copy">
+                <strong><?= e(t('settings.change_avatar')) ?></strong>
+                <small><?= e(t('profile.avatar_photo_hint')) ?></small>
+            </span>
+        </a>
+
+        <?php $cosmetics = (array) ($profileCosmetics ?? []); ?>
+        <?php if ($cosmetics !== []): ?>
+            <form method="post" action="<?= e($profileUrl()) ?>" class="cosmetics-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="equip_frame">
+                <p class="cosmetics-title"><?= e(t('cosmetic.title')) ?></p>
+                <p class="muted small cosmetics-subtitle"><?= e(t('profile.avatar_frame_hint')) ?></p>
+                <div class="cosmetics-grid">
+                    <?php foreach ($cosmetics as $cosmetic): ?>
+                        <label class="cosmetic-option<?= empty($cosmetic['unlocked']) ? ' is-locked' : '' ?><?= !empty($cosmetic['equipped']) ? ' is-equipped' : '' ?>"
+                               title="<?= e((string) ($cosmetic['hint'] !== '' ? $cosmetic['hint'] : $cosmetic['label'])) ?>">
+                            <input type="radio" name="frame" value="<?= e((string) $cosmetic['key']) ?>"
+                                   <?= !empty($cosmetic['equipped']) ? 'checked' : '' ?>
+                                   <?= empty($cosmetic['unlocked']) ? 'disabled' : '' ?>>
+                            <span class="cosmetic-swatch avatar-frame frame-<?= e((string) $cosmetic['key']) ?>" aria-hidden="true">
+                                <?= empty($cosmetic['unlocked']) ? '&#128274;' : '' ?>
+                            </span>
+                            <span class="cosmetic-label"><?= e((string) $cosmetic['label']) ?></span>
+                            <?php if (!empty($cosmetic['hint'])): ?>
+                                <small class="cosmetic-hint"><?= e((string) $cosmetic['hint']) ?></small>
+                            <?php endif; ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <div class="cosmetics-actions">
+                    <button class="btn btn-primary small" type="submit"><?= e(t('cosmetic.equip')) ?></button>
+                    <button class="btn btn-ghost small" type="submit" name="frame" value="none"><?= e(t('cosmetic.reset')) ?></button>
+                </div>
+            </form>
+        <?php endif; ?>
+    </div>
+</div>
 <?php endif; ?>

@@ -18231,6 +18231,7 @@ body.theme-active-dark .team-mission {
 }
 
 /* --- Compact dashboard layout edit bar ------------------------------------ */
+.layout-editbar,
 .dashboard-layout-editbar {
     position: sticky;
     top: 8px;
@@ -18238,6 +18239,7 @@ body.theme-active-dark .team-mission {
     margin-bottom: 4px;
 }
 
+.layout-editbar .dashboard-layout-editor,
 .dashboard-layout-editbar .dashboard-layout-editor {
     display: grid;
     gap: 10px;
@@ -18605,12 +18607,14 @@ body.theme-active-dark .team-mission {
 
     /* The compact edit bar replaced the old edit-mode panel, so it needs the same
        "stays on top of the blurred page" treatment its predecessor had. */
+    body.layout-edit-active .layout-editbar,
     body.layout-edit-active .dashboard-layout-editbar {
         position: sticky;
         top: calc(0.5rem + env(safe-area-inset-top));
         z-index: var(--z-edit-panel, 10060);
     }
 
+    body.layout-edit-active .screen > .layout-editbar,
     body.layout-edit-active .screen > .dashboard-layout-editbar {
         filter: none !important;
         opacity: 1 !important;
@@ -18618,6 +18622,7 @@ body.theme-active-dark .team-mission {
         visibility: visible !important;
     }
 
+    body.layout-edit-active .layout-editbar .dashboard-layout-editor-list,
     body.layout-edit-active .dashboard-layout-editbar .dashboard-layout-editor-list {
         max-height: 46vh;
         overflow-y: auto;
@@ -18819,4 +18824,273 @@ body.layout-edit-active .dashboard-layout > [data-dashboard-widget][hidden] {
 .sheet-fieldset[disabled] .training-sheet-table textarea {
     opacity: 0.75;
     cursor: not-allowed;
+}
+
+/* #7 Photo post header: title, back link and the kebab all belong on the top row.
+   They wrapped onto a second line on mobile, which pushed the kebab away from the
+   title it acts on. */
+@media (max-width: 700px) {
+    .photo-post-head {
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 0.5rem;
+    }
+
+    .photo-post-head > div:first-child {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .photo-post-title {
+        margin: 0;
+        font-size: 1.05rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .photo-post-head-actions {
+        flex: 0 0 auto;
+        width: auto;
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 0.35rem;
+    }
+
+    .photo-back-btn {
+        white-space: nowrap;
+        padding: 0.35rem 0.55rem;
+        font-size: 0.78rem;
+    }
+}
+
+/* Below ~400px the words do not fit next to the kebab. Keep the control (and its
+   44px target), drop only the label - the kebab must never be pushed off-screen. */
+@media (max-width: 400px) {
+    .photo-back-btn {
+        min-width: 44px;
+        min-height: 40px;
+        display: inline-grid;
+        place-items: center;
+        font-size: 0;
+        padding: 0.3rem;
+    }
+
+    .photo-back-btn::before {
+        content: "\2190";
+        font-size: 1.05rem;
+    }
+}
+
+/* The legacy mobile edit-mode rule hides every .screen child except three named
+   panels, using three :not() clauses (specificity 0,5,1). The analytics editbar is
+   none of those, so it was rendered invisible and unclickable. Match that chain so
+   the shared editbar survives on every page that uses it. */
+@media (max-width: 899px) {
+    body.layout-edit-active .screen
+        > .layout-editbar:not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel):not(.profile-layout-edit-mode-panel) {
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        filter: none !important;
+        user-select: auto !important;
+    }
+}
+
+/* The full-screen blur backdrop belongs to the old "modal editor" model. Pages that
+   use the compact editbar (Home, Analytics) do not need it, and it was swallowing
+   clicks aimed at the bar. */
+@media (max-width: 899px) {
+    body.layout-edit-active[data-page="analytics"]::before {
+        display: none !important;
+    }
+
+    body.layout-edit-active[data-page="analytics"] .screen
+        > :not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel):not(.profile-layout-edit-mode-panel) {
+        opacity: 1 !important;
+        filter: none !important;
+        pointer-events: auto !important;
+        visibility: visible !important;
+    }
+}
+
+/* #14 Personal goals header: counters, title and the two actions used to break onto
+   separate lines. Keep them on one row (counters + title stacked tight on the left,
+   actions right), and only wrap the actions when there is genuinely no room. */
+@media (max-width: 700px) {
+    .profile-home-card-head {
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 0.4rem;
+    }
+
+    .profile-home-card-head > div:first-child {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .profile-home-card-head h2 {
+        font-size: 0.98rem;
+        line-height: 1.2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .profile-home-card-head .eyebrow {
+        font-size: 0.62rem;
+        letter-spacing: 0.02em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .profile-home-card-head .inline-actions-mini {
+        flex: 0 0 auto;
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 0.3rem;
+    }
+
+    .profile-home-card-head .inline-actions-mini .btn {
+        white-space: nowrap;
+        padding: 0.34rem 0.5rem;
+        font-size: 0.74rem;
+        min-height: 34px;
+    }
+}
+
+@media (max-width: 380px) {
+    .profile-home-card-head .inline-actions-mini .btn {
+        padding: 0.32rem 0.42rem;
+        font-size: 0.7rem;
+    }
+}
+
+/* #11 Profile grid on mobile: the cards were sized for desktop, so every block ate
+   most of the screen. Tighten padding and inner gaps (touch targets untouched). */
+@media (max-width: 700px) {
+    .profile-home-grid {
+        gap: 0.6rem;
+    }
+
+    .profile-home-card {
+        gap: 0.5rem;
+        padding: 0.75rem 0.8rem;
+    }
+
+    .profile-home-goal-row,
+    .profile-home-card .status-summary-card {
+        padding: 0.5rem 0.6rem;
+    }
+
+    .profile-data-overview {
+        gap: 0.55rem;
+    }
+
+    .profile-data-overview .panel-head {
+        margin-bottom: 0.4rem;
+    }
+
+    .profile-home-card h2 {
+        font-size: 0.98rem;
+    }
+
+    .profile-home-card .muted.small,
+    .profile-home-card small {
+        font-size: 0.72rem;
+    }
+}
+
+/* Profile edit mode uses the compact editbar too, so it no longer needs (or wants)
+   the blur backdrop that used to eat clicks on its Save button. */
+@media (max-width: 899px) {
+    body.layout-edit-active[data-page="profile"]::before {
+        display: none !important;
+    }
+
+    body.layout-edit-active[data-page="profile"] .screen
+        > :not(.dashboard-layout-edit-mode-panel):not(.team-layout-edit-mode-panel):not(.profile-layout-edit-mode-panel) {
+        opacity: 1 !important;
+        filter: none !important;
+        pointer-events: auto !important;
+        visibility: visible !important;
+    }
+}
+
+/* #13 Avatar menu: the picture and the frame are different things, so they are
+   different rows in the same sheet. */
+.profile-avatar-trigger {
+    position: relative;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    line-height: 0;
+    border-radius: 50%;
+}
+
+.profile-avatar-trigger:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 3px;
+}
+
+.profile-avatar-edit-hint {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    font-size: 0.72rem;
+    line-height: 1;
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.22);
+}
+
+.avatar-menu-option {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.8rem;
+    border: 1px solid var(--line, rgba(127, 127, 127, 0.2));
+    border-radius: 14px;
+    color: inherit;
+    text-decoration: none;
+    min-height: 56px;
+}
+
+.avatar-menu-option:hover {
+    background: var(--surface-2, rgba(127, 127, 127, 0.08));
+}
+
+.avatar-menu-icon {
+    font-size: 1.3rem;
+}
+
+.avatar-menu-copy {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.avatar-menu-copy small {
+    opacity: 0.7;
+}
+
+.cosmetics-subtitle {
+    margin: 0;
+}
+
+.cosmetics-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
 }
