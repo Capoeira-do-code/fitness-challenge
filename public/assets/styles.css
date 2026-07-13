@@ -18607,11 +18607,31 @@ body.theme-active-dark .team-mission {
 
     /* The compact edit bar replaced the old edit-mode panel, so it needs the same
        "stays on top of the blurred page" treatment its predecessor had. */
+    /* The bar is a grid item, and a sticky grid item has nothing to stick to: its
+       containing block is its own grid area. It scrolled away with the page. Pin it
+       to the bottom instead - within thumb reach, and clear of the fixed topbar. */
     body.layout-edit-active .layout-editbar,
     body.layout-edit-active .dashboard-layout-editbar {
-        position: sticky;
-        top: calc(0.5rem + env(safe-area-inset-top));
+        position: fixed;
+        left: 0.6rem;
+        right: 0.6rem;
+        bottom: calc(0.6rem + env(safe-area-inset-bottom));
+        top: auto;
         z-index: var(--z-edit-panel, 10060);
+        max-height: 70vh;
+        overflow-y: auto;
+        box-shadow: 0 -12px 40px rgba(15, 23, 42, 0.22);
+    }
+
+    /* The bottom nav would sit on top of it, and navigating away mid-edit is not the
+       point of this mode anyway. */
+    body.layout-edit-active .bottom-nav {
+        display: none;
+    }
+
+    /* Keep the last card reachable above the pinned bar. */
+    body.layout-edit-active .screen {
+        padding-bottom: 42vh;
     }
 
     body.layout-edit-active .screen > .layout-editbar,
@@ -19308,4 +19328,92 @@ img.is-broken {
     .training-sheet-table .sheet-checkbox {
         min-height: 44px;
     }
+}
+
+/* =========================================================================
+   Mobile: the page name moves into the topbar
+   -------------------------------------------------------------------------
+   Every page opened with a hero panel repeating its own name, a category
+   eyebrow and a one-line description: measured at 157-247px, i.e. 19-29% of a
+   phone screen, before any content. The name now sits in the topbar (where the
+   app icon already says which app this is) and the duplicated copy is dropped.
+   Hero *actions* and page-specific content (avatar, team switcher) stay.
+   ========================================================================= */
+.topbar-page-title {
+    display: none;
+}
+
+@media (max-width: 899px) {
+    .brand .brand-name {
+        display: none;
+    }
+
+    .topbar-page-title {
+        display: block;
+        margin: 0;
+        flex: 1 1 auto;
+        min-width: 0;
+        margin-left: 0.1rem;
+        font-family: "Plus Jakarta Sans", "Manrope", sans-serif;
+        font-size: 1.02rem;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        color: var(--ink);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Hero copy that only restated the page name is redundant now. */
+    .hero-copy-page-title {
+        display: none;
+    }
+
+    /* Where the heading is data (a person, a team) keep the heading, drop the
+       category label and the description. */
+    .hero-copy > .eyebrow,
+    .hero-copy > p.muted:not(.profile-hero-message) {
+        display: none;
+    }
+
+    .hero-copy > h1 {
+        font-size: 1.15rem;
+        line-height: 1.25;
+    }
+
+    /* A hero left with only actions should not keep a full panel's padding. */
+    .hero-panel {
+        padding: 0.6rem 0.75rem;
+        gap: 0.5rem;
+    }
+
+    .hero-panel:not(:has(.hero-copy > h1)):not(:has(.profile-title)) {
+        padding: 0.45rem 0.6rem;
+    }
+
+    /* Nothing left to show at all: collapse it entirely rather than leaving an
+       empty bar floating above the content. */
+    .hero-panel:empty,
+    .hero-panel:has(> .hero-copy-page-title:only-child) {
+        display: none;
+    }
+
+    .page-hero:has(> .hero-copy-page-title:only-child) {
+        display: none;
+    }
+}
+
+/* Achievement names were clamped to a single line with text-overflow:clip, so
+   anything longer than ~18 chars ("Clean Choices Plus") was cut mid-word with no
+   ellipsis to say so. Two lines fit inside the existing card height; longer names
+   still get an ellipsis rather than a silent cut. */
+.profile-achievement-content strong,
+.team-achievement-body strong,
+.achievement-card > strong,
+.achievement-list-content h3,
+.dashboard-achievement-title-row strong {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
 }

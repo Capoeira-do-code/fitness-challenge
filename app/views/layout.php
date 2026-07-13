@@ -132,8 +132,14 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
             <?php else: ?>
                 <span class="brand-mark"><?= e(initials_for($appName)) ?></span>
             <?php endif; ?>
-            <span><?= e($appName) ?></span>
+            <span class="brand-name"><?= e($appName) ?></span>
         </a>
+
+        <?php // On a phone the page name lives here instead of in a hero panel that ate a
+              // quarter of the screen. The app name is already implied by the icon next to it.
+              // It is a real <h1>: the hero heading it replaces is display:none on mobile, so
+              // without this the page would have no heading at all for a screen reader. ?>
+        <h1 class="topbar-page-title"><?= e((string) ($title ?? '')) ?></h1>
 
         <nav class="nav-links nav-desktop" aria-label="Primary">
             <?php foreach ($desktopNavItems as $pageKey => $item): ?>

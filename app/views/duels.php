@@ -65,7 +65,7 @@ $renderVs = static function (array $vm) use ($duelAvatar): void {
 ?>
 <section class="screen stack-lg">
     <div class="hero-panel">
-        <div>
+        <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('friends.eyebrow')) ?></p>
             <h1><?= e(t('duels.title')) ?></h1>
             <p class="muted"><?= e(t('duels.subtitle')) ?></p>

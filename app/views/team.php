@@ -169,7 +169,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
 ?>
 <section class="screen stack-lg<?= $teamSection === 'member' ? ' team-member-detail-screen' : '' ?>">
     <div class="hero-panel">
-        <div>
+        <div class="hero-copy">
             <p class="eyebrow"><?= e(t('nav.team')) ?></p>
             <h1><?= e((string) $team['name']) ?></h1>
             <p class="muted"><?= e((string) (($team['description'] ?? '') !== '' ? $team['description'] : t('team.subtitle'))) ?></p>

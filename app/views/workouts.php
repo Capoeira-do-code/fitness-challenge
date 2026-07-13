@@ -12,7 +12,7 @@ $muscleLabel = static fn(string $m): string => $m !== '' ? ucfirst($m) : '';
 ?>
 <section class="screen stack-lg workouts-screen">
     <div class="hero-panel workouts-hero">
-        <div>
+        <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('nav.profile')) ?></p>
             <h1><?= e(t('workouts.title')) ?></h1>
             <p class="muted"><?= e(t('workouts.subtitle')) ?></p>

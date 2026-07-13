@@ -71,7 +71,7 @@ if ($settingsView === 'avatar') {
 ?>
 <section class="screen stack-lg settings-page">
     <div class="hero-panel settings-hero">
-        <div>
+        <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('nav.settings')) ?></p>
             <h1><?= e(t('settings.title')) ?></h1>
             <p class="muted"><?= e(t('settings.subtitle')) ?></p>

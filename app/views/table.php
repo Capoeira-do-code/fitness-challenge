@@ -67,7 +67,7 @@ $weeklyPenalty = array_sum(array_map(static fn(array $row): float => (float) ($r
 ?>
 <section class="screen stack-lg">
     <div class="hero-panel">
-        <div>
+        <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('nav.table')) ?></p>
             <h1><?= e($isAllTrainingScope ? t('table.all_summary') : t('table.week_summary')) ?></h1>
             <p class="muted">

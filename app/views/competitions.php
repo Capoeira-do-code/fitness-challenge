@@ -76,7 +76,7 @@ $duelActionForm = static function (string $action, string $field, int $id, strin
 ?>
 <section class="screen stack-lg">
     <div class="hero-panel">
-        <div>
+        <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('friends.eyebrow')) ?></p>
             <h1><?= e(t('competitions.title')) ?></h1>
             <p class="muted"><?= e(t('competitions.subtitle')) ?></p>

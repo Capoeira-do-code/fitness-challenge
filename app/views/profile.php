@@ -650,7 +650,7 @@ $profileSetupRows = [
             <?php else: ?>
                 <span class="profile-avatar initials<?= e($profileFrameClass) ?>"><?= e(initials_for((string) $profileUser['display_name'])) ?></span>
             <?php endif; ?>
-            <div>
+            <div class="hero-copy">
                 <p class="eyebrow"><?= e(t('nav.profile')) ?></p>
                 <h1><?= e((string) $profileUser['display_name']) ?></h1>
                 <p class="muted">@<?= e((string) $profileUser['username']) ?> &middot; <?= e($profileHeroMessage) ?><?php if (!$isOwnProfile): ?> &middot; <?= e(t('profile.read_only')) ?><?php endif; ?></p>
