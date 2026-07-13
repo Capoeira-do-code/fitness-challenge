@@ -35,6 +35,12 @@ const check = (name, pass, detail = '') => {
     console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? '  — ' + detail : ''}`);
 };
 
+const skipped = [];
+const skip = (name, why) => {
+    skipped.push({ name, why });
+    console.log(`SKIP  ${name}  — ${why}`);
+};
+
 const login = async (page, username) => {
     await page.goto(`${BASE}/?page=login`);
     await page.fill('input[name="username"]', username);
@@ -121,6 +127,9 @@ const saveRowAs = async (page, userId) => {
         await page.waitForLoadState('networkidle');
         const saved = await page.locator('.flash').first().textContent().catch(() => '');
         check('Workout entry saves and reports back', /saved|guardad|salvat/i.test(saved || ''), (saved || '').trim().slice(0, 50));
+    } else {
+        // A silently skipped check reads as a pass, which is worse than a failure.
+        skip('Workout entry saves and reports back', 'no workout types exist in this database');
     }
 
     /* ---------------- Double submit ------------------------------------------- */
@@ -153,6 +162,10 @@ const saveRowAs = async (page, userId) => {
         `${orderBefore.slice(0, 2).join(',')} -> ${persisted.slice(0, 2).join(',')}`);
 
     /* ---------------- Permissions --------------------------------------------- */
+    if (SKIP_PERMISSIONS) {
+        skip('Permission cases (read-only sheet, 403, admin write)', '--skip-permissions was passed');
+    }
+
     if (!SKIP_PERMISSIONS) {
         const userContext = await browser.newContext();
         const userPage = await userContext.newPage();
@@ -202,7 +215,9 @@ const saveRowAs = async (page, userId) => {
     await browser.close();
 
     const failed = results.filter((r) => !r.pass);
-    console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
+    console.log(`
+${results.length - failed.length}/${results.length} checks passed`
+        + (skipped.length ? `, ${skipped.length} skipped` : ''));
     process.exit(failed.length === 0 ? 0 : 1);
 })().catch((error) => {
     console.error('Runner crashed:', error.message);
