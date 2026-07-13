@@ -18159,7 +18159,7 @@ body.theme-active-dark .team-mission {
     gap: 12px;
     padding: 12px 14px;
     border-radius: 16px;
-    background: var(--panel-bg, #fff);
+    background: var(--surface, #fff);
     border: 1px solid var(--border, rgba(127, 127, 127, 0.22));
     box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
     animation: celebrationIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -18245,7 +18245,7 @@ body.theme-active-dark .team-mission {
     gap: 10px;
     padding: 12px 14px;
     border-radius: 18px;
-    background: var(--panel-bg, #fff);
+    background: var(--surface, #fff);
     border: 1px solid var(--border, rgba(127, 127, 127, 0.22));
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
 }
@@ -18387,38 +18387,38 @@ body.theme-active-dark .team-mission {
 }
 
 .avatar-frame.frame-steel {
-    background-image: linear-gradient(var(--panel-bg, #fff), var(--panel-bg, #fff)),
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
         linear-gradient(135deg, #9aa5b1, #d7dde3, #8d99a6);
 }
 
 .avatar-frame.frame-ember {
-    background-image: linear-gradient(var(--panel-bg, #fff), var(--panel-bg, #fff)),
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
         linear-gradient(135deg, #ff7a18, #ff3d54, #ffb03a);
 }
 
 .avatar-frame.frame-aurora {
-    background-image: linear-gradient(var(--panel-bg, #fff), var(--panel-bg, #fff)),
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
         linear-gradient(135deg, #35e0c0, #4f7cff, #a855f7);
 }
 
 .avatar-frame.frame-gold {
-    background-image: linear-gradient(var(--panel-bg, #fff), var(--panel-bg, #fff)),
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
         linear-gradient(135deg, #f7c948, #fff0b3, #d99e0b);
 }
 
 .avatar-frame.frame-legend {
-    background-image: linear-gradient(var(--panel-bg, #fff), var(--panel-bg, #fff)),
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
         linear-gradient(135deg, #ff3d54, #ffb03a, #4f7cff, #a855f7);
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 6px 18px rgba(168, 85, 247, 0.32);
 }
 
 .avatar-frame.frame-iron {
-    background-image: linear-gradient(var(--panel-bg, #fff), var(--panel-bg, #fff)),
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
         linear-gradient(135deg, #4b5563, #9ca3af, #374151);
 }
 
 .avatar-frame.frame-streaker {
-    background-image: linear-gradient(var(--panel-bg, #fff), var(--panel-bg, #fff)),
+    background-image: linear-gradient(var(--surface, #fff), var(--surface, #fff)),
         linear-gradient(135deg, #f97316, #fbbf24);
 }
 
@@ -19241,4 +19241,71 @@ body.layout-edit-active .dashboard-layout > [data-dashboard-widget][hidden] {
 
 .squad-create-secondary[open] > summary {
     margin-bottom: 0.6rem;
+}
+
+/* Keyboard focus for the new controls. The cosmetic radios are visually hidden, so
+   without this the focus ring vanished while tabbing through the frames. */
+.cosmetic-option:has(input:focus-visible),
+.custom-habit-pick:focus-visible,
+.custom-habit-remove:focus-visible,
+.avatar-menu-option:focus-visible,
+.workouts-resume-banner:focus-visible,
+.workouts-start-card .btn:focus-visible,
+.dashboard-layout-visibility > summary:focus-visible,
+.notion-field-detail > summary:focus-visible,
+.celebration-close:focus-visible,
+.season-row a:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: 10px;
+}
+
+/* Broken media should read as "missing photo", not as a torn icon. */
+img.is-broken {
+    display: grid;
+    place-items: center;
+    min-height: 96px;
+    border-radius: 14px;
+    background: var(--surface-2, rgba(127, 127, 127, 0.12));
+    color: var(--muted, #6b7280);
+    font-size: 0.72rem;
+}
+
+/* Icon-only controls were 22-24px squares: fine with a mouse, a coin toss with a
+   thumb. Give them a real target on touch widths without changing how they look. */
+@media (max-width: 899px) {
+    .achievement-delete-btn,
+    .squad-member-x,
+    .custom-habit-remove,
+    .team-member-remove,
+    .week-help-wrap > .week-help-trigger {
+        min-width: 34px;
+        min-height: 34px;
+        display: inline-grid;
+        place-items: center;
+    }
+}
+
+@media (max-width: 899px) {
+    .metric-help-popover > summary {
+        min-width: 34px;
+        min-height: 34px;
+        display: inline-grid;
+        place-items: center;
+    }
+
+    .team-mission-contrib > summary {
+        min-height: 34px;
+        display: flex;
+        align-items: center;
+    }
+}
+
+/* The sheet compresses its checkboxes to 32px for density; on touch that is below
+   the comfortable target, and these are the controls people tap most. */
+@media (max-width: 899px) {
+    .training-sheet-table .check,
+    .training-sheet-table .sheet-checkbox {
+        min-height: 44px;
+    }
 }

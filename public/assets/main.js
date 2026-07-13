@@ -5679,3 +5679,45 @@
     }
     document.addEventListener('fc:afterPageSwap', init);
 })();
+
+/* Missing media placeholder.
+
+   A thumbnail whose file is gone (restored DB, half-synced uploads folder) rendered
+   as a broken-image icon inside an otherwise fine card. Mark it instead, so the card
+   degrades to an empty tile with its alt text rather than looking corrupted. */
+(function () {
+    'use strict';
+
+    function mark(img) {
+        if (!(img instanceof HTMLImageElement) || img.classList.contains('is-broken')) {
+            return;
+        }
+        img.classList.add('is-broken');
+        img.removeAttribute('srcset');
+        if (!img.alt) {
+            img.alt = '';
+        }
+    }
+
+    document.addEventListener('error', function (event) {
+        mark(event.target);
+    }, true);
+
+    // Images decoded before this script ran already fired their error event, so a
+    // listener alone misses exactly the ones that were broken on first paint.
+    function sweep() {
+        document.querySelectorAll('img').forEach(function (img) {
+            if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) {
+                mark(img);
+            }
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', sweep);
+    } else {
+        sweep();
+    }
+    window.addEventListener('load', sweep);
+    document.addEventListener('fc:afterPageSwap', function () { window.setTimeout(sweep, 300); });
+})();
