@@ -1265,7 +1265,10 @@ $profileSetupRows = [
                     </div>
                     <?php if ($canEditProfile): ?>
                         <div class="goal-detail-actions">
-                            <button class="btn small btn-ghost" type="button" data-goal-edit-toggle data-target="<?= e($editFormId) ?>"><?= e(t('common.edit')) ?></button>
+                            <?php // Editing opens in a modal. It used to unfold inside the goal card,
+                                  // which shoved the rest of the page down and left you editing in the
+                                  // middle of the thing you were reading. ?>
+                            <button class="btn small btn-ghost" type="button" data-app-modal-open="goal-edit-modal-<?= (int) $goal['id'] ?>" aria-haspopup="dialog"><?= e(t('common.edit')) ?></button>
                             <?php if ((string) ($goal['status'] ?? 'active') !== 'complete'): ?>
                                 <form method="post" action="<?= e($profileUrl('goals')) ?>">
                                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -1288,7 +1291,16 @@ $profileSetupRows = [
                 </article>
 
                 <?php if ($canEditProfile): ?>
-                    <form method="post" action="<?= e($profileUrl('goals')) ?>" class="mini-card editable-card goal-editor" id="<?= e($editFormId) ?>" data-goal-edit-form hidden>
+                <div class="app-modal" id="goal-edit-modal-<?= (int) $goal['id'] ?>" hidden role="dialog" aria-modal="true" aria-labelledby="goal-edit-title-<?= (int) $goal['id'] ?>">
+                    <div class="app-modal-card">
+                        <div class="app-modal-head">
+                            <div>
+                                <p class="eyebrow"><?= e(t('goals.personal')) ?></p>
+                                <h2 id="goal-edit-title-<?= (int) $goal['id'] ?>"><?= e((string) $goal['title']) ?></h2>
+                            </div>
+                            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.cancel')) ?>">&times;</button>
+                        </div>
+                    <form method="post" action="<?= e($profileUrl('goals')) ?>" class="goal-editor" id="<?= e($editFormId) ?>" data-goal-edit-form>
                         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                         <input type="hidden" name="action" value="update_goal">
                         <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
@@ -1318,9 +1330,11 @@ $profileSetupRows = [
                         </div>
                         <div class="goal-editor-actions">
                             <button class="btn small btn-primary" type="submit"><?= e(t('common.save')) ?></button>
-                            <button class="btn small btn-ghost" type="button" data-goal-edit-cancel data-target="<?= e($editFormId) ?>"><?= e(t('common.cancel')) ?></button>
+                            <button class="btn small btn-ghost" type="button" data-app-modal-close><?= e(t('common.cancel')) ?></button>
                         </div>
                     </form>
+                    </div>
+                </div>
                 <?php endif; ?>
             </div>
         <?php endforeach; ?>

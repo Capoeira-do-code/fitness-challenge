@@ -1302,8 +1302,14 @@
                         node.hidden = true;
                     });
                 }
+                // The goal editor lives in a modal now, and the modal owns its own
+                // visibility. Force-hiding the form here left its Save button collapsed
+                // to zero height inside an open dialog.
                 root.querySelectorAll('[data-goal-edit-form]').forEach((form) => {
-                    form.hidden = true;
+                    const dialog = form.closest('.app-modal');
+                    if (!dialog) {
+                        form.hidden = true;
+                    }
                 });
             }
         };
