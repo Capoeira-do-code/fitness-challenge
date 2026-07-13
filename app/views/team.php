@@ -314,7 +314,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         $activeProgressDebug = is_array($activeChallenge['progress_debug'] ?? null) ? (array) $activeChallenge['progress_debug'] : [];
         ob_start();
         ?>
-        <article class="panel team-layout-item team-widget-active-challenge team-active-challenge-panel<?= $activeIsExpired ? ' is-expired' : '' ?><?= $activeIsPreStart ? ' is-pending' : '' ?>" data-active-challenge-panel style="<?= e($teamWidgetStyle('active_challenge', 20)) ?>">
+        <article class="panel team-layout-item team-widget-active-challenge team-active-challenge-panel<?= $activeIsExpired ? ' is-expired' : '' ?><?= $activeIsPreStart ? ' is-pending' : '' ?>" data-active-challenge-panel data-team-widget="active_challenge" style="<?= e($teamWidgetStyle('active_challenge', 20)) ?>">
             <div class="panel-head team-active-challenge-head">
                 <div>
                     <p class="eyebrow"><?= e(t('team.active_challenge_title')) ?></p>
@@ -612,7 +612,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             : 0;
         ?>
         <div class="team-layout-grid">
-        <div class="metric-grid team-layout-item team-widget-metrics" style="<?= e($teamWidgetStyle('metrics', 10)) ?>">
+        <div class="metric-grid team-layout-item team-widget-metrics" data-team-widget="metrics" style="<?= e($teamWidgetStyle('metrics', 10)) ?>">
             <a class="metric-card metric-card-link team-metric-steps" href="<?= e($teamMetricUrl('steps')) ?>">
                 <div class="progress-ring" style="--value: 100;"><span><?= e($formatInt($summarySteps)) ?></span></div>
                 <div><span><?= e(t('metric.total_steps')) ?></span><strong><?= e($formatInt($summarySteps)) ?></strong><p><?= e(t('team.all_members')) ?></p></div>
@@ -659,7 +659,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             <?= $activeChallengeHero ?>
         <?php endif; ?>
 
-        <article class="panel team-layout-item team-widget-leaderboard team-leaderboard-panel" style="<?= e($teamWidgetStyle('leaderboard', 30)) ?>">
+        <article class="panel team-layout-item team-widget-leaderboard team-leaderboard-panel" data-team-widget="leaderboard" style="<?= e($teamWidgetStyle('leaderboard', 30)) ?>">
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('dashboard.ranking')) ?></p>
@@ -712,7 +712,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             </div>
         </article>
 
-            <article class="panel team-layout-item team-widget-challenges team-challenges-panel" style="<?= e($teamWidgetStyle('challenges', 40)) ?>">
+            <article class="panel team-layout-item team-widget-challenges team-challenges-panel" data-team-widget="challenges" style="<?= e($teamWidgetStyle('challenges', 40)) ?>">
                 <div class="panel-head">
                     <div>
                         <p class="eyebrow"><?= e(t('team.challenges')) ?></p>
@@ -916,7 +916,10 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             </article>
             <?php $missions = (array) ($teamMissions ?? []); ?>
             <?php if ($missions !== []): ?>
-                <article class="panel team-layout-item team-missions-panel" style="<?= e($teamWidgetStyle('members', 45)) ?>">
+                <?php // Missions ride along with the members widget (same visibility, rendered just
+                      // before it). It is not a layout item of its own, so it follows rather than
+                      // competing for a slot in the drag order. ?>
+                <article class="panel team-layout-item team-missions-panel" data-team-follows="members" style="<?= e($teamWidgetStyle('members', 45)) ?>">
                     <div class="panel-head">
                         <div>
                             <p class="eyebrow"><?= e(t('common.week')) ?></p>
@@ -946,7 +949,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 </article>
             <?php endif; ?>
 
-            <article class="panel team-layout-item team-widget-members team-members-panel" style="<?= e($teamWidgetStyle('members', 50)) ?>">
+            <article class="panel team-layout-item team-widget-members team-members-panel" data-team-widget="members" style="<?= e($teamWidgetStyle('members', 50)) ?>">
                 <div class="panel-head">
                     <div>
                         <p class="eyebrow"><?= e(t('team.members')) ?></p>
@@ -975,7 +978,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 </div>
             </article>
 
-        <div class="grid-two team-layout-item team-widget-daily-charts" style="<?= e($teamWidgetStyle('daily_charts', 60)) ?>">
+        <div class="grid-two team-layout-item team-widget-daily-charts" data-team-widget="daily_charts" style="<?= e($teamWidgetStyle('daily_charts', 60)) ?>">
             <article class="panel chart-card">
                 <h2><?= e(t('team.steps_over_time')) ?></h2>
                 <canvas id="teamStepsChart" height="170"></canvas>
@@ -986,16 +989,16 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             </article>
         </div>
 
-        <article class="panel chart-card team-layout-item team-widget-cumulative-steps team-cumulative-chart-card" style="<?= e($teamWidgetStyle('cumulative_steps', 70)) ?>">
+        <article class="panel chart-card team-layout-item team-widget-cumulative-steps team-cumulative-chart-card" data-team-widget="cumulative_steps" style="<?= e($teamWidgetStyle('cumulative_steps', 70)) ?>">
             <h2><?= e(t('team.cumulative_steps')) ?></h2>
             <canvas id="teamCumulativeStepsChart" height="170"></canvas>
         </article>
-        <article class="panel chart-card team-layout-item team-widget-cumulative-distance team-cumulative-chart-card" style="<?= e($teamWidgetStyle('cumulative_distance', 80)) ?>">
+        <article class="panel chart-card team-layout-item team-widget-cumulative-distance team-cumulative-chart-card" data-team-widget="cumulative_distance" style="<?= e($teamWidgetStyle('cumulative_distance', 80)) ?>">
             <h2><?= e(t('team.cumulative_distance')) ?></h2>
             <canvas id="teamCumulativeDistanceChart" height="170"></canvas>
         </article>
 
-        <div class="grid-two team-layout-item team-widget-weekly-charts" style="<?= e($teamWidgetStyle('weekly_charts', 90)) ?>">
+        <div class="grid-two team-layout-item team-widget-weekly-charts" data-team-widget="weekly_charts" style="<?= e($teamWidgetStyle('weekly_charts', 90)) ?>">
             <article class="panel chart-card">
                 <h2><?= e(t('team.workouts_over_time')) ?></h2>
                 <canvas id="teamWorkoutsChart" height="170"></canvas>
@@ -1008,7 +1011,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             <?php endif; ?>
         </div>
 
-        <article class="panel team-layout-item team-widget-achievements team-achievements-panel" style="<?= e($teamWidgetStyle('achievements', 100)) ?>">
+        <article class="panel team-layout-item team-widget-achievements team-achievements-panel" data-team-widget="achievements" style="<?= e($teamWidgetStyle('achievements', 100)) ?>">
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('achievements.title')) ?></p>

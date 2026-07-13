@@ -5231,185 +5231,300 @@
 })();
 
 /* ==========================================================================
-   Dashboard direct drag-and-drop reordering + unsaved-changes guard (#2)
+   Visual layout editing: drag the real cards (desktop)
 
-   In layout-edit mode the widget CARDS themselves become draggable, so the user
-   reorders the real dashboard instead of an abstract list. Uses Pointer Events
-   (one code path for mouse + touch). A drag only starts after the pointer moves
-   past a threshold, so a tap never turns into an accidental drag on mobile.
+   In layout-edit mode the CARDS themselves become draggable, so the user
+   rearranges the real page instead of an abstract list. One engine, four
+   registrations (dashboard, analytics, profile, team) - the pages differ only in
+   which container holds the cards, which attribute carries a card's key, and how
+   its editor form records the order.
+
+   Pointer Events give one code path for mouse and pen. A drag only starts after
+   the pointer passes a threshold, so a click never becomes an accidental drag.
+   Touch is deliberately excluded: on a phone the edit view puts the editor over
+   the page, so a card cannot be grabbed there - the "Visible widgets" list does
+   the reordering instead.
    ========================================================================== */
 (() => {
+    const DRAG_THRESHOLD = 8; // px before a press becomes a drag
     const isEditing = () => document.body.classList.contains('layout-edit-active');
-    const layout = document.querySelector('.dashboard-layout');
-    // The dashboard ships TWO editor forms (a desktop panel and a mobile sheet).
-    // Whichever one the user submits must carry the same state, so every sync
-    // below is applied to all of them, not just the first match.
-    const forms = [...document.querySelectorAll('[data-dashboard-layout-editor]')];
-    if (!layout || forms.length === 0) return;
-    const form = forms[0];
-
-    const widgets = () => [...layout.querySelectorAll('[data-dashboard-widget]')];
-    const DRAG_THRESHOLD = 8; // px before a press becomes a drag (anti tap-drag)
-
-    let dirty = false;
-    const markDirty = () => {
-        dirty = true;
-        document.body.classList.add('layout-has-unsaved');
-    };
-
-    /* ---- unsaved-changes guard + keep both editor forms in sync ---- */
-    forms.forEach((f) => {
-        f.addEventListener('change', (e) => {
-            markDirty();
-            // Mirror a widget toggle into the other editor form so the one that
-            // actually gets submitted always reflects what the user saw.
-            const cb = e.target;
-            if (cb instanceof HTMLInputElement && cb.type === 'checkbox' && cb.name === 'dashboard_widgets[]') {
-                forms.forEach((other) => {
-                    if (other === f) return;
-                    const twin = other.querySelector(`input[type="checkbox"][name="dashboard_widgets[]"][value="${CSS.escape(cb.value)}"]`);
-                    if (twin instanceof HTMLInputElement) twin.checked = cb.checked;
-                });
-            }
-        });
-        f.addEventListener('submit', () => { dirty = false; });
-    });
-
-    window.addEventListener('beforeunload', (e) => {
-        if (!dirty || !isEditing()) return;
-        e.preventDefault();
-        e.returnValue = '';
-    });
-
-    // Intercept in-app navigation (links) while there are unsaved changes.
-    document.addEventListener('click', (e) => {
-        if (!dirty || !isEditing()) return;
-        const link = e.target instanceof Element ? e.target.closest('a[href]') : null;
-        if (!link || link.closest('[data-dashboard-layout-editor]')) return;
-        if (link.target === '_blank' || link.href.startsWith('javascript:')) return;
-        const msg = layout.dataset.unsavedMessage || 'You have unsaved layout changes. Leave without saving?';
-        if (!window.confirm(msg)) {
-            e.preventDefault();
-            e.stopPropagation();
-        } else {
-            dirty = false;
-        }
-    }, true);
-
-    /* ---- order syncing: DOM order -> inline order + hidden form inputs ---- */
-    const syncOrder = () => {
-        widgets().forEach((el, i) => {
-            const key = el.getAttribute('data-dashboard-widget');
-            el.style.order = String((i + 1) * 10);
-            forms.forEach((f) => {
-                const input = f.querySelector(`[data-dashboard-order-input][name="dashboard_order[${key}]"]`);
-                if (input instanceof HTMLInputElement) input.value = String(i + 1);
-            });
-        });
-        markDirty();
-    };
-
-    /* ---- pointer-based drag ---- */
-    let dragEl = null;
-    let placeholder = null;
-    let startX = 0, startY = 0, offX = 0, offY = 0;
-    let active = false;
-
-    const cleanup = () => {
-        if (dragEl) {
-            dragEl.classList.remove('is-dragging');
-            dragEl.style.position = '';
-            dragEl.style.left = '';
-            dragEl.style.top = '';
-            dragEl.style.width = '';
-            dragEl.style.zIndex = '';
-            dragEl.style.pointerEvents = '';
-        }
-        if (placeholder && placeholder.parentNode) placeholder.remove();
-        document.body.classList.remove('layout-dragging');
-        dragEl = null; placeholder = null; active = false;
-    };
-
-    // Direct drag is a desktop affordance only: on phones the edit view blurs the
-    // page behind an overlay, so a card can never actually be grabbed there.
-    // Touch reordering happens in the "Visible widgets" list instead.
     const dragSupported = () => !window.matchMedia('(max-width: 899px)').matches;
 
-    layout.addEventListener('pointerdown', (e) => {
-        if (!isEditing() || e.button !== 0 || !dragSupported()) return;
-        const el = e.target instanceof Element ? e.target.closest('[data-dashboard-widget]') : null;
-        if (!el) return;
-        // Let real controls inside a widget keep working.
-        if (e.target instanceof Element && e.target.closest('a, button, input, select, textarea')) return;
-        dragEl = el;
-        const r = el.getBoundingClientRect();
-        startX = e.clientX; startY = e.clientY;
-        offX = e.clientX - r.left; offY = e.clientY - r.top;
-        active = false;
-    });
+    const initLayoutDrag = (config) => {
+        const container = document.querySelector(config.container);
+        const forms = [...document.querySelectorAll(config.editor)];
+        if (!container || forms.length === 0) {
+            return;
+        }
 
-    window.addEventListener('pointermove', (e) => {
-        if (!dragEl) return;
-        if (!active) {
-            if (Math.hypot(e.clientX - startX, e.clientY - startY) < DRAG_THRESHOLD) return;
-            // promote to a real drag
-            active = true;
-            const r = dragEl.getBoundingClientRect();
-            placeholder = document.createElement('div');
-            placeholder.className = 'dashboard-drop-placeholder';
-            placeholder.style.height = `${r.height}px`;
-            placeholder.style.order = dragEl.style.order;
-            dragEl.parentNode.insertBefore(placeholder, dragEl);
-            dragEl.classList.add('is-dragging');
-            dragEl.style.width = `${r.width}px`;
-            dragEl.style.position = 'fixed';
-            dragEl.style.zIndex = '9999';
-            dragEl.style.pointerEvents = 'none';
-            document.body.classList.add('layout-dragging');
-            try { dragEl.setPointerCapture(e.pointerId); } catch (_) {}
-        }
-        e.preventDefault();
-        dragEl.style.left = `${e.clientX - offX}px`;
-        dragEl.style.top = `${e.clientY - offY}px`;
+        // Only the cards that are actually laid out: a hidden widget has no place in
+        // the running order, and dropping onto one would be dropping into nothing.
+        const cards = () => [...container.querySelectorAll(config.item)]
+            .filter((el) => el.offsetParent !== null || el.getBoundingClientRect().height > 0);
 
-        // Pick the drop target by nearest centre rather than strict containment:
-        // the layout is a grid, so the pointer is often in the gutter between
-        // cards, where a contains() test finds nothing and the drag feels dead.
-        let over = null;
-        let best = Infinity;
-        for (const w of widgets()) {
-            if (w === dragEl || w === placeholder) continue;
-            const r = w.getBoundingClientRect();
-            if (r.width === 0 && r.height === 0) continue;
-            const cx = r.left + r.width / 2;
-            const cy = r.top + r.height / 2;
-            const d = Math.hypot(e.clientX - cx, e.clientY - cy);
-            if (d < best) { best = d; over = w; }
-        }
-        if (over && placeholder) {
-            const r = over.getBoundingClientRect();
-            // Reading order: past the vertical midpoint (or, on the same row,
-            // past the horizontal midpoint) means "insert after".
-            const sameRow = Math.abs(e.clientY - (r.top + r.height / 2)) < r.height / 2;
-            const after = sameRow
-                ? e.clientX > r.left + r.width / 2
-                : e.clientY > r.top + r.height / 2;
-            placeholder.style.order = over.style.order;
-            over.parentNode.insertBefore(placeholder, after ? over.nextSibling : over);
-        }
-    }, { passive: false });
+        const keyOf = (el) => el.getAttribute(config.keyAttr) || '';
 
-    window.addEventListener('pointerup', () => {
-        if (!dragEl) return;
-        if (active && placeholder) {
-            placeholder.parentNode.insertBefore(dragEl, placeholder);
-            cleanup();
-            syncOrder();
-        } else {
-            cleanup();
-        }
-    });
-    window.addEventListener('pointercancel', cleanup);
+        let dirty = false;
+        const markDirty = () => {
+            dirty = true;
+            document.body.classList.add('layout-has-unsaved');
+        };
+
+        /* ---- the drag result has to reach the form, or Save saves the old order ----
+           Three things move together: the card's visual order, the matching row in the
+           editor list (team derives its order purely from that list's DOM order), and
+           the hidden order input where one exists. */
+        const syncOrder = () => {
+            cards().forEach((el, index) => {
+                const key = keyOf(el);
+                el.style.order = String((index + 1) * 10);
+
+                // A follower card (team missions rides with members) has no slot of its
+                // own: it takes the order of the card it belongs to, minus one, so a drag
+                // never leaves it stranded on the other side of the page.
+                container.querySelectorAll(`[data-team-follows="${CSS.escape(key)}"]`)
+                    .forEach((follower) => {
+                        follower.style.order = String((index + 1) * 10 - 1);
+                    });
+
+                forms.forEach((form) => {
+                    if (config.orderInput) {
+                        const input = form.querySelector(
+                            `[name="${config.orderInput}[${key}]"]`
+                        );
+                        if (input instanceof HTMLInputElement) {
+                            input.value = String(index + 1);
+                        }
+                    }
+
+                    const list = form.querySelector(config.list);
+                    if (!list) {
+                        return;
+                    }
+                    const row = list.querySelector(
+                        `input[type="checkbox"][value="${CSS.escape(key)}"]`
+                    );
+                    const item = row ? row.closest(config.listItem) : null;
+                    if (item) {
+                        list.appendChild(item); // append in card order -> list ends up sorted
+                    }
+                });
+            });
+            markDirty();
+        };
+
+        /* ---- unsaved-changes guard ---- */
+        forms.forEach((form) => {
+            form.addEventListener('change', markDirty);
+            form.addEventListener('submit', () => {
+                dirty = false;
+                document.body.classList.remove('layout-has-unsaved');
+            });
+        });
+
+        window.addEventListener('beforeunload', (event) => {
+            if (!dirty || !isEditing()) {
+                return;
+            }
+            event.preventDefault();
+            event.returnValue = '';
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!dirty || !isEditing()) {
+                return;
+            }
+            const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+            if (!link || link.closest(config.editor)) {
+                return;
+            }
+            if (link.target === '_blank' || link.href.startsWith('javascript:')) {
+                return;
+            }
+            const message = container.dataset.unsavedMessage
+                || 'You have unsaved layout changes. Leave without saving?';
+            if (!window.confirm(message)) {
+                event.preventDefault();
+                event.stopPropagation();
+            } else {
+                dirty = false;
+            }
+        }, true);
+
+        /* ---- pointer drag ---- */
+        let dragEl = null;
+        let placeholder = null;
+        let startX = 0;
+        let startY = 0;
+        let offX = 0;
+        let offY = 0;
+        let active = false;
+
+        const cleanup = () => {
+            if (dragEl) {
+                dragEl.classList.remove('is-dragging');
+                dragEl.style.position = '';
+                dragEl.style.left = '';
+                dragEl.style.top = '';
+                dragEl.style.width = '';
+                dragEl.style.zIndex = '';
+                dragEl.style.pointerEvents = '';
+            }
+            if (placeholder && placeholder.parentNode) {
+                placeholder.remove();
+            }
+            document.body.classList.remove('layout-dragging');
+            dragEl = null;
+            placeholder = null;
+            active = false;
+        };
+
+        container.addEventListener('pointerdown', (event) => {
+            if (!isEditing() || event.button !== 0 || !dragSupported()) {
+                return;
+            }
+            const el = event.target instanceof Element ? event.target.closest(config.item) : null;
+            if (!el || !container.contains(el)) {
+                return;
+            }
+            if (event.target instanceof Element && event.target.closest('a, button, input, select, textarea')) {
+                return;
+            }
+            dragEl = el;
+            const rect = el.getBoundingClientRect();
+            startX = event.clientX;
+            startY = event.clientY;
+            offX = event.clientX - rect.left;
+            offY = event.clientY - rect.top;
+            active = false;
+        });
+
+        window.addEventListener('pointermove', (event) => {
+            if (!dragEl) {
+                return;
+            }
+            if (!active) {
+                if (Math.hypot(event.clientX - startX, event.clientY - startY) < DRAG_THRESHOLD) {
+                    return;
+                }
+                active = true;
+                const rect = dragEl.getBoundingClientRect();
+                placeholder = document.createElement('div');
+                placeholder.className = 'dashboard-drop-placeholder';
+                placeholder.style.height = `${rect.height}px`;
+                placeholder.style.order = dragEl.style.order;
+                dragEl.parentNode.insertBefore(placeholder, dragEl);
+                dragEl.classList.add('is-dragging');
+                dragEl.style.width = `${rect.width}px`;
+                dragEl.style.position = 'fixed';
+                dragEl.style.zIndex = '9999';
+                dragEl.style.pointerEvents = 'none';
+                document.body.classList.add('layout-dragging');
+                try { dragEl.setPointerCapture(event.pointerId); } catch (_) { /* not fatal */ }
+            }
+            event.preventDefault();
+            dragEl.style.left = `${event.clientX - offX}px`;
+            dragEl.style.top = `${event.clientY - offY}px`;
+
+            // Pick the drop target by nearest centre rather than strict containment:
+            // these are grids, so the pointer often sits in the gutter between cards,
+            // where a contains() test finds nothing and the drag feels dead.
+            let over = null;
+            let best = Infinity;
+            for (const card of cards()) {
+                if (card === dragEl || card === placeholder) {
+                    continue;
+                }
+                const rect = card.getBoundingClientRect();
+                if (rect.width === 0 && rect.height === 0) {
+                    continue;
+                }
+                const distance = Math.hypot(
+                    event.clientX - (rect.left + rect.width / 2),
+                    event.clientY - (rect.top + rect.height / 2)
+                );
+                if (distance < best) {
+                    best = distance;
+                    over = card;
+                }
+            }
+            if (over && placeholder) {
+                const rect = over.getBoundingClientRect();
+                // Reading order: past the vertical midpoint (or, within the same row,
+                // past the horizontal midpoint) means "insert after".
+                const sameRow = Math.abs(event.clientY - (rect.top + rect.height / 2)) < rect.height / 2;
+                const after = sameRow
+                    ? event.clientX > rect.left + rect.width / 2
+                    : event.clientY > rect.top + rect.height / 2;
+                placeholder.style.order = over.style.order;
+                over.parentNode.insertBefore(placeholder, after ? over.nextSibling : over);
+            }
+        }, { passive: false });
+
+        window.addEventListener('pointerup', () => {
+            if (!dragEl) {
+                return;
+            }
+            if (active && placeholder) {
+                placeholder.parentNode.insertBefore(dragEl, placeholder);
+                cleanup();
+                syncOrder();
+            } else {
+                cleanup();
+            }
+        });
+
+        window.addEventListener('pointercancel', cleanup);
+    };
+
+    const LAYOUTS = [
+        {
+            container: '.dashboard-layout',
+            item: '[data-dashboard-widget]',
+            keyAttr: 'data-dashboard-widget',
+            editor: '[data-dashboard-layout-editor]',
+            list: '[data-dashboard-layout-list]',
+            listItem: '[data-dashboard-layout-item]',
+            orderInput: 'dashboard_order',
+        },
+        {
+            container: '.analytics-page',
+            item: '[data-analytics-section]',
+            keyAttr: 'data-analytics-section',
+            editor: '[data-analytics-layout-editor]',
+            list: '[data-analytics-layout-list]',
+            listItem: '[data-analytics-layout-item]',
+            orderInput: 'analytics_order',
+        },
+        {
+            container: '.profile-home-grid',
+            item: '[data-profile-block]',
+            keyAttr: 'data-profile-block',
+            editor: '[data-profile-layout-editor]',
+            list: '[data-profile-layout-list]',
+            listItem: '[data-profile-layout-item]',
+            orderInput: 'profile_order',
+        },
+        {
+            // Team has no order inputs: its running order is the DOM order of the
+            // checkboxes it submits, which syncOrder() rewrites for us.
+            container: '.team-layout-grid',
+            item: '[data-team-widget]',
+            keyAttr: 'data-team-widget',
+            editor: '[data-team-layout-editor]',
+            list: '[data-team-layout-list]',
+            listItem: '[data-team-layout-item]',
+            orderInput: '',
+        },
+    ];
+
+    const initAll = () => LAYOUTS.forEach(initLayoutDrag);
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initAll);
+    } else {
+        initAll();
+    }
 })();
 
 /* ==========================================================================

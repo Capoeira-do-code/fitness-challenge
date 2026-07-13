@@ -188,6 +188,71 @@ const saveRowAs = async (page, userId) => {
         persisted.length === orderBefore.length && persisted[0] === orderBefore[1],
         `${orderBefore.slice(0, 2).join(',')} -> ${persisted.slice(0, 2).join(',')}`);
 
+    /* ---------------- Visual drag-and-drop on desktop -------------------------- */
+    // Every page with a layout editor must be editable by dragging the real cards on
+    // desktop, and must NOT advertise a grab handle on mobile (a card cannot be
+    // grabbed there - the editor covers the page).
+    const DRAG_PAGES = [
+        { page: 'dashboard', item: '[data-dashboard-widget]', key: 'dashboardWidget', save: '.dashboard-editbar-actions button[type=submit]' },
+        { page: 'analytics', item: '[data-analytics-section]', key: 'analyticsSection', save: '.dashboard-editbar-actions button[type=submit]' },
+        { page: 'profile', item: '[data-profile-block]', key: 'profileBlock', save: '.dashboard-editbar-actions button[type=submit]' },
+        { page: 'team', item: '[data-team-widget]', key: 'teamWidget', save: '[data-team-layout-editor] button[type=submit]:not([name])' },
+    ];
+
+    // Read the order the browser actually applies: team drives `order` from a CSS
+    // custom property, so reading the inline style attribute reports nothing at all.
+    const layoutOrder = (target, item, key) => target.$$eval(item, (els, k) => els
+        .filter((el) => getComputedStyle(el).display !== 'none')
+        .map((el) => [el.dataset[k], parseInt(getComputedStyle(el).order || '0', 10)])
+        .sort((a, b) => a[1] - b[1])
+        .map((x) => x[0]), key);
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    for (const target of DRAG_PAGES) {
+        await page.goto(`${BASE}/?page=${target.page}&layout_edit=1`);
+        await page.waitForLoadState('networkidle');
+
+        const before = await layoutOrder(page, target.item, target.key);
+        if (before.length < 2) {
+            skip(`Drag reorders ${target.page} cards`, 'fewer than two visible cards');
+            continue;
+        }
+
+        const first = page.locator(target.item).first();
+        const second = page.locator(target.item).nth(1);
+        await first.scrollIntoViewIfNeeded();
+        const a = await first.boundingBox();
+        const b = await second.boundingBox();
+        await page.mouse.move(a.x + a.width / 2, a.y + 20);
+        await page.mouse.down();
+        await page.mouse.move(a.x + a.width / 2 + 20, a.y + 40, { steps: 5 });
+        await page.mouse.move(b.x + b.width / 2, b.y + b.height - 15, { steps: 12 });
+        await page.mouse.up();
+        await page.waitForTimeout(250);
+
+        const dragged = await layoutOrder(page, target.item, target.key);
+        await page.locator(target.save).first().click();
+        await page.waitForLoadState('networkidle');
+        await page.goto(`${BASE}/?page=${target.page}`);
+        await page.waitForLoadState('networkidle');
+        const persisted = await layoutOrder(page, target.item, target.key);
+
+        check(`Drag reorders ${target.page} cards and the order persists`,
+            dragged.join(',') !== before.join(',') && persisted.join(',') === dragged.join(','),
+            `${before.slice(0, 2).join(',')} -> ${dragged.slice(0, 2).join(',')} (saved: ${persisted.slice(0, 2).join(',')})`);
+    }
+
+    // The handle is a desktop promise only.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${BASE}/?page=team&layout_edit=1`);
+    await page.waitForLoadState('networkidle');
+    const mobileHandle = await page.evaluate(() => {
+        const el = document.querySelector('[data-team-widget]');
+        return el ? getComputedStyle(el, '::before').content : 'none';
+    });
+    check('No drag handle on mobile, where dragging cannot work', mobileHandle === 'none', `content: ${mobileHandle}`);
+    await page.setViewportSize({ width: 390, height: 844 });
+
     /* ---------------- Permissions --------------------------------------------- */
     if (SKIP_PERMISSIONS) {
         skip('Permission cases (read-only sheet, 403, admin write)', '--skip-permissions was passed');

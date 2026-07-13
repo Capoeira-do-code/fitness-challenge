@@ -418,7 +418,7 @@ $topbarControls = ob_get_clean();
         </div>
     <?php endif; ?>
 
-    <section class="analytics-section analytics-summary-section analytics-layout-item" style="<?= e($analyticsSectionStyle('summary')) ?>">
+    <section class="analytics-section analytics-summary-section analytics-layout-item" data-analytics-section="summary" style="<?= e($analyticsSectionStyle('summary')) ?>">
         <div class="analytics-section-title">
             <h2><?= e(t('analytics.section_summary')) ?></h2>
             <span class="badge"><?= e($analyticsRangeText) ?></span>
@@ -434,7 +434,7 @@ $topbarControls = ob_get_clean();
         </div>
     </section>
 
-    <section class="analytics-section analytics-layout-item" style="<?= e($analyticsSectionStyle('activity')) ?>">
+    <section class="analytics-section analytics-layout-item" data-analytics-section="activity" style="<?= e($analyticsSectionStyle('activity')) ?>">
         <div class="analytics-section-title">
             <h2><?= e(t('dashboard.analytics_activity')) ?></h2>
             <span class="badge"><?= e(t('metric.steps')) ?> / <?= e(t('metric.distance_km')) ?></span>
@@ -460,7 +460,7 @@ $topbarControls = ob_get_clean();
         </div>
     </section>
 
-    <section class="analytics-section analytics-layout-item" style="<?= e($analyticsSectionStyle('nutrition')) ?>">
+    <section class="analytics-section analytics-layout-item" data-analytics-section="nutrition" style="<?= e($analyticsSectionStyle('nutrition')) ?>">
         <div class="analytics-section-title">
             <h2><?= e(t('analytics.section_nutrition')) ?></h2>
             <span class="badge"><?= e((string) ($calorieStats['tracked_days'] ?? 0)) ?> <?= e(t('dashboard.calories_tracked_days')) ?></span>
@@ -491,7 +491,7 @@ $topbarControls = ob_get_clean();
         </div>
     </section>
 
-    <section class="analytics-section analytics-layout-item" style="<?= e($analyticsSectionStyle('food')) ?>">
+    <section class="analytics-section analytics-layout-item" data-analytics-section="food" style="<?= e($analyticsSectionStyle('food')) ?>">
         <div class="analytics-section-title">
             <h2><?= e(t('analytics.section_food')) ?></h2>
             <span class="badge"><?= e((string) ((int) ($foodStats['photo_count'] ?? 0))) ?> <?= e(t('entries.photo_plural')) ?></span>
@@ -525,7 +525,7 @@ $topbarControls = ob_get_clean();
         </div>
     </section>
 
-    <section class="analytics-section analytics-layout-item" style="<?= e($analyticsSectionStyle('body')) ?>">
+    <section class="analytics-section analytics-layout-item" data-analytics-section="body" style="<?= e($analyticsSectionStyle('body')) ?>">
         <div class="analytics-section-title">
             <h2><?= e(t('analytics.section_body')) ?></h2>
             <span class="badge"><?= e(t('metric.weight')) ?></span>
@@ -545,7 +545,7 @@ $topbarControls = ob_get_clean();
         </div>
     </section>
 
-    <section class="analytics-section analytics-layout-item" style="<?= e($analyticsSectionStyle('comparison')) ?>">
+    <section class="analytics-section analytics-layout-item" data-analytics-section="comparison" style="<?= e($analyticsSectionStyle('comparison')) ?>">
         <div class="analytics-section-title">
             <h2><?= e(t('dashboard.analytics_comparison')) ?></h2>
             <a class="btn btn-ghost small" href="<?= e($comparisonDetailHref) ?>"><?= e(t('dashboard.view_full_breakdown')) ?></a>

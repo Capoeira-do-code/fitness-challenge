@@ -19514,3 +19514,82 @@ body {
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
 }
+
+/* ==========================================================================
+   Visual layout editing on desktop: analytics, profile and team join the dashboard
+
+   Same affordance everywhere, so "edit layout" means the same thing on every page:
+   the real cards get a grab handle and are dragged into place. Desktop only - on a
+   phone the editor covers the page and a card cannot be grabbed, so the handle
+   would be a lie (the "Visible widgets" list reorders there).
+   ========================================================================== */
+@media (min-width: 900px) {
+    body.layout-edit-active .analytics-page > [data-analytics-section],
+    body.layout-edit-active .profile-home-grid > [data-profile-block],
+    body.layout-edit-active .team-layout-grid > [data-team-widget] {
+        position: relative;
+        cursor: grab;
+        touch-action: none;
+        user-select: none;
+        outline: 2px dashed color-mix(in srgb, var(--primary) 45%, transparent);
+        outline-offset: 3px;
+        border-radius: var(--radius-lg, 16px);
+        transition: transform 0.16s ease, box-shadow 0.16s ease;
+    }
+
+    body.layout-edit-active .analytics-page > [data-analytics-section]::before,
+    body.layout-edit-active .profile-home-grid > [data-profile-block]::before,
+    body.layout-edit-active .team-layout-grid > [data-team-widget]::before {
+        content: "⠿";
+        position: absolute;
+        top: 6px;
+        right: 8px;
+        z-index: 5;
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        background: var(--primary);
+        color: #fff;
+        font-size: 0.8rem;
+        line-height: 1;
+        box-shadow: 0 4px 10px rgba(15, 23, 42, 0.2);
+        pointer-events: none;
+    }
+
+    body.layout-edit-active .analytics-page > [data-analytics-section]:active,
+    body.layout-edit-active .profile-home-grid > [data-profile-block]:active,
+    body.layout-edit-active .team-layout-grid > [data-team-widget]:active {
+        cursor: grabbing;
+    }
+
+    /* While editing, a card is an object to move, not a live control surface:
+       neutralising its inner controls makes the whole card grabbable and stops an
+       accidental navigation mid-rearrange. */
+    body.layout-edit-active .analytics-page > [data-analytics-section] :where(a, button, input, select, textarea, summary, details, canvas),
+    body.layout-edit-active .profile-home-grid > [data-profile-block] :where(a, button, input, select, textarea, summary, details, canvas),
+    body.layout-edit-active .team-layout-grid > [data-team-widget] :where(a, button, input, select, textarea, summary, details, canvas) {
+        pointer-events: none !important;
+    }
+}
+
+[data-analytics-section].is-dragging,
+[data-profile-block].is-dragging,
+[data-team-widget].is-dragging {
+    cursor: grabbing;
+    opacity: 0.95;
+    transform: scale(1.02);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+    outline-color: var(--primary);
+}
+
+/* The handle is a desktop-only promise. */
+@media (max-width: 899px) {
+    body.layout-edit-active .analytics-page > [data-analytics-section]::before,
+    body.layout-edit-active .profile-home-grid > [data-profile-block]::before,
+    body.layout-edit-active .team-layout-grid > [data-team-widget]::before {
+        content: none;
+        display: none;
+    }
+}
