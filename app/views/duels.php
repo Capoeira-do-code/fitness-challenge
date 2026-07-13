@@ -108,8 +108,35 @@ $renderVs = static function (array $vm) use ($duelAvatar): void {
         <?php else: ?>
             <div class="stack-md">
                 <?php foreach ($active as $vm): $d = (array) $vm['duel']; ?>
+                    <?php
+                    // Who is ahead, and by how much, stated in words. The colour cue alone
+                    // did not answer "am I winning?" at a glance.
+                    $v = (array) $vm['values'];
+                    $metric = (string) $d['metric'];
+                    $cVal = (float) ($v['challenger'] ?? 0);
+                    $oVal = (float) ($v['opponent'] ?? 0);
+                    $leaderName = $cVal === $oVal
+                        ? ''
+                        : (string) (($cVal > $oVal ? ($v['challenger_user'] ?? []) : ($v['opponent_user'] ?? []))['display_name'] ?? '');
+                    $gap = duels_format_value($metric, abs($cVal - $oVal));
+                    try {
+                        $daysLeft = max(0, (int) (new DateTimeImmutable('today'))->diff(new DateTimeImmutable((string) ($d['end_date'] ?? 'today')))->days);
+                    } catch (Throwable) {
+                        $daysLeft = 0;
+                    }
+                    ?>
                     <div class="duel-card">
                         <?php $renderVs($vm); ?>
+                        <p class="duel-standing">
+                            <span class="duel-standing-lead">
+                                <?= $leaderName === ''
+                                    ? e(t('duels.tie'))
+                                    : e(t('duels.leading_by', ['name' => $leaderName, 'gap' => $gap])) ?>
+                            </span>
+                            <span class="duel-standing-time">
+                                <?= $daysLeft > 0 ? e(t('season.days_left', ['n' => $daysLeft])) : e(t('season.ends_today')) ?>
+                            </span>
+                        </p>
                         <p class="muted small"><?= e(t('duels.ends_on', ['date' => format_date_eu((string) ($d['end_date'] ?? '')) ])) ?></p>
                         <form method="post" action="/?page=duels" class="inline-form">
                             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">

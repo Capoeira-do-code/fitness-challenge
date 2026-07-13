@@ -712,6 +712,9 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'analytics_view', 'TEXT NOT NULL DEFAULT "total"');
     ensure_column($pdo, 'users', 'profile_layout_json', 'TEXT');
     ensure_column($pdo, 'users', 'avatar_frame', "TEXT NOT NULL DEFAULT 'none'");
+    // The team whose data the user is currently looking at. Persisted so every page
+    // agrees on which team is active instead of silently falling back to the first.
+    ensure_column($pdo, 'users', 'active_team_id', 'INTEGER');
     ensure_column($pdo, 'users', 'meal_calendar_view', 'TEXT NOT NULL DEFAULT "week"');
     ensure_column($pdo, 'users', 'maintenance_calories', 'REAL');
     ensure_column($pdo, 'users', 'calorie_burn_goal', 'REAL');

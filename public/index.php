@@ -4925,7 +4925,11 @@ if ($page === 'team') {
         ]);
     }
 
-    $teamId = isset($_GET['team_id']) ? (int) $_GET['team_id'] : (int) $userTeams[0]['id'];
+    // Active team: an explicit ?team_id wins, otherwise the one the user last chose,
+    // otherwise their first. Persisting it means the rest of the app stops silently
+    // defaulting to "whichever team came first out of the database".
+    $storedTeamId = (int) ($currentUser['active_team_id'] ?? 0);
+    $teamId = isset($_GET['team_id']) ? (int) $_GET['team_id'] : $storedTeamId;
     $team = null;
     foreach ($userTeams as $candidate) {
         if ((int) $candidate['id'] === $teamId) {
@@ -4935,6 +4939,14 @@ if ($page === 'team') {
     }
     if ($team === null) {
         $team = $userTeams[0];
+    }
+    if ((int) $team['id'] !== $storedTeamId) {
+        db_execute(
+            $pdo,
+            'UPDATE users SET active_team_id = :t WHERE id = :id',
+            [':t' => (int) $team['id'], ':id' => (int) $currentUser['id']]
+        );
+        $currentUser['active_team_id'] = (int) $team['id'];
     }
 
     $settings = challenge_settings($pdo, $config);

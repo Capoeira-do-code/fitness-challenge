@@ -21,9 +21,6 @@ $muscleLabel = static fn(string $m): string => $m !== '' ? ucfirst($m) : '';
             <a class="btn btn-ghost small" href="/?page=workouts">← <?= e(t('workouts.title')) ?></a>
         <?php else: ?>
             <div class="inline-actions-mini">
-                <?php if (!empty($wkActiveSession)): ?>
-                    <a class="btn btn-primary small" href="/?page=workouts&session_id=<?= (int) $wkActiveSession['id'] ?>"><?= e(t('workouts.resume_session')) ?></a>
-                <?php endif; ?>
                 <a class="btn btn-ghost small" href="/?page=workouts&view=stats"><?= e(t('workouts.stats')) ?></a>
             </div>
         <?php endif; ?>
@@ -53,10 +50,49 @@ $muscleLabel = static fn(string $m): string => $m !== '' ? ucfirst($m) : '';
         </article>
     </div>
 
+    <?php // Continuing a live session beats every other action on this page, so it gets
+          // the top slot and the only primary button while it exists. ?>
+    <?php if (!empty($wkActiveSession)): ?>
+        <a class="workouts-resume-banner" href="/?page=workouts&session_id=<?= (int) $wkActiveSession['id'] ?>">
+            <span class="workouts-resume-dot" aria-hidden="true"></span>
+            <span class="workouts-resume-copy">
+                <strong><?= e(t('workouts.resume_session')) ?></strong>
+                <small><?= e((string) ($wkActiveSession['title'] ?? '') !== '' ? (string) $wkActiveSession['title'] : t('workouts.session')) ?></small>
+            </span>
+            <span class="workouts-resume-go" aria-hidden="true">&rarr;</span>
+        </a>
+    <?php endif; ?>
+
+    <?php // Two distinct things, spelled out: log a workout right now without a routine,
+          // or build a routine you can reuse. Starting from a routine lives on each card. ?>
+    <div class="workouts-start-grid">
+        <form method="post" action="/?page=workouts" class="workouts-start-card">
+            <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
+            <input type="hidden" name="action" value="session_start">
+            <span class="workouts-start-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
+            <span class="workouts-start-copy">
+                <strong><?= e(t('workouts.start_empty')) ?></strong>
+                <small><?= e(t('workouts.start_empty_hint')) ?></small>
+            </span>
+            <button type="submit" class="btn btn-primary small"<?= !empty($wkActiveSession) ? ' disabled title="' . e(t('workouts.finish_active_first')) . '"' : '' ?>><?= e(t('workouts.start_now')) ?></button>
+        </form>
+
+        <div class="workouts-start-card">
+            <span class="workouts-start-icon" aria-hidden="true"><?= activity_icon_svg('check') ?></span>
+            <span class="workouts-start-copy">
+                <strong><?= e(t('workouts.new_routine')) ?></strong>
+                <small><?= e(t('workouts.new_routine_hint')) ?></small>
+            </span>
+            <button type="button" class="btn btn-ghost small" data-app-modal-open="wk-new-routine-modal"><?= e(t('common.create')) ?></button>
+        </div>
+    </div>
+
     <article class="panel">
         <div class="panel-head">
-            <div><p class="eyebrow"><?= count(array_filter((array) ($wkRoutines ?? []), static fn($r) => (int) ($r['is_archived'] ?? 0) === 0)) ?></p><h2><?= e(t('workouts.title')) ?></h2></div>
-            <button type="button" class="btn btn-primary small" data-app-modal-open="wk-new-routine-modal"><?= e(t('workouts.new_routine')) ?></button>
+            <div>
+                <p class="eyebrow"><?= count(array_filter((array) ($wkRoutines ?? []), static fn($r) => (int) ($r['is_archived'] ?? 0) === 0)) ?> <?= e(t('workouts.routines')) ?></p>
+                <h2><?= e(t('workouts.your_routines')) ?></h2>
+            </div>
         </div>
 
         <?php
@@ -67,7 +103,7 @@ $muscleLabel = static fn(string $m): string => $m !== '' ? ucfirst($m) : '';
             <div class="empty-state">
                 <span class="empty-state-icon"><?= activity_icon_svg('dumbbell') ?></span>
                 <p class="muted"><?= e(t('workouts.no_routines')) ?></p>
-                <button type="button" class="btn btn-primary small" data-app-modal-open="wk-new-routine-modal"><?= e(t('workouts.new_routine')) ?></button>
+                <p class="muted small"><?= e(t('workouts.no_routines_hint')) ?></p>
             </div>
         <?php else: ?>
             <div class="workouts-routine-grid">
@@ -99,21 +135,13 @@ $muscleLabel = static fn(string $m): string => $m !== '' ? ucfirst($m) : '';
                                 <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
                                 <input type="hidden" name="action" value="session_start">
                                 <input type="hidden" name="routine_id" value="<?= $rid ?>">
-                                <button type="submit" class="btn btn-primary small"><?= e(t('workouts.start_routine')) ?></button>
+                                <button type="submit" class="btn btn-primary small"<?= !empty($wkActiveSession) ? ' disabled title="' . e(t('workouts.finish_active_first')) . '"' : '' ?>><?= e(t('workouts.start_routine')) ?></button>
                             </form>
                         </div>
                     </article>
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
-
-        <div class="workouts-list-actions">
-            <form method="post" action="/?page=workouts" class="inline-form">
-                <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
-                <input type="hidden" name="action" value="session_start">
-                <button type="submit" class="btn btn-ghost small"><?= e(t('workouts.start_empty')) ?></button>
-            </form>
-        </div>
 
         <?php if ($archivedRoutines !== []): ?>
             <details class="workouts-archived">
@@ -202,7 +230,7 @@ $muscleLabel = static fn(string $m): string => $m !== '' ? ucfirst($m) : '';
                 <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
                 <input type="hidden" name="action" value="session_start">
                 <input type="hidden" name="routine_id" value="<?= $rid ?>">
-                <button type="submit" class="btn btn-primary small"><?= e(t('workouts.start_routine')) ?></button>
+                <button type="submit" class="btn btn-primary small"<?= !empty($wkActiveSession) ? ' disabled title="' . e(t('workouts.finish_active_first')) . '"' : '' ?>><?= e(t('workouts.start_routine')) ?></button>
             </form>
         </div>
         <?php if (($wkRoutineExercises ?? []) === []): ?>

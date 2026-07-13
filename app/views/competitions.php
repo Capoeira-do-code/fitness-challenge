@@ -214,18 +214,36 @@ $duelActionForm = static function (string $action, string $field, int $id, strin
         <?php endif; ?>
     </article>
 
-    <article class="panel">
-        <div class="panel-head"><h2><?= e(t('competitions.create_team')) ?></h2></div>
-        <form method="post" action="/?page=competitions" class="control-strip wrap">
-            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-            <input type="hidden" name="action" value="squad_create">
-            <label class="friends-add-select">
-                <span class="sr-only"><?= e(t('competitions.team_name')) ?></span>
-                <input type="text" name="name" maxlength="60" placeholder="<?= e(t('competitions.team_name')) ?>" required>
-            </label>
-            <button class="btn btn-primary" type="submit"><?= e(t('competitions.create')) ?></button>
-        </form>
-    </article>
+    <?php // Creating a team is the main action only when you have none. Once you belong
+          // to a team it becomes a deliberate, secondary step, so the page stops looking
+          // like it forgot you already have one. ?>
+    <?php if ($mySquads === []): ?>
+        <article class="panel">
+            <div class="panel-head"><h2><?= e(t('competitions.create_team')) ?></h2></div>
+            <form method="post" action="/?page=competitions" class="control-strip wrap">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="squad_create">
+                <label class="friends-add-select">
+                    <span class="sr-only"><?= e(t('competitions.team_name')) ?></span>
+                    <input type="text" name="name" maxlength="60" placeholder="<?= e(t('competitions.team_name')) ?>" required>
+                </label>
+                <button class="btn btn-primary" type="submit"><?= e(t('competitions.create')) ?></button>
+            </form>
+        </article>
+    <?php else: ?>
+        <details class="panel squad-create-secondary">
+            <summary><?= e(t('competitions.create_another_team')) ?></summary>
+            <form method="post" action="/?page=competitions" class="control-strip wrap">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="squad_create">
+                <label class="friends-add-select">
+                    <span class="sr-only"><?= e(t('competitions.team_name')) ?></span>
+                    <input type="text" name="name" maxlength="60" placeholder="<?= e(t('competitions.team_name')) ?>" required>
+                </label>
+                <button class="btn btn-ghost" type="submit"><?= e(t('competitions.create')) ?></button>
+            </form>
+        </details>
+    <?php endif; ?>
 
     <?php if ($done !== []): ?>
         <article class="panel">
