@@ -872,7 +872,12 @@ body.theme-active-dark .theme-toggle-icon-moon {
 }
 
 .screen {
-    animation: screenIn 0.22s ease both;
+    /* `both` retains the final keyframe forever, and a retained transform - even the
+       identity - makes .screen a containing block for every position:fixed descendant.
+       That is why modals inside a page were being centred against the page instead of
+       the viewport (visible as a card hanging off-screen in landscape). `backwards`
+       animates identically and drops the transform once the animation ends. */
+    animation: screenIn 0.22s ease backwards;
 }
 
 @keyframes screenIn {
@@ -19494,4 +19499,18 @@ body {
         top: calc(4.8rem + env(safe-area-inset-top));
         bottom: auto;
     }
+}
+
+/* A tall modal scrolls inside its card, and the close button lived at the top of that
+   scroll area: scroll down to reach the frames and the X was gone. Pin the header. */
+.app-modal-card > .app-modal-head {
+    position: sticky;
+    top: calc(-1 * clamp(1.2rem, 3vw, 1.6rem));
+    z-index: 2;
+    margin-top: calc(-1 * clamp(1.2rem, 3vw, 1.6rem));
+    padding-top: clamp(1.2rem, 3vw, 1.6rem);
+    padding-bottom: 0.5rem;
+    background: inherit;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
 }
