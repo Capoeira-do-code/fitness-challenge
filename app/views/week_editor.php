@@ -968,6 +968,53 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
         const createTrigger = card.querySelector('[data-custom-habit-create]');
         const status = card.querySelector('[data-custom-habit-status]');
         const existingWrap = card.querySelector('[data-custom-habit-existing]');
+        const panelPlaceholder = document.createComment('custom-habit-panel');
+
+        const closeCustomHabitPanel = () => {
+            if (panel.hidden) {
+                return;
+            }
+            panel.hidden = true;
+            panel.classList.remove('is-portaled');
+            panel.removeAttribute('style');
+            if (panelPlaceholder.parentNode) {
+                panelPlaceholder.replaceWith(panel);
+            }
+            toggle.setAttribute('aria-expanded', 'false');
+        };
+
+        const openCustomHabitPanel = () => {
+            if (!panel.parentNode) {
+                return;
+            }
+            panel.replaceWith(panelPlaceholder);
+            document.body.appendChild(panel);
+            panel.hidden = false;
+            panel.classList.add('is-portaled');
+            panel.style.position = 'fixed';
+            // Portaled sheets must sit above the fixed mobile navigation; otherwise
+            // the nav steals taps from the last habit or action in the panel.
+            panel.style.zIndex = '10080';
+            if (window.matchMedia('(max-width: 700px)').matches) {
+                panel.style.left = '0.6rem';
+                panel.style.right = '0.6rem';
+                panel.style.bottom = 'calc(0.6rem + env(safe-area-inset-bottom))';
+                panel.style.top = 'auto';
+                panel.style.width = 'auto';
+                panel.style.maxWidth = 'none';
+            } else {
+                const rect = toggle.getBoundingClientRect();
+                const width = Math.min(320, window.innerWidth - 16);
+                panel.style.width = width + 'px';
+                panel.style.maxWidth = width + 'px';
+                panel.style.left = Math.max(8, Math.min(window.innerWidth - width - 8, rect.right - width)) + 'px';
+                panel.style.top = Math.min(window.innerHeight - 16, rect.bottom + 6) + 'px';
+                panel.style.bottom = 'auto';
+            }
+            toggle.setAttribute('aria-expanded', 'true');
+            form.hidden = true;
+            setStatus('', '');
+        };
 
         const setStatus = (message, className) => {
             if (!(status instanceof HTMLElement)) {
@@ -980,11 +1027,25 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
         // The panel opens on the list of habits you already have. Creating is a
         // deliberate second step, so you can no longer make a duplicate habit
         // without first seeing that it exists.
+        toggle.setAttribute('aria-expanded', 'false');
         toggle.addEventListener('click', () => {
-            panel.hidden = !panel.hidden;
-            if (!panel.hidden) {
-                form.hidden = true;
-                setStatus('', '');
+            if (panel.hidden) {
+                openCustomHabitPanel();
+            } else {
+                closeCustomHabitPanel();
+            }
+        });
+        document.addEventListener('pointerdown', (event) => {
+            const target = event.target;
+            if (panel.hidden || !(target instanceof Node) || panel.contains(target) || toggle.contains(target)) {
+                return;
+            }
+            closeCustomHabitPanel();
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !panel.hidden) {
+                closeCustomHabitPanel();
+                toggle.focus();
             }
         });
 
@@ -1039,6 +1100,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                             box.parentElement.remove();
                         }
                     });
+                    panel.querySelectorAll('[data-custom-habit-code="' + code + '"]').forEach((row) => row.remove());
                     setStatus('', '');
                 } catch (error) {
                     setStatus(labels.customHabitError, 'save-status error');
@@ -1095,6 +1157,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                     addHabitToCard(targetCard, json.habit, targetCard === card);
                     addCustomHabitRow(targetCard, json.habit);
                 });
+                addCustomHabitRow(panel, json.habit);
 
                 setStatus(labels.customHabitCreated, 'save-status ok');
                 input.value = '';

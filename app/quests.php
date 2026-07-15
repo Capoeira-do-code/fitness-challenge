@@ -561,9 +561,105 @@ function seasons_ensure_schema(PDO $pdo): void
             name TEXT NOT NULL,
             start_date TEXT NOT NULL,
             end_date TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            updated_at TEXT
         )'
     );
+    ensure_column($pdo, 'seasons', 'updated_at', 'TEXT');
+}
+
+/** @return array<int,array<string,mixed>> */
+function seasons_list(PDO $pdo): array
+{
+    seasons_ensure_schema($pdo);
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT * FROM seasons
+         ORDER BY start_date DESC, end_date DESC, COALESCE(updated_at, created_at) DESC'
+    );
+}
+
+function season_admin_save(PDO $pdo, ?int $seasonId, string $key, string $name, string $startDate, string $endDate, int $actorUserId): int
+{
+    seasons_ensure_schema($pdo);
+    $key = trim($key);
+    $name = trim($name);
+    if ($key === '' || preg_match('/^[a-z0-9_-]+$/i', $key) !== 1) {
+        throw new InvalidArgumentException('Season key may only contain letters, numbers, hyphens and underscores.');
+    }
+    if ($name === '') {
+        throw new InvalidArgumentException('Season name is required.');
+    }
+    $parseDate = static function (string $value): ?DateTimeImmutable {
+        $value = trim($value);
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+        $errors = DateTimeImmutable::getLastErrors();
+        if (!$date instanceof DateTimeImmutable || ($errors !== false && ((int) $errors['warning_count'] > 0 || (int) $errors['error_count'] > 0))) {
+            return null;
+        }
+
+        return $date->format('Y-m-d') === $value ? $date : null;
+    };
+    $start = $parseDate($startDate);
+    $end = $parseDate($endDate);
+    if (!$start instanceof DateTimeImmutable || !$end instanceof DateTimeImmutable) {
+        throw new InvalidArgumentException('Season dates are invalid.');
+    }
+    $startDate = $start->format('Y-m-d');
+    $endDate = $end->format('Y-m-d');
+    if ($endDate < $startDate) {
+        throw new InvalidArgumentException('Season end date must be on or after its start date.');
+    }
+
+    $existing = $seasonId !== null && $seasonId > 0
+        ? db_fetch_one($pdo, 'SELECT * FROM seasons WHERE id = :id', [':id' => $seasonId])
+        : null;
+    $duplicate = db_fetch_one(
+        $pdo,
+        'SELECT id FROM seasons WHERE season_key = :key AND (:id = 0 OR id != :id) LIMIT 1',
+        [':key' => $key, ':id' => (int) ($seasonId ?? 0)]
+    );
+    if ($duplicate !== null) {
+        throw new InvalidArgumentException('That season key is already in use.');
+    }
+    $now = now_iso();
+    if ($existing !== null) {
+        db_execute(
+            $pdo,
+            'UPDATE seasons
+             SET season_key = :key, name = :name, start_date = :start, end_date = :end, updated_at = :now
+             WHERE id = :id',
+            [':key' => $key, ':name' => $name, ':start' => $startDate, ':end' => $endDate, ':now' => $now, ':id' => (int) $existing['id']]
+        );
+        audit_log($pdo, $actorUserId, 'season_updated', 'season', (string) $existing['id'], 'Season updated.', audit_snapshot($existing), audit_snapshot(db_fetch_one($pdo, 'SELECT * FROM seasons WHERE id = :id', [':id' => (int) $existing['id']])));
+
+        return (int) $existing['id'];
+    }
+
+    db_execute(
+        $pdo,
+        'INSERT INTO seasons (season_key, name, start_date, end_date, created_at, updated_at)
+         VALUES (:key, :name, :start, :end, :now, :now)',
+        [':key' => $key, ':name' => $name, ':start' => $startDate, ':end' => $endDate, ':now' => $now]
+    );
+    $createdId = (int) $pdo->lastInsertId();
+    audit_log($pdo, $actorUserId, 'season_created', 'season', (string) $createdId, 'Season created.', null, audit_snapshot(db_fetch_one($pdo, 'SELECT * FROM seasons WHERE id = :id', [':id' => $createdId])));
+
+    return $createdId;
+}
+
+function season_admin_delete(PDO $pdo, int $seasonId, int $actorUserId): bool
+{
+    seasons_ensure_schema($pdo);
+    $existing = db_fetch_one($pdo, 'SELECT * FROM seasons WHERE id = :id', [':id' => $seasonId]);
+    if ($existing === null) {
+        return false;
+    }
+    db_execute($pdo, 'DELETE FROM seasons WHERE id = :id', [':id' => $seasonId]);
+    audit_log($pdo, $actorUserId, 'season_deleted', 'season', (string) $seasonId, 'Season deleted.', audit_snapshot($existing), null);
+
+    return true;
 }
 
 /**
@@ -582,6 +678,19 @@ function seasons_current(PDO $pdo, ?string $date = null): array
         $dt = new DateTimeImmutable('today');
     }
 
+    $dateKey = $dt->format('Y-m-d');
+    $configured = db_fetch_one(
+        $pdo,
+        'SELECT * FROM seasons
+         WHERE start_date <= :date AND end_date >= :date
+         ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
+         LIMIT 1',
+        [':date' => $dateKey]
+    );
+    if ($configured !== null) {
+        return $configured;
+    }
+
     $year = (int) $dt->format('Y');
     $quarter = (int) ceil(((int) $dt->format('n')) / 3);
     $key = $year . '-Q' . $quarter;
@@ -597,8 +706,8 @@ function seasons_current(PDO $pdo, ?string $date = null): array
 
     db_execute(
         $pdo,
-        'INSERT OR IGNORE INTO seasons (season_key, name, start_date, end_date, created_at)
-         VALUES (:k, :n, :s, :e, :now)',
+        'INSERT OR IGNORE INTO seasons (season_key, name, start_date, end_date, created_at, updated_at)
+         VALUES (:k, :n, :s, :e, :now, :now)',
         [
             ':k' => $key,
             ':n' => t('season.name', ['q' => $quarter, 'y' => $year]),

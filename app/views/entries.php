@@ -531,7 +531,7 @@ if ($entryMode === 'calendar') {
                             <?php endif; ?>
                         </a>
                         <figcaption>
-                            <strong><?= e((string) ($photo['display_name'] ?? '')) ?></strong>
+                            <a class="user-inline-link" href="/?page=profile&amp;user_id=<?= (int) ($photo['user_id'] ?? 0) ?>"><strong><?= e((string) ($photo['display_name'] ?? '')) ?></strong></a>
                             <span><?= e(format_date_eu((string) ($photo['log_date'] ?? ''))) ?> · <?= e((string) ($categoryLabels[$category] ?? $category)) ?></span>
                             <?php if (!empty($photo['caption'])): ?>
                                 <span><?= e((string) $photo['caption']) ?></span>

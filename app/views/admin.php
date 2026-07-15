@@ -6,9 +6,9 @@ $days = [];
 for ($i = 0; $i < 7; $i++) {
     $days[$i] = t('weekday.' . $i);
 }
-$entityTypes = ['daily_log', 'approval_request', 'user', 'team_membership', 'goal', 'achievement', 'workout_type', 'photo_entry', 'app_setting', 'system_backup', 'motivational_quote'];
+$entityTypes = ['daily_log', 'approval_request', 'user', 'team_membership', 'goal', 'achievement', 'workout_type', 'exercise_definition', 'workout_rank_tier', 'season', 'photo_entry', 'app_setting', 'system_backup', 'motivational_quote'];
 $activeSection = (string) ($_GET['section'] ?? '');
-$allowedSections = ['users', 'challenge', 'app', 'notion', 'telegram', 'backups', 'habits', 'workout_types', 'achievements', 'motivational_quotes', 'xp', 'audit'];
+$allowedSections = ['users', 'challenge', 'app', 'notion', 'telegram', 'backups', 'habits', 'workout_types', 'training', 'achievements', 'motivational_quotes', 'xp', 'audit'];
 if (!in_array($activeSection, $allowedSections, true)) {
     $activeSection = '';
 }
@@ -17,6 +17,7 @@ $createUserMode = (string) ($_GET['create_user'] ?? '') === '1';
 $selectedHabitId = (string) ($_GET['habit_id'] ?? '');
 $selectedTypeId = (string) ($_GET['type_id'] ?? '');
 $selectedAchievementId = (string) ($_GET['achievement_id'] ?? '');
+$selectedTrainingExerciseId = trim((string) ($_GET['exercise_id'] ?? ''));
 $selectedAdminAchievementId = (int) ($selectedAdminAchievementId ?? 0);
 $adminAchievementStats = is_array($adminAchievementStats ?? null) ? (array) $adminAchievementStats : [];
 $selectedAdminAchievement = null;
@@ -38,6 +39,7 @@ $sectionRows = [
     'backups' => 'Backups',
     'habits' => 'Habits',
     'workout_types' => 'Workout Types',
+    'training' => 'Training & ranked',
     'achievements' => 'Achievements',
     'motivational_quotes' => t('admin.motivational_quotes'),
     'xp' => t('admin.xp_title'),
@@ -1167,6 +1169,153 @@ try {
         <?php endforeach; ?>
     </article>
 
+    <article class="panel settings-panel<?= $activeSection === 'training' ? ' active' : '' ?>" data-spa-section="training" <?= $activeSection === 'training' ? '' : 'hidden' ?>>
+        <div class="panel-head admin-section-list" data-spa-show-when-no-param="exercise_id" <?= $selectedTrainingExerciseId !== '' ? 'hidden' : '' ?>>
+            <div>
+                <p class="eyebrow">Training</p>
+                <h2>Training &amp; ranked</h2>
+                <p class="muted admin-section-help">Manage strength tiers, seasons, exercise guides and example media in one place.</p>
+            </div>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr; <?= e(t('common.back')) ?></a>
+        </div>
+
+        <div class="stack-lg admin-section-list admin-training-dashboard" data-spa-show-when-no-param="exercise_id" <?= $selectedTrainingExerciseId !== '' ? 'hidden' : '' ?>>
+            <details class="admin-training-block" open>
+                <summary>
+                    <span><strong>Rank tiers</strong><small>Thresholds and visual identity</small></span>
+                    <span class="badge"><?= count((array) ($adminRankTiers ?? [])) ?></span>
+                </summary>
+                <form method="post" action="/?page=admin" class="stack compact-form admin-rank-tier-form">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="save_rank_tiers">
+                    <div class="admin-rank-tier-list">
+                        <?php foreach ((array) ($adminRankTiers ?? []) as $tier): ?>
+                            <?php $tierKey = (string) ($tier['tier_key'] ?? ''); ?>
+                            <fieldset class="admin-rank-tier-row">
+                                <legend><span class="rank-dot" style="--rank-color:<?= e((string) ($tier['color'] ?? '#64748b')) ?>"></span><?= e(ucwords($tierKey)) ?></legend>
+                                <label>Points <input type="number" step="0.1" min="0" name="tiers[<?= e($tierKey) ?>][threshold]" value="<?= e((string) ($tier['threshold'] ?? 0)) ?>"></label>
+                                <label>Colour <input type="color" name="tiers[<?= e($tierKey) ?>][color]" value="<?= e((string) ($tier['color'] ?? '#64748b')) ?>"></label>
+                                <label>Order <input type="number" name="tiers[<?= e($tierKey) ?>][sort_order]" value="<?= (int) ($tier['sort_order'] ?? 0) ?>"></label>
+                                <input type="hidden" name="tiers[<?= e($tierKey) ?>][active]" value="0">
+                                <label class="check"><input type="checkbox" name="tiers[<?= e($tierKey) ?>][active]" value="1" <?= (int) ($tier['active'] ?? 0) === 1 ? 'checked' : '' ?> <?= $tierKey === 'unranked' ? 'disabled' : '' ?>><?= e(t('common.active')) ?></label>
+                                <?php if ($tierKey === 'unranked'): ?><input type="hidden" name="tiers[<?= e($tierKey) ?>][active]" value="1"><?php endif; ?>
+                            </fieldset>
+                        <?php endforeach; ?>
+                    </div>
+                    <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+                </form>
+            </details>
+
+            <details class="admin-training-block">
+                <summary>
+                    <span><strong>Seasons</strong><small>Dates used by seasonal XP and leaderboards</small></span>
+                    <span class="badge"><?= count((array) ($adminSeasons ?? [])) ?></span>
+                </summary>
+                <div class="stack admin-season-manager">
+                    <form method="post" action="/?page=admin" class="mini-card editable-card admin-season-form">
+                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                        <input type="hidden" name="action" value="save_season">
+                        <div>
+                            <strong>Create season</strong>
+                            <p class="muted small">Custom seasons take priority over the automatic quarterly season for their date range.</p>
+                        </div>
+                        <label>Key <input type="text" name="season_key" pattern="[A-Za-z0-9_-]+" placeholder="2026-summer" required></label>
+                        <label>Name <input type="text" name="season_name" placeholder="Summer Strength" required></label>
+                        <label>Starts <input type="date" name="start_date" value="<?= e(date('Y-m-d')) ?>" required></label>
+                        <label>Ends <input type="date" name="end_date" value="<?= e(date('Y-m-d', strtotime('+3 months -1 day'))) ?>" required></label>
+                        <button class="btn btn-secondary small" type="submit"><?= e(t('common.create')) ?></button>
+                    </form>
+                    <div class="stack admin-season-list">
+                        <?php foreach ((array) ($adminSeasons ?? []) as $season): ?>
+                            <?php $seasonIsCurrent = (string) ($season['start_date'] ?? '') <= date('Y-m-d') && (string) ($season['end_date'] ?? '') >= date('Y-m-d'); ?>
+                            <details class="mini-card admin-season-item">
+                                <summary>
+                                    <span><strong><?= e((string) ($season['name'] ?? '')) ?></strong><small><?= e(format_date_eu((string) ($season['start_date'] ?? ''))) ?> &ndash; <?= e(format_date_eu((string) ($season['end_date'] ?? ''))) ?></small></span>
+                                    <?= $seasonIsCurrent ? '<span class="badge badge-ok">Current</span>' : '' ?>
+                                </summary>
+                                <form method="post" action="/?page=admin" class="grid-inline compact-form admin-season-form">
+                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                    <input type="hidden" name="action" value="save_season">
+                                    <input type="hidden" name="season_id" value="<?= (int) ($season['id'] ?? 0) ?>">
+                                    <label>Key <input type="text" name="season_key" pattern="[A-Za-z0-9_-]+" value="<?= e((string) ($season['season_key'] ?? '')) ?>" required></label>
+                                    <label>Name <input type="text" name="season_name" value="<?= e((string) ($season['name'] ?? '')) ?>" required></label>
+                                    <label>Starts <input type="date" name="start_date" value="<?= e((string) ($season['start_date'] ?? '')) ?>" required></label>
+                                    <label>Ends <input type="date" name="end_date" value="<?= e((string) ($season['end_date'] ?? '')) ?>" required></label>
+                                    <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
+                                </form>
+                                <form method="post" action="/?page=admin" class="admin-danger-zone" onsubmit="return confirm('Delete this season? XP history will remain, but this date window will no longer be used.');">
+                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                    <input type="hidden" name="action" value="delete_season">
+                                    <input type="hidden" name="season_id" value="<?= (int) ($season['id'] ?? 0) ?>">
+                                    <button class="btn btn-ghost small" type="submit"><?= e(t('common.delete')) ?></button>
+                                </form>
+                            </details>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </details>
+
+            <details class="admin-training-block admin-training-exercises">
+                <summary>
+                    <span><strong>Exercise library</strong><small>Edit guides, ranking rules and example media</small></span>
+                    <span class="badge"><?= count((array) ($adminTrainingExercises ?? [])) ?></span>
+                </summary>
+                <div class="admin-training-exercises-body">
+                <div class="panel-head compact-head">
+                    <div>
+                        <p class="muted small">Choose an exercise or create a new guide with technique photos and video.</p>
+                    </div>
+                    <a class="btn btn-primary small" href="/?page=admin&section=training&exercise_id=new" data-spa-link><?= e(t('common.create')) ?></a>
+                </div>
+                <div class="settings-list compact-list admin-training-exercise-list">
+                    <?php foreach ((array) ($adminTrainingExercises ?? []) as $exercise): ?>
+                        <?php $exerciseImageUrl = trim((string) ($exercise['image_path'] ?? '')) !== '' ? media_url((string) $exercise['image_path']) : ''; ?>
+                        <a class="settings-row admin-training-exercise-row" href="/?page=admin&section=training&exercise_id=<?= (int) ($exercise['id'] ?? 0) ?>" data-spa-link>
+                            <?php if ($exerciseImageUrl !== ''): ?>
+                                <img src="<?= e($exerciseImageUrl) ?>" alt="" loading="lazy">
+                            <?php else: ?>
+                                <span class="admin-training-exercise-icon" aria-hidden="true">&#x1F3CB;</span>
+                            <?php endif; ?>
+                            <span class="admin-training-exercise-copy">
+                                <strong><?= e((string) ($exercise['name'] ?? '')) ?></strong>
+                                <small class="muted"><?= e(ucwords((string) ($exercise['muscle_group'] ?? ''))) ?> &middot; <?= e(ucwords((string) ($exercise['equipment'] ?? ''))) ?> &middot; <?= (int) (($exercise['routine_uses'] ?? 0) + ($exercise['session_uses'] ?? 0)) ?> uses</small>
+                            </span>
+                            <span class="badge <?= (int) ($exercise['active'] ?? 0) === 1 ? 'badge-ok' : 'badge-warn' ?>"><?= (int) ($exercise['active'] ?? 0) === 1 ? e(t('common.active')) : 'Hidden' ?></span>
+                            <span class="settings-chevron" aria-hidden="true">&rsaquo;</span>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+                </div>
+            </details>
+        </div>
+
+        <div class="stack admin-create-view" data-spa-param-show="exercise_id" data-spa-value="new" <?= $selectedTrainingExerciseId === 'new' ? '' : 'hidden' ?>>
+            <div class="panel-head">
+                <div><p class="eyebrow">Exercise library</p><h3>Create exercise</h3></div>
+                <a class="btn btn-ghost" href="/?page=admin&section=training" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr; <?= e(t('common.back')) ?></a>
+            </div>
+            <?php
+            $trainingExerciseFormItem = [];
+            $trainingExerciseIsNew = true;
+            require __DIR__ . '/partials/admin_training_exercise_form.php';
+            ?>
+        </div>
+
+        <?php foreach ((array) ($adminTrainingExercises ?? []) as $exercise): ?>
+            <div class="stack admin-detail-view" data-spa-param-show="exercise_id" data-spa-value="<?= (int) ($exercise['id'] ?? 0) ?>" <?= $selectedTrainingExerciseId === (string) ((int) ($exercise['id'] ?? 0)) ? '' : 'hidden' ?>>
+                <div class="panel-head">
+                    <div><p class="eyebrow">Exercise library</p><h3><?= e((string) ($exercise['name'] ?? '')) ?></h3></div>
+                    <a class="btn btn-ghost" href="/?page=admin&section=training" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr; <?= e(t('common.back')) ?></a>
+                </div>
+                <?php
+                $trainingExerciseFormItem = $exercise;
+                $trainingExerciseIsNew = false;
+                require __DIR__ . '/partials/admin_training_exercise_form.php';
+                ?>
+            </div>
+        <?php endforeach; ?>
+    </article>
+
     <article class="panel settings-panel<?= $activeSection === 'achievements' ? ' active' : '' ?>" data-spa-section="achievements" <?= $activeSection === 'achievements' ? '' : 'hidden' ?>>
         <div class="panel-head admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId !== '' ? 'hidden' : '' ?>>
             <div>
@@ -1297,6 +1446,7 @@ try {
                             <option value="penalties">Penalties</option>
                             <?php endif; ?>
                             <option value="weight">Weight</option>
+                            <option value="strength_rank">Strength rank points</option>
                             <option value="habit_completion">Habit completion</option>
                         </select>
                     </label>
@@ -1422,6 +1572,7 @@ try {
                                 <option value="penalties" <?= $achievementMetric === 'penalties' ? 'selected' : '' ?>>Penalties</option>
                                 <?php endif; ?>
                                 <option value="weight" <?= $achievementMetric === 'weight' ? 'selected' : '' ?>>Weight</option>
+                                <option value="strength_rank" <?= $achievementMetric === 'strength_rank' ? 'selected' : '' ?>>Strength rank points</option>
                                 <option value="habit_completion" <?= $achievementMetric === 'habit_completion' ? 'selected' : '' ?>>Habit completion</option>
                             </select>
                         </label>

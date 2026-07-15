@@ -33,10 +33,16 @@ $renderAvatarEditor = static function (array $currentUser, string $settingsView,
                     <small class="muted">@<?= e((string) ($currentUser['username'] ?? '')) ?></small>
                 </div>
             </div>
+            <div class="settings-avatar-source-actions">
             <label class="btn btn-secondary settings-avatar-upload-trigger">
                 <?= e(t('settings.avatar_file')) ?>
-                <input class="sr-only" type="file" name="avatar" accept="image/*" required data-image-crop-input>
+                <input class="sr-only" type="file" name="avatar" accept="image/*" data-image-crop-input>
             </label>
+            <label class="btn btn-ghost settings-avatar-upload-trigger">
+                <?= e(t('settings.avatar_camera')) ?>
+                <input class="sr-only" type="file" name="avatar_camera" accept="image/*" capture="user" data-image-crop-input>
+            </label>
+            </div>
             <p class="muted small settings-avatar-helper"><?= e(t('settings.avatar_crop_starts_after_select')) ?></p>
             <div class="image-cropper settings-image-cropper" data-image-cropper hidden>
                 <canvas width="320" height="320" data-image-crop-canvas></canvas>
@@ -46,11 +52,57 @@ $renderAvatarEditor = static function (array $currentUser, string $settingsView,
                     <input type="range" min="1" max="3" step="0.01" value="1" data-image-crop-zoom>
                 </label>
             </div>
-            <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+            <div class="settings-avatar-submit-actions">
+                <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+                <a class="btn btn-ghost" href="/?page=settings"><?= e(t('common.cancel')) ?></a>
+            </div>
         </form>
+        <?php if ($settingsAvatarUrl !== ''): ?>
+            <form method="post" action="/?page=settings&amp;view=avatar" class="settings-avatar-remove-form" data-confirm="<?= e(t('settings.avatar_remove_confirm')) ?>">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="remove_avatar">
+                <button class="btn btn-ghost small is-danger" type="submit" data-confirm-action="<?= e(t('settings.avatar_remove_confirm')) ?>"><?= e(t('settings.avatar_remove')) ?></button>
+            </form>
+        <?php endif; ?>
     </article>
     <?php
 };
+
+$settingsSections = [
+    'avatar' => ['title' => t('settings.nav_profile'), 'hint' => t('settings.nav_profile_hint'), 'icon' => 'user'],
+    'goals' => ['title' => t('settings.goals_title'), 'hint' => t('settings.nav_goals_hint'), 'icon' => 'target'],
+    'preferences' => ['title' => t('settings.preferences'), 'hint' => t('settings.nav_preferences_hint'), 'icon' => 'sliders'],
+    'privacy' => ['title' => t('privacy.title'), 'hint' => t('privacy.subtitle'), 'icon' => 'shield'],
+    'integrations' => ['title' => t('settings.integrations'), 'hint' => t('settings.nav_integrations_hint'), 'icon' => 'link'],
+    'account' => ['title' => t('settings.account'), 'hint' => t('settings.nav_account_hint'), 'icon' => 'shield'],
+];
+
+if ($settingsView === '') {
+    ?>
+    <section class="screen stack-lg settings-page settings-index-screen">
+        <div class="hero-panel settings-hero">
+            <div class="hero-copy hero-copy-page-title">
+                <p class="eyebrow"><?= e(t('nav.settings')) ?></p>
+                <h1><?= e(t('settings.title')) ?></h1>
+                <p class="muted"><?= e(t('settings.subtitle')) ?></p>
+            </div>
+        </div>
+        <nav class="settings-nav-grid" aria-label="<?= e(t('settings.title')) ?>">
+            <?php foreach ($settingsSections as $sectionKey => $section): ?>
+                <a class="settings-nav-item" href="/?page=settings&amp;view=<?= e($sectionKey) ?>">
+                    <span class="settings-nav-icon" aria-hidden="true"><?= activity_icon_svg((string) $section['icon']) ?></span>
+                    <span class="settings-nav-copy">
+                        <strong><?= e((string) $section['title']) ?></strong>
+                        <small><?= e((string) $section['hint']) ?></small>
+                    </span>
+                    <span class="settings-nav-arrow" aria-hidden="true">›</span>
+                </a>
+            <?php endforeach; ?>
+        </nav>
+    </section>
+    <?php
+    return;
+}
 
 if ($settingsView === 'avatar') {
     ?>
@@ -69,21 +121,21 @@ if ($settingsView === 'avatar') {
     return;
 }
 ?>
-<section class="screen stack-lg settings-page">
-    <div class="hero-panel settings-hero">
-        <div class="hero-copy hero-copy-page-title">
+<section class="screen stack-lg settings-page" data-settings-section data-unsaved-message="<?= e(t('settings.unsaved_confirm')) ?>">
+    <div class="settings-focused-head settings-section-head">
+        <div>
             <p class="eyebrow"><?= e(t('nav.settings')) ?></p>
-            <h1><?= e(t('settings.title')) ?></h1>
-            <p class="muted"><?= e(t('settings.subtitle')) ?></p>
+            <h1><?= e((string) ($settingsSections[$settingsView]['title'] ?? t('settings.title'))) ?></h1>
+            <p class="muted"><?= e((string) ($settingsSections[$settingsView]['hint'] ?? t('settings.subtitle'))) ?></p>
         </div>
+        <a class="btn btn-ghost" href="/?page=settings">← <?= e(t('common.back')) ?></a>
     </div>
 
-    <div class="grid-two settings-top-grid">
-        <?php $renderAvatarEditor($currentUser, $settingsView, $settingsAvatarUrl); ?>
-
+    <?php if ($settingsView === 'account'): ?>
         <article class="panel settings-security-card">
             <h2><?= e(t('profile.security')) ?></h2>
-            <form method="post" action="/?page=settings" class="stack compact-form">
+            <p class="muted small"><?= e(t('settings.account_security_hint')) ?></p>
+            <form method="post" action="/?page=settings&amp;view=account" class="stack compact-form settings-dirty-form" data-settings-dirty-form>
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="change_password">
                 <label><?= e(t('common.current_password')) ?><input type="password" name="current_password" required></label>
@@ -92,8 +144,31 @@ if ($settingsView === 'avatar') {
                 <button class="btn btn-secondary" type="submit"><?= e(t('profile.update_password')) ?></button>
             </form>
         </article>
-    </div>
+    <?php endif; ?>
 
+    <?php if ($settingsView === 'privacy'): ?>
+        <?php $settingsVisibility = privacy_normalize((string) ($currentUser['profile_visibility'] ?? 'public')); ?>
+        <article class="panel settings-privacy-card">
+            <h2><?= e(t('privacy.title')) ?></h2>
+            <p class="muted small"><?= e(t('privacy.subtitle')) ?></p>
+            <form method="post" action="/?page=settings&amp;view=privacy" class="stack settings-dirty-form" data-settings-dirty-form>
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="update_settings_privacy">
+                <div class="privacy-options">
+                    <?php foreach (['public' => 'privacy.public', 'friends' => 'privacy.friends', 'private' => 'privacy.private'] as $value => $labelKey): ?>
+                        <label class="privacy-option<?= $settingsVisibility === $value ? ' is-selected' : '' ?>">
+                            <input type="radio" name="profile_visibility" value="<?= e($value) ?>" <?= $settingsVisibility === $value ? 'checked' : '' ?>>
+                            <span class="privacy-option-label"><?= e(t($labelKey)) ?></span>
+                            <span class="privacy-option-hint muted"><?= e(t($labelKey . '_hint')) ?></span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+            </form>
+        </article>
+    <?php endif; ?>
+
+    <?php if ($settingsView === 'goals'): ?>
     <article class="panel settings-goals-card">
         <div class="panel-head compact-head">
             <div>
@@ -147,7 +222,9 @@ if ($settingsView === 'avatar') {
             <?php endif; ?>
         <?php endif; ?>
     </article>
+    <?php endif; ?>
 
+    <?php if ($settingsView === 'preferences'): ?>
     <article class="panel settings-preferences-card">
         <h2><?= e(t('settings.preferences')) ?></h2>
         <p class="eyebrow"><?= e(t('common.language')) ?></p>
@@ -155,13 +232,13 @@ if ($settingsView === 'avatar') {
         $localeScope = 'settings';
         $localeFormClass = 'stack compact-form';
         $localeSelectId = 'locale-select-settings';
-        $localeRedirectTo = '/?page=settings';
+        $localeRedirectTo = '/?page=settings&view=preferences';
         $localeShowSaveButton = true;
         $localeAsync = false;
         require __DIR__ . '/components/locale_selector.php';
         ?>
 
-        <form method="post" action="/?page=settings" class="stack compact-form settings-preferences-form">
+        <form method="post" action="/?page=settings&amp;view=preferences" class="stack compact-form settings-preferences-form settings-dirty-form" data-settings-dirty-form>
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="update_preferences">
             <div class="grid-inline">
@@ -175,6 +252,7 @@ if ($settingsView === 'avatar') {
             <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
         </form>
     </article>
+    <?php endif; ?>
 
     <?php
     $telegram = is_array($telegramSettings ?? null) ? (array) $telegramSettings : [];
@@ -184,6 +262,7 @@ if ($settingsView === 'avatar') {
     $telegramLinkCode = trim((string) ($currentUser['telegram_link_code'] ?? ''));
     $telegramDeepLink = telegram_deep_link($telegram, $telegramLinkCode);
     ?>
+    <?php if ($settingsView === 'integrations'): ?>
     <article class="panel settings-telegram-card" id="telegram">
         <h2><?= e(t('settings.telegram_title')) ?></h2>
         <p class="muted small"><?= e(t('settings.telegram_hint')) ?></p>
@@ -192,7 +271,7 @@ if ($settingsView === 'avatar') {
             <p class="muted"><?= e(t('settings.telegram_unavailable')) ?></p>
         <?php elseif (!$telegramLinked): ?>
             <?php if ($telegramLinkCode === ''): ?>
-                <form method="post" action="/?page=settings" class="stack compact-form">
+                <form method="post" action="/?page=settings&amp;view=integrations" class="stack compact-form">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="telegram_generate_link">
                     <button class="btn btn-primary" type="submit"><?= e(t('settings.telegram_link')) ?></button>
@@ -208,7 +287,7 @@ if ($settingsView === 'avatar') {
             <?php endif; ?>
         <?php else: ?>
             <p class="small"><strong><?= e(t('settings.telegram_linked')) ?></strong></p>
-            <form method="post" action="/?page=settings" class="stack compact-form">
+            <form method="post" action="/?page=settings&amp;view=integrations" class="stack compact-form settings-dirty-form" data-settings-dirty-form>
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="telegram_update_prefs">
                 <div class="toggle-row">
@@ -264,12 +343,12 @@ if ($settingsView === 'avatar') {
                 <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
             </form>
             <div class="inline-actions">
-                <form method="post" action="/?page=settings" class="stack compact-form">
+                <form method="post" action="/?page=settings&amp;view=integrations" class="stack compact-form">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="telegram_test">
                     <button class="btn btn-ghost small" type="submit"><?= e(t('settings.telegram_test')) ?></button>
                 </form>
-                <form method="post" action="/?page=settings" class="stack compact-form">
+                <form method="post" action="/?page=settings&amp;view=integrations" class="stack compact-form">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="telegram_unlink">
                     <button class="btn btn-ghost small" type="submit"><?= e(t('settings.telegram_unlink')) ?></button>
@@ -277,4 +356,5 @@ if ($settingsView === 'avatar') {
             </div>
         <?php endif; ?>
     </article>
+    <?php endif; ?>
 </section>

@@ -40,18 +40,18 @@ declare(strict_types=1);
             <div class="card-list">
                 <?php foreach (($teamMembers ?? []) as $member): ?>
                     <article class="mini-card">
-                        <div class="member-card-title">
+                        <a class="member-card-title user-profile-link" href="/?page=profile&amp;user_id=<?= (int) ($member['user_id'] ?? 0) ?>&amp;back=team&amp;team_id=<?= (int) $team['id'] ?>">
                             <?php $teamSettingsAvatarUrl = avatar_url($member); ?>
                             <?php if ($teamSettingsAvatarUrl !== ''): ?>
                                 <img class="member-avatar" src="<?= e($teamSettingsAvatarUrl) ?>" alt="<?= e((string) $member['display_name']) ?>">
                             <?php else: ?>
                                 <span class="member-avatar member-avatar-initials"><?= e(initials_for((string) $member['display_name'])) ?></span>
                             <?php endif; ?>
-                        </div>
-                        <div>
+                        </a>
+                        <a class="user-profile-link" href="/?page=profile&amp;user_id=<?= (int) ($member['user_id'] ?? 0) ?>&amp;back=team&amp;team_id=<?= (int) $team['id'] ?>">
                             <strong><?= e((string) $member['display_name']) ?></strong>
                             <span><?= e((string) $member['username']) ?> · <?= e((string) $member['role']) ?> · <?= (int) $member['active'] === 1 ? e(t('common.active')) : e(t('team.removed')) ?></span>
-                        </div>
+                        </a>
                         <form method="post" action="/?page=team_settings&team_id=<?= (int) $team['id'] ?>" class="inline-actions-mini">
                             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                             <input type="hidden" name="action" value="team_role">
@@ -81,7 +81,7 @@ declare(strict_types=1);
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="resolve_join_request">
                     <input type="hidden" name="request_id" value="<?= (int) $request['id'] ?>">
-                    <div class="join-request-meta">
+                    <a class="join-request-meta user-profile-link" href="/?page=profile&amp;user_id=<?= (int) ($request['user_id'] ?? 0) ?>">
                         <?php $joinReqAvatar = avatar_url($request); ?>
                         <?php if ($joinReqAvatar !== ''): ?>
                             <img class="member-avatar" src="<?= e($joinReqAvatar) ?>" alt="<?= e((string) $request['display_name']) ?>">
@@ -92,7 +92,7 @@ declare(strict_types=1);
                             <strong><?= e((string) $request['display_name']) ?></strong>
                             <span><?= e(format_date_eu((string) $request['requested_at'])) ?></span>
                         </div>
-                    </div>
+                    </a>
                     <div class="join-request-actions">
                         <button class="btn small btn-primary" name="decision" value="approve" type="submit" aria-label="<?= e(t('common.approve')) ?>"><?= e(t('common.approve')) ?></button>
                         <button class="btn small btn-ghost" name="decision" value="reject" type="submit" aria-label="<?= e(t('common.reject')) ?>"><?= e(t('common.reject')) ?></button>

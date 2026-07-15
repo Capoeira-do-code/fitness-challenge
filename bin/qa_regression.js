@@ -119,18 +119,23 @@ const saveRowAs = async (page, userId) => {
     check('Add workout activates one usable row after in-app navigation', rowsAfter === expectedRows && panelVisible,
         `enabled: ${workoutWasEnabled}, rows ${rowsBefore} -> ${rowsAfter}, panel visible: ${panelVisible}`);
 
-    const select = page.locator('[data-workout-row] [data-workout-select]').first();
+    // The Add button appends a required row. Populate that new row; selecting the
+    // first row can leave the appended one invalid when today's log already has a
+    // workout, so the browser correctly refuses to submit.
+    const select = page.locator('[data-workout-row] [data-workout-select]').last();
     const options = await select.locator('option').evaluateAll((els) =>
         els.map((el) => el.value).filter((v) => v && v !== '__custom__' && !v.startsWith('routine:')));
     if (options.length > 0) {
         await select.selectOption(options[0]);
     } else {
         await select.selectOption('__custom__');
-        await page.locator('[data-workout-row] [data-workout-custom-input]').first().fill('QA mobility workout');
+        await page.locator('[data-workout-row] [data-workout-custom-input]').last().fill('QA mobility workout');
     }
     await page.fill('input[name="steps"]', '8123');
-    await page.locator('[data-testid="entry-form"] button[type=submit]').first().click();
-    await page.waitForLoadState('networkidle');
+    await Promise.all([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+        page.locator('[data-testid="entry-form"] button[type=submit]').first().click(),
+    ]);
     const saved = await page.locator('.flash').first().textContent().catch(() => '');
     check('Workout entry saves and reports back', /saved|guardad|salvat/i.test(saved || ''), (saved || '').trim().slice(0, 50));
 
@@ -178,7 +183,10 @@ const saveRowAs = async (page, userId) => {
     await page.goto(`${BASE}/?page=dashboard&layout_edit=1`);
     await page.waitForLoadState('networkidle');
     const orderBefore = await page.$$eval('[data-dashboard-layout-item] input[name="dashboard_widgets[]"]', (e) => e.map((x) => x.value));
-    await page.locator('.dashboard-layout-visibility > summary').click().catch(() => {});
+    const visibilityDetails = page.locator('.dashboard-layout-visibility');
+    if (await visibilityDetails.getAttribute('open') === null) {
+        await visibilityDetails.locator(':scope > summary').click();
+    }
     await page.locator('[data-dashboard-layout-item] [data-layout-move="down"]').first().click();
     await page.locator('.dashboard-editbar-actions button[type=submit]').click();
     await page.waitForLoadState('networkidle');
@@ -195,10 +203,10 @@ const saveRowAs = async (page, userId) => {
     // desktop, and must NOT advertise a grab handle on mobile (a card cannot be
     // grabbed there - the editor covers the page).
     const DRAG_PAGES = [
-        { page: 'dashboard', item: '[data-dashboard-widget]', key: 'dashboardWidget', save: '.dashboard-editbar-actions button[type=submit]' },
-        { page: 'analytics', item: '[data-analytics-section]', key: 'analyticsSection', save: '.dashboard-editbar-actions button[type=submit]' },
-        { page: 'profile', item: '[data-profile-block]', key: 'profileBlock', save: '.dashboard-editbar-actions button[type=submit]' },
-        { page: 'team', item: '[data-team-widget]', key: 'teamWidget', save: '[data-team-layout-editor] button[type=submit]:not([name])' },
+        { page: 'dashboard', item: '[data-dashboard-widget]', attr: 'data-dashboard-widget', key: 'dashboardWidget', save: '.dashboard-editbar-actions button[type=submit]' },
+        { page: 'analytics', item: '[data-analytics-section]', attr: 'data-analytics-section', key: 'analyticsSection', save: '.dashboard-editbar-actions button[type=submit]' },
+        { page: 'profile', item: '[data-profile-block]', attr: 'data-profile-block', key: 'profileBlock', save: '.dashboard-editbar-actions button[type=submit]' },
+        { page: 'team', item: '[data-team-widget]', attr: 'data-team-widget', key: 'teamWidget', save: '[data-team-layout-editor] button[type=submit]:not([name])' },
     ];
 
     // Read the order the browser actually applies: team drives `order` from a CSS
@@ -220,18 +228,21 @@ const saveRowAs = async (page, userId) => {
             continue;
         }
 
-        // Drop onto the LOWER half of a card two slots down. Dropping on the immediate
-        // neighbour's upper half means "insert before it", which is where the card
-        // already was - a no-op that looks exactly like a broken drag.
-        const first = page.locator(target.item).first();
-        const targetCard = page.locator(target.item).nth(Math.min(2, before.length - 1));
+        // CSS order can differ from DOM order after a previous save. Resolve both
+        // cards from the actual visual order so this always moves the first visible
+        // card after the second instead of occasionally dropping onto itself.
+        const sourceKey = before[0];
+        const destinationKey = before[1];
+        const first = page.locator(`${target.item}[${target.attr}="${sourceKey}"]`);
+        const targetCard = page.locator(`${target.item}[${target.attr}="${destinationKey}"]`);
         await first.scrollIntoViewIfNeeded();
-        const a = await first.boundingBox();
+        const handle = first.locator(':scope > [data-layout-card-controls] .layout-card-drag-handle');
+        const a = await handle.boundingBox();
         const b = await targetCard.boundingBox();
-        await page.mouse.move(a.x + a.width / 2, a.y + 20);
+        await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
         await page.mouse.down();
-        await page.mouse.move(a.x + a.width / 2 + 20, a.y + 40, { steps: 5 });
-        await page.mouse.move(b.x + b.width / 2, b.y + b.height - 15, { steps: 12 });
+        await page.mouse.move(a.x + a.width / 2 + 20, a.y + 30, { steps: 5 });
+        await page.mouse.move(b.x + b.width - 4, b.y + b.height / 2, { steps: 12 });
         await page.mouse.up();
         await page.waitForTimeout(250);
 
@@ -291,11 +302,130 @@ const saveRowAs = async (page, userId) => {
         await userContext.close();
     }
 
+    /* ---------------- Shared profiles, contextual actions and Settings -------- */
+    await page.goto(`${BASE}/?page=team`);
+    await page.waitForLoadState('networkidle');
+    const memberTarget = await page.evaluate((currentId) => {
+        const links = [...document.querySelectorAll('.member-card-link[href*="page=profile"], .team-leaderboard-card[href*="page=profile"]')];
+        const link = links.find((candidate) => Number(new URL(candidate.href).searchParams.get('user_id')) !== currentId)
+            || links[0];
+        return link ? {
+            href: link.getAttribute('href') || '',
+            userId: Number(new URL(link.href).searchParams.get('user_id')),
+        } : null;
+    }, adminId);
+    check('Team member cards target the shared profile route', Boolean(memberTarget)
+        && memberTarget.href.includes('page=profile')
+        && memberTarget.href.includes('back=team')
+        && !memberTarget.href.includes('section=member'), memberTarget?.href || 'no member link');
+
+    if (memberTarget && memberTarget.userId > 0) {
+        await page.goto(`${BASE}${memberTarget.href}`);
+        await page.waitForLoadState('networkidle');
+        const externalProfile = await page.evaluate((currentId) => ({
+            isExternal: Number(new URL(location.href).searchParams.get('user_id')) !== currentId,
+            back: Boolean(document.querySelector('.context-back-btn[href*="page=team"]')),
+            avatarEdit: Boolean(document.querySelector('.profile-avatar-trigger')),
+            privateSections: document.querySelectorAll('[data-spa-section="config"], [data-spa-section="activity"]').length,
+        }), adminId);
+        if (externalProfile.isExternal) {
+            check('External profile hides owner controls and private sections', externalProfile.back
+                && !externalProfile.avatarEdit && externalProfile.privateSections === 0,
+            JSON.stringify(externalProfile));
+        } else {
+            skip('External profile hides owner controls and private sections', 'team only exposes the current account');
+        }
+
+        await page.goto(`${BASE}/?page=team&section=member&user_id=${memberTarget.userId}`);
+        await page.waitForLoadState('networkidle');
+        check('Legacy Member Detail URL redirects to shared profile',
+            new URL(page.url()).searchParams.get('page') === 'profile'
+                && new URL(page.url()).searchParams.get('back') === 'team', page.url());
+    }
+
+    await page.goto(`${BASE}/?page=settings`);
+    await page.waitForLoadState('networkidle');
+    const settingsIndex = await page.evaluate(() => ({
+        items: document.querySelectorAll('.settings-nav-item').length,
+        forms: document.querySelectorAll('.settings-index-screen form').length,
+    }));
+    check('Settings home is navigation rather than one giant form', settingsIndex.items >= 6 && settingsIndex.forms === 0,
+        `${settingsIndex.items} sections, ${settingsIndex.forms} forms`);
+
+    const settingsRouteProblems = [];
+    for (const view of ['avatar', 'goals', 'preferences', 'privacy', 'integrations', 'account']) {
+        await page.goto(`${BASE}/?page=settings&view=${view}`);
+        await page.waitForLoadState('networkidle');
+        const routeState = await page.evaluate(() => ({
+            heading: Boolean(document.querySelector('h1')),
+            back: Boolean(document.querySelector('a[href="/?page=settings"]')),
+            overflow: document.documentElement.scrollWidth > innerWidth + 1,
+        }));
+        if (!routeState.heading || !routeState.back || routeState.overflow) settingsRouteProblems.push(view);
+    }
+    check('Every Settings section has a heading, back navigation and no overflow',
+        settingsRouteProblems.length === 0, settingsRouteProblems.join(', '));
+
+    await page.goto(`${BASE}/?page=competitions`);
+    await page.waitForLoadState('networkidle');
+    const competitionState = await page.evaluate(() => {
+        const hasTeams = document.querySelectorAll('#competition-teams .squad-card').length > 0;
+        const empty = document.querySelector('.competition-empty-state');
+        const emptyAction = empty?.querySelector('a')?.textContent.trim() || '';
+        return {
+            hasTeams,
+            emptyAction,
+            createAnother: Boolean(document.querySelector('.squad-create-secondary')),
+        };
+    });
+    check('Competitions never suggests another team when one already exists',
+        !competitionState.hasTeams || (!competitionState.createAnother && !/create a team|crear un equipo|crea un team/i.test(competitionState.emptyAction)),
+        JSON.stringify(competitionState));
+
+    await page.goto(`${BASE}/?page=profile`);
+    await page.waitForLoadState('networkidle');
+    const avatarTrigger = page.locator('.profile-avatar-trigger');
+    if (await avatarTrigger.count()) {
+        await avatarTrigger.click();
+        const frameSelector = await page.evaluate(() => {
+            const options = [...document.querySelectorAll('.cosmetic-option')];
+            return {
+                options: options.length,
+                previews: options.filter((option) => option.querySelector('.cosmetic-swatch img, .cosmetic-swatch > span')).length,
+                selected: options.filter((option) => option.querySelector('input:checked')).length,
+            };
+        });
+        check('Avatar frame selector shows real previews and one selected option',
+            frameSelector.options > 0 && frameSelector.previews === frameSelector.options && frameSelector.selected === 1,
+            JSON.stringify(frameSelector));
+        await page.keyboard.press('Escape');
+    } else {
+        skip('Avatar frame selector shows real previews and one selected option', 'profile avatar trigger unavailable');
+    }
+
+    await page.goto(`${BASE}/?page=week_editor&range=week`);
+    await page.waitForLoadState('networkidle');
+    const habitToggle = page.locator('[data-custom-habit-toggle]').first();
+    if (await habitToggle.count()) {
+        await habitToggle.click();
+        const habitPanel = await page.evaluate(() => {
+            const panel = document.querySelector('.week-custom-habit.is-portaled');
+            return panel ? {
+                bodyChild: panel.parentElement === document.body,
+                fixed: getComputedStyle(panel).position === 'fixed',
+            } : { bodyChild: false, fixed: false };
+        });
+        check('Custom habit menu is portaled outside the table', habitPanel.bodyChild && habitPanel.fixed,
+            JSON.stringify(habitPanel));
+        await page.keyboard.press('Escape');
+    }
+
     /* ---------------- No horizontal overflow ----------------------------------- */
     const pages = ['dashboard', 'entries&mode=data', 'week_editor&range=week', 'analytics', 'gallery',
-        'profile', 'friends', 'duels', 'competitions', 'workouts', 'team', 'achievements'];
+        'profile', 'friends', 'duels', 'competitions', 'workouts', 'team', 'achievements', 'challenges',
+        'settings', 'settings&view=avatar', 'settings&view=preferences', 'settings&view=privacy'];
     let overflow = [];
-    for (const width of [320, 375, 390, 430, 768, 1024]) {
+    for (const width of [320, 360, 390, 430, 768, 1024, 1280, 1440]) {
         await page.setViewportSize({ width, height: 900 });
         for (const target of pages) {
             await page.goto(`${BASE}/?page=${target}`);
@@ -306,7 +436,7 @@ const saveRowAs = async (page, userId) => {
             }
         }
     }
-    check('No horizontal overflow on any page (320-1024px)', overflow.length === 0, overflow.join(', '));
+    check('No horizontal overflow on any page (320-1440px)', overflow.length === 0, overflow.join(', '));
 
     const touchContext = await browser.newContext({
         viewport: { width: 390, height: 844 },
@@ -359,8 +489,13 @@ const saveRowAs = async (page, userId) => {
         narrowChrome.clippedLabels.join(', '));
     check('Dashboard title fits in the 320px topbar', !narrowChrome.titleClipped,
         narrowChrome.titleClipped ? 'title is clipped' : '');
-    check('Spanish mobile navigation is fully localized',
-        narrowChrome.labels.join('|') === 'Inicio|Entreno|Galería|Analítica|Equipo',
+    const localizedNavSets = [
+        'Home|Training|Create|Social|Profile',
+        'Inicio|Entreno|Crear|Social|Perfil',
+        'Home|Training|Crea|Social|Profilo',
+    ];
+    check('Mobile navigation is fully localized',
+        localizedNavSets.includes(narrowChrome.labels.join('|')),
         narrowChrome.labels.join('|'));
 
     const userMenu = touchPage.locator('details.user-menu');
@@ -373,7 +508,7 @@ const saveRowAs = async (page, userId) => {
         if (!details || !summary || !panel || !nav) return { valid: false, label: '', minItem: 0 };
         const panelRect = panel.getBoundingClientRect();
         const navRect = nav.getBoundingClientRect();
-        const itemHeights = [...panel.querySelectorAll('a, button')]
+        const itemHeights = [...panel.querySelectorAll('[data-menu-view]:not([hidden]) a, [data-menu-view]:not([hidden]) button')]
             .map((item) => item.getBoundingClientRect().height);
         return {
             valid: details.open && panelRect.left >= 0 && panelRect.right <= innerWidth
@@ -383,20 +518,22 @@ const saveRowAs = async (page, userId) => {
         };
     });
     check('Mobile user menu fits above navigation with accessible controls',
-        mobileUserMenu.valid && mobileUserMenu.label.startsWith('Menú de usuario'),
+        mobileUserMenu.valid && /^(User menu|Menú de usuario|Menu utente)/.test(mobileUserMenu.label),
         `label: ${mobileUserMenu.label}, min item: ${mobileUserMenu.minItem}px`);
     await touchPage.locator('.topbar-page-title').click();
     check('Mobile user menu closes on outside tap', await userMenu.getAttribute('open') === null);
 
     const quickMenu = touchPage.locator('details.bottom-nav-plus');
     await touchPage.locator('details.bottom-nav-plus > summary').click();
+    await touchPage.locator('.mobile-sheet-backdrop').waitFor({ state: 'visible' });
+    await touchPage.waitForTimeout(80);
     const mobileQuickMenu = await touchPage.evaluate(() => {
         const panel = document.querySelector('.bottom-nav-plus-menu');
         const nav = document.querySelector('.bottom-nav');
         if (!panel || !nav) return { valid: false, width: 0, minItem: 0 };
         const panelRect = panel.getBoundingClientRect();
         const navRect = nav.getBoundingClientRect();
-        const itemHeights = [...panel.querySelectorAll('a')]
+        const itemHeights = [...panel.querySelectorAll('[data-menu-view="main"]:not([hidden]) .mobile-quick-nav, [data-menu-view="main"]:not([hidden]) .mobile-quick-action')]
             .map((item) => item.getBoundingClientRect().height);
         return {
             valid: panelRect.width >= innerWidth - 22 && panelRect.left >= 0
@@ -409,6 +546,7 @@ const saveRowAs = async (page, userId) => {
     check('Mobile quick actions form a full-width touch sheet', mobileQuickMenu.valid,
         `width: ${mobileQuickMenu.width}px, min item: ${mobileQuickMenu.minItem}px`);
 
+    await touchPage.locator('.mobile-sheet-backdrop').click({ position: { x: 4, y: 4 } });
     await touchPage.locator('details.dashboard-mobile-controls > summary').click();
     const exclusiveMenus = await touchPage.evaluate(() => ({
         quickClosed: !document.querySelector('details.bottom-nav-plus')?.open,
@@ -483,6 +621,7 @@ const saveRowAs = async (page, userId) => {
     const currentTouchTheme = await touchPage.locator('body').getAttribute('data-theme');
     if (currentTouchTheme !== 'dark') {
         await touchPage.locator('.user-menu > summary').click();
+        await touchPage.locator('[data-menu-open="user-appearance"]').click();
         await touchPage.locator('[data-theme-toggle]').click();
         await touchPage.waitForTimeout(250);
     }

@@ -25,6 +25,28 @@ $friendActionForm = static function (string $action, int $userId, string $label,
     </form>
     <?php
 };
+$friendSecondaryMenu = static function (string $action, int $userId, string $label, bool $danger = false): void {
+    static $menuCounter = 0;
+    $menuCounter++;
+    $formId = 'friend-secondary-' . $userId . '-' . $menuCounter;
+    ?>
+    <form id="<?= e($formId) ?>" method="post" action="/?page=friends" hidden>
+        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+        <input type="hidden" name="user_id" value="<?= $userId ?>">
+    </form>
+    <?php
+    echo render_kebab_menu([[
+        'label' => $label,
+        'danger' => $danger,
+        'type' => 'submit',
+        'attrs' => array_filter([
+            'form' => $formId,
+            'name' => 'action',
+            'value' => $action,
+            'data-confirm-action' => $danger ? t('friends.remove_confirm') : '',
+        ], static fn(string $value): bool => $value !== ''),
+    ]], ['label' => t('common.actions'), 'class' => 'friends-secondary-menu']);
+};
 
 $friendAvatar = static function (array $user): void {
     $url = avatar_url($user);
@@ -74,15 +96,15 @@ $fmtVal = static function (string $fmt, $v): string {
                 <a class="btn btn-ghost small" href="/?page=friends" data-spa-link><?= e(t('common.back')) ?></a>
             </div>
             <div class="friends-compare-head">
-                <div class="friends-compare-person">
+                <a class="friends-compare-person user-profile-link" href="/?page=profile&amp;user_id=<?= (int) ($currentUser['id'] ?? 0) ?>">
                     <?php $friendAvatar((array) $currentUser); ?>
                     <strong><?= e(t('friends.you')) ?></strong>
-                </div>
+                </a>
                 <span class="friends-compare-vs"><?= e(t('friends.vs')) ?></span>
-                <div class="friends-compare-person">
+                <a class="friends-compare-person user-profile-link" href="<?= e($friendProfileUrl($cmpUser)) ?>">
                     <?php $friendAvatar($cmpUser); ?>
                     <strong><?= e((string) ($cmpUser['display_name'] ?? '')) ?></strong>
-                </div>
+                </a>
             </div>
             <?php
             $meWins = 0;
@@ -175,7 +197,7 @@ $fmtVal = static function (string $fmt, $v): string {
                         </a>
                         <div class="inline-actions friends-row-actions">
                             <?php $friendActionForm('friend_accept', (int) $req['id'], t('friends.accept'), 'btn-primary'); ?>
-                            <?php $friendActionForm('friend_reject', (int) $req['id'], t('friends.reject'), 'btn-ghost'); ?>
+                            <?php $friendSecondaryMenu('friend_reject', (int) $req['id'], t('friends.reject')); ?>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -200,7 +222,7 @@ $fmtVal = static function (string $fmt, $v): string {
                         </a>
                         <div class="inline-actions friends-row-actions">
                             <a class="btn btn-primary small" href="/?page=friends&compare=<?= (int) $friend['id'] ?>" data-spa-link><?= e(t('friends.compare')) ?></a>
-                            <?php $friendActionForm('friend_remove', (int) $friend['id'], t('friends.remove'), 'btn-ghost'); ?>
+                            <?php $friendSecondaryMenu('friend_remove', (int) $friend['id'], t('friends.remove'), true); ?>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -222,7 +244,7 @@ $fmtVal = static function (string $fmt, $v): string {
                             </span>
                         </a>
                         <div class="inline-actions friends-row-actions">
-                            <?php $friendActionForm('friend_remove', (int) $req['id'], t('friends.cancel_request'), 'btn-ghost'); ?>
+                            <?php $friendSecondaryMenu('friend_remove', (int) $req['id'], t('friends.cancel_request')); ?>
                         </div>
                     </div>
                 <?php endforeach; ?>

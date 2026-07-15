@@ -3,11 +3,15 @@
 declare(strict_types=1);
 
 $selectedUser = $selectedMetric['user'];
+$dashboardSection = (string) ($dashboardSection ?? '');
+if (!in_array($dashboardSection, ['', 'progress', 'rewards', 'history', 'alerts'], true)) {
+    $dashboardSection = '';
+}
 $penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
 $dashboardLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
 $dashboardWidgets = $penaltiesEnabled
-    ? ['kpis', 'quests', 'season', 'achievements', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
-    : ['kpis', 'quests', 'season', 'achievements', 'duels', 'competitions', 'ranking', 'weekly'];
+    ? ['kpis', 'training_rank', 'training_progress', 'quests', 'season', 'achievements', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
+    : ['kpis', 'training_rank', 'training_progress', 'quests', 'season', 'achievements', 'duels', 'competitions', 'ranking', 'weekly'];
 $visibleWidgets = [];
 if (is_array($dashboardLayout) && $dashboardLayout !== []) {
     foreach ($dashboardLayout as $widget) {
@@ -30,7 +34,7 @@ foreach ($dashboardWidgets as $widget) {
         $dashboardEditorWidgets[] = $widget;
     }
 }
-$dashboardLayoutEditMode = (string) ($_GET['layout_edit'] ?? '') === '1';
+$dashboardLayoutEditMode = $dashboardSection === '' && (string) ($_GET['layout_edit'] ?? '') === '1';
 $widgetOrder = static function (string ...$widgets) use ($visibleWidgets): int {
     $orders = [];
     foreach ($widgets as $widget) {
@@ -253,7 +257,89 @@ ob_start();
 <?php
 $topbarControls = ob_get_clean();
 ?>
-<section class="screen stack-lg" data-dashboard-page>
+<section class="screen stack-lg dashboard-hierarchy-screen<?= $dashboardSection !== '' ? ' has-section' : '' ?>" data-dashboard-page data-dashboard-section="<?= e($dashboardSection) ?>">
+    <?php if ($dashboardSection !== ''): ?>
+        <header class="hierarchy-page-header">
+            <button class="hierarchy-back" type="button" data-hierarchy-back data-fallback="/?page=dashboard" aria-label="<?= e(t('common.back')) ?>">&larr;</button>
+            <div><p class="eyebrow"><?= e(t('nav.home')) ?></p><h1><?= e(t('dashboard.mobile_' . $dashboardSection)) ?></h1><p><?= e(t('dashboard.mobile_' . $dashboardSection . '_hint')) ?></p></div>
+        </header>
+
+        <?php if ($dashboardSection === 'progress'): ?>
+            <div class="mobile-kpi-grid">
+                <?php foreach ($kpis as $kpi): ?>
+                    <?php $mobileMetricHref = (string) ($kpi['key'] ?? '') === 'strikes' ? $strikesHref : '/?' . http_build_query($metricQueryBase + ['metric' => (string) $kpi['key']]); ?>
+                    <a href="<?= e($mobileMetricHref) ?>"><small><?= e((string) $kpi['label']) ?></small><strong><?= e((string) $kpi['value']) ?></strong><span><?= e((string) $kpi['meta']) ?></span></a>
+                <?php endforeach; ?>
+            </div>
+            <nav class="hierarchy-nav-list">
+                <a class="hierarchy-nav-row" href="/?page=analytics"><span class="hierarchy-nav-icon" aria-hidden="true">&#8645;</span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.analytics')) ?></strong><small><?= e(t('dashboard.analytics_dashboard_hint')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <a class="hierarchy-nav-row" href="/?page=workouts&view=stats"><span class="hierarchy-nav-icon" aria-hidden="true">&#9876;</span><span class="hierarchy-nav-copy"><strong><?= e(t('dashboard.training_progress_title')) ?></strong><small><?= e(t('dashboard.training_progress_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= (int) (($dashboardTrainingMonth ?? [])['sessions'] ?? 0) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <a class="hierarchy-nav-row" href="/?page=workouts&view=ranks"><span class="hierarchy-nav-icon" aria-hidden="true">#</span><span class="hierarchy-nav-copy"><strong><?= e(t('dashboard.training_rank_title')) ?></strong><small><?= e(t('dashboard.training_rank_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= e(t('workouts.rank_' . (string) (($dashboardTrainingRank ?? [])['key'] ?? 'unranked'))) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+            </nav>
+        <?php elseif ($dashboardSection === 'rewards'): ?>
+            <div class="hierarchy-status-strip">
+                <span><strong><?= count($dashboardUnlockedAchievements) ?></strong><small><?= e(t('profile.achievements')) ?></small></span>
+                <span><strong><?= e(number_format((float) ($dashboardSeasonXp ?? 0), 0, '.', ' ')) ?></strong><small>XP</small></span>
+                <span><strong><?= (int) ($dashboardQuestStreak ?? 0) ?></strong><small><?= e(t('workouts.streak')) ?></small></span>
+            </div>
+            <nav class="hierarchy-nav-list">
+                <a class="hierarchy-nav-row" href="<?= e($dashboardAchievementsUrl) ?>"><span class="hierarchy-nav-icon" aria-hidden="true">&#9733;</span><span class="hierarchy-nav-copy"><strong><?= e(t('profile.achievements')) ?></strong><small><?= e(t('dashboard.mobile_rewards_achievements_hint')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <a class="hierarchy-nav-row" href="/?page=profile"><span class="hierarchy-nav-icon" aria-hidden="true">XP</span><span class="hierarchy-nav-copy"><strong><?= e(t('season.title')) ?></strong><small><?= e((string) (($dashboardSeason ?? [])['name'] ?? '')) ?></small></span><span class="hierarchy-nav-meta"><?= (int) ($dashboardSeasonDaysLeft ?? 0) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+            </nav>
+            <?php $mobileQuests = array_slice(array_values((array) ($dashboardQuests['daily'] ?? $dashboardQuests ?? [])), 0, 3); ?>
+            <?php if ($mobileQuests !== []): ?>
+                <article class="native-list-card"><h2><?= e(t('quests.title')) ?></h2><?php foreach ($mobileQuests as $quest): ?><div class="native-list-row"><span><?= e((string) ($quest['label'] ?? '')) ?></span><strong><?= (int) ($quest['pct'] ?? 0) ?>%</strong></div><?php endforeach; ?></article>
+            <?php endif; ?>
+        <?php elseif ($dashboardSection === 'history'): ?>
+            <article class="native-list-card">
+                <div class="native-list-head"><h2><?= e(t('dashboard.weekly_history')) ?></h2><a href="/?page=week_editor&range=week"><?= e(t('workouts.challenge_log')) ?></a></div>
+                <?php foreach (array_slice(array_reverse(array_values((array) ($selectedMetric['weekly'] ?? []))), 0, 8) as $week): ?>
+                    <a class="native-list-row" href="/?page=week_editor&user_id=<?= (int) ($selectedUser['id'] ?? 0) ?>&week=<?= e(date_to_iso_week((string) ($week['week_start'] ?? ''))) ?>"><span><strong><?= e(format_date_eu((string) ($week['week_start'] ?? ''))) ?></strong><small><?= e(label_for_status((string) ($week['status'] ?? ''))) ?></small></span><span><?= e((string) ($week['workouts'] ?? 0)) ?> <?= e(t('metric.workouts')) ?></span></a>
+                <?php endforeach; ?>
+            </article>
+        <?php else: ?>
+            <?php $mobileUnread = user_unread_notifications_count($GLOBALS['pdo'], (int) ($currentUser['id'] ?? 0)); ?>
+            <nav class="hierarchy-nav-list">
+                <a class="hierarchy-nav-row" href="/?page=notifications"><span class="hierarchy-nav-icon" aria-hidden="true">!</span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.notifications')) ?></strong><small><?= e(t('notifications.subtitle')) ?></small></span><span class="hierarchy-nav-meta"><?= $mobileUnread ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <?php if (!empty($pendingApprovals)): ?><a class="hierarchy-nav-row" href="/?page=dashboard#pending-approvals"><span class="hierarchy-nav-icon" aria-hidden="true">&#10003;</span><span class="hierarchy-nav-copy"><strong><?= e(t('dashboard.approvals_pending_eyebrow')) ?></strong><small><?= e(t('dashboard.mobile_approvals_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count($pendingApprovals) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a><?php endif; ?>
+                <a class="hierarchy-nav-row" href="/?page=duels"><span class="hierarchy-nav-icon" aria-hidden="true">&#9876;</span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.duels')) ?></strong><small><?= e(t('social_hub.duels_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= (int) (($dashboardDuelsSummary ?? [])['active'] ?? 0) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <a class="hierarchy-nav-row" href="/?page=competitions"><span class="hierarchy-nav-icon" aria-hidden="true">&#9733;</span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.competitions')) ?></strong><small><?= e(t('social_hub.competitions_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= (int) (($dashboardCompetitionsSummary ?? [])['active'] ?? 0) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+            </nav>
+            <?php if (!empty($pendingApprovals)): ?>
+                <article class="native-list-card mobile-approval-list" id="pending-approvals">
+                    <h2><?= e(t('dashboard.approvals_pending_eyebrow')) ?></h2>
+                    <?php foreach ($pendingApprovals as $approval): ?>
+                        <form method="post" action="/?page=dashboard&section=alerts" class="mobile-approval-row">
+                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="resolve_approval"><input type="hidden" name="approval_id" value="<?= (int) ($approval['id'] ?? 0) ?>">
+                            <span><strong><?= e((string) ($approval['approval_type_label'] ?? '')) ?></strong><small><?= e((string) ($approval['owner_name'] ?? '')) ?> · <?= e(format_date_eu((string) ($approval['log_date'] ?? ''))) ?></small></span>
+                            <span class="mobile-approval-actions"><button class="btn btn-primary small" type="submit" name="decision" value="approve"><?= e(t('common.approve')) ?></button><button class="btn btn-ghost small" type="submit" name="decision" value="reject"><?= e(t('common.reject')) ?></button></span>
+                        </form>
+                    <?php endforeach; ?>
+                </article>
+            <?php endif; ?>
+        <?php endif; ?>
+    <?php else: ?>
+    <div class="dashboard-mobile-home">
+        <header class="mobile-home-greeting"><p><?= e(t('dashboard.mobile_today')) ?></p><h1><?= e((string) ($selectedUser['display_name'] ?? t('nav.home'))) ?></h1></header>
+        <article class="mobile-today-card">
+            <div class="mobile-today-head"><span><?= e(t('dashboard.mobile_today_status')) ?></span><strong><?= e(number_format((float) ($selectedMetric['score'] ?? 0), 1, '.', '')) ?></strong></div>
+            <div class="mobile-today-metrics">
+                <?php foreach ($kpis as $kpi): ?><span><strong><?= e((string) $kpi['value']) ?></strong><small><?= e((string) $kpi['label']) ?></small></span><?php endforeach; ?>
+                <span><strong><?= e($formatCalories($calorieConsumedTotal)) ?> kcal</strong><small><?= e(t('dashboard.calories_consumed')) ?></small></span>
+                <span><strong><?= e($formatCalories($calorieBurnedTotal)) ?> kcal</strong><small><?= e(t('dashboard.calories_burned')) ?></small></span>
+            </div>
+        </article>
+        <a class="mobile-primary-action" href="/?page=entries&mode=data"><span><strong><?= e(t('dashboard.quick_action_training')) ?></strong><small><?= e(t('dashboard.mobile_primary_hint')) ?></small></span><span aria-hidden="true">&rsaquo;</span></a>
+        <article class="mobile-progress-brief"><div><small><?= e(t('dashboard.training_rank_title')) ?></small><strong><?= e(t('workouts.rank_' . (string) (($dashboardTrainingRank ?? [])['key'] ?? 'unranked'))) ?></strong></div><div><small><?= e(t('workouts.streak')) ?></small><strong><?= (int) ($dashboardTrainingStreak ?? 0) ?></strong></div><a href="/?page=dashboard&section=progress"><?= e(t('common.view_all')) ?></a></article>
+        <nav class="mobile-home-shortcuts" aria-label="<?= e(t('dashboard.mobile_more')) ?>">
+            <a href="/?page=dashboard&section=progress" data-tone="blue"><span aria-hidden="true">&#8645;</span><strong><?= e(t('dashboard.mobile_progress')) ?></strong></a>
+            <a href="/?page=dashboard&section=rewards" data-tone="amber"><span aria-hidden="true">&#9733;</span><strong><?= e(t('dashboard.mobile_rewards')) ?></strong></a>
+            <a href="/?page=dashboard&section=history" data-tone="violet"><span aria-hidden="true">&#8634;</span><strong><?= e(t('dashboard.mobile_history')) ?></strong></a>
+            <a href="/?page=dashboard&section=alerts" data-tone="red"><span aria-hidden="true">!</span><strong><?= e(t('dashboard.mobile_alerts')) ?></strong><?php if (count($pendingApprovals) > 0): ?><em><?= count($pendingApprovals) ?></em><?php endif; ?></a>
+        </nav>
+    </div>
+    <div class="dashboard-desktop-root">
+    <header class="mobile-widget-feed-head"><div><p><?= e(t('dashboard.visible_widgets')) ?></p><h2><?= e(t('nav.dashboard')) ?></h2></div><a href="<?= e($dashboardEditLayoutUrl) ?>"><?= e(t('dashboard.edit_layout')) ?></a></header>
     <div class="motivation-band">
         <span><?= e(t('dashboard.motivation')) ?></span>
         <strong>"<?= e((string) ($motivationQuote ?? t('dashboard.default_quote'))) ?>"</strong>
@@ -387,6 +473,102 @@ $topbarControls = ob_get_clean();
             </div>
             <a class="btn btn-primary small dashboard-analytics-compact-action" href="/?<?= e(http_build_query(['page' => 'analytics', 'user_id' => (int) ($selectedUser['id'] ?? 0), 'analytics_period' => 'week', 'analytics_week' => (string) ($selectedWeekStart ?? to_date(null))])) ?>"><?= e(t('dashboard.open_analytics')) ?></a>
         </article>
+
+        <?php if ($showWidget('training_rank')): ?>
+            <?php
+            $trainingRank = (array) ($dashboardTrainingRank ?? wk_rank_from_score(0.0));
+            $trainingRankKey = (string) ($trainingRank['key'] ?? 'unranked');
+            if (!array_key_exists($trainingRankKey, wk_rank_tiers())) {
+                $trainingRankKey = 'unranked';
+            }
+            $trainingRankScore = (float) ($trainingRank['score'] ?? 0.0);
+            $trainingNextKey = is_string($trainingRank['next_key'] ?? null) ? (string) $trainingRank['next_key'] : '';
+            $trainingNextScore = is_numeric($trainingRank['next_score'] ?? null) ? (float) $trainingRank['next_score'] : null;
+            $trainingPointsToNext = $trainingNextScore !== null ? max(0.0, $trainingNextScore - $trainingRankScore) : 0.0;
+            ?>
+            <article class="panel dashboard-panel dashboard-training-rank" data-dashboard-widget="training_rank" data-rank="<?= e($trainingRankKey) ?>" style="order: <?= $contentWidgetOrder('training_rank') ?>; --rank-color: <?= e((string) ($trainingRank['color'] ?? '#64748b')) ?>">
+                <div class="panel-head dashboard-panel-head-compact">
+                    <div>
+                        <p class="eyebrow"><?= e(t('dashboard.training_rank_title')) ?></p>
+                        <p class="muted small"><?= e(t('dashboard.training_rank_hint')) ?></p>
+                    </div>
+                    <a class="btn btn-ghost small dashboard-panel-action" href="/?page=workouts&amp;view=ranks"><?= e(t('common.view_all')) ?></a>
+                </div>
+                <div class="dashboard-training-rank-summary">
+                    <div class="dashboard-training-rank-emblem">
+                        <span><?= e(t('workouts.rank_' . $trainingRankKey)) ?></span>
+                        <strong><?= e(number_format($trainingRankScore, 1, '.', '')) ?></strong>
+                        <small><?= e(t('workouts.lift_points')) ?></small>
+                    </div>
+                    <div class="dashboard-training-rank-copy">
+                        <strong><?= ($dashboardTrainingPosition ?? null) !== null ? e(t('dashboard.training_rank_position', ['position' => (int) $dashboardTrainingPosition])) : e(t('workouts.rank_unranked')) ?></strong>
+                        <small><?= e(t('workouts.ranked_count', [
+                            'ranked' => (int) ($trainingRank['body_parts_ranked'] ?? 0),
+                            'total' => (int) ($trainingRank['body_parts_total'] ?? 0),
+                        ])) ?></small>
+                        <div class="dashboard-training-rank-progress" aria-label="<?= e(t('workouts.overall_rank')) ?>"><span style="width: <?= (int) ($trainingRank['progress'] ?? 0) ?>%"></span></div>
+                        <?php if ($trainingNextKey !== '' && $trainingNextScore !== null): ?>
+                            <small><?= e(t('dashboard.training_rank_next', [
+                                'points' => number_format($trainingPointsToNext, 1, '.', ''),
+                                'rank' => t('workouts.rank_' . $trainingNextKey),
+                            ])) ?></small>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <div class="dashboard-training-board" aria-label="<?= e(t('workouts.team_leaderboard')) ?>">
+                    <?php foreach ((array) ($dashboardTrainingLeaderboardPreview ?? []) as $trainingUser): ?>
+                        <?php
+                        $trainingUserRank = (array) ($trainingUser['rank'] ?? []);
+                        $trainingUserRankKey = (string) ($trainingUserRank['key'] ?? 'unranked');
+                        $trainingUserName = (string) ($trainingUser['display_name'] ?? t('common.user'));
+                        $trainingUserAvatar = avatar_url($trainingUser);
+                        ?>
+                        <a class="dashboard-training-board-row<?= (int) ($trainingUser['id'] ?? 0) === (int) ($selectedUser['id'] ?? 0) ? ' is-selected' : '' ?>" href="/?page=profile&amp;user_id=<?= (int) ($trainingUser['id'] ?? 0) ?>">
+                            <strong>#<?= (int) ($trainingUser['position'] ?? 0) ?></strong>
+                            <?php if ($trainingUserAvatar !== ''): ?>
+                                <img src="<?= e($trainingUserAvatar) ?>" alt="<?= e($trainingUserName) ?>">
+                            <?php else: ?>
+                                <span class="dashboard-training-board-avatar"><?= e(initials_for($trainingUserName)) ?></span>
+                            <?php endif; ?>
+                            <span class="dashboard-training-board-copy"><strong><?= e($trainingUserName) ?></strong><small><?= e(number_format((float) ($trainingUserRank['score'] ?? 0), 1, '.', '')) ?> <?= e(t('workouts.lift_points')) ?></small></span>
+                            <span class="workouts-rank-badge" data-rank="<?= e($trainingUserRankKey) ?>"><?= e(t('workouts.rank_' . $trainingUserRankKey)) ?></span>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+            </article>
+        <?php endif; ?>
+
+        <?php if ($showWidget('training_progress')): ?>
+            <?php
+            $trainingMonth = (array) ($dashboardTrainingMonth ?? []);
+            $trainingAll = (array) ($dashboardTrainingAll ?? []);
+            $trainingRecentSession = (array) (($dashboardTrainingRecentSessions ?? [])[0] ?? []);
+            ?>
+            <article class="panel dashboard-panel dashboard-training-progress" data-dashboard-widget="training_progress" style="order: <?= $contentWidgetOrder('training_progress') ?>">
+                <div class="panel-head dashboard-panel-head-compact">
+                    <div>
+                        <p class="eyebrow"><?= e(t('dashboard.training_progress_title')) ?></p>
+                        <p class="muted small"><?= e(t('dashboard.training_progress_hint')) ?></p>
+                    </div>
+                    <a class="btn btn-ghost small dashboard-panel-action" href="/?page=workouts&amp;view=stats"><?= e(t('common.view_all')) ?></a>
+                </div>
+                <div class="dashboard-training-progress-grid">
+                    <span><small><?= e(t('workouts.stat_sessions')) ?> · <?= e(t('workouts.this_month')) ?></small><strong><?= (int) ($trainingMonth['sessions'] ?? 0) ?></strong></span>
+                    <span><small><?= e(t('workouts.stat_volume')) ?> · <?= e(t('workouts.this_month')) ?></small><strong><?= e(number_format((float) ($trainingMonth['volume'] ?? 0), 0, '.', ' ')) ?></strong></span>
+                    <span><small><?= e(t('workouts.streak')) ?></small><strong><?= (int) ($dashboardTrainingStreak ?? 0) ?></strong></span>
+                    <span><small><?= e(t('workouts.stat_reps')) ?> · <?= e(t('workouts.all_time')) ?></small><strong><?= e(number_format((int) ($trainingAll['reps'] ?? 0), 0, '.', ' ')) ?></strong></span>
+                </div>
+                <?php if ($trainingRecentSession !== []): ?>
+                    <div class="dashboard-training-recent">
+                        <span class="dashboard-training-recent-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
+                        <span><small><?= e(t('dashboard.training_recent')) ?></small><strong><?= e((string) (($trainingRecentSession['title'] ?? '') !== '' ? $trainingRecentSession['title'] : t('workouts.session'))) ?></strong></span>
+                        <time datetime="<?= e((string) ($trainingRecentSession['started_at'] ?? '')) ?>"><?= e(format_date_eu(substr((string) ($trainingRecentSession['started_at'] ?? ''), 0, 10))) ?></time>
+                    </div>
+                <?php else: ?>
+                    <a class="dashboard-training-empty" href="/?page=workouts"><?= e(t('dashboard.training_empty')) ?> <span aria-hidden="true">→</span></a>
+                <?php endif; ?>
+            </article>
+        <?php endif; ?>
 
         <?php if ($showWidget('achievements')): ?>
         <article class="panel dashboard-panel dashboard-achievements-panel dashboard-span-full" data-dashboard-widget="achievements" style="order: <?= $contentWidgetOrder('achievements') ?>">
@@ -730,7 +912,7 @@ $topbarControls = ob_get_clean();
 
         <?php if ($showWidget('ranking')): ?>
         <article class="panel dashboard-panel" data-dashboard-widget="ranking" style="order: <?= $contentWidgetOrder('ranking') ?>">
-            <h2><?= e(t('dashboard.ranking')) ?></h2>
+            <h2><?= e(t('dashboard.challenge_ranking')) ?></h2>
             <div class="leaderboard-list">
                 <?php foreach ($metricsOrdered as $metric): ?>
                     <?php
@@ -739,7 +921,7 @@ $topbarControls = ob_get_clean();
                     $leaderboardAvatarUrl = avatar_url($leaderboardUser);
                     ?>
                     <article class="leaderboard-row">
-                        <div class="leaderboard-name">
+                        <a class="leaderboard-name user-profile-link" href="/?page=profile&amp;user_id=<?= (int) ($leaderboardUser['id'] ?? 0) ?>">
                             <?php if ($leaderboardAvatarUrl !== ''): ?>
                                 <img class="member-avatar leaderboard-avatar" src="<?= e($leaderboardAvatarUrl) ?>" alt="<?= e($leaderboardName) ?>">
                             <?php else: ?>
@@ -751,7 +933,7 @@ $topbarControls = ob_get_clean();
                                     <span><?= e(t('metric.warnings')) ?>: <?= e((string) ($metric['skip_warning_events'] ?? 0)) ?></span>
                                 <?php endif; ?>
                             </span>
-                        </div>
+                        </a>
                         <div class="leaderboard-stats">
                             <span class="badge"><?= e(t('metric.score')) ?> <?= e((string) $metric['score']) ?></span>
                             <span class="badge"><?= e(t('metric.steps')) ?> <?= e((string) ($metric['total_steps'] ?? 0)) ?></span>
@@ -765,4 +947,6 @@ $topbarControls = ob_get_clean();
 
 
     </div>
+    </div>
+    <?php endif; ?>
 </section>

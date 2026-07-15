@@ -126,7 +126,7 @@ foreach ($nutritionFields as $field => $meta) {
             <div class="photo-post-side stack">
                 <article class="mini-card photo-post-meta">
                     <div class="photo-post-meta-main">
-                        <div class="photo-post-author">
+                        <a class="photo-post-author user-profile-link" href="/?page=profile&amp;user_id=<?= $photoOwnerId ?>">
                             <?php
                             $authorForAvatar = [
                                 'display_name' => $ownerName,
@@ -144,7 +144,7 @@ foreach ($nutritionFields as $field => $meta) {
                                 <strong><?= e($ownerName) ?></strong>
                                 <span><?= e($formatDateTime((string) ($photo['created_at'] ?? ''))) ?></span>
                             </div>
-                        </div>
+                        </a>
                         <div class="photo-post-tags">
                             <span class="badge"><?= e($categoryLabel) ?></span>
                             <span class="badge"><?= e(format_date_eu($photoLogDate)) ?></span>
@@ -215,7 +215,7 @@ foreach ($nutritionFields as $field => $meta) {
                         ?>
                         <article class="photo-comment-item">
                             <div class="photo-comment-head">
-                                <div class="photo-comment-author">
+                                <a class="photo-comment-author user-profile-link" href="/?page=profile&amp;user_id=<?= (int) ($comment['user_id'] ?? 0) ?>">
                                     <?php if ($commentAvatarUrl !== ''): ?>
                                         <img class="profile-avatar" src="<?= e($commentAvatarUrl) ?>" alt="<?= e($commentAuthor) ?>">
                                     <?php else: ?>
@@ -225,14 +225,23 @@ foreach ($nutritionFields as $field => $meta) {
                                         <strong><?= e($commentAuthor) ?></strong>
                                         <span><?= e($formatDateTime((string) ($comment['created_at'] ?? ''))) ?></span>
                                     </div>
-                                </div>
+                                </a>
                                 <?php if ($commentCanDelete): ?>
-                                    <form method="post" action="/?page=photo&photo_id=<?= $photoId ?>">
+                                    <?php $commentDeleteFormId = 'photo-comment-delete-' . (int) ($comment['id'] ?? 0); ?>
+                                    <?= render_kebab_menu([[
+                                        'label' => t('photo.delete_comment'),
+                                        'danger' => true,
+                                        'type' => 'submit',
+                                        'attrs' => [
+                                            'form' => $commentDeleteFormId,
+                                            'data-confirm-action' => t('photo.delete_comment') . '?',
+                                        ],
+                                    ]], ['label' => t('common.actions')]) ?>
+                                    <form id="<?= e($commentDeleteFormId) ?>" method="post" action="/?page=photo&photo_id=<?= $photoId ?>" hidden>
                                         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                                         <input type="hidden" name="action" value="delete_photo_comment">
                                         <input type="hidden" name="photo_id" value="<?= $photoId ?>">
                                         <input type="hidden" name="comment_id" value="<?= (int) ($comment['id'] ?? 0) ?>">
-                                        <button type="submit" class="btn btn-ghost small"><?= e(t('photo.delete_comment')) ?></button>
                                     </form>
                                 <?php endif; ?>
                             </div>

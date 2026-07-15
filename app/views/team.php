@@ -9,7 +9,9 @@ $goals = (array) ($teamGoals ?? []);
 $activeChallenge = is_array($teamActiveChallenge ?? null) ? (array) $teamActiveChallenge : null;
 $teamGoalDebugEnabled = !empty($teamGoalDebugEnabled) && !empty($canManageTeam);
 $teamSection = (string) ($teamSection ?? '');
-$teamMemberDetail = is_array($teamMemberDetail ?? null) ? (array) $teamMemberDetail : null;
+if (!in_array($teamSection, ['', 'challenge', 'leaderboard', 'members', 'stats', 'achievements'], true)) {
+    $teamSection = '';
+}
 $penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
 $isPenaltyRelatedItem = static function (array $item): bool {
     $type = strtolower(trim((string) ($item['target_type'] ?? $item['type'] ?? $item['metric'] ?? '')));
@@ -32,12 +34,6 @@ if (!$penaltiesEnabled) {
     $teamAchievements = array_values(array_filter((array) ($teamAchievements ?? []), static fn(array $achievement): bool => !$isPenaltyRelatedItem($achievement)));
     if ($activeChallenge !== null && $isPenaltyRelatedItem($activeChallenge)) {
         $activeChallenge = null;
-    }
-    if (is_array($teamMemberDetail)) {
-        $teamMemberDetail['achievements'] = array_values(array_filter(
-            (array) ($teamMemberDetail['achievements'] ?? []),
-            static fn(array $achievement): bool => !$isPenaltyRelatedItem($achievement)
-        ));
     }
 }
 $nowDateTime = new DateTimeImmutable('now');
@@ -84,7 +80,11 @@ if ($teamGoalDebugEnabled) {
 if ($teamView !== '') {
     $teamBaseParams['view'] = $teamView;
 }
+if ($teamSection !== '') {
+    $teamBaseParams['section'] = $teamSection;
+}
 $teamBaseUrl = '/?' . http_build_query($teamBaseParams);
+$teamMobileEditLayoutUrl = '/?' . http_build_query($teamBaseParams + ['layout_edit' => '1']);
 $teamAchievementsUrl = '/?' . http_build_query([
     'page' => 'achievements',
     'scope' => 'team',
@@ -95,10 +95,16 @@ $teamMetricUrl = static function (string $metric) use ($teamBaseParams): string 
     $params['metric'] = $metric;
     return '/?' . http_build_query($params);
 };
-$teamMemberUrl = static function (int $userId) use ($teamBaseParams): string {
-    $params = $teamBaseParams;
-    $params['section'] = 'member';
-    $params['user_id'] = $userId;
+$teamMemberUrl = static function (int $userId) use ($teamBaseParams, $teamView): string {
+    $params = [
+        'page' => 'profile',
+        'user_id' => $userId,
+        'back' => 'team',
+        'team_id' => (int) ($teamBaseParams['team_id'] ?? 0),
+    ];
+    if ($teamView !== '') {
+        $params['back_view'] = $teamView;
+    }
     return '/?' . http_build_query($params);
 };
 
@@ -155,7 +161,20 @@ $teamLayoutLabels = is_array($teamLayoutLabels ?? null) ? (array) $teamLayoutLab
     'achievements' => t('team.widget_achievements'),
     'competitions' => t('nav.competitions'),
 ];
-$teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($teamLayoutIndex): string {
+$teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($teamLayoutIndex, $teamSection): string {
+    if ($teamSection !== '') {
+        $sectionWidgets = [
+            'challenge' => ['active_challenge', 'challenges', 'competitions'],
+            'leaderboard' => ['leaderboard'],
+            'members' => ['members'],
+            'stats' => ['metrics', 'daily_charts', 'cumulative_steps', 'cumulative_distance', 'weekly_charts'],
+            'achievements' => ['achievements'],
+        ];
+        if (!in_array($widget, (array) ($sectionWidgets[$teamSection] ?? []), true)) {
+            return 'display:none; --team-order:999; --team-mobile-order:999;';
+        }
+        return '--team-order:' . ($mobileOrder * 10) . '; --team-mobile-order:' . $mobileOrder . ';';
+    }
     if (!isset($teamLayoutIndex[$widget])) {
         return 'display:none; --team-order:999; --team-mobile-order:999;';
     }
@@ -164,11 +183,30 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
     return '--team-order:' . $desktopOrder . '; --team-mobile-order:' . $mobileOrder . ';';
 };
 
-$memberUser = is_array($teamMemberDetail['user'] ?? null) ? (array) $teamMemberDetail['user'] : [];
-$memberMetric = is_array($teamMemberDetail['metric'] ?? null) ? (array) $teamMemberDetail['metric'] : [];
-$memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)] ?? null) : null;
 ?>
-<section class="screen stack-lg<?= $teamSection === 'member' ? ' team-member-detail-screen' : '' ?>">
+<section class="screen stack-lg team-hierarchy-screen" data-team-section="<?= e($teamSection) ?>">
+    <?php if ($teamSection === ''): ?>
+        <div class="team-mobile-root">
+            <header class="mobile-home-greeting"><p><?= e(t('nav.team')) ?></p><h1><?= e((string) ($team['name'] ?? t('nav.team'))) ?></h1><small><?= e((string) (($team['description'] ?? '') !== '' ? $team['description'] : t('team.subtitle'))) ?></small></header>
+            <div class="hierarchy-status-strip"><span><strong><?= count((array) ($members ?? [])) ?></strong><small><?= e(t('team.members')) ?></small></span><span><strong><?= e(number_format((float) ($summary['score_avg'] ?? 0), 1, '.', '')) ?></strong><small><?= e(t('metric.score')) ?></small></span><span><strong><?= count($goals) ?></strong><small><?= e(t('team.challenges')) ?></small></span></div>
+            <nav class="hierarchy-nav-list mobile-hub-section-grid" aria-label="<?= e(t('nav.team')) ?>">
+                <?php foreach ([
+                    'challenge' => ['&#9873;', t('team.active_challenge_title'), t('team.mobile_challenge_hint'), count($goals), 'orange'],
+                    'leaderboard' => ['#', t('dashboard.ranking'), t('team.mobile_leaderboard_hint'), count($leaderboardRows), 'blue'],
+                    'members' => ['&#9673;', t('team.members'), t('team.mobile_members_hint'), count((array) ($members ?? [])), 'green'],
+                    'stats' => ['&#8645;', t('team.mobile_stats'), t('team.mobile_stats_hint'), '', 'violet'],
+                    'achievements' => ['&#9733;', t('team.achievements'), t('team.mobile_achievements_hint'), count((array) ($teamAchievements ?? [])), 'amber'],
+                ] as $sectionKey => $sectionItem): ?>
+                    <a class="hierarchy-nav-row" data-tone="<?= e((string) $sectionItem[4]) ?>" href="/?<?= e(http_build_query($teamBaseParams + ['section' => $sectionKey])) ?>"><span class="hierarchy-nav-icon" aria-hidden="true"><?= $sectionItem[0] ?></span><span class="hierarchy-nav-copy"><strong><?= e((string) $sectionItem[1]) ?></strong><small><?= e((string) $sectionItem[2]) ?></small></span><?php if ((string) $sectionItem[3] !== ''): ?><span class="hierarchy-nav-meta"><?= e((string) $sectionItem[3]) ?></span><?php endif; ?><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <?php endforeach; ?>
+            </nav>
+            <?php if (!empty($canManageTeam)): ?><a class="native-secondary-link" href="/?page=team_settings&team_id=<?= (int) ($team['id'] ?? 0) ?>"><?= e(t('team.settings')) ?></a><?php endif; ?>
+        </div>
+    <?php else: ?>
+        <header class="hierarchy-page-header team-section-header"><button class="hierarchy-back" type="button" data-hierarchy-back data-fallback="/?page=team&team_id=<?= (int) ($team['id'] ?? 0) ?>" aria-label="<?= e(t('common.back')) ?>">&larr;</button><div><p class="eyebrow"><?= e((string) ($team['name'] ?? t('nav.team'))) ?></p><h1><?= e(t('team.mobile_' . $teamSection)) ?></h1></div></header>
+    <?php endif; ?>
+    <div class="team-desktop-root">
+    <?php if ($teamSection === ''): ?><header class="mobile-widget-feed-head"><div><p><?= e(t('dashboard.visible_widgets')) ?></p><h2><?= e(t('nav.team')) ?></h2></div><a href="<?= e($teamMobileEditLayoutUrl) ?>"><?= e(t('team.edit_layout')) ?></a></header><?php endif; ?>
     <div class="hero-panel">
         <div class="hero-copy">
             <p class="eyebrow"><?= e(t('nav.team')) ?></p>
@@ -264,7 +302,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
     <?php
     $activeChallengeHero = '';
     ?>
-    <?php if ($activeChallenge !== null && $isTeamOverview): ?>
+    <?php if ($activeChallenge !== null && ($isTeamOverview || $teamSection === 'challenge')): ?>
         <?php
         $activeRewardText = trim((string) ($activeChallenge['reward_text'] ?? ''));
         $activeProgressRaw = (float) ($activeChallenge['progress_pct_raw'] ?? 0);
@@ -442,105 +480,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         ?>
     <?php endif; ?>
 
-    <?php if ($teamSection === 'member' && $teamMemberDetail !== null && $memberUser !== [] && $memberMetric !== []): ?>
-        <article class="panel team-member-detail-panel">
-            <div class="panel-head">
-                <div>
-                    <p class="eyebrow"><?= e(t('team.member_detail')) ?></p>
-                    <h2><?= e((string) ($memberUser['display_name'] ?? '')) ?></h2>
-                    <p class="muted">@<?= e((string) ($memberUser['username'] ?? '')) ?> · <?= e(t('team.members')) ?></p>
-                </div>
-                <a class="btn btn-ghost" href="<?= e($teamBaseUrl) ?>">← <?= e(t('common.back')) ?></a>
-            </div>
-
-            <div class="team-member-summary">
-                <div class="team-member-avatar-wrap">
-                    <?php $memberUserAvatarUrl = avatar_url($memberUser); ?>
-                    <?php if ($memberUserAvatarUrl !== ''): ?>
-                        <img class="member-avatar member-avatar-lg" src="<?= e($memberUserAvatarUrl) ?>" alt="<?= e((string) ($memberUser['display_name'] ?? '')) ?>">
-                    <?php else: ?>
-                        <span class="member-avatar member-avatar-initials member-avatar-lg"><?= e(initials_for((string) ($memberUser['display_name'] ?? ''))) ?></span>
-                    <?php endif; ?>
-                    <?php if (is_int($memberRank)): ?>
-                        <span class="badge">#<?= (int) $memberRank ?></span>
-                    <?php endif; ?>
-                </div>
-                <div class="team-member-stat-grid">
-                    <article class="mini-card"><div><strong><?= e(t('metric.score')) ?></strong><span><?= e((string) ($memberMetric['score'] ?? 0)) ?></span></div></article>
-                    <article class="mini-card"><div><strong><?= e(t('metric.steps')) ?></strong><span><?= e((string) ($memberMetric['total_steps'] ?? 0)) ?></span></div></article>
-                    <article class="mini-card"><div><strong><?= e(t('metric.distance_km')) ?></strong><span><?= e((string) ($memberMetric['total_km'] ?? 0)) ?> km</span></div></article>
-                    <article class="mini-card"><div><strong><?= e(t('metric.workouts')) ?></strong><span><?= e((string) max((int) ($memberMetric['workout_count'] ?? 0), (int) ($memberMetric['workout_success'] ?? 0))) ?></span></div></article>
-                    <?php if ($penaltiesEnabled): ?>
-                    <article class="mini-card"><div><strong><?= e(t('metric.strikes')) ?></strong><span><?= e((string) ($memberMetric['current_strikes'] ?? 0)) ?></span></div></article>
-                    <article class="mini-card"><div><strong><?= e(t('metric.penalty')) ?></strong><span class="penalty-chip penalty-chip-<?= (int) ($memberMetric['total_penalty'] ?? 0) <= 0 ? 'good' : ((int) ($memberMetric['total_penalty'] ?? 0) <= 50 ? 'warn' : 'bad') ?>">&euro;<?= e((string) ($memberMetric['total_penalty'] ?? 0)) ?></span><small class="muted"><?= e(t('team.lower_is_better')) ?></small></div></article>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </article>
-
-        <div class="grid-two team-member-chart-grid" style="order: 50">
-            <article class="panel chart-card">
-                <h2><?= e(t('metric.steps')) ?></h2>
-                <canvas id="memberStepsChart" height="170"></canvas>
-            </article>
-            <article class="panel chart-card">
-                <h2><?= e(t('metric.distance_km')) ?></h2>
-                <canvas id="memberDistanceChart" height="170"></canvas>
-            </article>
-        </div>
-
-        <div class="grid-two team-member-chart-grid" style="order: 50">
-            <article class="panel chart-card">
-                <h2><?= e(t('team.workouts_by_week')) ?></h2>
-                <canvas id="memberWorkoutChart" height="170"></canvas>
-            </article>
-            <?php if ($penaltiesEnabled): ?>
-            <article class="panel chart-card">
-                <h2><?= e(t('team.score_penalty_by_week')) ?></h2>
-                <canvas id="memberScorePenaltyChart" height="170"></canvas>
-            </article>
-            <?php endif; ?>
-        </div>
-
-        <div class="grid-two team-member-secondary-grid">
-            <article class="panel team-member-activity-panel">
-                <div class="panel-head">
-                    <h2><?= e(t('profile.recent_activity')) ?></h2>
-                </div>
-                <div class="audit-list">
-                    <?php foreach ((array) ($teamMemberDetail['recent_activity'] ?? []) as $item): ?>
-                        <article>
-                            <strong><?= e((string) ($item['summary'] ?? '')) ?></strong>
-                            <span><?= e((string) ($item['action'] ?? '')) ?> · <?= e(format_date_eu((string) ($item['created_at'] ?? ''))) ?></span>
-                        </article>
-                    <?php endforeach; ?>
-                    <?php if (((array) ($teamMemberDetail['recent_activity'] ?? [])) === []): ?>
-                        <p class="muted"><?= e(t('audit.empty')) ?></p>
-                    <?php endif; ?>
-                </div>
-            </article>
-
-            <article class="panel team-member-achievements-panel">
-                <div class="panel-head">
-                    <h2><?= e(t('profile.achievements')) ?></h2>
-                    <span class="badge"><?= count((array) ($teamMemberDetail['achievements'] ?? [])) ?></span>
-                </div>
-                <div class="achievement-grid team-member-achievement-grid">
-                    <?php foreach ((array) ($teamMemberDetail['achievements'] ?? []) as $achievement): ?>
-                        <article class="achievement-card" <?= achievement_modal_attrs($achievement) ?>>
-                            <?= achievement_visual_html($achievement, 'achievement-visual') ?>
-                            <strong><?= e((string) ($achievement['name'] ?? '')) ?></strong>
-                            <p><?= e((string) ($achievement['description'] ?? '')) ?></p>
-                        </article>
-                    <?php endforeach; ?>
-                    <?php if (((array) ($teamMemberDetail['achievements'] ?? [])) === []): ?>
-                        <p class="muted"><?= e(t('achievements.empty')) ?></p>
-                    <?php endif; ?>
-                </div>
-            </article>
-        </div>
-
-    <?php elseif ($teamMetricDetail !== null): ?>
+    <?php if ($teamMetricDetail !== null): ?>
         <article class="panel">
             <div class="panel-head">
                 <div>
@@ -582,7 +522,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                         ?>
                         <tr class="<?= $idx === 0 ? 'team-leaderboard-top-row' : '' ?>">
                             <td><?= $idx + 1 ?></td>
-                            <td><?= e((string) ($row['display_name'] ?? '')) ?></td>
+                            <td><a class="user-inline-link" href="<?= e($teamMemberUrl((int) ($row['user_id'] ?? 0))) ?>"><?= e((string) ($row['display_name'] ?? '')) ?></a></td>
                             <td>
                                 <?php if ($isPenaltyMetric): ?>
                                     <span class="penalty-chip penalty-chip-<?= e($severityClass) ?>"><?= e((string) ($row['value_display'] ?? '0')) ?></span>
@@ -677,7 +617,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                     $penaltyValue = (float) ($row['penalties'] ?? 0);
                     $penaltyClass = $penaltyValue <= 0 ? 'good' : ($penaltyValue <= 50 ? 'warn' : 'bad');
                     ?>
-                    <a class="team-leaderboard-card<?= $idx === 0 ? ' is-top' : '' ?>" href="<?= e($teamMemberUrl((int) ($row['user_id'] ?? 0))) ?>" aria-label="<?= e(t('team.view_member_detail', ['name' => (string) ($row['display_name'] ?? '')])) ?>">
+                    <a class="team-leaderboard-card<?= $idx === 0 ? ' is-top' : '' ?>" href="<?= e($teamMemberUrl((int) ($row['user_id'] ?? 0))) ?>" aria-label="<?= e(t('team.view_profile_of', ['name' => (string) ($row['display_name'] ?? '')])) ?>">
                         <div class="team-leaderboard-card-head">
                             <span class="team-rank">#<?= $idx + 1 ?></span>
                             <span class="team-leaderboard-user">
@@ -857,58 +797,54 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                                     </div>
                                 </div>
                                 <?php if (!empty($canManageTeam)): ?>
-                                    <details class="photo-post-menu team-goal-actions-menu">
-                                        <summary class="btn btn-ghost small" aria-label="<?= e(t('team.challenge_actions')) ?>" title="<?= e(t('team.challenge_actions')) ?>">•••</summary>
-                                        <div class="photo-post-menu-panel">
-                                            <button
-                                                class="btn btn-ghost small"
-                                                type="button"
-                                                data-team-goal-open
-                                                data-goal-mode="edit"
-                                                data-goal-id="<?= (int) $goal['id'] ?>"
-                                                data-goal-title="<?= e((string) ($goal['title'] ?? '')) ?>"
-                                                data-goal-target-type="<?= e($goalTargetType) ?>"
-                                                data-goal-target-value="<?= e((string) ($goal['target_value'] ?? '')) ?>"
-                                                data-goal-custom-unit="<?= e($goalCustomUnit) ?>"
-                                                data-goal-secondary-enabled="<?= $goalSecondaryEnabled ? '1' : '0' ?>"
-                                                data-goal-secondary-target-type="<?= e($goalSecondaryType) ?>"
-                                                data-goal-secondary-target-value="<?= e((string) ($goal['secondary_target_value'] ?? '')) ?>"
-                                                data-goal-secondary-custom-unit="<?= e($goalSecondaryCustomUnit) ?>"
-                                                data-goal-reward-text="<?= e($rewardText) ?>"
-                                                data-goal-start-date="<?= e($startDate) ?>"
-                                                data-goal-start-time="<?= e($startTime) ?>"
-                                                data-goal-due-date="<?= e($dueDate) ?>"
-                                                data-goal-due-time="<?= e($dueTime) ?>"
-                                            ><?= e(t('common.edit')) ?></button>
-                                            <?php if ($status !== 'complete'): ?>
-                                                <form method="post" action="/?page=team">
-                                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                                    <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
-                                                    <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
-                                                    <input type="hidden" name="redirect_view" value="<?= e($teamView) ?>">
-                                                    <input type="hidden" name="status" value="complete">
-                                                    <button class="btn btn-ghost small" name="action" value="goal_status" type="submit"><?= e(t('common.complete')) ?></button>
-                                                </form>
-                                            <?php endif; ?>
-                                            <?php if ($status !== 'archived'): ?>
-                                                <form method="post" action="/?page=team">
-                                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                                    <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
-                                                    <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
-                                                    <input type="hidden" name="redirect_view" value="<?= e($teamView) ?>">
-                                                    <input type="hidden" name="status" value="archived">
-                                                    <button class="btn btn-ghost small" name="action" value="goal_status" type="submit"><?= e(t('goals.archive')) ?></button>
-                                                </form>
-                                            <?php endif; ?>
-                                            <form method="post" action="/?page=team">
-                                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                                <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
-                                                <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
-                                                <input type="hidden" name="redirect_view" value="<?= e($teamView) ?>">
-                                                <button class="btn btn-ghost small photo-delete-text-btn" name="action" value="delete_goal" type="submit" onclick="return window.confirm('<?= e(t('goals.delete_confirm')) ?>');"><?= e(t('common.delete')) ?></button>
-                                            </form>
-                                        </div>
-                                    </details>
+                                    <?php
+                                    $goalId = (int) $goal['id'];
+                                    $goalStatusForms = [];
+                                    $goalStatusItems = [];
+                                    if ($status !== 'complete') {
+                                        $completeFormId = 'team-goal-complete-' . $goalId;
+                                        $goalStatusForms[$completeFormId] = 'complete';
+                                        $goalStatusItems[] = ['label' => t('common.complete'), 'type' => 'submit', 'attrs' => ['form' => $completeFormId]];
+                                    }
+                                    if ($status !== 'archived') {
+                                        $archiveFormId = 'team-goal-archive-' . $goalId;
+                                        $goalStatusForms[$archiveFormId] = 'archived';
+                                        $goalStatusItems[] = ['label' => t('goals.archive'), 'type' => 'submit', 'attrs' => ['form' => $archiveFormId]];
+                                    }
+                                    $deleteFormId = 'team-goal-delete-' . $goalId;
+                                    $goalMenuItems = [[
+                                        'label' => t('common.edit'),
+                                        'attrs' => [
+                                            'data-team-goal-open' => '', 'data-goal-mode' => 'edit', 'data-goal-id' => (string) $goalId,
+                                            'data-goal-title' => (string) ($goal['title'] ?? ''), 'data-goal-target-type' => $goalTargetType,
+                                            'data-goal-target-value' => (string) ($goal['target_value'] ?? ''), 'data-goal-custom-unit' => $goalCustomUnit,
+                                            'data-goal-secondary-enabled' => $goalSecondaryEnabled ? '1' : '0', 'data-goal-secondary-target-type' => $goalSecondaryType,
+                                            'data-goal-secondary-target-value' => (string) ($goal['secondary_target_value'] ?? ''),
+                                            'data-goal-secondary-custom-unit' => $goalSecondaryCustomUnit, 'data-goal-reward-text' => $rewardText,
+                                            'data-goal-start-date' => $startDate, 'data-goal-start-time' => $startTime,
+                                            'data-goal-due-date' => $dueDate, 'data-goal-due-time' => $dueTime,
+                                        ],
+                                    ]];
+                                    if ($goalStatusItems !== []) {
+                                        $goalMenuItems[] = ['label' => t('menu.status'), 'children' => $goalStatusItems];
+                                    }
+                                    $goalMenuItems[] = [
+                                        'label' => t('common.delete'), 'danger' => true, 'type' => 'submit',
+                                        'attrs' => ['form' => $deleteFormId, 'data-confirm-action' => t('goals.delete_confirm')],
+                                    ];
+                                    echo render_kebab_menu($goalMenuItems, [
+                                        'label' => t('team.challenge_actions'), 'title' => (string) ($goal['title'] ?? ''),
+                                        'align' => 'end', 'class' => 'team-goal-actions-menu',
+                                    ]);
+                                    ?>
+                                    <?php foreach ($goalStatusForms as $statusFormId => $nextStatus): ?>
+                                        <form id="<?= e($statusFormId) ?>" method="post" action="/?page=team" hidden>
+                                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>"><input type="hidden" name="goal_id" value="<?= $goalId ?>"><input type="hidden" name="redirect_view" value="<?= e($teamView) ?>"><input type="hidden" name="status" value="<?= e($nextStatus) ?>"><input type="hidden" name="action" value="goal_status">
+                                        </form>
+                                    <?php endforeach; ?>
+                                    <form id="<?= e($deleteFormId) ?>" method="post" action="/?page=team" hidden>
+                                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>"><input type="hidden" name="goal_id" value="<?= $goalId ?>"><input type="hidden" name="redirect_view" value="<?= e($teamView) ?>"><input type="hidden" name="action" value="delete_goal">
+                                    </form>
                                 <?php endif; ?>
                             </article>
                         <?php endforeach; ?>
@@ -930,7 +866,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                         <div class="empty-state">
                             <span class="empty-state-icon"><?= activity_icon_svg('trophy') ?></span>
                             <p class="muted"><?= e(t('competitions.no_active')) ?></p>
-                            <a class="btn btn-primary small" href="/?page=competitions"><?= e(t('competitions.create_team')) ?></a>
+                            <a class="btn btn-primary small" href="/?page=competitions#competition-teams"><?= e(t('competitions.create_competition')) ?></a>
                         </div>
                     <?php else: ?>
                         <ul class="team-comp-list">
@@ -991,7 +927,7 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 </div>
                 <div class="card-list">
                     <?php foreach (($members ?? []) as $member): ?>
-                        <a class="mini-card member-card member-card-link" href="<?= e($teamMemberUrl((int) $member['user_id'])) ?>" aria-label="<?= e(t('team.view_member_detail', ['name' => (string) $member['display_name']])) ?>">
+                        <a class="mini-card member-card member-card-link" href="<?= e($teamMemberUrl((int) $member['user_id'])) ?>" aria-label="<?= e(t('team.view_profile_of', ['name' => (string) $member['display_name']])) ?>">
                             <div class="member-card-title">
                                 <?php $teamMemberAvatarUrl = avatar_url($member); ?>
                                 <?php if ($teamMemberAvatarUrl !== ''): ?>
@@ -1203,9 +1139,10 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
             <a class="btn btn-secondary btn-block team-settings-bottom" href="/?page=team_settings&team_id=<?= (int) $team['id'] ?>"><?= e(t('team.settings')) ?></a>
         <?php endif; ?>
     <?php endif; ?>
+    </div>
 </section>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="/assets/vendor/chart.umd.min.js?v=4.4.3"></script>
 <script>
 (function () {
     const lineOpts = {
@@ -1416,101 +1353,6 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
                 plugins: { legend: { position: 'bottom' } },
                 scales: {
                     y: { beginAtZero: true }
-                }
-            }
-        });
-    }
-
-    const memberStepsCtx = document.getElementById('memberStepsChart');
-    if (memberStepsCtx) {
-        new Chart(memberStepsCtx, {
-            type: 'line',
-            data: {
-                labels: <?= json_encode((array) ($teamMemberDetail['steps_labels'] ?? [])) ?>,
-                datasets: [{
-                    label: <?= json_encode(t('metric.steps')) ?>,
-                    data: <?= json_encode((array) ($teamMemberDetail['steps_values'] ?? [])) ?>,
-                    borderColor: '#14a38b',
-                    backgroundColor: 'rgba(20, 163, 139, 0.16)',
-                    fill: true,
-                    tension: 0.28,
-                }]
-            },
-            options: lineOpts
-        });
-    }
-
-    const memberDistanceCtx = document.getElementById('memberDistanceChart');
-    if (memberDistanceCtx) {
-        new Chart(memberDistanceCtx, {
-            type: 'line',
-            data: {
-                labels: <?= json_encode((array) ($teamMemberDetail['steps_labels'] ?? [])) ?>,
-                datasets: [{
-                    label: <?= json_encode(t('metric.distance_km')) ?>,
-                    data: <?= json_encode((array) ($teamMemberDetail['distance_values'] ?? [])) ?>,
-                    borderColor: '#3b82f6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.14)',
-                    fill: true,
-                    tension: 0.28,
-                }]
-            },
-            options: lineOpts
-        });
-    }
-
-    const memberWorkoutCtx = document.getElementById('memberWorkoutChart');
-    if (memberWorkoutCtx) {
-        new Chart(memberWorkoutCtx, {
-            type: 'bar',
-            data: {
-                labels: <?= json_encode((array) ($teamMemberDetail['weekly_labels'] ?? [])) ?>,
-                datasets: [{
-                    label: <?= json_encode(t('metric.workouts')) ?>,
-                    data: <?= json_encode((array) ($teamMemberDetail['workout_weekly'] ?? [])) ?>,
-                    backgroundColor: 'rgba(244, 114, 182, 0.35)',
-                    borderColor: '#ec4899',
-                    borderWidth: 1,
-                }]
-            },
-            options: lineOpts
-        });
-    }
-
-    const memberScorePenaltyCtx = document.getElementById('memberScorePenaltyChart');
-    if (memberScorePenaltyCtx) {
-        new Chart(memberScorePenaltyCtx, {
-            type: 'line',
-            data: {
-                labels: <?= json_encode((array) ($teamMemberDetail['weekly_labels'] ?? [])) ?>,
-                datasets: [
-                    {
-                        label: <?= json_encode(t('metric.score')) ?>,
-                        data: <?= json_encode((array) ($teamMemberDetail['score_weekly'] ?? [])) ?>,
-                        borderColor: '#14a38b',
-                        backgroundColor: 'rgba(20, 163, 139, 0.14)',
-                        fill: false,
-                        tension: 0.25,
-                        yAxisID: 'y',
-                    },
-                    {
-                        label: <?= json_encode(t('metric.penalty')) ?>,
-                        data: <?= json_encode((array) ($teamMemberDetail['penalty_weekly'] ?? [])) ?>,
-                        borderColor: '#ef4444',
-                        backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                        fill: false,
-                        tension: 0.25,
-                        yAxisID: 'y1',
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-                scales: {
-                    y: { beginAtZero: true, suggestedMax: 100 },
-                    y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false } }
                 }
             }
         });
@@ -1924,6 +1766,12 @@ $memberRank = $memberUser !== [] ? ($rankByUserId[(int) ($memberUser['id'] ?? 0)
         openButtons.forEach((button) => {
             button.addEventListener('click', () => openModal(button));
         });
+        if (new URLSearchParams(window.location.search).get('create') === '1') {
+            const createButton = [...openButtons].find((button) => String(button.dataset.goalMode || 'create') === 'create');
+            if (createButton instanceof HTMLElement) {
+                window.setTimeout(() => openModal(createButton), 0);
+            }
+        }
         closeButtons.forEach((button) => {
             button.addEventListener('click', closeModal);
         });

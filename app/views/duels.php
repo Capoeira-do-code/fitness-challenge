@@ -45,20 +45,20 @@ $renderVs = static function (array $vm) use ($duelAvatar): void {
     $oVal = (float) ($v['opponent'] ?? 0);
     ?>
     <div class="duel-vs">
-        <div class="duel-side<?= $cVal > $oVal ? ' is-lead' : '' ?>">
+        <a class="duel-side user-profile-link<?= $cVal > $oVal ? ' is-lead' : '' ?>" href="/?page=profile&amp;user_id=<?= (int) (($v['challenger_user'] ?? [])['id'] ?? 0) ?>">
             <?php $duelAvatar($v['challenger_user'] ?? []); ?>
             <strong><?= e((string) (($v['challenger_user'] ?? [])['display_name'] ?? '')) ?></strong>
             <span class="duel-value"><?= e(duels_format_value($metric, $cVal)) ?></span>
-        </div>
+        </a>
         <div class="duel-mid">
             <span class="duel-metric-tag"><?= e(duels_metric_label($metric)) ?></span>
             <span class="duel-vs-label"><?= e(t('friends.vs')) ?></span>
         </div>
-        <div class="duel-side<?= $oVal > $cVal ? ' is-lead' : '' ?>">
+        <a class="duel-side user-profile-link<?= $oVal > $cVal ? ' is-lead' : '' ?>" href="/?page=profile&amp;user_id=<?= (int) (($v['opponent_user'] ?? [])['id'] ?? 0) ?>">
             <?php $duelAvatar($v['opponent_user'] ?? []); ?>
             <strong><?= e((string) (($v['opponent_user'] ?? [])['display_name'] ?? '')) ?></strong>
             <span class="duel-value"><?= e(duels_format_value($metric, $oVal)) ?></span>
-        </div>
+        </a>
     </div>
     <?php
 };

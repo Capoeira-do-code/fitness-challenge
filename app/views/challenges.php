@@ -15,9 +15,13 @@ $archives = is_array($archives ?? null) ? array_values((array) $archives) : [];
 
     <article class="panel">
         <?php if ($archives === []): ?>
-            <p class="muted"><?= e(t('challenges.empty')) ?></p>
+            <div class="empty-state challenges-empty-state">
+                <span class="empty-state-icon"><?= activity_icon_svg('target') ?></span>
+                <p><strong><?= e(t('challenges.empty')) ?></strong></p>
+                <a class="btn btn-primary small" href="/?page=team"><?= e(t('profile.back_to_team')) ?></a>
+            </div>
         <?php else: ?>
-            <div class="card-list">
+            <div class="challenge-archive-grid">
                 <?php foreach ($archives as $archive): ?>
                     <?php
                     $archiveId = (int) ($archive['id'] ?? 0);
@@ -32,22 +36,20 @@ $archives = is_array($archives ?? null) ? array_values((array) $archives) : [];
                         : '';
                     $archiveTag = $archiveHref !== '' ? 'a' : 'article';
                     ?>
-                    <<?= $archiveTag ?> class="mini-card<?= $archiveHref !== '' ? ' mini-card-link' : '' ?>"<?= $archiveHref !== '' ? ' href="' . e($archiveHref) . '"' : '' ?>>
-                        <div>
+                    <<?= $archiveTag ?> class="challenge-archive-card<?= $archiveHref !== '' ? ' mini-card-link' : '' ?>"<?= $archiveHref !== '' ? ' href="' . e($archiveHref) . '"' : '' ?>>
+                        <span class="challenge-archive-head">
                             <strong><?= e((string) ($archive['challenge_name'] ?? t('challenges.unnamed'))) ?></strong>
-                            <span>
-                                <?= e($start !== '' ? format_date_eu($start) : '-') ?>
-                                →
-                                <?= e($end !== '' ? format_date_eu($end) : '-') ?>
-                            </span>
-                            <small class="muted">
-                                <?= e(t('challenges.archived_at')) ?>:
-                                <?= e(trim($archivedAtDate . ' ' . $archivedAtTime)) ?>
-                                <?php if ($archivedBy !== ''): ?>
-                                    · <?= e(t('challenges.archived_by', ['name' => $archivedBy])) ?>
-                                <?php endif; ?>
-                            </small>
-                        </div>
+                            <span class="badge"><?= e(t('goals.archive')) ?></span>
+                        </span>
+                        <span class="challenge-archive-dates">
+                            <span><small><?= e(t('goals.start_date')) ?></small><strong><?= e($start !== '' ? format_date_eu($start) : '-') ?></strong></span>
+                            <span aria-hidden="true">→</span>
+                            <span><small><?= e(t('goals.due_date')) ?></small><strong><?= e($end !== '' ? format_date_eu($end) : '-') ?></strong></span>
+                        </span>
+                        <small class="muted challenge-archive-meta">
+                            <?= e(t('challenges.archived_at')) ?>: <?= e(trim($archivedAtDate . ' ' . $archivedAtTime)) ?>
+                            <?php if ($archivedBy !== ''): ?> · <?= e(t('challenges.archived_by', ['name' => $archivedBy])) ?><?php endif; ?>
+                        </small>
                         <?php if ($archiveHref !== ''): ?>
                             <span class="mini-card-cta"><?= e(t('challenges.view_details')) ?> →</span>
                         <?php endif; ?>

@@ -9,14 +9,21 @@ $analyticsPeriod = (string) ($dashboardAnalyticsPeriod ?? 'current_week');
 $analyticsWeek = (string) ($dashboardAnalyticsWeek ?? $selectedWeekStart ?? to_date(null));
 $analyticsMonth = (string) ($dashboardAnalyticsMonth ?? substr((string) ($analyticsWeek ?: to_date(null)), 0, 7));
 $analyticsRangeText = t('common.from_to', ['start' => format_date_eu($rangeStartDate), 'end' => format_date_eu($rangeEndDate)]);
+$analyticsSection = (string) ($analyticsSection ?? '');
+if (!in_array($analyticsSection, ['', 'activity', 'nutrition', 'food', 'body', 'comparison'], true)) {
+    $analyticsSection = '';
+}
 
 $analyticsLayout = normalize_analytics_layout_sections((string) ($currentUser['analytics_layout_json'] ?? ''));
 $analyticsLayoutIndex = array_flip($analyticsLayout);
-$analyticsLayoutEditMode = (string) ($_GET['layout_edit'] ?? '') === '1';
+$analyticsLayoutEditMode = $analyticsSection === '' && (string) ($_GET['layout_edit'] ?? '') === '1';
 $analyticsLayoutSections = analytics_layout_sections_default();
 $analyticsLayoutEditorSections = array_values(array_unique(array_merge($analyticsLayout, $analyticsLayoutSections)));
 $showAnalyticsSection = static fn(string $section): bool => in_array($section, $analyticsLayout, true);
-$analyticsSectionStyle = static function (string $section) use ($analyticsLayoutIndex): string {
+$analyticsSectionStyle = static function (string $section) use ($analyticsLayoutIndex, $analyticsSection): string {
+    if ($analyticsSection !== '') {
+        return $section === $analyticsSection ? 'order:10;' : 'display:none; order:999;';
+    }
     if (!isset($analyticsLayoutIndex[$section])) {
         return 'display:none; order:999;';
     }
@@ -184,6 +191,9 @@ $analyticsBaseQuery = [
     'analytics_week' => $analyticsWeek,
     'analytics_month' => $analyticsMonth,
 ];
+if ($analyticsSection !== '') {
+    $analyticsBaseQuery['section'] = $analyticsSection;
+}
 $analyticsEditLayoutUrl = '/?' . http_build_query($analyticsBaseQuery + ['layout_edit' => '1']);
 $analyticsCancelEditLayoutUrl = '/?' . http_build_query($analyticsBaseQuery);
 $analyticsPeriodLabels = [
@@ -370,7 +380,31 @@ ob_start();
 <?php
 $topbarControls = ob_get_clean();
 ?>
-<section class="screen stack-lg analytics-page" data-analytics-page>
+<section class="screen stack-lg analytics-page" data-analytics-page data-analytics-view-section="<?= e($analyticsSection) ?>">
+    <?php if ($analyticsSection === ''): ?>
+        <div class="analytics-mobile-root">
+            <header class="mobile-home-greeting"><p><?= e(t('nav.analytics')) ?></p><h1><?= e(t('analytics.section_summary')) ?></h1><small><?= e($analyticsRangeText) ?></small></header>
+            <div class="mobile-kpi-grid analytics-mobile-kpis">
+                <?php foreach ($analyticsSummaryCards as $card): ?><div><small><?= e((string) ($card['label'] ?? '')) ?></small><strong><?= e((string) ($card['value'] ?? '')) ?></strong><span><?= e((string) ($card['meta'] ?? '')) ?></span></div><?php endforeach; ?>
+            </div>
+            <nav class="hierarchy-nav-list mobile-hub-section-grid" aria-label="<?= e(t('nav.analytics')) ?>">
+                <?php foreach ([
+                    'activity' => ['&#8645;', t('dashboard.analytics_activity'), t('analytics.mobile_activity_hint'), 'blue'],
+                    'nutrition' => ['&#9673;', t('analytics.section_nutrition'), t('analytics.mobile_nutrition_hint'), 'green'],
+                    'food' => ['&#9638;', t('analytics.section_food'), t('analytics.mobile_food_hint'), 'orange'],
+                    'body' => ['&#9678;', t('analytics.section_body'), t('analytics.mobile_body_hint'), 'violet'],
+                    'comparison' => ['&#9876;', t('dashboard.analytics_comparison'), t('analytics.mobile_comparison_hint'), 'red'],
+                ] as $sectionKey => $sectionItem): ?>
+                    <a class="hierarchy-nav-row" data-tone="<?= e((string) $sectionItem[3]) ?>" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['section' => $sectionKey]))) ?>"><span class="hierarchy-nav-icon" aria-hidden="true"><?= $sectionItem[0] ?></span><span class="hierarchy-nav-copy"><strong><?= e((string) $sectionItem[1]) ?></strong><small><?= e((string) $sectionItem[2]) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <?php endforeach; ?>
+            </nav>
+        </div>
+    <?php else: ?>
+        <header class="hierarchy-page-header analytics-section-header">
+            <button class="hierarchy-back" type="button" data-hierarchy-back data-fallback="/?page=analytics" aria-label="<?= e(t('common.back')) ?>">&larr;</button>
+            <div><p class="eyebrow"><?= e(t('nav.analytics')) ?></p><h1><?= e((string) ($analyticsSectionLabels[$analyticsSection] ?? $analyticsSection)) ?></h1><p><?= e($analyticsRangeText) ?></p></div>
+        </header>
+    <?php endif; ?>
     <?php if ($analyticsLayoutEditMode): ?>
         <?php // Same compact editor as Home: a sticky bar with the section list tucked
               // into a "visible widgets" disclosure. The old full panel was caught by the
@@ -417,6 +451,7 @@ $topbarControls = ob_get_clean();
             </form>
         </div>
     <?php endif; ?>
+    <?php if ($analyticsSection === ''): ?><header class="mobile-widget-feed-head"><div><p><?= e(t('dashboard.visible_widgets')) ?></p><h2><?= e(t('nav.analytics')) ?></h2></div><a href="<?= e($analyticsEditLayoutUrl) ?>"><?= e(t('dashboard.edit_layout')) ?></a></header><?php endif; ?>
 
     <section class="analytics-section analytics-summary-section analytics-layout-item" data-analytics-section="summary" style="<?= e($analyticsSectionStyle('summary')) ?>">
         <div class="analytics-section-title">
@@ -560,4 +595,4 @@ $topbarControls = ob_get_clean();
     <script type="application/json" data-analytics-chart-data><?= json_encode($analyticsChartPayload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?></script>
 </section>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="/assets/vendor/chart.umd.min.js?v=4.4.3"></script>
