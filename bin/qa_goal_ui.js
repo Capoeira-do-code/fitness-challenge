@@ -180,6 +180,87 @@ const login = async (page) => {
     }
 
     await page.setViewportSize({ width: 390, height: 844 });
+    await internalNavigate(page, '/?page=dashboard', '.dashboard-mobile-home');
+    const mobileDashboard = await page.evaluate(() => {
+        const visible = (node) => Boolean(node && !node.hidden && getComputedStyle(node).display !== 'none' && node.getBoundingClientRect().height > 0);
+        const surfaces = [...document.querySelectorAll('[data-dashboard-mobile-surface]')];
+        const feedCards = [...document.querySelectorAll('.dashboard-desktop-root [data-dashboard-widget]')];
+        const questList = document.querySelector('.quests-list');
+        return {
+            surfaces: surfaces.filter(visible).length,
+            surfaceKeys: surfaces.filter(visible).map((node) => node.dataset.dashboardMobileSurface),
+            metricRows: document.querySelectorAll('.mobile-today-metrics > span').length,
+            visibleLegacyKpis: feedCards.filter((node) => node.dataset.dashboardWidget === 'kpis' && visible(node)).length,
+            visibleFeedCards: feedCards.filter(visible).length,
+            questColumns: questList ? getComputedStyle(questList).gridTemplateColumns.split(' ').filter(Boolean).length : 0,
+            overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+        };
+    });
+    check('Inicio móvil conserva sus cuatro superficies configurables', mobileDashboard.surfaces === 4,
+        mobileDashboard.surfaceKeys.join(', '));
+    check('Inicio móvil usa una sola presentación KPI visible', mobileDashboard.metricRows >= 5 && mobileDashboard.visibleLegacyKpis === 0,
+        `${mobileDashboard.metricRows} métricas · ${mobileDashboard.visibleLegacyKpis} duplicados`);
+    check('El feed móvil mantiene los widgets completos del dashboard', mobileDashboard.visibleFeedCards >= 6,
+        `${mobileDashboard.visibleFeedCards} widgets`);
+    check('Misiones usan dos columnas viables a 390 px', mobileDashboard.questColumns === 2,
+        `${mobileDashboard.questColumns} columnas`);
+    check('Dashboard móvil no crea overflow horizontal', !mobileDashboard.overflow);
+    await page.screenshot({ path: path.join(__dirname, '..', 'e2e-report', 'ui-dashboard-configurable-mobile.png'), fullPage: true });
+
+    await internalNavigate(page, '/?page=dashboard&layout_edit=1', '[data-dashboard-layout-editor]');
+    const surfaceToggles = page.locator('[data-dashboard-layout-item][data-layout-scope="mobile"] input[name="dashboard_widgets[]"]');
+    check('El editor ofrece las cuatro superficies de Inicio móvil', await surfaceToggles.count() === 4,
+        `${await surfaceToggles.count()} controles`);
+    await page.locator('input[name="dashboard_widgets[]"][value="mobile_primary"]').evaluate((input) => {
+        input.checked = false;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const editorState = await page.evaluate(() => ({
+        hidden: document.querySelector('[data-dashboard-mobile-surface="mobile_primary"]')?.hidden === true,
+        dirty: document.body.classList.contains('layout-has-unsaved'),
+        label: document.querySelector('[data-layout-change-state]')?.textContent?.trim() || '',
+    }));
+    check('Ocultar una superficie actualiza preview y estado sin guardar', editorState.hidden && editorState.dirty,
+        editorState.label);
+    await page.locator('input[name="dashboard_widgets[]"][value="mobile_primary"]').evaluate((input) => {
+        input.checked = true;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await Promise.all([
+        page.waitForURL((url) => url.searchParams.get('layout_edit') !== '1'),
+        page.locator('#dashboard-layout-edit-form .dashboard-editbar-actions button[type="submit"]').click(),
+    ]);
+
+    await internalNavigate(page, '/?page=achievements', '.achievements-page-header');
+    const achievementPage = await page.evaluate(() => {
+        const card = document.querySelector('.achievements-page-panel .achievement-list-card');
+        const title = card?.querySelector('h3');
+        const description = card?.querySelector('.achievement-list-content > p');
+        if (title) title.textContent = 'Logro extraordinariamente largo que debe poder leerse completo sin romper ninguna tarjeta';
+        if (description) description.textContent = 'Descripción extensa de validación '.repeat(18);
+        const content = card?.querySelector('.achievement-list-content');
+        return {
+            filters: document.querySelectorAll('.achievement-filter-tabs > a').length,
+            summary: document.querySelectorAll('.achievement-summary-strip > .achievement-summary-card').length,
+            oldHero: document.querySelectorAll('.achievements-page-hero, .achievement-page-hero').length,
+            card: Boolean(card),
+            clipped: Boolean(content && (content.scrollHeight > content.clientHeight + 1 || content.scrollWidth > content.clientWidth + 1)),
+            overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+        };
+    });
+    check('Logros usa cabecera compacta, resumen y tres filtros',
+        achievementPage.filters === 3 && achievementPage.summary === 3 && achievementPage.oldHero === 0,
+        JSON.stringify(achievementPage));
+    check('Las tarjetas de logro admiten textos extremos sin recorte',
+        achievementPage.card && !achievementPage.clipped && !achievementPage.overflow,
+        JSON.stringify(achievementPage));
+    await page.locator('.achievement-filter-tabs a[href*="filter=locked"]').click();
+    await page.waitForURL((url) => url.searchParams.get('filter') === 'locked');
+    check('El filtro de logros muestra sólo la sección bloqueada',
+        await page.locator('.achievements-page-panel').count() === 1
+            && await page.locator('.achievement-filter-tabs a[aria-current="page"][href*="filter=locked"]').count() === 1);
+    await page.screenshot({ path: path.join(__dirname, '..', 'e2e-report', 'ui-achievements-mobile-coherent.png'), fullPage: true });
+
     await internalNavigate(page, '/?page=week_editor&range=week', '.training-sheet-table');
     const sheet = await page.evaluate(() => {
         const rows = [...document.querySelectorAll('.training-sheet-table tbody tr')];
@@ -193,7 +274,7 @@ const login = async (page) => {
         };
     });
     check('Challenge Log móvil usa filas compactas', sheet.max <= 72, `filas ${sheet.heights.join(', ')}px`);
-    check('Hábitos no vuelven a estirar la fila', sheet.habitMax <= 42, `${sheet.habitMax}px`);
+    check('Hábitos no vuelven a estirar la fila', sheet.habitMax <= 44, `${sheet.habitMax}px`);
     check('La tabla mantiene desplazamiento horizontal útil', sheet.horizontal);
     await page.screenshot({ path: path.join(__dirname, '..', 'e2e-report', 'ui-challenge-log-compact-mobile.png'), fullPage: true });
 

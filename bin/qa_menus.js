@@ -87,25 +87,81 @@ const mobileSheetState = (page) => page.evaluate(() => {
         /* User menu: keep common destinations visible, group secondary choices. */
         await page.goto(`${BASE}/?page=dashboard`);
         await page.waitForLoadState('networkidle');
+        const topbarState = await page.evaluate(() => {
+            const topbar = document.querySelector('.topbar');
+            const container = document.querySelector('.container-with-nav');
+            const title = document.querySelector('.topbar-page-title');
+            const originalTitle = title?.textContent || '';
+            if (title) title.textContent = 'Panel de entrenamiento y progreso personal extraordinariamente largo';
+            const barRect = topbar?.getBoundingClientRect();
+            const containerRect = container?.getBoundingClientRect();
+            const targets = topbar ? [...topbar.querySelectorAll('.btn-topbar, .topbar-notif-btn, .user-menu-trigger')]
+                .filter((node) => getComputedStyle(node).display !== 'none' && node.getBoundingClientRect().height > 0) : [];
+            const state = {
+                height: Math.round(barRect?.height || 0),
+                contentGap: Math.round((containerRect?.top || 0) - (barRect?.bottom || 0)),
+                minTarget: targets.length ? Math.min(...targets.map((node) => Math.min(
+                    node.getBoundingClientRect().width,
+                    node.getBoundingClientRect().height
+                ))) : 0,
+                titleEllipses: Boolean(title && title.scrollWidth > title.clientWidth && getComputedStyle(title).textOverflow === 'ellipsis'),
+                overflow: document.documentElement.scrollWidth > innerWidth + 1,
+            };
+            if (title) title.textContent = originalTitle;
+            return state;
+        });
+        check('Topbar móvil es compacta, táctil y admite títulos largos', topbarState.height <= 60
+            && topbarState.contentGap >= 12 && topbarState.minTarget >= 44
+            && topbarState.titleEllipses && !topbarState.overflow, JSON.stringify(topbarState));
+        await page.screenshot({ path: path.join(REPORT_DIR, 'ui-topbar-mobile-v2.png'), fullPage: false });
+        const contextMenu = page.locator('details.topbar-context');
+        if (await contextMenu.count() === 1) {
+            await contextMenu.locator(':scope > summary').click();
+            await page.waitForTimeout(60);
+            const contextState = await page.evaluate(() => {
+                const panel = document.querySelector('details.topbar-context[open] > .topbar-context-panel');
+                const rect = panel?.getBoundingClientRect();
+                const controls = panel ? [...panel.querySelectorAll('select, button, a.btn')]
+                    .filter((node) => getComputedStyle(node).display !== 'none' && node.getBoundingClientRect().height > 0) : [];
+                return {
+                    centered: Boolean(rect && Math.abs((rect.left + rect.width / 2) - innerWidth / 2) <= 2),
+                    inViewport: Boolean(rect && rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight),
+                    width: Math.round(rect?.width || 0),
+                    minTarget: controls.length ? Math.min(...controls.map((node) => node.getBoundingClientRect().height)) : 0,
+                    overflow: Boolean(panel && panel.scrollWidth > panel.clientWidth + 1),
+                };
+            });
+            check('Topbar context is a compact centered mobile panel',
+                contextState.centered && contextState.inViewport && contextState.width <= 420
+                    && contextState.minTarget >= 44 && !contextState.overflow,
+                JSON.stringify(contextState));
+            await page.screenshot({ path: path.join(REPORT_DIR, 'ui-topbar-context-mobile-v2.png'), fullPage: false });
+            await page.keyboard.press('Escape');
+        }
         const userTrigger = page.locator('details.user-menu > summary');
         await userTrigger.click();
         await page.waitForTimeout(50);
         const userMain = page.locator('.user-menu-panel > [data-menu-view="main"]');
         const userMainState = await page.evaluate(() => {
             const details = document.querySelector('details.user-menu');
+            const panel = details?.querySelector('.user-menu-panel');
             const view = details?.querySelector('[data-menu-view="main"]');
+            const rect = panel?.getBoundingClientRect();
             return {
                 open: Boolean(details?.open),
                 expanded: details?.querySelector(':scope > summary')?.getAttribute('aria-expanded'),
                 categories: view?.querySelectorAll('[data-menu-open]').length || 0,
                 directItems: view?.querySelectorAll(':scope > a, :scope > button').length || 0,
+                columns: view ? getComputedStyle(view).gridTemplateColumns.split(' ').filter(Boolean).length : 0,
+                centered: Boolean(rect && Math.abs((rect.left + rect.width / 2) - innerWidth / 2) <= 2),
                 overflow: document.documentElement.scrollWidth > innerWidth + 1,
             };
         });
-        check('User menu is simplified into two clear categories',
+        check('User menu is a centered single-column hierarchy',
             userMainState.open && userMainState.expanded === 'true'
-                && userMainState.categories === 2 && userMainState.directItems <= 8 && !userMainState.overflow,
-            `${userMainState.directItems} main items, ${userMainState.categories} categories`);
+                && userMainState.categories === 2 && userMainState.directItems <= 8
+                && userMainState.columns === 1 && userMainState.centered && !userMainState.overflow,
+            `${userMainState.directItems} items, ${userMainState.categories} categories, ${userMainState.columns} column`);
 
         const communityButton = userMain.locator('[data-menu-open="user-community"]');
         await communityButton.click();
@@ -142,6 +198,58 @@ const mobileSheetState = (page) => page.evaluate(() => {
                 && document.activeElement === details?.querySelector(':scope > summary');
         });
         check('Escape closes the user menu and restores trigger focus', userClosed);
+
+        /* Central + menu: one hierarchy, no duplicate featured shortcuts. */
+        const plusMenu = page.locator('details.bottom-nav-plus');
+        await plusMenu.locator(':scope > summary').click();
+        await page.locator('.bottom-nav-plus-menu:visible').waitFor();
+        await page.waitForTimeout(80);
+        const plusState = await page.evaluate(() => {
+            const details = document.querySelector('details.bottom-nav-plus');
+            const panel = details?.querySelector('.bottom-nav-plus-menu');
+            const main = panel?.querySelector('[data-menu-view="main"]');
+            const rect = panel?.getBoundingClientRect();
+            return {
+                open: Boolean(details?.open),
+                bodyLocked: document.body.classList.contains('mobile-sheet-open'),
+                backdrop: document.querySelectorAll('.mobile-sheet-backdrop').length,
+                centered: Boolean(rect && Math.abs((rect.left + rect.width / 2) - innerWidth / 2) <= 2),
+                inViewport: Boolean(rect && rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight),
+                width: Math.round(rect?.width || 0),
+                choices: main?.querySelectorAll(':scope > [data-menu-open]').length || 0,
+                featuredDuplicates: main?.querySelectorAll('.mobile-quick-featured').length || 0,
+                focusInside: Boolean(panel?.contains(document.activeElement)),
+            };
+        });
+        check('The + menu is centered, locked and free of duplicate actions',
+            plusState.open && plusState.bodyLocked && plusState.backdrop === 1
+                && plusState.centered && plusState.inViewport && plusState.width <= 420
+                && plusState.choices === 2 && plusState.featuredDuplicates === 0 && plusState.focusInside,
+            JSON.stringify(plusState));
+        const registerButton = page.locator('.bottom-nav-plus-menu [data-menu-view="main"] [data-menu-open="quick-register"]');
+        await registerButton.click();
+        await page.locator('.bottom-nav-plus-menu [data-menu-view="quick-register"]:not([hidden]) [data-menu-back]').waitFor();
+        check('The + menu reveals logging actions at one clear second level',
+            await page.locator('.bottom-nav-plus-menu [data-menu-view="quick-register"]:not([hidden]) > a').count() === 3);
+        await page.locator('.bottom-nav-plus-menu [data-menu-view="quick-register"] [data-menu-back]').click();
+        check('The + menu Back action restores focus', await registerButton.evaluate((button) => document.activeElement === button));
+        await page.keyboard.press('Escape');
+        check('Escape closes the + menu and removes its backdrop', await page.evaluate(() => {
+            const details = document.querySelector('details.bottom-nav-plus');
+            return !details?.open && !document.querySelector('.mobile-sheet-backdrop')
+                && !document.body.classList.contains('mobile-sheet-open')
+                && document.activeElement === details?.querySelector(':scope > summary');
+        }));
+
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        await page.waitForTimeout(180);
+        const stableNav = await page.evaluate(() => {
+            const nav = document.querySelector('nav.bottom-nav.mobile-liquid-nav');
+            const rect = nav?.getBoundingClientRect();
+            return Boolean(nav && !nav.classList.contains('nav-hidden') && !nav.classList.contains('is-hidden')
+                && rect && rect.bottom <= innerHeight + 1 && rect.top < innerHeight);
+        });
+        check('Bottom navigation remains visible after scrolling', stableNav);
 
         /* Routine menu: main actions are compact; organization is one level deep. */
         await page.goto(`${BASE}/?page=workouts`);

@@ -191,13 +191,13 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
             <div class="hierarchy-status-strip"><span><strong><?= count((array) ($members ?? [])) ?></strong><small><?= e(t('team.members')) ?></small></span><span><strong><?= e(number_format((float) ($summary['score_avg'] ?? 0), 1, '.', '')) ?></strong><small><?= e(t('metric.score')) ?></small></span><span><strong><?= count($goals) ?></strong><small><?= e(t('team.challenges')) ?></small></span></div>
             <nav class="hierarchy-nav-list mobile-hub-section-grid" aria-label="<?= e(t('nav.team')) ?>">
                 <?php foreach ([
-                    'challenge' => ['&#9873;', t('team.active_challenge_title'), t('team.mobile_challenge_hint'), count($goals), 'orange'],
-                    'leaderboard' => ['#', t('dashboard.ranking'), t('team.mobile_leaderboard_hint'), count($leaderboardRows), 'blue'],
-                    'members' => ['&#9673;', t('team.members'), t('team.mobile_members_hint'), count((array) ($members ?? [])), 'green'],
-                    'stats' => ['&#8645;', t('team.mobile_stats'), t('team.mobile_stats_hint'), '', 'violet'],
-                    'achievements' => ['&#9733;', t('team.achievements'), t('team.mobile_achievements_hint'), count((array) ($teamAchievements ?? [])), 'amber'],
+                    'challenge' => ['target', t('team.mobile_challenge'), t('team.mobile_challenge_hint'), count($goals), 'orange'],
+                    'leaderboard' => ['trophy', t('team.mobile_leaderboard'), t('team.mobile_leaderboard_hint'), count($leaderboardRows), 'blue'],
+                    'members' => ['users', t('team.mobile_members'), t('team.mobile_members_hint'), count((array) ($members ?? [])), 'green'],
+                    'stats' => ['run', t('team.mobile_stats'), t('team.mobile_stats_hint'), '', 'violet'],
+                    'achievements' => ['medal', t('team.mobile_achievements'), t('team.mobile_achievements_hint'), count((array) ($teamAchievements ?? [])), 'amber'],
                 ] as $sectionKey => $sectionItem): ?>
-                    <a class="hierarchy-nav-row" data-tone="<?= e((string) $sectionItem[4]) ?>" href="/?<?= e(http_build_query($teamBaseParams + ['section' => $sectionKey])) ?>"><span class="hierarchy-nav-icon" aria-hidden="true"><?= $sectionItem[0] ?></span><span class="hierarchy-nav-copy"><strong><?= e((string) $sectionItem[1]) ?></strong><small><?= e((string) $sectionItem[2]) ?></small></span><?php if ((string) $sectionItem[3] !== ''): ?><span class="hierarchy-nav-meta"><?= e((string) $sectionItem[3]) ?></span><?php endif; ?><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                    <a class="hierarchy-nav-row" data-tone="<?= e((string) $sectionItem[4]) ?>" href="/?<?= e(http_build_query($teamBaseParams + ['section' => $sectionKey])) ?>"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg((string) $sectionItem[0]) ?></span><span class="hierarchy-nav-copy"><strong><?= e((string) $sectionItem[1]) ?></strong><small><?= e((string) $sectionItem[2]) ?></small></span><?php if ((string) $sectionItem[3] !== ''): ?><span class="hierarchy-nav-meta"><?= e((string) $sectionItem[3]) ?></span><?php endif; ?><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
                 <?php endforeach; ?>
             </nav>
             <?php if (!empty($canManageTeam)): ?><a class="native-secondary-link" href="/?page=team_settings&team_id=<?= (int) ($team['id'] ?? 0) ?>"><?= e(t('team.settings')) ?></a><?php endif; ?>
@@ -992,7 +992,6 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                     <p class="muted"><?= e(t('achievements.empty')) ?></p>
                 <?php else: ?>
                     <?php foreach ($teamAchievements as $achievementIndex => $achievement): ?>
-                        <?php $deleteFormId = 'delete-achievement-team-' . (int) $achievement['id'] . '-' . (int) $achievementIndex; ?>
                         <article class="achievement-card team-achievement-card" <?= achievement_modal_attrs($achievement) ?>>
                             <?= achievement_visual_html($achievement, 'achievement-visual team-achievement-media') ?>
                             <div class="team-achievement-body">
@@ -1003,15 +1002,6 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                                     <span class="achievement-chip team-achievement-date"><?= e(format_date_eu((string) $achievement['awarded_at'])) ?></span>
                                 </div>
                             </div>
-                            <?php if (!empty($canDeleteAchievements)): ?>
-                                <form method="post" action="/?page=team" class="achievement-remove" id="<?= e($deleteFormId) ?>">
-                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                    <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
-                                    <input type="hidden" name="action" value="delete_achievement_award">
-                                    <input type="hidden" name="award_id" value="<?= (int) $achievement['id'] ?>">
-                                    <button class="achievement-delete-btn" type="button" aria-label="<?= e(t('achievements.delete_award')) ?>" data-achievement-delete-trigger data-form-id="<?= e($deleteFormId) ?>">×</button>
-                                </form>
-                            <?php endif; ?>
                         </article>
                     <?php endforeach; ?>
                 <?php endif; ?>

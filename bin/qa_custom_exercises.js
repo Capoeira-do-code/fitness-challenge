@@ -723,7 +723,7 @@ const overflow = async (page) => page.evaluate(() => Math.max(
     } finally {
         if (!page.isClosed() && routineId > 0) {
             try {
-                await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings`, { waitUntil: 'networkidle', timeout: 5000 });
+                await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings&settings_view=management`, { waitUntil: 'networkidle', timeout: 5000 });
                 const removeRoutine = page.locator('.workouts-routine-danger form').filter({ has: page.locator('input[name="action"][value="routine_delete"]') });
                 if (await removeRoutine.count()) await removeRoutine.locator('button[type="submit"]').click({ timeout: 3000 });
             } catch (_) { /* best effort */ }

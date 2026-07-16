@@ -384,20 +384,20 @@ $topbarControls = ob_get_clean();
     <?php if ($analyticsSection === ''): ?>
         <div class="analytics-mobile-root">
             <header class="mobile-home-greeting"><p><?= e(t('nav.analytics')) ?></p><h1><?= e(t('analytics.section_summary')) ?></h1><small><?= e($analyticsRangeText) ?></small></header>
+            <nav class="hierarchy-nav-list mobile-hub-section-grid" aria-label="<?= e(t('nav.analytics')) ?>">
+                <?php foreach ([
+                    'activity' => ['run', t('analytics.mobile_activity'), t('analytics.mobile_activity_hint'), 'blue'],
+                    'nutrition' => ['target', t('analytics.mobile_nutrition'), t('analytics.mobile_nutrition_hint'), 'green'],
+                    'food' => ['image', t('analytics.mobile_food'), t('analytics.mobile_food_hint'), 'orange'],
+                    'body' => ['user', t('analytics.mobile_body'), t('analytics.mobile_body_hint'), 'violet'],
+                    'comparison' => ['sword', t('analytics.mobile_comparison'), t('analytics.mobile_comparison_hint'), 'red'],
+                ] as $sectionKey => $sectionItem): ?>
+                    <a class="hierarchy-nav-row" data-tone="<?= e((string) $sectionItem[3]) ?>" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['section' => $sectionKey]))) ?>"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg((string) $sectionItem[0]) ?></span><span class="hierarchy-nav-copy"><strong><?= e((string) $sectionItem[1]) ?></strong><small><?= e((string) $sectionItem[2]) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <?php endforeach; ?>
+            </nav>
             <div class="mobile-kpi-grid analytics-mobile-kpis">
                 <?php foreach ($analyticsSummaryCards as $card): ?><div><small><?= e((string) ($card['label'] ?? '')) ?></small><strong><?= e((string) ($card['value'] ?? '')) ?></strong><span><?= e((string) ($card['meta'] ?? '')) ?></span></div><?php endforeach; ?>
             </div>
-            <nav class="hierarchy-nav-list mobile-hub-section-grid" aria-label="<?= e(t('nav.analytics')) ?>">
-                <?php foreach ([
-                    'activity' => ['&#8645;', t('dashboard.analytics_activity'), t('analytics.mobile_activity_hint'), 'blue'],
-                    'nutrition' => ['&#9673;', t('analytics.section_nutrition'), t('analytics.mobile_nutrition_hint'), 'green'],
-                    'food' => ['&#9638;', t('analytics.section_food'), t('analytics.mobile_food_hint'), 'orange'],
-                    'body' => ['&#9678;', t('analytics.section_body'), t('analytics.mobile_body_hint'), 'violet'],
-                    'comparison' => ['&#9876;', t('dashboard.analytics_comparison'), t('analytics.mobile_comparison_hint'), 'red'],
-                ] as $sectionKey => $sectionItem): ?>
-                    <a class="hierarchy-nav-row" data-tone="<?= e((string) $sectionItem[3]) ?>" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['section' => $sectionKey]))) ?>"><span class="hierarchy-nav-icon" aria-hidden="true"><?= $sectionItem[0] ?></span><span class="hierarchy-nav-copy"><strong><?= e((string) $sectionItem[1]) ?></strong><small><?= e((string) $sectionItem[2]) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
-                <?php endforeach; ?>
-            </nav>
         </div>
     <?php else: ?>
         <header class="hierarchy-page-header analytics-section-header">

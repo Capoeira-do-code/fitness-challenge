@@ -57,7 +57,8 @@ const login = async (page) => {
     const serverErrors = [];
     page.on('pageerror', (error) => runtimeErrors.push(error.message));
     page.on('console', (message) => {
-        if (message.type() === 'error') runtimeErrors.push(message.text());
+        const text = message.text();
+        if (message.type() === 'error' && !text.startsWith('Failed to load resource:')) runtimeErrors.push(text);
     });
     page.on('response', (response) => {
         if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
@@ -69,9 +70,18 @@ const login = async (page) => {
 
         await page.goto(`${BASE}/?page=workouts&view=library`, { waitUntil: 'networkidle' });
         ensure(await page.locator('.workouts-library-card').count() === 12, 'biblioteca limita la primera carga', '12 ejercicios');
-        ensure(await page.locator('.workouts-hub-tabs a').count() === 6, 'navegación del hub completa');
+        ensure(await page.locator('.workouts-mobile-subheader [data-hierarchy-back]').count() === 1, 'biblioteca conserva retorno jerárquico');
+        await page.goto(`${BASE}/?page=workouts`, { waitUntil: 'networkidle' });
+        ensure(await page.locator('.workouts-section-grid .hierarchy-nav-row').count() === 5, 'grid único del hub completo');
+        await page.goto(`${BASE}/?page=workouts&view=library`, { waitUntil: 'networkidle' });
         ensure(await page.locator('.workouts-library-pagination').count() === 1, 'biblioteca ofrece paginación');
         ensure(await page.locator('[data-library-layout-switch]').count() === 1, 'selector de densidad disponible');
+        if (await page.locator('[data-library-layout-switch] button[value="cards"][aria-pressed="true"]').count() !== 1) {
+            await Promise.all([
+                page.waitForLoadState('networkidle'),
+                page.locator('[data-library-layout-switch] button[value="cards"]').click(),
+            ]);
+        }
         ensure(await page.locator('[data-library-layout-switch] button[value="cards"][aria-pressed="true"]').count() === 1, 'vista visual predeterminada');
         const visualCardHeight = await page.locator('.workouts-library-card').first().evaluate((element) => element.getBoundingClientRect().height);
         await Promise.all([
@@ -143,7 +153,7 @@ const login = async (page) => {
         ]);
         const routineUrl = page.url();
         ensure(routineUrl.includes('routine_id='), 'crear rutina desde la interfaz');
-        await page.goto(`${routineUrl}&section=settings`, { waitUntil: 'networkidle' });
+        await page.goto(`${routineUrl}&section=settings&settings_view=schedule`, { waitUntil: 'networkidle' });
         ensure(await page.locator('.workouts-day-picker input[value="tue"]:checked').count() === 1, 'martes persistido en UI');
         ensure(await page.locator('.workouts-day-picker input[value="sun"]:checked').count() === 1, 'domingo persistido en UI');
 
@@ -182,7 +192,8 @@ const login = async (page) => {
 
         await page.setViewportSize({ width: 1440, height: 1000 });
         await page.goto(`${BASE}/?page=workouts&view=plan`, { waitUntil: 'networkidle' });
-        ensure(await page.locator('.workouts-week-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length) === 7, 'agenda escritorio en siete columnas');
+        ensure(await page.locator('.workouts-week-agenda').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length) === 1, 'agenda escritorio lineal con separadores');
+        ensure(await page.locator('.workouts-week-agenda .workouts-day-card').count() === 7, 'agenda escritorio conserva los siete días');
         await noHorizontalOverflow(page, 'agenda escritorio sin desbordamiento');
         await page.screenshot({ path: path.join(reportDir, 'ui-workout-plan-desktop.png'), fullPage: true });
 

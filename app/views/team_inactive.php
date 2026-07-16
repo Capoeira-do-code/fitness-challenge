@@ -8,8 +8,8 @@ $teamName = trim((string) ($team['name'] ?? ''));
 $challengeName = trim((string) ($challengeSettings['challenge_name'] ?? ''));
 ?>
 <section class="screen stack-lg">
-    <div class="hero-panel">
-        <div>
+    <div class="hero-panel app-page-hero">
+        <div class="hero-copy">
             <p class="eyebrow"><?= e(t('nav.team')) ?></p>
             <h1><?= e($teamName !== '' ? $teamName : t('team.no_active_challenge_title')) ?></h1>
             <p class="muted"><?= e($challengeName !== '' ? $challengeName : t('team.no_active_challenge_subtitle')) ?></p>

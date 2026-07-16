@@ -129,9 +129,12 @@ const pages = [
             await page.setViewportSize({ width: 390, height: 844 });
             await open(page, entry.route);
             const mobileCount = await countVisible(page, entry.selector);
-            check(mobileCount === desktopCounts[entry.name],
-                `${entry.name}: móvil conserva todos los módulos visibles de escritorio`,
-                `${mobileCount}/${desktopCounts[entry.name]}`);
+            const integratedDashboardKpis = entry.name === 'Inicio'
+                && mobileCount === desktopCounts[entry.name] - 1
+                && await countVisible(page, '.dashboard-mobile-home [data-dashboard-mobile-surface="mobile_today"] a[href*="metric="]') >= 6;
+            check(mobileCount === desktopCounts[entry.name] || integratedDashboardKpis,
+                `${entry.name}: móvil conserva todos los módulos o su equivalente integrado`,
+                `${mobileCount}/${desktopCounts[entry.name]}${integratedDashboardKpis ? ' + KPIs integrados' : ''}`);
             check(await countVisible(page, entry.feed) === 1,
                 `${entry.name}: cabecera separa navegación y widgets`);
             const overflow = await overflowState(page);
@@ -142,7 +145,7 @@ const pages = [
         }
 
         await open(page, '/?page=dashboard');
-        const mobileKpis = await countVisible(page, '.dashboard-mobile-home .mobile-today-metrics > span');
+        const mobileKpis = await countVisible(page, '.dashboard-mobile-home .mobile-today-card a[href*="metric="]');
         const desktopKpis = await page.locator('.dashboard-layout [data-dashboard-widget="kpis"] .metric-card').count();
         check(mobileKpis === desktopKpis && mobileKpis > 0,
             'Inicio no recorta los indicadores diarios', `${mobileKpis}/${desktopKpis}`);
@@ -178,18 +181,20 @@ const pages = [
         await open(page, '/?page=dashboard');
         const plus = page.locator('.mobile-liquid-nav .liquid-nav-plus');
         await plus.locator(':scope > summary').click();
-        await plus.locator('.mobile-quick-featured').waitFor({ state: 'visible' });
-        const quickState = await plus.locator('.mobile-quick-featured').evaluate((grid) => {
-            const actions = [...grid.querySelectorAll(':scope > a')];
+        await plus.locator('[data-menu-view="main"] > [data-menu-open]').first().waitFor({ state: 'visible' });
+        const quickState = await plus.locator('[data-menu-view="main"]').evaluate((view) => {
+            const actions = [...view.querySelectorAll(':scope > [data-menu-open]')];
+            const panel = view.closest('.mobile-quick-sheet');
+            const rect = panel?.getBoundingClientRect();
             return {
                 actions: actions.length,
-                columns: getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length,
                 minHeight: Math.min(...actions.map((action) => action.getBoundingClientRect().height)),
-                tones: new Set(actions.map((action) => getComputedStyle(action).borderColor)).size,
+                centered: Boolean(rect && Math.abs((rect.left + rect.width / 2) - innerWidth / 2) <= 2),
+                duplicated: view.querySelectorAll('.mobile-quick-featured').length,
             };
         });
-        check(quickState.actions === 4 && quickState.columns === 4 && quickState.minHeight >= 44 && quickState.tones === 4,
-            'El menú + ofrece cuatro accesos directos táctiles y diferenciados', JSON.stringify(quickState));
+        check(quickState.actions === 2 && quickState.minHeight >= 44 && quickState.centered && quickState.duplicated === 0,
+            'El menú + centra una jerarquía táctil sin acciones duplicadas', JSON.stringify(quickState));
         check(await plus.locator('[data-menu-open="quick-register"], [data-menu-open="quick-create"]').count() === 2,
             'El menú + conserva sus dos submenús jerárquicos');
         await page.screenshot({ path: path.join(REPORT_DIR, 'ui-mobile-quick-menu-rich.png'), fullPage: false });

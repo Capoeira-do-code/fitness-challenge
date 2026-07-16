@@ -83,8 +83,9 @@ const open = async (page, route) => page.goto(`${BASE}${route}`, { waitUntil: 'n
         await plus.locator('summary').click();
         await page.waitForTimeout(100);
         ensure(await page.locator('.mobile-sheet-backdrop').count() === 1, 'sheet central crea backdrop');
-        ensure(await plus.locator('.mobile-quick-featured > a:visible').count() === 4,
-            'sheet central ofrece cuatro acciones directas');
+        ensure(await plus.locator('[data-menu-view="main"] > [data-menu-open]:visible').count() === 2
+            && await plus.locator('.mobile-quick-featured').count() === 0,
+            'sheet central evita duplicados y ofrece dos categorías');
         const registerTrigger = plus.locator('[data-menu-open="quick-register"]');
         await registerTrigger.click();
         ensure(await plus.locator('[data-menu-view="quick-register"]:not([hidden])').count() === 1, 'sheet abre segundo nivel');
@@ -102,7 +103,7 @@ const open = async (page, route) => page.goto(`${BASE}${route}`, { waitUntil: 'n
         check((await activeMobileHref(page) || '').includes('page=dashboard'), 'subpantalla conserva Inicio activo');
 
         await open(page, '/?page=workouts');
-        ensure(await page.locator('.workouts-mobile-navigation .hierarchy-nav-row').count() === 5, 'Entreno reemplaza pestañas por lista móvil');
+        ensure(await page.locator('.workouts-section-grid .hierarchy-nav-row').count() === 5, 'Entreno usa un único grid jerárquico');
         await noOverflow(page, 'Entreno sin overflow horizontal');
         await page.screenshot({ path: path.join(reportDir, 'ui-v2-training-mobile.png'), fullPage: true });
         await open(page, '/?page=workouts&view=library');
@@ -111,6 +112,20 @@ const open = async (page, route) => page.goto(`${BASE}${route}`, { waitUntil: 'n
 
         await open(page, '/?page=social');
         ensure(await page.locator('.social-hub-screen > .hierarchy-nav-list .hierarchy-nav-row').count() === 3, 'Social muestra tres submenús');
+        check(await page.locator('.social-quick-actions a').count() === 4,
+            'Social ofrece acciones directas sin vaciar el hub');
+        check(await page.locator('.social-dashboard-grid .social-overview-card').count() === 5,
+            'Social conserva equipo, competición, comunidad, círculo y actividad');
+        check(await page.locator('.social-competition-metrics a').count() === 3,
+            'Social resume duelos, competiciones y pendientes');
+        check(await page.locator('.social-section-grid .hierarchy-nav-icon svg').count() === 3,
+            'Social usa iconos SVG en lugar de entidades visibles');
+        check(!(await page.locator('.social-section-grid').innerText()).includes('&#'),
+            'Social no imprime códigos HTML como texto');
+        check((await page.locator('.social-section-grid').innerText()).includes('Fitness Challenge Team'),
+            'Social resume elementos reales del escritorio sin duplicar la navegación');
+        check(await page.locator('.social-hub-screen > .hierarchy-page-header > div').evaluate((element) => element.getBoundingClientRect().width) >= 300,
+            'cabecera raíz de Social aprovecha el ancho disponible');
         check((await activeMobileHref(page) || '').includes('page=social'), 'Social activo en su hub');
         check(await visibleScreenHeight(page) <= 844 * 2.5, 'Social raíz es compacto');
         await noOverflow(page, 'Social sin overflow horizontal');
@@ -134,6 +149,21 @@ const open = async (page, route) => page.goto(`${BASE}${route}`, { waitUntil: 'n
             'Team presenta sus widgets después del menú');
         check(await page.locator('.team-layout-grid > [data-team-widget]:visible').count() >= 4,
             'Team móvil conserva los widgets de escritorio');
+        const teamChartDensity = await page.evaluate(() => {
+            const carousel = document.querySelector('.team-widget-daily-charts');
+            const canvas = document.querySelector('.team-cumulative-chart-card canvas');
+            const carouselStyle = carousel ? getComputedStyle(carousel) : null;
+            const canvasRect = canvas?.getBoundingClientRect();
+            return {
+                charts: document.querySelectorAll('.team-layout-grid canvas').length,
+                horizontal: Boolean(carousel && carousel.scrollWidth > carousel.clientWidth
+                    && carouselStyle?.overflowX === 'auto'),
+                maxChartHeight: Math.round(canvasRect?.height || 0),
+            };
+        });
+        check(teamChartDensity.charts >= 5 && teamChartDensity.horizontal
+            && teamChartDensity.maxChartHeight <= 150,
+            'Team conserva sus gráficas en carruseles compactos', JSON.stringify(teamChartDensity));
         await page.screenshot({ path: path.join(reportDir, 'ui-v2-team-mobile.png'), fullPage: true });
 
         await open(page, '/?page=profile');
@@ -146,6 +176,16 @@ const open = async (page, route) => page.goto(`${BASE}${route}`, { waitUntil: 'n
         await page.screenshot({ path: path.join(reportDir, 'ui-v2-profile-mobile.png'), fullPage: true });
         await open(page, '/?page=settings');
         check((await activeMobileHref(page) || '').includes('page=profile'), 'Settings pertenece a Perfil');
+        check(await page.locator('.settings-index-screen > .hierarchy-page-header-root').count() === 1,
+            'Ajustes usa cabecera compacta de app');
+        check(await page.locator('.settings-nav-item').count() === 7, 'Ajustes conserva todas sus secciones');
+        await open(page, '/?page=settings&view=preferences');
+        check(await page.locator('.settings-preference-group').count() === 3,
+            'Preferencias separa idioma, objetivos y apariencia');
+        await open(page, '/?page=settings&view=body');
+        check(await page.locator('.settings-weight-summary > span').count() === 3
+            && await page.locator('.settings-weight-history').count() === 1,
+            'Peso muestra resumen, objetivo e historial real');
 
         await open(page, '/?page=social');
         await page.evaluate(() => {

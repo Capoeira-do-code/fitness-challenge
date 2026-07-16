@@ -146,18 +146,64 @@ function telegram_verify_bot(PDO $pdo, int $actorUserId): array
     return ['ok' => true, 'username' => $username, 'error' => ''];
 }
 
-function telegram_send_message(array $settings, string $chatId, string $text): bool
+function telegram_send_message(array $settings, string $chatId, string $text, ?array $replyMarkup = null): bool
 {
     if ($chatId === '') {
         return false;
     }
-    $response = telegram_api_request((string) $settings['token'], 'sendMessage', [
+    $params = [
         'chat_id' => $chatId,
         'text' => $text,
         'disable_web_page_preview' => true,
-    ]);
+    ];
+    if ($replyMarkup !== null) {
+        $params['reply_markup'] = $replyMarkup;
+    }
+    $response = telegram_api_request((string) $settings['token'], 'sendMessage', $params);
 
     return $response['ok'];
+}
+
+/** One prominent destination for alerts that can be resolved in the app. */
+function telegram_action_keyboard(array $settings, string $path, ?string $label = null): ?array
+{
+    $baseUrl = rtrim(trim((string) ($settings['base_url'] ?? '')), '/');
+    if ($baseUrl === '' || !str_starts_with($path, '/')) {
+        return null;
+    }
+
+    return ['inline_keyboard' => [[[
+        'text' => $label !== null && $label !== '' ? $label : '↗ ' . t('common.open'),
+        'url' => $baseUrl . $path,
+    ]]]];
+}
+
+function telegram_edit_message(array $settings, string $chatId, int $messageId, string $text, array $replyMarkup): bool
+{
+    if ($chatId === '' || $messageId <= 0) {
+        return false;
+    }
+    $response = telegram_api_request((string) $settings['token'], 'editMessageText', [
+        'chat_id' => $chatId,
+        'message_id' => $messageId,
+        'text' => $text,
+        'disable_web_page_preview' => true,
+        'reply_markup' => $replyMarkup,
+    ]);
+    // Two very fast taps can legitimately converge on the same rendered state.
+    return $response['ok'] || str_contains(strtolower((string) $response['error']), 'message is not modified');
+}
+
+function telegram_answer_callback(array $settings, string $callbackId, string $text = ''): void
+{
+    if ($callbackId === '') {
+        return;
+    }
+    $params = ['callback_query_id' => $callbackId];
+    if ($text !== '') {
+        $params['text'] = $text;
+    }
+    telegram_api_request((string) $settings['token'], 'answerCallbackQuery', $params);
 }
 
 /**
@@ -229,6 +275,7 @@ function telegram_update_user_prefs(PDO $pdo, int $userId, array $input): void
              telegram_tz = :tz,
              telegram_notify_duel = :notify_duel,
              telegram_notify_streak = :notify_streak,
+             telegram_notify_social = :notify_social,
              updated_at = :updated_at
          WHERE id = :id',
         [
@@ -241,10 +288,119 @@ function telegram_update_user_prefs(PDO $pdo, int $userId, array $input): void
             ':tz' => telegram_normalize_tz((string) ($input['telegram_tz'] ?? '')),
             ':notify_duel' => !empty($input['telegram_notify_duel']) ? 1 : 0,
             ':notify_streak' => !empty($input['telegram_notify_streak']) ? 1 : 0,
+            ':notify_social' => !empty($input['telegram_notify_social']) ? 1 : 0,
             ':updated_at' => now_iso(),
             ':id' => $userId,
         ]
     );
+}
+
+/** Toggle a preference selected from Telegram's inline notification controls. */
+function telegram_toggle_user_pref(PDO $pdo, int $userId, string $preference): bool
+{
+    $columns = [
+        'reminders' => 'telegram_reminders_enabled',
+        'motivation' => 'telegram_motivation_enabled',
+        'duel' => 'telegram_notify_duel',
+        'streak' => 'telegram_notify_streak',
+        'social' => 'telegram_notify_social',
+        'weekends' => 'telegram_weekends_off',
+    ];
+    $column = $columns[$preference] ?? null;
+    if ($column === null) {
+        return false;
+    }
+    $user = db_fetch_one($pdo, 'SELECT ' . $column . ' AS enabled FROM users WHERE id = :id AND active = 1', [':id' => $userId]);
+    if ($user === null) {
+        return false;
+    }
+    $enabled = (int) ($user['enabled'] ?? 0) !== 1;
+    db_execute(
+        $pdo,
+        'UPDATE users SET ' . $column . ' = :enabled, updated_at = :now WHERE id = :id',
+        [':enabled' => $enabled ? 1 : 0, ':now' => now_iso(), ':id' => $userId]
+    );
+
+    return true;
+}
+
+function telegram_set_reminder_time(PDO $pdo, int $userId, string $value): bool
+{
+    $time = telegram_normalize_optional_time($value);
+    if ($time === '') {
+        return false;
+    }
+    db_execute(
+        $pdo,
+        'UPDATE users SET telegram_reminder_time = :time, updated_at = :now WHERE id = :id',
+        [':time' => $time, ':now' => now_iso(), ':id' => $userId]
+    );
+
+    return true;
+}
+
+function telegram_preferences_text(array $user): string
+{
+    $status = static fn(bool $enabled): string => $enabled ? '✅ ' . t('telegram.pref_on') : '○ ' . t('telegram.pref_off');
+    $quietStart = telegram_normalize_optional_time((string) ($user['telegram_quiet_start'] ?? ''));
+    $quietEnd = telegram_normalize_optional_time((string) ($user['telegram_quiet_end'] ?? ''));
+    $quiet = $quietStart !== '' && $quietEnd !== '' ? $quietStart . '–' . $quietEnd : t('telegram.pref_none');
+    $timezone = trim((string) ($user['telegram_tz'] ?? '')) ?: t('telegram.pref_none');
+
+    return implode("\n", [
+        t('telegram.preferences_title'),
+        t('telegram.preferences_hint'),
+        '',
+        $status((int) ($user['telegram_reminders_enabled'] ?? 0) === 1) . ' · ' . t('telegram.pref_reminders'),
+        $status((int) ($user['telegram_motivation_enabled'] ?? 0) === 1) . ' · ' . t('telegram.pref_motivation'),
+        $status((int) ($user['telegram_notify_duel'] ?? 1) === 1) . ' · ' . t('telegram.pref_duel'),
+        $status((int) ($user['telegram_notify_streak'] ?? 1) === 1) . ' · ' . t('telegram.pref_streak'),
+        $status((int) ($user['telegram_notify_social'] ?? 1) === 1) . ' · ' . t('telegram.pref_social'),
+        $status((int) ($user['telegram_weekends_off'] ?? 0) === 1) . ' · ' . t('telegram.pref_weekends'),
+        '🕘 ' . t('settings.telegram_time') . ': ' . telegram_normalize_time((string) ($user['telegram_reminder_time'] ?? '20:00')),
+        '🌙 ' . t('telegram.pref_quiet') . ': ' . $quiet,
+        '🌍 ' . t('settings.telegram_tz') . ': ' . $timezone,
+    ]);
+}
+
+function telegram_preferences_keyboard(array $settings, array $user): array
+{
+    $toggle = static function (string $label, string $column, string $callback, int $default = 0) use ($user): array {
+        $enabled = (int) ($user[$column] ?? $default) === 1;
+
+        return ['text' => ($enabled ? '✅ ' : '○ ') . $label, 'callback_data' => 'tgpref:' . $callback];
+    };
+    $rows = [
+        [
+            $toggle(t('telegram.pref_reminders'), 'telegram_reminders_enabled', 'reminders'),
+            $toggle(t('telegram.pref_motivation'), 'telegram_motivation_enabled', 'motivation'),
+        ],
+        [
+            $toggle(t('telegram.pref_duel'), 'telegram_notify_duel', 'duel', 1),
+            $toggle(t('telegram.pref_streak'), 'telegram_notify_streak', 'streak', 1),
+        ],
+        [$toggle(t('telegram.pref_social'), 'telegram_notify_social', 'social', 1)],
+        [$toggle(t('telegram.pref_weekends'), 'telegram_weekends_off', 'weekends')],
+        [
+            ['text' => '−30 min', 'callback_data' => 'tgtime:-30'],
+            ['text' => telegram_normalize_time((string) ($user['telegram_reminder_time'] ?? '20:00')), 'callback_data' => 'tgtime:0'],
+            ['text' => '+30 min', 'callback_data' => 'tgtime:30'],
+        ],
+    ];
+    $baseUrl = rtrim((string) ($settings['base_url'] ?? ''), '/');
+    if ($baseUrl !== '') {
+        $rows[] = [['text' => '⚙️ ' . t('common.open'), 'url' => $baseUrl . '/?page=settings&view=integrations#telegram']];
+    }
+
+    return ['inline_keyboard' => $rows];
+}
+
+function telegram_send_preferences(PDO $pdo, array $settings, string $chatId, array $user): void
+{
+    $fresh = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id AND active = 1', [':id' => (int) ($user['id'] ?? 0)]) ?? $user;
+    telegram_with_user_locale($fresh, static function () use ($settings, $chatId, $fresh): void {
+        telegram_send_message($settings, $chatId, telegram_preferences_text($fresh), telegram_preferences_keyboard($settings, $fresh));
+    });
 }
 
 /**
@@ -286,7 +442,11 @@ function telegram_normalize_optional_time(string $value): string
         return '';
     }
 
-    return preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/', $value) === 1 ? $value : '';
+    if (preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/', $value, $matches) !== 1) {
+        return '';
+    }
+
+    return sprintf('%02d:%02d', (int) $matches[1], (int) $matches[2]);
 }
 
 /**
@@ -312,8 +472,11 @@ function telegram_in_quiet_hours(string $start, string $end, string $nowHm): boo
 function telegram_normalize_time(string $value): string
 {
     $value = trim($value);
+    if (preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/', $value, $matches) !== 1) {
+        return '20:00';
+    }
 
-    return preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/', $value) === 1 ? $value : '20:00';
+    return sprintf('%02d:%02d', (int) $matches[1], (int) $matches[2]);
 }
 
 /**
@@ -331,7 +494,7 @@ function telegram_poll_updates(PDO $pdo, array $settings): void
     $response = telegram_api_request((string) $settings['token'], 'getUpdates', [
         'offset' => (int) $settings['offset'],
         'timeout' => 0,
-        'allowed_updates' => ['message'],
+        'allowed_updates' => ['message', 'callback_query'],
     ]);
     if (!$response['ok'] || !is_array($response['result'])) {
         return;
@@ -345,6 +508,11 @@ function telegram_poll_updates(PDO $pdo, array $settings): void
         $updateId = (int) ($update['update_id'] ?? 0);
         if ($updateId >= $maxUpdateId) {
             $maxUpdateId = $updateId + 1;
+        }
+        $callback = is_array($update['callback_query'] ?? null) ? $update['callback_query'] : null;
+        if ($callback !== null) {
+            telegram_handle_callback($pdo, $settings, $callback);
+            continue;
         }
         $message = is_array($update['message'] ?? null) ? $update['message'] : [];
         $text = trim((string) ($message['text'] ?? ''));
@@ -364,6 +532,27 @@ function telegram_handle_incoming(PDO $pdo, array $settings, string $chatId, str
 {
     // Expect "/start <code>" (Telegram sends this when a user opens the deep link).
     if (!preg_match('/^\/start(?:@\w+)?\s+(\S+)/i', $text, $matches)) {
+        $user = db_fetch_one($pdo, 'SELECT * FROM users WHERE telegram_chat_id = :chat_id AND active = 1', [':chat_id' => $chatId]);
+        if ($user === null) {
+            telegram_send_message($settings, $chatId, t('telegram.not_linked'));
+            return;
+        }
+        $parts = preg_split('/\s+/', trim($text), 2) ?: [];
+        $command = strtolower(preg_replace('/@\w+$/', '', ltrim((string) ($parts[0] ?? ''), '/')) ?? '');
+        if (in_array($command, ['notifications', 'notification', 'avisos', 'settings'], true)) {
+            telegram_send_preferences($pdo, $settings, $chatId, $user);
+            return;
+        }
+        if ($command === 'time') {
+            $value = trim((string) ($parts[1] ?? ''));
+            if (!telegram_set_reminder_time($pdo, (int) $user['id'], $value)) {
+                telegram_with_user_locale($user, static fn() => telegram_send_message($settings, $chatId, t('telegram.time_invalid')));
+                return;
+            }
+            telegram_send_preferences($pdo, $settings, $chatId, $user);
+            return;
+        }
+        telegram_with_user_locale($user, static fn() => telegram_send_message($settings, $chatId, t('telegram.help')));
         return;
     }
     $code = $matches[1];
@@ -383,6 +572,46 @@ function telegram_handle_incoming(PDO $pdo, array $settings, string $chatId, str
     );
     telegram_with_user_locale($user, static function () use ($settings, $chatId): void {
         telegram_send_message($settings, $chatId, t('telegram.msg_linked'));
+    });
+}
+
+function telegram_handle_callback(PDO $pdo, array $settings, array $callback): void
+{
+    $callbackId = trim((string) ($callback['id'] ?? ''));
+    $message = is_array($callback['message'] ?? null) ? $callback['message'] : [];
+    $chatId = (string) ($message['chat']['id'] ?? '');
+    $messageId = (int) ($message['message_id'] ?? 0);
+    $data = trim((string) ($callback['data'] ?? ''));
+    $user = $chatId !== ''
+        ? db_fetch_one($pdo, 'SELECT * FROM users WHERE telegram_chat_id = :chat_id AND active = 1', [':chat_id' => $chatId])
+        : null;
+    if ($user === null) {
+        telegram_answer_callback($settings, $callbackId, t('telegram.not_linked'));
+        return;
+    }
+
+    $changed = false;
+    if (str_starts_with($data, 'tgpref:')) {
+        $changed = telegram_toggle_user_pref($pdo, (int) $user['id'], substr($data, 7));
+    } elseif (str_starts_with($data, 'tgtime:')) {
+        $delta = filter_var(substr($data, 7), FILTER_VALIDATE_INT);
+        if ($delta !== false && in_array((int) $delta, [-30, 0, 30], true)) {
+            $current = DateTimeImmutable::createFromFormat('!H:i', telegram_normalize_time((string) ($user['telegram_reminder_time'] ?? '20:00')));
+            if ($current !== false) {
+                $next = $current->modify(sprintf('%+d minutes', (int) $delta));
+                $changed = telegram_set_reminder_time($pdo, (int) $user['id'], $next->format('H:i'));
+            }
+        }
+    }
+
+    if (!$changed) {
+        telegram_answer_callback($settings, $callbackId);
+        return;
+    }
+    $fresh = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id AND active = 1', [':id' => (int) $user['id']]) ?? $user;
+    telegram_with_user_locale($fresh, static function () use ($settings, $chatId, $messageId, $callbackId, $fresh): void {
+        telegram_edit_message($settings, $chatId, $messageId, telegram_preferences_text($fresh), telegram_preferences_keyboard($settings, $fresh));
+        telegram_answer_callback($settings, $callbackId, t('telegram.preference_saved'));
     });
 }
 
@@ -488,7 +717,7 @@ function telegram_run_reminders(PDO $pdo, array $settings): void
             ]));
             // Only consume the daily slot on a successful send so a transient
             // failure retries on the next tick instead of skipping the day.
-            if (telegram_send_message($settings, $chatId, $text)) {
+            if (telegram_send_message($settings, $chatId, $text, telegram_action_keyboard($settings, '/?page=entries&mode=data'))) {
                 $sends++;
                 db_execute($pdo, 'UPDATE users SET telegram_last_reminded_on = :d WHERE id = :id', [':d' => $today, ':id' => $userId]);
             }
@@ -500,7 +729,7 @@ function telegram_run_reminders(PDO $pdo, array $settings): void
             $quote = telegram_pick_quote($pdo, $user);
             if ($quote !== '') {
                 $text = telegram_with_user_locale($user, static fn(): string => t('telegram.msg_motivation', ['quote' => $quote]));
-                if (telegram_send_message($settings, $chatId, $text)) {
+                if (telegram_send_message($settings, $chatId, $text, telegram_action_keyboard($settings, '/?page=dashboard'))) {
                     $sends++;
                     db_execute($pdo, 'UPDATE users SET telegram_last_motivation_on = :d WHERE id = :id', [':d' => $today, ':id' => $userId]);
                 }
@@ -520,7 +749,10 @@ function telegram_run_reminders(PDO $pdo, array $settings): void
                 continue;
             }
             $text = telegram_with_user_locale($user, static fn(): string => $event['text']);
-            if (telegram_send_message($settings, $chatId, $text)) {
+            $eventPath = str_starts_with((string) ($event['key'] ?? ''), 'duel_')
+                ? '/?page=duels'
+                : '/?page=entries&mode=data';
+            if (telegram_send_message($settings, $chatId, $text, telegram_action_keyboard($settings, $eventPath))) {
                 $sends++;
                 set_app_setting_silent($pdo, $marker, '1', $userId);
             }
@@ -586,15 +818,17 @@ function telegram_outbox_ensure_schema(PDO $pdo): void
         'CREATE TABLE IF NOT EXISTS telegram_outbox (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
+            kind TEXT NOT NULL DEFAULT "social",
             text TEXT NOT NULL,
             created_at TEXT NOT NULL,
             sent_at TEXT
         )'
     );
+    ensure_column($pdo, 'telegram_outbox', 'kind', 'TEXT NOT NULL DEFAULT "social"');
 }
 
-/** Queue a push message for a user, only if they are linked and opted in. */
-function telegram_enqueue(PDO $pdo, int $userId, string $text): bool
+/** Queue a categorized push message for a user, only if they opted into it. */
+function telegram_enqueue(PDO $pdo, int $userId, string $text, string $kind = 'social'): bool
 {
     $text = trim($text);
     if ($userId <= 0 || $text === '') {
@@ -605,23 +839,24 @@ function telegram_enqueue(PDO $pdo, int $userId, string $text): bool
     }
     $user = db_fetch_one(
         $pdo,
-        'SELECT telegram_chat_id, telegram_reminders_enabled, telegram_motivation_enabled
+        'SELECT telegram_chat_id, telegram_notify_duel, telegram_notify_social
          FROM users WHERE id = :id AND active = 1',
         [':id' => $userId]
     );
     if ($user === null || trim((string) ($user['telegram_chat_id'] ?? '')) === '') {
         return false;
     }
-    $optedIn = (int) ($user['telegram_reminders_enabled'] ?? 0) === 1
-        || (int) ($user['telegram_motivation_enabled'] ?? 0) === 1;
+    $optedIn = str_starts_with($kind, 'duel_')
+        ? (int) ($user['telegram_notify_duel'] ?? 1) === 1
+        : (int) ($user['telegram_notify_social'] ?? 1) === 1;
     if (!$optedIn) {
         return false;
     }
     telegram_outbox_ensure_schema($pdo);
     db_execute(
         $pdo,
-        'INSERT INTO telegram_outbox (user_id, text, created_at) VALUES (:u, :t, :c)',
-        [':u' => $userId, ':t' => $text, ':c' => now_iso()]
+        'INSERT INTO telegram_outbox (user_id, kind, text, created_at) VALUES (:u, :k, :t, :c)',
+        [':u' => $userId, ':k' => $kind, ':t' => $text, ':c' => now_iso()]
     );
 
     return true;
@@ -638,14 +873,36 @@ function telegram_drain_outbox(PDO $pdo, array $settings): void
             break;
         }
         $outboxId = (int) $row['id'];
-        $recipient = db_fetch_one($pdo, 'SELECT telegram_chat_id FROM users WHERE id = :id', [':id' => (int) $row['user_id']]);
+        $recipient = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id AND active = 1', [':id' => (int) $row['user_id']]);
         $chatId = $recipient !== null ? trim((string) ($recipient['telegram_chat_id'] ?? '')) : '';
         if ($chatId === '') {
             // Recipient unlinked since queueing: drop the message.
             db_execute($pdo, 'UPDATE telegram_outbox SET sent_at = :now WHERE id = :id', [':now' => now_iso(), ':id' => $outboxId]);
             continue;
         }
-        if (telegram_send_message($settings, $chatId, (string) $row['text'])) {
+        $kind = (string) ($row['kind'] ?? 'social');
+        $optedIn = str_starts_with($kind, 'duel_')
+            ? (int) ($recipient['telegram_notify_duel'] ?? 1) === 1
+            : (int) ($recipient['telegram_notify_social'] ?? 1) === 1;
+        if (!$optedIn) {
+            db_execute($pdo, 'UPDATE telegram_outbox SET sent_at = :now WHERE id = :id', [':now' => now_iso(), ':id' => $outboxId]);
+            continue;
+        }
+        $recipientNow = telegram_user_now($recipient);
+        if (telegram_in_quiet_hours(
+            (string) ($recipient['telegram_quiet_start'] ?? ''),
+            (string) ($recipient['telegram_quiet_end'] ?? ''),
+            $recipientNow['hm']
+        )) {
+            continue;
+        }
+        if ((int) ($recipient['telegram_weekends_off'] ?? 0) === 1 && in_array((int) ($recipientNow['dow'] ?? 0), [6, 7], true)) {
+            continue;
+        }
+        $destination = str_starts_with($kind, 'duel_')
+            ? '/?page=duels'
+            : (str_starts_with($kind, 'competition_') ? '/?page=competitions' : '/?page=social');
+        if (telegram_send_message($settings, $chatId, (string) $row['text'], telegram_action_keyboard($settings, $destination))) {
             db_execute($pdo, 'UPDATE telegram_outbox SET sent_at = :now WHERE id = :id', [':now' => now_iso(), ':id' => $outboxId]);
             $sent++;
         }

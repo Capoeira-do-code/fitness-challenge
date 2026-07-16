@@ -7,6 +7,24 @@ $loggedIn = isset($currentUser) && $currentUser !== null;
 $appName = (string) (app_setting($GLOBALS['pdo'], 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge Tracker')) ?? 'Fitness Challenge Tracker');
 $pageTitle = isset($title) ? $title . ' - ' . $appName : $appName;
 $currentPage = $currentPage ?? '';
+$contextualBackFallbacks = [
+    'analytics' => '/?page=dashboard',
+    'duels' => '/?page=social',
+    'competitions' => '/?page=social',
+    'gallery' => '/?page=social',
+    'notifications' => '/?page=dashboard&section=alerts',
+    'season' => '/?page=dashboard&section=rewards',
+    'settings' => '/?page=profile',
+    'week_editor' => '/?page=dashboard&section=history',
+    'table' => '/?page=dashboard&section=history',
+];
+$contextualBackFallback = $contextualBackFallbacks[(string) $currentPage] ?? '';
+if ($currentPage === 'analytics' && trim((string) ($_GET['section'] ?? '')) !== '') {
+    $contextualBackFallback = '';
+}
+if ($currentPage === 'settings' && trim((string) ($_GET['view'] ?? '')) !== '') {
+    $contextualBackFallback = '';
+}
 $activeLocale = current_locale();
 $redirectTo = safe_redirect_target($_SERVER['REQUEST_URI'] ?? '/');
 $loginBackgroundUrl = (string) ($loginBackgroundUrl ?? '');
@@ -71,6 +89,9 @@ if (!in_array($themeMode, ['auto', 'light', 'dark'], true)) {
 }
 $penaltiesEnabledForLayout = $loggedIn ? penalties_enabled($GLOBALS['pdo']) : false;
 $isNavActive = static function (string $pageKey) use ($currentPage): bool {
+    if ($pageKey === 'dashboard' && $currentPage === 'season') {
+        return true;
+    }
     if ($pageKey === 'calendar') {
         return $currentPage === 'entries' && (string) ($_GET['mode'] ?? '') === 'calendar';
     }
@@ -84,7 +105,7 @@ $isNavActive = static function (string $pageKey) use ($currentPage): bool {
 };
 $isMobileNavActive = static function (string $pageKey) use ($currentPage): bool {
     return match ($pageKey) {
-        'dashboard' => in_array($currentPage, ['dashboard', 'analytics', 'metric', 'comparison_detail', 'strikes_detail', 'penalties', 'notifications'], true),
+        'dashboard' => in_array($currentPage, ['dashboard', 'analytics', 'metric', 'season', 'comparison_detail', 'strikes_detail', 'penalties', 'notifications'], true),
         'table' => in_array($currentPage, ['table', 'week_editor', 'workouts'], true),
         'social' => in_array($currentPage, ['social', 'gallery', 'photo', 'team', 'team_settings', 'friends', 'challenges', 'duels', 'competitions'], true),
         'profile' => in_array($currentPage, ['profile', 'settings', 'achievements'], true),
@@ -208,15 +229,15 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
             </a>
             <?php $notifPreview = $loggedIn ? user_notifications($GLOBALS['pdo'], (int) ($currentUser['id'] ?? 0), 5, true) : []; ?>
             <details class="notif-menu">
-                <summary class="topbar-notif-btn" aria-label="<?= e(t('nav.notifications')) ?><?= $unreadNotificationsCount > 0 ? ' (' . (int) $unreadNotificationsCount . ')' : '' ?>">
+                <summary class="topbar-notif-btn" aria-label="<?= e(t('nav.notifications')) ?><?= $unreadNotificationsCount > 0 ? ' (' . (int) $unreadNotificationsCount . ')' : '' ?>" aria-expanded="false">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                     <?php if ($unreadNotificationsCount > 0): ?>
                         <span class="topbar-notif-badge" data-notification-badge><?= (int) min(99, $unreadNotificationsCount) ?></span>
                     <?php endif; ?>
                 </summary>
-                <div class="notif-menu-panel">
+                <div class="notif-menu-panel" aria-labelledby="notif-preview-title">
                     <div class="notif-menu-head">
-                        <strong><?= e(t('nav.notifications')) ?></strong>
+                        <span class="notif-menu-title"><strong id="notif-preview-title"><?= e(t('nav.notifications')) ?></strong><small><?= e(t('notifications.unread_count', ['count' => $unreadNotificationsCount])) ?></small></span>
                         <?php if ($unreadNotificationsCount > 0): ?>
                             <form method="post" action="/?page=notifications" class="inline-form">
                                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -324,6 +345,12 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
         <div class="flash flash-<?= e((string) ($flash['type'] ?? 'info')) ?>"><?= e((string) ($flash['message'] ?? '')) ?></div>
     <?php endif; ?>
 
+    <?php if ($loggedIn && $contextualBackFallback !== ''): ?>
+        <nav class="contextual-route-back" data-contextual-back-container hidden aria-label="<?= e(t('common.back')) ?>">
+            <button class="hierarchy-back" type="button" data-hierarchy-back data-fallback="<?= e($contextualBackFallback) ?>" aria-label="<?= e(t('common.back')) ?>">&larr;</button>
+        </nav>
+    <?php endif; ?>
+
     <?= $content ?>
 </main>
 
@@ -335,12 +362,12 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
             <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=meal"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
         </div>
     </details>
-    <nav class="bottom-nav mobile-liquid-nav" aria-label="Primary mobile">
+    <nav class="bottom-nav mobile-liquid-nav" aria-label="<?= e(t('nav.mobile_primary')) ?>">
         <div class="liquid-nav-pill">
             <?php $mobileNavPosition = 0; ?>
             <?php foreach ($mobileNavItems as $pageKey => $item): ?>
                 <?php if ($mobileNavPosition === 2): ?>
-                    <details class="bottom-nav-plus liquid-nav-plus add-menu">
+                    <details class="bottom-nav-plus liquid-nav-plus add-menu" data-nav-action="create">
                         <summary aria-label="<?= e(t('quick_actions.title')) ?>" aria-haspopup="menu">
                             <span class="nav-icon bottom-nav-plus-icon" aria-hidden="true">+</span>
                             <span class="nav-label"><?= e(t('common.create')) ?></span>
@@ -350,12 +377,6 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                                 <div class="mobile-quick-head">
                                     <div><strong><?= e(t('quick_actions.title')) ?></strong><small><?= e(t('quick_actions.subtitle')) ?></small></div>
                                     <button type="button" data-menu-close aria-label="<?= e(t('menu.close')) ?>">&times;</button>
-                                </div>
-                                <div class="mobile-quick-featured" aria-label="<?= e(t('quick_actions.title')) ?>">
-                                    <a href="/?page=entries&mode=data" data-tone="blue"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><strong><?= e(t('entries.quick_data')) ?></strong></a>
-                                    <a href="/?page=entries&mode=meal" data-tone="orange"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><strong><?= e(t('entries.quick_meal')) ?></strong></a>
-                                    <a href="/?page=workouts" data-tone="green"><span class="quick-entry-icon"><?= $renderQuickActionIcon('workout') ?></span><strong><?= e(t('quick_actions.workout')) ?></strong></a>
-                                    <a href="/?page=profile&section=goals&goal_new=1" data-tone="violet"><span class="mobile-quick-glyph" aria-hidden="true">&#9678;</span><strong><?= e(t('quick_actions.goal')) ?></strong></a>
                                 </div>
                                 <button type="button" class="mobile-quick-nav" data-menu-open="quick-register">
                                     <span><strong><?= e(t('quick_actions.register')) ?></strong><small><?= e(t('quick_actions.register_hint')) ?></small></span><span aria-hidden="true">&rsaquo;</span>
@@ -384,7 +405,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                     </details>
                 <?php endif; ?>
                 <?php $navActive = $isMobileNavActive((string) $pageKey); ?>
-                <a class="liquid-nav-item<?= $navActive ? ' active' : '' ?>" href="<?= e($item['href']) ?>" <?= $navActive ? 'aria-current="page"' : '' ?>>
+                <a class="liquid-nav-item<?= $navActive ? ' active' : '' ?>" data-nav-destination="<?= e((string) $pageKey) ?>" href="<?= e($item['href']) ?>" <?= $navActive ? 'aria-current="page"' : '' ?>>
                     <span class="nav-icon"><?= $renderMobileIcon((string) $item['icon']) ?></span>
                     <span class="nav-label"><?= e($item['label']) ?></span>
                 </a>

@@ -62,9 +62,30 @@ $renderVs = static function (array $vm) use ($duelAvatar): void {
     </div>
     <?php
 };
+$renderDuelDetails = static function (array $duel): void {
+    $detailId = 'duel-card-details-' . (int) ($duel['id'] ?? 0);
+    $status = (string) ($duel['status'] ?? 'pending');
+    $statusLabel = match ($status) {
+        'active' => t('common.active'),
+        'completed' => t('workouts.done'),
+        default => t('common.pending'),
+    };
+    ?>
+    <button class="versus-details-toggle" type="button" data-versus-details-toggle aria-expanded="false" aria-controls="<?= e($detailId) ?>">
+        <span data-versus-details-label data-label-open="<?= e(t('duels.card_details')) ?>" data-label-close="<?= e(t('duels.card_details_hide')) ?>"><?= e(t('duels.card_details')) ?></span>
+        <span aria-hidden="true">&rsaquo;</span>
+    </button>
+    <div class="versus-details" id="<?= e($detailId) ?>" data-versus-details hidden>
+        <span><small><?= e(t('common.status')) ?></small><strong><?= e($statusLabel) ?></strong></span>
+        <span><small><?= e(t('duels.days')) ?></small><strong><?= e(t('duels.duration', ['days' => (int) ($duel['duration_days'] ?? 0)])) ?></strong></span>
+        <?php if (trim((string) ($duel['start_date'] ?? '')) !== ''): ?><span><small><?= e(t('duels.start_date')) ?></small><strong><?= e(format_date_eu((string) $duel['start_date'])) ?></strong></span><?php endif; ?>
+        <?php if (trim((string) ($duel['end_date'] ?? '')) !== ''): ?><span><small><?= e(t('duels.end_date')) ?></small><strong><?= e(format_date_eu((string) $duel['end_date'])) ?></strong></span><?php endif; ?>
+    </div>
+    <?php
+};
 ?>
 <section class="screen stack-lg duels-page">
-    <div class="hero-panel">
+    <div class="hero-panel app-page-hero">
         <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('friends.eyebrow')) ?></p>
             <h1><?= e(t('duels.title')) ?></h1>
@@ -94,9 +115,9 @@ $renderVs = static function (array $vm) use ($duelAvatar): void {
             <div class="panel-head"><h2><?= e(t('duels.incoming')) ?></h2><span class="badge"><?= count($incoming) ?></span></div>
             <div class="stack-md">
                 <?php foreach ($incoming as $vm): $d = (array) $vm['duel']; ?>
-                    <div class="duel-card">
+                    <div class="duel-card compact-list-item is-pending" data-state="pending-incoming">
                         <?php $renderVs($vm); ?>
-                        <p class="muted small"><?= e(t('duels.duration', ['days' => (int) $d['duration_days']])) ?></p>
+                        <?php $renderDuelDetails($d); ?>
                         <div class="inline-actions">
                             <form method="post" action="/?page=duels" class="inline-form">
                                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -141,7 +162,7 @@ $renderVs = static function (array $vm) use ($duelAvatar): void {
                         $daysLeft = 0;
                     }
                     ?>
-                    <div class="duel-card">
+                    <div class="duel-card compact-list-item is-active" data-state="active">
                         <?php $renderVs($vm); ?>
                         <p class="duel-standing">
                             <span class="duel-standing-lead">
@@ -153,7 +174,7 @@ $renderVs = static function (array $vm) use ($duelAvatar): void {
                                 <?= $daysLeft > 0 ? e(t('season.days_left', ['n' => $daysLeft])) : e(t('season.ends_today')) ?>
                             </span>
                         </p>
-                        <p class="muted small"><?= e(t('duels.ends_on', ['date' => format_date_eu((string) ($d['end_date'] ?? '')) ])) ?></p>
+                        <?php $renderDuelDetails($d); ?>
                         <form method="post" action="/?page=duels" class="inline-form">
                             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                             <input type="hidden" name="action" value="duel_cancel">
@@ -171,9 +192,10 @@ $renderVs = static function (array $vm) use ($duelAvatar): void {
             <div class="panel-head"><h2><?= e(t('duels.sent')) ?></h2><span class="badge"><?= count($outgoing) ?></span></div>
             <div class="stack-md">
                 <?php foreach ($outgoing as $vm): $d = (array) $vm['duel']; $v = (array) $vm['values']; ?>
-                    <div class="duel-card">
+                    <div class="duel-card compact-list-item is-pending" data-state="pending-outgoing">
                         <p><strong><?= e((string) (($v['opponent_user'] ?? [])['display_name'] ?? '')) ?></strong> · <?= e(duels_metric_label((string) $d['metric'])) ?> · <?= e(t('duels.duration', ['days' => (int) $d['duration_days']])) ?></p>
                         <p class="muted small"><?= e(t('duels.waiting')) ?></p>
+                        <?php $renderDuelDetails($d); ?>
                         <form method="post" action="/?page=duels" class="inline-form">
                             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                             <input type="hidden" name="action" value="duel_cancel">
@@ -238,12 +260,13 @@ $renderVs = static function (array $vm) use ($duelAvatar): void {
                         ? (string) (($v['challenger_user'] ?? [])['display_name'] ?? '')
                         : ($winnerId === (int) $d['opponent_id'] ? (string) (($v['opponent_user'] ?? [])['display_name'] ?? '') : '');
                     ?>
-                    <div class="duel-card is-done">
+                    <div class="duel-card compact-list-item is-done" data-state="completed">
                         <?php $renderVs($vm); ?>
                         <p class="duel-result">
                             <?= $winnerId === $meId ? '🏆 ' : '' ?>
                             <?= $winnerName !== '' ? e(t('duels.winner', ['name' => $winnerName])) : e(t('duels.tie')) ?>
                         </p>
+                        <?php $renderDuelDetails($d); ?>
                     </div>
                 <?php endforeach; ?>
             </div>

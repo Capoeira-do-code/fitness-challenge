@@ -7,7 +7,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 $page = $_GET['page'] ?? null;
 if ($page === null) {
     $pathPage = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/');
-    if (in_array($pathPage, ['dashboard', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'workouts', 'social', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'competitions', 'login', 'login_background'], true)) {
+    if (in_array($pathPage, ['dashboard', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'workouts', 'social', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'season', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'competitions', 'login', 'login_background'], true)) {
         $page = $pathPage;
     }
 }
@@ -1424,8 +1424,11 @@ if ($page === 'social') {
     }
 
     $socialTeams = [];
+    $socialTeamMembers = [];
     $socialFriends = [];
+    $socialFriendRequests = [];
     $socialGalleryPreview = [];
+    $socialActivity = [];
     $socialDuelsSummary = ['active' => 0, 'pending' => 0, 'total' => 0];
     $socialCompetitionsSummary = ['active' => 0, 'pending' => 0, 'total' => 0];
     $socialCanManageTeam = false;
@@ -1438,19 +1441,47 @@ if ($page === 'social') {
                 break;
             }
         }
+        if ($socialSection === '' && $socialTeams !== []) {
+            $socialTeamMembers = list_team_members($pdo, (int) ($socialTeams[0]['id'] ?? 0));
+        }
     }
     if ($socialSection === '' || $socialSection === 'community') {
         friends_ensure_schema($pdo);
         $socialFriends = friends_list($pdo, (int) $currentUser['id']);
-        if ($socialSection === 'community') {
-            $socialGalleryPreview = fetch_gallery_photos($pdo, 3, 0, null, (int) $currentUser['id'], is_admin($currentUser));
-        }
+        $socialFriendRequests = friends_incoming($pdo, (int) $currentUser['id']);
+        $socialGalleryPreview = fetch_gallery_photos(
+            $pdo,
+            $socialSection === '' ? 4 : 6,
+            0,
+            null,
+            (int) $currentUser['id'],
+            is_admin($currentUser)
+        );
     }
     if ($socialSection === '' || $socialSection === 'competition') {
         duels_ensure_schema($pdo);
         squads_ensure_schema($pdo);
         $socialDuelsSummary = duels_summary_for_user($pdo, (int) $currentUser['id']);
         $socialCompetitionsSummary = comp_summary_for_user($pdo, (int) $currentUser['id']);
+    }
+    if ($socialSection === '') {
+        $socialKinds = ['friend_', 'duel_', 'comp_', 'squad_', 'team_goal_'];
+        foreach (user_notifications($pdo, (int) $currentUser['id'], 30, true) as $notification) {
+            $kind = (string) ($notification['kind'] ?? '');
+            $isSocial = false;
+            foreach ($socialKinds as $prefix) {
+                if (str_starts_with($kind, $prefix)) {
+                    $isSocial = true;
+                    break;
+                }
+            }
+            if ($isSocial) {
+                $socialActivity[] = $notification;
+            }
+            if (count($socialActivity) >= 4) {
+                break;
+            }
+        }
     }
 
     render_view('social', [
@@ -1459,8 +1490,11 @@ if ($page === 'social') {
         'currentUser' => $currentUser,
         'socialSection' => $socialSection,
         'socialTeams' => $socialTeams,
+        'socialTeamMembers' => $socialTeamMembers,
         'socialFriends' => $socialFriends,
+        'socialFriendRequests' => $socialFriendRequests,
         'socialGalleryPreview' => $socialGalleryPreview,
+        'socialActivity' => $socialActivity,
         'socialDuelsSummary' => $socialDuelsSummary,
         'socialCompetitionsSummary' => $socialCompetitionsSummary,
         'socialCanManageTeam' => $socialCanManageTeam,
@@ -1665,6 +1699,11 @@ if ($page === 'table' || $page === 'week_editor') {
 }
 
 if ($page === 'notifications') {
+    $notificationFilter = strtolower(trim((string) ($_GET['filter'] ?? $_POST['notification_filter'] ?? 'all')));
+    if (!in_array($notificationFilter, ['all', 'unread', 'action'], true)) {
+        $notificationFilter = 'all';
+    }
+    $notificationsRedirect = '/?page=notifications' . ($notificationFilter !== 'all' ? '&filter=' . rawurlencode($notificationFilter) : '');
     $openNotificationId = isset($_GET['open_notification_id']) ? (int) $_GET['open_notification_id'] : 0;
     if ($openNotificationId > 0) {
         $destination = open_user_notification($pdo, $openNotificationId, (int) $currentUser['id']);
@@ -1674,31 +1713,31 @@ if ($page === 'notifications') {
     if (is_post()) {
         if (!csrf_verify()) {
             flash_set('error', t('flash.csrf'));
-            redirect('/?page=notifications');
+            redirect($notificationsRedirect);
         }
 
         $action = (string) ($_POST['action'] ?? '');
         if ($action === 'mark_notification_read') {
             $notificationId = (int) ($_POST['notification_id'] ?? 0);
             mark_user_notification_read($pdo, $notificationId, (int) $currentUser['id']);
-            redirect('/?page=notifications');
+            redirect($notificationsRedirect);
         }
         if ($action === 'mark_all_notifications_read') {
             mark_all_user_notifications_read($pdo, (int) $currentUser['id']);
-            redirect('/?page=notifications');
+            redirect($notificationsRedirect);
         }
         if ($action === 'delete_notification') {
             $notificationId = (int) ($_POST['notification_id'] ?? 0);
             delete_user_notification($pdo, $notificationId, (int) $currentUser['id']);
-            redirect('/?page=notifications');
+            redirect($notificationsRedirect);
         }
         if ($action === 'delete_read_notifications') {
             delete_user_read_notifications($pdo, (int) $currentUser['id']);
-            redirect('/?page=notifications');
+            redirect($notificationsRedirect);
         }
         if ($action === 'delete_all_notifications') {
             delete_all_user_notifications($pdo, (int) $currentUser['id']);
-            redirect('/?page=notifications');
+            redirect($notificationsRedirect);
         }
     }
 
@@ -1709,6 +1748,7 @@ if ($page === 'notifications') {
         'currentPage' => 'notifications',
         'currentUser' => $currentUser,
         'notifications' => $notifications,
+        'notificationFilter' => $notificationFilter,
         'config' => $config,
     ]);
 }
@@ -2088,28 +2128,48 @@ if ($page === 'workouts') {
                     flash_set('error', t('flash.error'));
                     redirect('/?page=workouts');
                 }
+                $postedSettingsView = (string) ($_POST['settings_view'] ?? '');
+                $routineSettingsView = in_array($postedSettingsView, ['identity', 'media', 'schedule'], true)
+                    ? $postedSettingsView
+                    : '';
+                $settingsReturnUrl = $routineSettingsView !== ''
+                    ? '/?page=workouts&routine_id=' . $backRoutine . '&section=settings&settings_view=' . $routineSettingsView
+                    : $routineUrl;
                 try {
-                    $routineName = trim((string) ($_POST['name'] ?? ''));
+                    $isLegacyRoutineUpdate = $routineSettingsView === '';
+                    $updatesIdentity = $isLegacyRoutineUpdate || $routineSettingsView === 'identity';
+                    $updatesMedia = $isLegacyRoutineUpdate || $routineSettingsView === 'media';
+                    $updatesSchedule = $isLegacyRoutineUpdate || $routineSettingsView === 'schedule';
+                    $routineName = trim((string) ($updatesIdentity ? ($_POST['name'] ?? '') : ($existingRoutine['name'] ?? '')));
                     if ($routineName === '') {
                         throw new InvalidArgumentException(t('workouts.routine_name_required'));
                     }
-                    $routineMedia = $routineMediaPayload($existingRoutine);
+                    $routineMedia = $updatesMedia ? $routineMediaPayload($existingRoutine) : [
+                        'image_path' => (string) ($existingRoutine['image_path'] ?? ''),
+                        'video_url' => (string) ($existingRoutine['video_url'] ?? ''),
+                        'cover_mode' => (string) ($existingRoutine['cover_mode'] ?? 'auto'),
+                        'image_position' => (string) ($existingRoutine['image_position'] ?? 'center'),
+                    ];
                     wk_routine_update($pdo, $backRoutine, $meId, [
                         'name' => $routineName,
-                        'icon' => (string) ($_POST['icon'] ?? 'dumbbell'),
-                        'accent_color' => (string) ($_POST['accent_color'] ?? '#14b8a6'),
-                        'description' => (string) ($_POST['description'] ?? ''),
-                        'recommended_days_mask' => wk_days_mask($_POST['days'] ?? []),
+                        'icon' => (string) ($updatesIdentity ? ($_POST['icon'] ?? 'dumbbell') : ($existingRoutine['icon'] ?? 'dumbbell')),
+                        'accent_color' => (string) ($updatesIdentity ? ($_POST['accent_color'] ?? '#14b8a6') : ($existingRoutine['accent_color'] ?? '#14b8a6')),
+                        'description' => (string) ($updatesIdentity ? ($_POST['description'] ?? '') : ($existingRoutine['description'] ?? '')),
+                        'recommended_days_mask' => $updatesSchedule
+                            ? wk_days_mask($_POST['days'] ?? [])
+                            : (string) ($existingRoutine['recommended_days_mask'] ?? '0000000'),
                         'image_path' => (string) ($routineMedia['image_path'] ?? ''),
                         'video_url' => (string) ($routineMedia['video_url'] ?? ''),
                         'cover_mode' => (string) ($routineMedia['cover_mode'] ?? 'auto'),
                         'image_position' => (string) ($routineMedia['image_position'] ?? 'center'),
                     ]);
-                    flash_set('success', t('workouts.routine_media_saved'));
-                    redirect($routineUrl);
+                    flash_set('success', t('workouts.routine_settings_saved'));
+                    redirect($settingsReturnUrl);
                 } catch (Throwable $e) {
                     flash_set('error', $e->getMessage());
-                    redirect('/?page=workouts&routine_id=' . $backRoutine . '&section=settings');
+                    redirect($settingsReturnUrl !== $routineUrl
+                        ? $settingsReturnUrl
+                        : '/?page=workouts&routine_id=' . $backRoutine . '&section=settings');
                 }
             case 'routine_favorite':
                 wk_routine_set_flag($pdo, $backRoutine, $meId, 'is_favorite', (int) ($_POST['value'] ?? 0));
@@ -2616,6 +2676,9 @@ if ($page === 'workouts') {
     $routineSection = in_array((string) ($_GET['section'] ?? 'overview'), ['overview', 'settings', 'organize'], true)
         ? (string) ($_GET['section'] ?? 'overview')
         : 'overview';
+    $routineSettingsView = in_array((string) ($_GET['settings_view'] ?? 'identity'), ['identity', 'media', 'schedule', 'management'], true)
+        ? (string) ($_GET['settings_view'] ?? 'identity')
+        : 'identity';
     $sessionSection = (string) ($_GET['section'] ?? '') === 'organize' ? 'organize' : 'workout';
     $customExerciseParam = trim((string) ($_GET['custom_exercise'] ?? ''));
     $requestedWorkoutView = (string) ($_GET['view'] ?? 'overview');
@@ -2834,6 +2897,41 @@ if ($page === 'workouts') {
     }
 
     $sinceMonth = (new DateTimeImmutable('first day of this month'))->format('Y-m-d 00:00:00');
+    $wkActiveSession = wk_session_active_for_user($pdo, $meId);
+    $wkActiveSessionSummary = null;
+    if ($wkActiveSession !== null) {
+        $activeSessionId = (int) ($wkActiveSession['id'] ?? 0);
+        $activeSessionExercises = $wkSession !== null
+            && (int) ($wkSession['id'] ?? 0) === $activeSessionId
+            ? $wkSessionExercises
+            : wk_session_exercises($pdo, $activeSessionId);
+        $activeTotalSets = 0;
+        $activeCompletedSets = 0;
+        $activeNextExercise = '';
+        foreach ($activeSessionExercises as $activeExercise) {
+            $activeSets = array_values((array) ($activeExercise['sets'] ?? []));
+            $activeTotalSets += count($activeSets);
+            $activeIncompleteSets = array_values(array_filter(
+                $activeSets,
+                static fn(array $set): bool => (int) ($set['completed'] ?? 0) !== 1
+            ));
+            $activeCompletedSets += count($activeSets) - count($activeIncompleteSets);
+            if ($activeNextExercise === '' && ($activeSets === [] || $activeIncompleteSets !== [])) {
+                $activeNextExercise = (string) ($activeExercise['exercise_name'] ?? '');
+            }
+        }
+        $activeStartedAt = strtotime((string) ($wkActiveSession['started_at'] ?? ''));
+        $activeElapsedMinutes = $activeStartedAt !== false
+            ? max(0, (int) floor((time() - $activeStartedAt) / 60))
+            : 0;
+        $wkActiveSessionSummary = [
+            'elapsed_minutes' => $activeElapsedMinutes,
+            'completed_sets' => $activeCompletedSets,
+            'total_sets' => $activeTotalSets,
+            'progress_pct' => $activeTotalSets > 0 ? min(100, (int) round(($activeCompletedSets / $activeTotalSets) * 100)) : 0,
+            'next_exercise' => $activeNextExercise,
+        ];
+    }
     render_view('workouts', [
         'title' => t('workouts.title'),
         'currentPage' => 'workouts',
@@ -2861,6 +2959,7 @@ if ($page === 'workouts') {
         'wkTargetSession' => $wkTargetSession,
         'wkTargetSessionExerciseIds' => $wkTargetSessionExerciseIds,
         'wkRoutineSection' => $routineSection,
+        'wkRoutineSettingsView' => $routineSettingsView,
         'wkLibrary' => $wkLibrary,
         'wkLibraryPage' => $wkLibraryPage,
         'wkLibraryPerPage' => $wkLibraryPerPage,
@@ -2877,7 +2976,8 @@ if ($page === 'workouts') {
         'wkRoutinesByDay' => wk_routines_by_day($pdo, $meId),
         'wkPlanPresets' => wk_builtin_plan_presets(),
         'wkExercises' => wk_exercises_for_user($pdo, $meId),
-        'wkActiveSession' => wk_session_active_for_user($pdo, $meId),
+        'wkActiveSession' => $wkActiveSession,
+        'wkActiveSessionSummary' => $wkActiveSessionSummary,
         'wkRecentSessions' => wk_sessions_for_user($pdo, $meId, 8),
         'wkPersonalRecords' => wk_personal_records_for_user($pdo, $meId, 8),
         'immersiveMobile' => $wkView === 'custom_exercise'
@@ -2890,7 +2990,7 @@ if ($page === 'workouts') {
 
 if ($page === 'settings') {
     $settingsView = (string) ($_GET['view'] ?? '');
-    $allowedSettingsViews = ['avatar', 'goals', 'preferences', 'privacy', 'integrations', 'account'];
+    $allowedSettingsViews = ['avatar', 'body', 'goals', 'preferences', 'privacy', 'integrations', 'account'];
     if (!in_array($settingsView, $allowedSettingsViews, true)) {
         $settingsView = '';
     }
@@ -2936,7 +3036,7 @@ if ($page === 'settings') {
             $layoutJson = (string) ($before['dashboard_layout_json'] ?? '[]');
             $hasWidgetPayload = array_key_exists('dashboard_widgets', $_POST) || array_key_exists('dashboard_order', $_POST);
             if ($hasWidgetPayload) {
-                $allowedWidgets = ['kpis', 'training_rank', 'training_progress', 'distance_walked', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories', 'achievements', 'duels', 'competitions', 'quests', 'season'];
+                $allowedWidgets = ['kpis', 'training_rank', 'training_progress', 'distance_walked', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories', 'achievements', 'achievement_progress', 'duels', 'competitions', 'quests', 'season'];
                 $selectedWidgets = array_values(array_intersect(array_map('strval', (array) ($_POST['dashboard_widgets'] ?? [])), $allowedWidgets));
                 $selectedWidgets = array_values(array_unique(array_map(
                     static fn(string $widget): string => $widget === 'money' ? 'distance_walked' : $widget,
@@ -2978,6 +3078,28 @@ if ($page === 'settings') {
             audit_log($pdo, (int) $currentUser['id'], 'user_preferences_updated', 'user', (string) $currentUser['id'], 'User preferences updated.', audit_snapshot($before, ['password_hash']), audit_snapshot($after, ['password_hash']));
             flash_set('success', t('flash.preferences_updated'));
             redirect($settingsRedirect($settingsView));
+        }
+
+        if ($action === 'update_body_settings') {
+            $idealWeightRaw = trim((string) ($_POST['ideal_weight'] ?? ''));
+            $idealWeight = null;
+            if ($idealWeightRaw !== '') {
+                if (!is_numeric($idealWeightRaw) || (float) $idealWeightRaw < 25 || (float) $idealWeightRaw > 400) {
+                    flash_set('error', t('settings.weight_invalid'));
+                    redirect($settingsRedirect('body'));
+                }
+                $idealWeight = round((float) $idealWeightRaw, 1);
+            }
+            $before = db_fetch_one($pdo, 'SELECT id, ideal_weight FROM users WHERE id = :id', [':id' => (int) $currentUser['id']]);
+            db_execute(
+                $pdo,
+                'UPDATE users SET ideal_weight = :ideal_weight, updated_at = :updated_at WHERE id = :id',
+                [':ideal_weight' => $idealWeight, ':updated_at' => now_iso(), ':id' => (int) $currentUser['id']]
+            );
+            $after = db_fetch_one($pdo, 'SELECT id, ideal_weight FROM users WHERE id = :id', [':id' => (int) $currentUser['id']]);
+            audit_log($pdo, (int) $currentUser['id'], 'body_settings_updated', 'user', (string) $currentUser['id'], 'Body settings updated.', $before, $after);
+            flash_set('success', t('settings.weight_saved'));
+            redirect($settingsRedirect('body'));
         }
 
         if ($action === 'telegram_generate_link') {
@@ -3126,6 +3248,15 @@ if ($page === 'settings') {
     }
 
     $currentUser = current_user($pdo) ?? $currentUser;
+    $settingsWeightHistory = db_fetch_all(
+        $pdo,
+        'SELECT log_date AS date, weight
+         FROM daily_logs
+         WHERE user_id = :user_id AND weight IS NOT NULL
+         ORDER BY log_date DESC
+         LIMIT 50',
+        [':user_id' => (int) $currentUser['id']]
+    );
     $settingsGoalRows = list_goals($pdo, 'user', (int) $currentUser['id']);
     $settingsHabitDefinitions = list_habit_definitions($pdo, true);
     $settingsGoalMetric = [];
@@ -3148,6 +3279,8 @@ if ($page === 'settings') {
         'currentPage' => 'settings',
         'currentUser' => $currentUser,
         'settingsView' => $settingsView,
+        'settingsMetric' => is_array($settingsGoalMetric) ? $settingsGoalMetric : [],
+        'settingsWeightHistory' => $settingsWeightHistory,
         'settingsGoalCards' => build_user_goal_view_models($settingsGoalRows, is_array($settingsGoalMetric) ? $settingsGoalMetric : [], $settingsHabitDefinitions),
         'telegramSettings' => telegram_settings($pdo),
         'config' => $config,
@@ -3187,7 +3320,9 @@ if ($page === 'profile') {
     // moderation tools, but visiting somebody else's public profile must never expose
     // controls that look like the profile belongs to them.
     $canEditProfile = $isOwnProfile;
-    $canDeleteProfileAchievements = is_admin($currentUser) || $isOwnProfile;
+    // Achievement awards are moderation records. They can only be removed from
+    // Administration, never from a public or personal profile.
+    $canDeleteProfileAchievements = false;
     $profileBaseQuery = ['page' => 'profile'];
     if (!$isOwnProfile) {
         $profileBaseQuery['user_id'] = (int) $profileUser['id'];
@@ -3369,7 +3504,7 @@ if ($page === 'profile') {
                 flash_set('error', t('flash.no_permission'));
                 redirect($profileUrl());
             }
-            $allowedProfileBlocks = ['goals', 'friends', 'training_rank', 'training_progress', 'achievements', 'duels', 'competitions', 'setup', 'activity'];
+            $allowedProfileBlocks = ['goals', 'friends', 'teams', 'training_rank', 'training_progress', 'achievements', 'duels', 'competitions', 'setup', 'activity'];
             $resetProfileLayout = bool_from_form('reset_profile_layout') === 1;
             $layoutValue = null;
             if (!$resetProfileLayout) {
@@ -3545,22 +3680,7 @@ if ($page === 'profile') {
         }
 
         if ($action === 'delete_achievement_award') {
-            if (!$canDeleteProfileAchievements) {
-                flash_set('error', t('flash.no_permission'));
-                redirect($profileUrl('achievements'));
-            }
-            $awardId = (int) ($_POST['award_id'] ?? 0);
-            if ($awardId <= 0) {
-                flash_set('error', 'Invalid achievement id.');
-                redirect($profileUrl('achievements'));
-            }
-            $award = db_fetch_one($pdo, 'SELECT * FROM achievement_awards WHERE id = :id', [':id' => $awardId]);
-            if ($award !== null && (int) ($award['user_id'] ?? 0) === (int) $profileUser['id']) {
-                delete_achievement_award($pdo, $awardId, (int) $currentUser['id']);
-                flash_set('success', t('flash.achievement_deleted'));
-            } else {
-                flash_set('error', t('flash.no_permission'));
-            }
+            flash_set('error', t('flash.no_permission'));
             redirect($profileUrl('achievements'));
         }
     }
@@ -4134,7 +4254,7 @@ if ($page === 'profile') {
         evaluate_automatic_achievements($pdo, $metrics);
     }
 
-    $profileAllWidgets = ['goals', 'friends', 'training_rank', 'training_progress', 'achievements', 'duels', 'competitions', 'setup', 'activity'];
+    $profileAllWidgets = ['goals', 'friends', 'teams', 'training_rank', 'training_progress', 'achievements', 'duels', 'competitions', 'setup', 'activity'];
     $profileSavedWidgets = json_decode((string) ($profileUser['profile_layout_json'] ?? ''), true);
     $profileKnownWidgets = json_decode((string) ($profileUser['profile_widgets_known'] ?? ''), true);
     $profileKnownWidgets = is_array($profileKnownWidgets) ? array_values(array_map('strval', $profileKnownWidgets)) : [];
@@ -4143,6 +4263,12 @@ if ($page === 'profile') {
         $profileLayoutUpdate = null;
         if (is_array($profileSavedWidgets) && $profileSavedWidgets !== []) {
             $profileLayoutUpdate = array_values(array_unique(array_map('strval', $profileSavedWidgets)));
+            $newTeamsWidgets = array_values(array_intersect(['teams'], $profileUnknownWidgets));
+            if ($newTeamsWidgets !== []) {
+                $friendsPosition = array_search('friends', $profileLayoutUpdate, true);
+                $insertAt = $friendsPosition === false ? min(2, count($profileLayoutUpdate)) : (int) $friendsPosition + 1;
+                array_splice($profileLayoutUpdate, $insertAt, 0, $newTeamsWidgets);
+            }
             $newTrainingWidgets = array_values(array_intersect(['training_rank', 'training_progress'], $profileUnknownWidgets));
             if ($newTrainingWidgets !== []) {
                 $friendsPosition = array_search('friends', $profileLayoutUpdate, true);
@@ -4151,7 +4277,7 @@ if ($page === 'profile') {
             }
             $profileLayoutUpdate = array_values(array_unique(array_merge(
                 $profileLayoutUpdate,
-                array_values(array_diff($profileUnknownWidgets, $newTrainingWidgets, $profileLayoutUpdate))
+                array_values(array_diff($profileUnknownWidgets, $newTeamsWidgets, $newTrainingWidgets, $profileLayoutUpdate))
             )));
         }
         db_execute(
@@ -4273,7 +4399,6 @@ if ($page === 'achievements') {
     $achievementsMetrics = [];
     $achievementUserId = null;
     $achievementTeamId = null;
-    $canDeleteAchievements = false;
     $backHref = '/?page=profile';
 
     if ($scope === 'team') {
@@ -4311,7 +4436,6 @@ if ($page === 'achievements') {
         evaluate_automatic_achievements($pdo, $achievementsMetrics, (int) $team['id']);
         $achievementOwner = $team;
         $achievementTeamId = (int) $team['id'];
-        $canDeleteAchievements = can_manage_team($pdo, $currentUser, $achievementTeamId);
         $backHref = '/?' . http_build_query(['page' => 'team', 'team_id' => $achievementTeamId]);
     } else {
         $achievementUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
@@ -4356,7 +4480,6 @@ if ($page === 'achievements') {
         evaluate_automatic_achievements($pdo, $achievementsMetrics);
         $achievementOwner = $profileUser;
         $achievementUserId = (int) $profileUser['id'];
-        $canDeleteAchievements = is_admin($currentUser) || $isOwnProfile;
         if ((string) ($_GET['back'] ?? '') === 'dashboard') {
             $backParams = ['page' => 'dashboard', 'user_id' => $achievementUserId];
             $backView = trim((string) ($_GET['view'] ?? ''));
@@ -4386,35 +4509,21 @@ if ($page === 'achievements') {
         }
     }
     $achievementsUrl = '/?' . http_build_query($pageParams);
+    $achievementFilter = strtolower(trim((string) ($_GET['filter'] ?? 'all')));
+    if (!in_array($achievementFilter, ['all', 'unlocked', 'locked'], true)) {
+        $achievementFilter = 'all';
+    }
+    $achievementsRedirect = $achievementsUrl . ($achievementFilter !== 'all' ? '&filter=' . rawurlencode($achievementFilter) : '');
 
     if (is_post()) {
         if (!csrf_verify()) {
             flash_set('error', t('flash.csrf'));
-            redirect($achievementsUrl);
+            redirect($achievementsRedirect);
         }
         $action = (string) ($_POST['action'] ?? '');
         if ($action === 'delete_achievement_award') {
-            if (!$canDeleteAchievements) {
-                flash_set('error', t('flash.no_permission'));
-                redirect($achievementsUrl);
-            }
-            $awardId = (int) ($_POST['award_id'] ?? 0);
-            $award = $awardId > 0
-                ? db_fetch_one($pdo, 'SELECT * FROM achievement_awards WHERE id = :id', [':id' => $awardId])
-                : null;
-            $allowedAward = false;
-            if ($award !== null && $scope === 'team') {
-                $allowedAward = (int) ($award['team_id'] ?? 0) === $achievementTeamId;
-            } elseif ($award !== null) {
-                $allowedAward = (int) ($award['user_id'] ?? 0) === $achievementUserId;
-            }
-            if ($allowedAward) {
-                delete_achievement_award($pdo, $awardId, (int) $currentUser['id']);
-                flash_set('success', t('flash.achievement_deleted'));
-            } else {
-                flash_set('error', t('flash.no_permission'));
-            }
-            redirect($achievementsUrl);
+            flash_set('error', t('flash.no_permission'));
+            redirect($achievementsRedirect);
         }
     }
 
@@ -4427,9 +4536,34 @@ if ($page === 'achievements') {
         'achievementScope' => $scope,
         'achievementOwner' => $achievementOwner,
         'achievementsAll' => $achievementsAll,
-        'canDeleteAchievements' => $canDeleteAchievements,
         'achievementsUrl' => $achievementsUrl,
         'backHref' => $backHref,
+        'config' => $config,
+    ]);
+}
+
+if ($page === 'season') {
+    seasons_ensure_schema($pdo);
+    $season = seasons_current($pdo);
+    $seasonBoard = season_leaderboard($pdo, $season, 50);
+    $seasonUserXp = season_xp_for_user($pdo, (int) $currentUser['id'], $season);
+    $seasonUserPosition = null;
+    foreach ($seasonBoard as $seasonRow) {
+        if ((int) ($seasonRow['user_id'] ?? 0) === (int) $currentUser['id']) {
+            $seasonUserPosition = (int) ($seasonRow['rank'] ?? 0);
+            break;
+        }
+    }
+
+    render_view('season', [
+        'title' => t('season.leaderboard'),
+        'currentPage' => 'season',
+        'currentUser' => $currentUser,
+        'season' => $season,
+        'seasonBoard' => $seasonBoard,
+        'seasonUserXp' => $seasonUserXp,
+        'seasonUserPosition' => $seasonUserPosition,
+        'seasonDaysLeft' => season_days_left($season),
         'config' => $config,
     ]);
 }
@@ -5367,6 +5501,17 @@ if ($page === 'admin') {
         }
     }
 
+    $adminRequestedSection = trim((string) ($_GET['section'] ?? ''));
+    $adminRenderableSections = ['users', 'challenge', 'app', 'appearance', 'notion', 'telegram', 'backups', 'habits', 'workout_types', 'training', 'achievements', 'motivational_quotes', 'xp', 'audit'];
+    if (!in_array($adminRequestedSection, $adminRenderableSections, true)) {
+        render_view('admin', [
+            'title' => t('admin.title'),
+            'currentPage' => 'admin',
+            'currentUser' => $currentUser,
+            'config' => $config,
+        ]);
+    }
+
     $team = default_team($pdo);
     $users = db_fetch_all($pdo, 'SELECT * FROM users ORDER BY created_at ASC');
     $challengeSettings = challenge_settings($pdo, $config);
@@ -5512,6 +5657,10 @@ if ($page === 'admin') {
 }
 
 if ($page === 'team_settings') {
+    $teamSettingsSection = trim((string) ($_GET['section'] ?? ''));
+    if (!in_array($teamSettingsSection, ['', 'general', 'members', 'requests', 'danger'], true)) {
+        $teamSettingsSection = '';
+    }
     $userTeams = list_user_teams($pdo, (int) $currentUser['id']);
     $teamId = isset($_GET['team_id']) ? (int) $_GET['team_id'] : ($userTeams !== [] ? (int) $userTeams[0]['id'] : (int) default_team($pdo)['id']);
     if (is_admin($currentUser)) {
@@ -5536,10 +5685,19 @@ if ($page === 'team_settings') {
 
     require_team_manager($pdo, $currentUser, (int) $team['id']);
 
+    $teamSettingsUrl = static function (int $teamId, string $section = ''): string {
+        $params = ['page' => 'team_settings', 'team_id' => $teamId];
+        if ($section !== '') {
+            $params['section'] = $section;
+        }
+
+        return '/?' . http_build_query($params);
+    };
+
     if (is_post()) {
         if (!csrf_verify()) {
             flash_set('error', t('flash.csrf'));
-            redirect('/?page=team_settings&team_id=' . (int) $team['id']);
+            redirect($teamSettingsUrl((int) $team['id'], $teamSettingsSection));
         }
 
         $action = (string) ($_POST['action'] ?? '');
@@ -5554,7 +5712,7 @@ if ($page === 'team_settings') {
                 (int) $currentUser['id']
             );
             flash_set('success', t('flash.team_updated'));
-            redirect('/?page=team_settings&team_id=' . (int) $team['id']);
+            redirect($teamSettingsUrl((int) $team['id'], 'general'));
         }
 
         if ($action === 'team_membership') {
@@ -5566,19 +5724,19 @@ if ($page === 'team_settings') {
                 (int) $currentUser['id']
             );
             flash_set('success', t('flash.team_updated'));
-            redirect('/?page=team_settings&team_id=' . (int) $team['id']);
+            redirect($teamSettingsUrl((int) $team['id'], 'members'));
         }
 
         if ($action === 'team_role') {
             update_team_member_role($pdo, (int) $team['id'], (int) ($_POST['user_id'] ?? 0), (string) ($_POST['role'] ?? 'member'), (int) $currentUser['id']);
             flash_set('success', t('flash.team_updated'));
-            redirect('/?page=team_settings&team_id=' . (int) $team['id']);
+            redirect($teamSettingsUrl((int) $team['id'], 'members'));
         }
 
         if ($action === 'transfer_admin') {
             $ok = transfer_team_admin($pdo, (int) $team['id'], (int) ($_POST['user_id'] ?? 0), (int) $currentUser['id']);
             flash_set($ok ? 'success' : 'error', $ok ? t('flash.team_admin_transferred') : t('flash.team_action_failed'));
-            redirect('/?page=team_settings&team_id=' . (int) $team['id']);
+            redirect($teamSettingsUrl((int) $team['id'], 'danger'));
         }
 
         if ($action === 'delete_team') {
@@ -5587,24 +5745,28 @@ if ($page === 'team_settings') {
                 redirect('/?page=team');
             }
             flash_set('error', t('flash.team_delete_blocked'));
-            redirect('/?page=team_settings&team_id=' . (int) $team['id']);
+            redirect($teamSettingsUrl((int) $team['id'], 'danger'));
         }
 
         if ($action === 'resolve_join_request') {
             resolve_team_join_request($pdo, (int) ($_POST['request_id'] ?? 0), (string) ($_POST['decision'] ?? '') === 'approve', (int) $currentUser['id']);
             flash_set('success', t('flash.team_updated'));
-            redirect('/?page=team_settings&team_id=' . (int) $team['id']);
+            redirect($teamSettingsUrl((int) $team['id'], 'requests'));
         }
     }
+
+    $loadTeamMembers = in_array($teamSettingsSection, ['', 'members', 'danger'], true);
+    $loadJoinRequests = in_array($teamSettingsSection, ['', 'requests'], true);
 
     render_view('team_settings', [
         'title' => t('team.settings'),
         'currentPage' => 'team',
         'currentUser' => $currentUser,
         'team' => $team,
-        'teamMembers' => list_team_members($pdo, (int) $team['id'], false),
-        'availableUsers' => list_users_not_in_active_team($pdo, (int) $team['id']),
-        'joinRequests' => pending_team_join_requests($pdo, (int) $team['id']),
+        'teamSettingsSection' => $teamSettingsSection,
+        'teamMembers' => $loadTeamMembers ? list_team_members($pdo, (int) $team['id'], false) : [],
+        'availableUsers' => $teamSettingsSection === 'members' ? list_users_not_in_active_team($pdo, (int) $team['id']) : [],
+        'joinRequests' => $loadJoinRequests ? pending_team_join_requests($pdo, (int) $team['id']) : [],
         'config' => $config,
     ]);
 }
@@ -6032,22 +6194,7 @@ if ($page === 'team') {
         }
 
         if ($action === 'delete_achievement_award') {
-            if (!can_manage_team($pdo, $currentUser, (int) $team['id'])) {
-                flash_set('error', t('flash.no_permission'));
-                redirect('/?page=team');
-            }
-            $awardId = (int) ($_POST['award_id'] ?? 0);
-            if ($awardId <= 0) {
-                flash_set('error', 'Invalid achievement id.');
-                redirect('/?page=team');
-            }
-            $award = db_fetch_one($pdo, 'SELECT * FROM achievement_awards WHERE id = :id', [':id' => $awardId]);
-            if ($award !== null && (int) ($award['team_id'] ?? 0) === (int) $team['id']) {
-                delete_achievement_award($pdo, $awardId, (int) $currentUser['id']);
-                flash_set('success', t('flash.achievement_deleted'));
-            } else {
-                flash_set('error', t('flash.no_permission'));
-            }
+            flash_set('error', t('flash.no_permission'));
             redirect('/?page=team');
         }
 
@@ -6914,6 +7061,8 @@ if ($page === 'metric') {
         'distance' => t('metric.distance_km'),
         'workouts' => t('metric.workouts'),
         'score' => t('metric.score'),
+        'calories_consumed' => t('dashboard.calories_consumed'),
+        'calories_burned' => t('dashboard.calories_burned'),
     ];
     if ($penaltiesEnabled) {
         $allowedMetrics['strikes'] = t('metric.strikes');
@@ -7068,6 +7217,48 @@ if ($page === 'metric') {
         $seriesValues = array_map($score_for_week, $selectedWeeklyRows);
         $seriesCount = count($seriesValues);
         $currentValue = $seriesCount > 0 ? round(array_sum($seriesValues) / $seriesCount, 1) : 0;
+    }
+
+    if (in_array($metricKey, ['calories_consumed', 'calories_burned'], true)) {
+        $calorieRangeStart = (string) ($settings['challenge_start'] ?? to_date(null));
+        $calorieRangeEnd = (string) ($settings['challenge_end'] ?? $calorieRangeStart);
+        if ($dashboardView !== 'total') {
+            $weekStartDate = new DateTimeImmutable($selectedWeekStart);
+            $weekEndDate = $weekStartDate->modify('+6 days');
+            $challengeStartDate = new DateTimeImmutable($calorieRangeStart);
+            $challengeEndDate = new DateTimeImmutable($calorieRangeEnd);
+            if ($weekStartDate < $challengeStartDate) {
+                $weekStartDate = $challengeStartDate;
+            }
+            if ($weekEndDate > $challengeEndDate) {
+                $weekEndDate = $challengeEndDate;
+            }
+            if ($weekEndDate < $weekStartDate) {
+                $weekEndDate = $weekStartDate;
+            }
+            $calorieRangeStart = $weekStartDate->format('Y-m-d');
+            $calorieRangeEnd = $weekEndDate->format('Y-m-d');
+        }
+        $calorieStats = fetch_user_calorie_stats(
+            $pdo,
+            (int) ($selectedMetric['user']['id'] ?? 0),
+            $calorieRangeStart,
+            $calorieRangeEnd,
+            ($selectedMetric['user']['maintenance_calories'] ?? null) !== null
+                ? (float) $selectedMetric['user']['maintenance_calories']
+                : null
+        );
+        $calorieSeriesKey = $metricKey === 'calories_consumed' ? 'consumed' : 'burned';
+        $seriesLabels = array_map(
+            static fn(array $row): string => format_date_eu((string) ($row['date'] ?? '')),
+            (array) ($calorieStats['series'] ?? [])
+        );
+        $seriesValues = array_map(
+            static fn(array $row): float => round((float) ($row[$calorieSeriesKey] ?? 0), 2),
+            (array) ($calorieStats['series'] ?? [])
+        );
+        $currentValue = (float) array_sum($seriesValues);
+        $currentValueSuffix = ' kcal';
     }
 
     $backUrl = '/?' . http_build_query([
@@ -7932,7 +8123,7 @@ if ($page === 'dashboard') {
         }
 
         if ($action === 'save_dashboard_layout' || $action === 'save_dashboard_prefs') {
-            $allowedWidgets = ['kpis', 'training_rank', 'training_progress', 'approvals', 'ranking', 'weekly', 'achievements', 'duels', 'competitions', 'quests', 'season'];
+            $allowedWidgets = ['mobile_today', 'mobile_primary', 'mobile_progress', 'mobile_shortcuts', 'kpis', 'training_rank', 'training_progress', 'approvals', 'ranking', 'weekly', 'achievements', 'achievement_progress', 'duels', 'competitions', 'quests', 'season'];
             $resetLayout = bool_from_form('reset_dashboard_layout') === 1;
             $widgets = [];
             if (!$resetLayout) {
@@ -8109,6 +8300,12 @@ if ($page === 'dashboard') {
         $maintenanceCalories
     );
     $dashboardAchievementUserId = (int) ($selectedMetric['user']['id'] ?? $selectedUserId);
+    if (challenge_is_active($settings)) {
+        evaluate_automatic_achievements(
+            $pdo,
+            [$dashboardAchievementUserId => $selectedMetric]
+        );
+    }
     $dashboardAchievements = list_achievement_collection(
         $pdo,
         'user',
@@ -8154,7 +8351,7 @@ if ($page === 'dashboard') {
     $dashboardBadges = badges_for_user($pdo, (int) $currentUser['id']);
     $dashboardCompetitionsSummary = comp_summary_for_user($pdo, (int) $currentUser['id']);
     $dashboardSeason = seasons_current($pdo);
-    $dashboardSeasonBoard = season_leaderboard($pdo, $dashboardSeason, 6);
+    $dashboardSeasonBoard = season_leaderboard($pdo, $dashboardSeason, 50);
     $dashboardSeasonXp = season_xp_for_user($pdo, (int) $currentUser['id'], $dashboardSeason);
     $dashboardSeasonDaysLeft = season_days_left($dashboardSeason);
 
@@ -8201,9 +8398,11 @@ if ($page === 'dashboard') {
     // added after the user last saved would stay invisible forever. Reconcile
     // once: append widgets this user has never been offered, and remember the
     // full set so a deliberately hidden widget is not resurrected later.
-    $dashAllWidgets = penalties_enabled($pdo)
-        ? ['kpis', 'training_rank', 'training_progress', 'quests', 'season', 'achievements', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
-        : ['kpis', 'training_rank', 'training_progress', 'quests', 'season', 'achievements', 'duels', 'competitions', 'ranking', 'weekly'];
+    $dashMobileSurfaces = ['mobile_today', 'mobile_primary', 'mobile_progress', 'mobile_shortcuts'];
+    $dashDesktopWidgets = penalties_enabled($pdo)
+        ? ['kpis', 'training_rank', 'training_progress', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
+        : ['kpis', 'training_rank', 'training_progress', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'ranking', 'weekly'];
+    $dashAllWidgets = array_merge($dashMobileSurfaces, $dashDesktopWidgets);
     $savedDashLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
     $knownDashWidgets = json_decode((string) ($currentUser['dashboard_widgets_known'] ?? ''), true);
     $knownDashWidgets = is_array($knownDashWidgets) ? $knownDashWidgets : [];
@@ -8211,13 +8410,17 @@ if ($page === 'dashboard') {
     if ($unknownDashWidgets !== []) {
         if (is_array($savedDashLayout) && $savedDashLayout !== []) {
             $mergedDashLayout = array_values(array_unique(array_map('strval', $savedDashLayout)));
+            $newMobileSurfaces = array_values(array_intersect($dashMobileSurfaces, $unknownDashWidgets));
+            if ($newMobileSurfaces !== []) {
+                array_splice($mergedDashLayout, 0, 0, $newMobileSurfaces);
+            }
             $newTrainingWidgets = array_values(array_intersect(['training_rank', 'training_progress'], $unknownDashWidgets));
             if ($newTrainingWidgets !== []) {
                 $kpiPosition = array_search('kpis', $mergedDashLayout, true);
                 $insertAt = $kpiPosition === false ? 0 : (int) $kpiPosition + 1;
                 array_splice($mergedDashLayout, $insertAt, 0, $newTrainingWidgets);
             }
-            $remainingUnknownWidgets = array_values(array_diff($unknownDashWidgets, $newTrainingWidgets, $mergedDashLayout));
+            $remainingUnknownWidgets = array_values(array_diff($unknownDashWidgets, $newMobileSurfaces, $newTrainingWidgets, $mergedDashLayout));
             $mergedDashLayout = array_values(array_unique(array_merge($mergedDashLayout, $remainingUnknownWidgets)));
             db_execute(
                 $pdo,

@@ -736,6 +736,7 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'telegram_tz', "TEXT NOT NULL DEFAULT ''");
     ensure_column($pdo, 'users', 'telegram_notify_duel', 'INTEGER NOT NULL DEFAULT 1');
     ensure_column($pdo, 'users', 'telegram_notify_streak', 'INTEGER NOT NULL DEFAULT 1');
+    ensure_column($pdo, 'users', 'telegram_notify_social', 'INTEGER NOT NULL DEFAULT 1');
     ensure_column($pdo, 'users', 'telegram_last_reminded_on', 'TEXT');
     ensure_column($pdo, 'users', 'telegram_last_reminded_at', 'TEXT');
     ensure_column($pdo, 'users', 'telegram_reminder_count', 'INTEGER NOT NULL DEFAULT 0');

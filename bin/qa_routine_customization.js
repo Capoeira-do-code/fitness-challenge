@@ -96,7 +96,7 @@ const overflow = async (page) => page.evaluate(() => Math.max(
         await page.waitForLoadState('networkidle');
         routineId = Number(new URL(page.url()).searchParams.get('routine_id'));
         ensure(routineId > 0, 'crear rutina personalizada abre su detalle', `#${routineId}`);
-        await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings`, { waitUntil: 'networkidle' });
+        await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings&settings_view=identity`, { waitUntil: 'networkidle' });
         const editForm = page.locator('form.workouts-routine-form');
         ensure(await editForm.locator('input[name="icon"][value="cycle"]:checked').count() === 1, 'icono persiste al crear');
         ensure(await editForm.locator('input[name="accent_color"]').inputValue() === '#12a4d9', 'color libre persiste al crear');
@@ -110,7 +110,7 @@ const overflow = async (page) => page.evaluate(() => Math.max(
             page.waitForLoadState('networkidle'),
             editForm.locator('button[type="submit"]').click(),
         ]);
-        await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings`, { waitUntil: 'networkidle' });
+        await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings&settings_view=identity`, { waitUntil: 'networkidle' });
         const savedEditForm = page.locator('form.workouts-routine-form');
         ensure(await savedEditForm.locator('input[name="icon"][value="bolt"]:checked').count() === 1, 'editar conserva el nuevo icono');
         ensure(await savedEditForm.locator('input[name="accent_color"]').inputValue() === '#d946ef', 'editar conserva un segundo color libre');
@@ -137,7 +137,7 @@ const overflow = async (page) => page.evaluate(() => Math.max(
                 '/?page=workouts',
                 '/?page=workouts&view=plan',
                 `/?page=workouts&routine_id=${routineId}`,
-                `/?page=workouts&routine_id=${routineId}&section=settings`,
+                `/?page=workouts&routine_id=${routineId}&section=settings&settings_view=identity`,
             ]) {
                 await page.goto(`${BASE}${url}`, { waitUntil: 'networkidle' });
                 const excess = await overflow(page);
@@ -168,7 +168,7 @@ const overflow = async (page) => page.evaluate(() => Math.max(
         }
         await page.waitForTimeout(350);
 
-        await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings`, { waitUntil: 'networkidle' });
+        await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings&settings_view=management`, { waitUntil: 'networkidle' });
         const deleteForm = page.locator('.workouts-routine-danger form').filter({ has: page.locator('input[name="action"][value="routine_delete"]') });
         await Promise.all([
             page.waitForURL((url) => !url.searchParams.has('routine_id')),
@@ -184,7 +184,7 @@ const overflow = async (page) => page.evaluate(() => Math.max(
     } finally {
         if (routineId > 0 && !page.isClosed()) {
             try {
-                await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings`, { waitUntil: 'networkidle', timeout: 5000 });
+                await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings&settings_view=management`, { waitUntil: 'networkidle', timeout: 5000 });
                 const cleanup = page.locator('.workouts-routine-danger form').filter({ has: page.locator('input[name="action"][value="routine_delete"]') });
                 if (await cleanup.count()) await cleanup.locator('button[type="submit"]').click({ timeout: 3000 });
             } catch (_) { /* best-effort cleanup */ }

@@ -214,7 +214,7 @@ const sessionNames = (page) => page.locator('.workouts-session-exercise .workout
         }
         if (routineId > 0 && !page.isClosed()) {
             try {
-                await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings`, { waitUntil: 'networkidle', timeout: 5000 });
+                await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings&settings_view=management`, { waitUntil: 'networkidle', timeout: 5000 });
                 const cleanup = page.locator('.workouts-routine-danger form').filter({ has: page.locator('input[name="action"][value="routine_delete"]') });
                 if (await cleanup.count()) await cleanup.locator('button[type="submit"]').click({ timeout: 3000 });
             } catch (_) { /* best effort */ }

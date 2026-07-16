@@ -65,7 +65,7 @@ foreach ($nutritionFields as $field => $meta) {
 }
 ?>
 <section class="screen stack-lg">
-    <article class="panel photo-post">
+    <article class="panel photo-post compact-panel glass-panel">
         <div class="panel-head photo-post-head">
             <div>
                 <p class="eyebrow"><?= e(t('common.photo')) ?></p>
@@ -113,7 +113,7 @@ foreach ($nutritionFields as $field => $meta) {
         <div class="photo-post-layout">
             <figure class="photo-post-media">
                 <?php if ($photoUrl !== ''): ?>
-                    <img src="<?= e($photoUrl) ?>" alt="<?= e(t('common.photo')) ?>">
+                    <img src="<?= e($photoUrl) ?>" alt="<?= e(t('common.photo')) ?>" loading="eager" fetchpriority="high" decoding="async">
                 <?php else: ?>
                     <div class="photo-placeholder">
                         <div class="photo-placeholder-content">
@@ -124,7 +124,7 @@ foreach ($nutritionFields as $field => $meta) {
             </figure>
 
             <div class="photo-post-side stack">
-                <article class="mini-card photo-post-meta">
+                <article class="mini-card photo-post-meta compact-panel glass-panel">
                     <div class="photo-post-meta-main">
                         <a class="photo-post-author user-profile-link" href="/?page=profile&amp;user_id=<?= $photoOwnerId ?>">
                             <?php
@@ -136,7 +136,7 @@ foreach ($nutritionFields as $field => $meta) {
                             $authorAvatarUrl = avatar_url($authorForAvatar);
                             ?>
                             <?php if ($authorAvatarUrl !== ''): ?>
-                                <img class="profile-avatar" src="<?= e($authorAvatarUrl) ?>" alt="<?= e($ownerName) ?>">
+                                <img class="profile-avatar" src="<?= e($authorAvatarUrl) ?>" alt="<?= e($ownerName) ?>" loading="lazy" decoding="async">
                             <?php else: ?>
                                 <span class="profile-avatar initials"><?= e(initials_for($ownerName)) ?></span>
                             <?php endif; ?>
@@ -157,7 +157,7 @@ foreach ($nutritionFields as $field => $meta) {
                 </article>
 
                 <?php if ($nutritionRows !== []): ?>
-                    <article class="mini-card photo-post-nutrition">
+                    <article class="mini-card photo-post-nutrition compact-panel glass-panel">
                         <h3><?= e(t('photo.nutrition')) ?></h3>
                         <ul>
                             <?php foreach ($nutritionRows as $row): ?>
@@ -217,7 +217,7 @@ foreach ($nutritionFields as $field => $meta) {
                             <div class="photo-comment-head">
                                 <a class="photo-comment-author user-profile-link" href="/?page=profile&amp;user_id=<?= (int) ($comment['user_id'] ?? 0) ?>">
                                     <?php if ($commentAvatarUrl !== ''): ?>
-                                        <img class="profile-avatar" src="<?= e($commentAvatarUrl) ?>" alt="<?= e($commentAuthor) ?>">
+                                        <img class="profile-avatar" src="<?= e($commentAvatarUrl) ?>" alt="<?= e($commentAuthor) ?>" loading="lazy" decoding="async">
                                     <?php else: ?>
                                         <span class="profile-avatar initials"><?= e(initials_for($commentAuthor)) ?></span>
                                     <?php endif; ?>

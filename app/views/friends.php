@@ -75,7 +75,7 @@ $fmtVal = static function (string $fmt, $v): string {
 };
 ?>
 <section class="screen stack-lg friends-screen">
-    <div class="hero-panel friends-hero">
+    <div class="hero-panel app-page-hero friends-hero">
         <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('friends.eyebrow')) ?></p>
             <h1><?= e(t('friends.title')) ?></h1>

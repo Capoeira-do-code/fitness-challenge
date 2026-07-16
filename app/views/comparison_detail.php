@@ -13,8 +13,8 @@ $dashboardView = (string) ($dashboardView ?? 'current_week');
 $weekOptions = array_values((array) ($weekOptions ?? []));
 ?>
 <section class="screen stack-lg">
-    <div class="hero-panel">
-        <div>
+    <div class="hero-panel app-page-hero">
+        <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('metric.score')) ?></p>
             <h1><?= e(t('dashboard.comparison_detail_title')) ?></h1>
             <p class="muted"><?= e(t('dashboard.comparison_detail_subtitle')) ?></p>

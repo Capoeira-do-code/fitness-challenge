@@ -246,10 +246,18 @@ if ($entryMode === 'calendar') {
                         <?= e(t('entries.training_calories_burned')) ?>
                         <input type="number" min="0" step="1" name="training_calories_burned" value="<?= e($baseCaloriesValue) ?>">
                     </label>
-                    <label>
-                        <?= e(t('metric.weight')) ?> (kg)
-                        <input type="number" step="0.1" name="weight" value="<?= e((string) ($log['weight'] ?? '')) ?>">
-                    </label>
+                    <div class="entry-weight-control" id="entry-weight">
+                        <div class="entry-weight-head">
+                            <span class="entry-weight-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span>
+                            <span><strong><?= e(t('metric.weight')) ?></strong><small><?= e(t('entries.weight_hint')) ?></small></span>
+                        </div>
+                        <label class="entry-weight-input">
+                            <span class="sr-only"><?= e(t('metric.weight')) ?> (kg)</span>
+                            <input type="number" min="25" max="400" step="0.1" inputmode="decimal" name="weight" value="<?= e((string) ($log['weight'] ?? '')) ?>" placeholder="—">
+                            <span aria-hidden="true">kg</span>
+                        </label>
+                        <a href="/?page=settings&amp;view=body"><?= e(t('entries.weight_history')) ?></a>
+                    </div>
                 </div>
 
                 <div class="entry-form-section workout-repeater" data-workout-repeater>

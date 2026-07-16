@@ -125,34 +125,30 @@ const noOverflow = (page) => page.evaluate(() =>
         await page.goto(`${BASE}/?page=workouts`, { waitUntil: 'networkidle' });
         const compactState = await page.evaluate(() => {
             const hero = document.querySelector('.workouts-hero');
-            const tabs = document.querySelector('.workouts-hub-tabs');
             const summary = document.querySelector('.workouts-overview-summary');
-            const mobileNav = document.querySelector('.workouts-mobile-navigation');
+            const sectionGrid = document.querySelector('.workouts-section-grid');
             const summaryRect = summary?.getBoundingClientRect();
             const heroRect = hero?.getBoundingClientRect();
-            const tabsRect = tabs?.getBoundingClientRect();
-            const mobileNavRect = mobileNav?.getBoundingClientRect();
+            const sectionRect = sectionGrid?.getBoundingClientRect();
             return {
                 heroVisible: Boolean(hero && getComputedStyle(hero).display !== 'none'),
-                tabs: tabs?.querySelectorAll('a').length || 0,
-                mobileDestinations: mobileNav?.querySelectorAll('.hierarchy-nav-row').length || 0,
-                mobileNavHeight: Math.round(mobileNavRect?.height || 0),
-                periods: summary?.querySelectorAll('.workouts-summary-period').length || 0,
-                metrics: summary?.querySelectorAll('.workouts-summary-period-metrics > span').length || 0,
-                tabHeight: Math.round(tabs?.getBoundingClientRect().height || 0),
+                destinations: sectionGrid?.querySelectorAll('.hierarchy-nav-row').length || 0,
+                sectionHeight: Math.round(sectionRect?.height || 0),
+                strips: summary?.querySelectorAll('.workouts-overview-kpi-strip').length || 0,
+                metrics: summary?.querySelectorAll('.workouts-overview-kpi-strip > span').length || 0,
                 summaryHeight: Math.round(summaryRect?.height || 0),
-                topFootprint: Math.round((summaryRect?.bottom || 0) - (mobileNavRect?.top || (heroRect?.height ? heroRect.top : (tabsRect?.top || 0)))),
-                summaryColumns: summary ? getComputedStyle(summary).gridTemplateColumns.split(' ').length : 0,
+                topFootprint: Math.round((summaryRect?.bottom || 0) - (sectionRect?.top || (heroRect?.height ? heroRect.top : 0))),
+                summaryColumns: summary?.querySelector('.workouts-overview-kpi-strip')
+                    ? getComputedStyle(summary.querySelector('.workouts-overview-kpi-strip')).gridTemplateColumns.split(' ').length : 0,
             };
         });
-        check('Workout summary groups four values into two period cards',
-            compactState.periods === 2 && compactState.metrics === 4 && compactState.summaryColumns === 2,
+        check('Workout summary consolidates four values into one compact strip',
+            compactState.strips === 1 && compactState.metrics === 4 && compactState.summaryColumns === 4,
             JSON.stringify(compactState));
-        check('Workout root uses a compact hierarchical mobile menu',
-            !compactState.heroVisible && compactState.tabs === 6 && compactState.tabHeight === 0
-                && compactState.mobileDestinations === 5 && compactState.mobileNavHeight <= 400
-                && compactState.summaryHeight <= 110 && compactState.topFootprint <= 620,
-            `${compactState.topFootprint}px total · tabs ${compactState.tabHeight}px · summary ${compactState.summaryHeight}px`);
+        check('Workout root uses one compact hierarchical grid',
+            !compactState.heroVisible && compactState.destinations === 5 && compactState.sectionHeight <= 400
+                && compactState.summaryHeight <= 150 && compactState.topFootprint <= 620,
+            `${compactState.topFootprint}px total · grid ${compactState.sectionHeight}px · summary ${compactState.summaryHeight}px`);
         check('Workout overview mobile has no horizontal overflow', await noOverflow(page));
         await page.screenshot({ path: path.join(REPORT_DIR, 'ui-workout-overview-compact-mobile.png'), fullPage: true });
 
@@ -164,23 +160,21 @@ const noOverflow = (page) => page.evaluate(() =>
                 await page.goto(url, { waitUntil: 'networkidle' });
                 await page.waitForTimeout(80);
                 const state = await page.evaluate(() => {
-                    const nav = document.querySelector('.workouts-hub-tabs');
-                    const active = nav?.querySelector('[aria-current="page"]');
-                    const navRect = nav?.getBoundingClientRect();
-                    const activeRect = active?.getBoundingClientRect();
+                    const rootGrid = document.querySelector('.workouts-section-grid');
+                    const subheader = document.querySelector('.workouts-mobile-subheader');
                     return {
                         overflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) > innerWidth + 1,
-                        activeVisible: Boolean(activeRect && navRect
-                            && activeRect.left >= navRect.left - 1 && activeRect.right <= navRect.right + 1),
-                        rows: nav ? Math.round(nav.getBoundingClientRect().height) : 999,
+                        rootDestinations: rootGrid?.querySelectorAll('.hierarchy-nav-row').length || 0,
+                        subheaderVisible: Boolean(subheader && getComputedStyle(subheader).display !== 'none'),
                     };
                 });
-                if (state.overflow || !state.activeVisible || state.rows > 56) {
+                const hierarchyOk = view === 'overview' ? state.rootDestinations === 5 : state.subheaderVisible;
+                if (state.overflow || !hierarchyOk) {
                     responsiveProblems.push(`${view}@${width}:${JSON.stringify(state)}`);
                 }
             }
         }
-        check('Every workout section stays reachable in one mobile row',
+        check('Every workout section keeps its mobile hierarchy from 320 to 430px',
             responsiveProblems.length === 0, responsiveProblems.join(' | '));
 
         await page.setViewportSize({ width: 1280, height: 900 });
@@ -200,13 +194,18 @@ const noOverflow = (page) => page.evaluate(() =>
             `${desktopWidgets.rankWidth}px + ${desktopWidgets.progressWidth}px · y ${desktopWidgets.rankTop}/${desktopWidgets.progressTop}`);
         await page.screenshot({ path: path.join(REPORT_DIR, 'ui-dashboard-training-widgets-desktop.png'), fullPage: true });
 
-        await page.goto(`${BASE}/?page=workouts&view=ranks`, { waitUntil: 'networkidle' });
+        await page.goto(`${BASE}/?page=workouts`, { waitUntil: 'networkidle' });
         const desktopTabs = await page.evaluate(() => {
-            const tabs = document.querySelector('.workouts-hub-tabs');
-            return tabs ? { fits: tabs.scrollWidth <= tabs.clientWidth + 1, height: Math.round(tabs.getBoundingClientRect().height) } : { fits: false, height: 0 };
+            const grid = document.querySelector('.workouts-section-grid');
+            return grid ? {
+                fits: grid.scrollWidth <= grid.clientWidth + 1,
+                height: Math.round(grid.getBoundingClientRect().height),
+                columns: getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length,
+            } : { fits: false, height: 0, columns: 0 };
         });
-        check('Workout navigation fits in one desktop row', desktopTabs.fits && desktopTabs.height <= 60,
-            `${desktopTabs.height}px`);
+        check('Workout navigation uses one five-column desktop grid',
+            desktopTabs.fits && desktopTabs.height <= 110 && desktopTabs.columns === 5,
+            `${desktopTabs.columns} columns · ${desktopTabs.height}px`);
 
         check('No uncaught JavaScript errors', runtimeErrors.length === 0, runtimeErrors.join(' | '));
         check('No HTTP 5xx responses', serverErrors.length === 0, serverErrors.join(' | '));

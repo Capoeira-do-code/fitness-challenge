@@ -16,8 +16,6 @@
     const bottomNav = document.querySelector('.bottom-nav');
     const floatingLog = document.querySelector('.floating-log');
     if (bottomNav || floatingLog) {
-        const pinnedBottomNavPages = new Set(['gallery', 'photo']);
-        const isPinnedBottomNavPage = () => pinnedBottomNavPages.has(String(document.body?.dataset?.page || ''));
         const syncMobileBottomNavHeight = () => {
             const navHeight = bottomNav instanceof HTMLElement
                 ? Math.ceil(bottomNav.getBoundingClientRect().height)
@@ -33,16 +31,11 @@
         let navHidden = false;
         let ticking = false;
         const toggleNav = () => {
-            if (isPinnedBottomNavPage()) {
-                [bottomNav, floatingLog].forEach((element) => {
-                    if (!element) {
-                        return;
-                    }
-                    element.classList.remove('nav-hidden', 'is-hidden');
-                });
-                navHidden = false;
-                ticking = false;
-                return;
+            // The mobile bottom navigation is the app's one global sticky surface.
+            // It must never disappear halfway through a task; only the legacy desktop
+            // floating action may collapse while scrolling.
+            if (bottomNav instanceof HTMLElement) {
+                bottomNav.classList.remove('nav-hidden', 'is-hidden');
             }
             const currentY = Math.max(0, window.scrollY);
             const goingDown = currentY > lastY + 6;
@@ -55,7 +48,7 @@
                     floatingLog.open = false;
                     floatingLog.classList.remove('is-open');
                 }
-                [bottomNav, floatingLog].forEach((element) => {
+                [floatingLog].forEach((element) => {
                     if (!element) {
                         return;
                     }
@@ -75,6 +68,24 @@
                 ticking = true;
             }
         }, { passive: true });
+
+        const syncMobileKeyboardState = () => {
+            const viewport = window.visualViewport;
+            const active = document.activeElement;
+            const acceptsText = active instanceof HTMLInputElement
+                || active instanceof HTMLTextAreaElement
+                || active instanceof HTMLSelectElement
+                || (active instanceof HTMLElement && active.isContentEditable);
+            const occluded = viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0;
+            document.body.classList.toggle('mobile-keyboard-open', acceptsText && occluded > 140);
+        };
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', syncMobileKeyboardState, { passive: true });
+            window.visualViewport.addEventListener('scroll', syncMobileKeyboardState, { passive: true });
+        }
+        document.addEventListener('focusin', syncMobileKeyboardState);
+        document.addEventListener('focusout', () => window.setTimeout(syncMobileKeyboardState, 0));
+        syncMobileKeyboardState();
     }
 
     let pageLoadingCount = 0;
@@ -1355,60 +1366,23 @@
             }
         };
 
-        const navigate = (root, href) => {
-            document.body.classList.add('is-view-changing');
-            window.__fcSpaDepth = (window.__fcSpaDepth || 0) + 1;
-            history.pushState({}, '', href);
-            applyState(root, href);
-            initAdminAchievementFields();
-            window.scrollTo(0, 0);
-            clearMobileViewTransitionState(true);
-            queueMobileViewTransitionStateCleanup(350, true);
-        };
-
+        // Section links used to reveal pre-rendered panels in place. That left
+        // root-only UI (the Profile hub, hero and widget heading) mounted above
+        // the selected section, so a tap appeared to merely make the page taller.
+        // The shared PJAX router now owns these links and replaces <main> with the
+        // server-rendered URL state. This initializer only normalizes the initial
+        // document and remains a safe no-JS/full-load fallback.
+        if (typeof window.__fcSpaPopstateHandler === 'function') {
+            window.removeEventListener('popstate', window.__fcSpaPopstateHandler);
+        }
+        window.__fcSpaPopstateHandler = null;
         roots.forEach((root) => {
-            if (!(root instanceof HTMLElement) || root.dataset.spaNavigationReady === '1') {
-                applyState(root, window.location.href);
+            if (!(root instanceof HTMLElement)) {
                 return;
             }
             root.dataset.spaNavigationReady = '1';
             applyState(root, window.location.href);
-            root.addEventListener('click', (event) => {
-                const target = event.target;
-                if (!(target instanceof Element)) {
-                    return;
-                }
-                const link = target.closest('a[data-spa-link], a[data-spa-back]');
-                if (!(link instanceof HTMLAnchorElement)) {
-                    return;
-                }
-                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-                    return;
-                }
-                event.preventDefault();
-                // Smart back: when there is in-app history, return to the exact
-                // previous view (e.g. a goal opened from Home returns to Home,
-                // one opened from the list returns to the list). Falls back to
-                // the static href on a deep link with no in-app history.
-                if (link.matches('[data-spa-history]') && (window.__fcSpaDepth || 0) > 0) {
-                    history.back();
-                    return;
-                }
-                navigate(root, link.href);
-            });
         });
-
-        if (typeof window.__fcSpaPopstateHandler === 'function') {
-            window.removeEventListener('popstate', window.__fcSpaPopstateHandler);
-        }
-        window.__fcSpaPopstateHandler = () => {
-            window.__fcSpaDepth = Math.max(0, (window.__fcSpaDepth || 0) - 1);
-            roots.forEach((root) => applyState(root, window.location.href));
-            initAdminAchievementFields();
-            clearMobileViewTransitionState(true);
-            queueMobileViewTransitionStateCleanup(350, true);
-        };
-        window.addEventListener('popstate', window.__fcSpaPopstateHandler);
     };
 
     const initProfileGoalsSection = () => {
@@ -2757,6 +2731,7 @@
             const canvas = form.querySelector('[data-image-crop-canvas]');
             const zoomInput = form.querySelector('[data-image-crop-zoom]');
             const emptyHint = form.querySelector('[data-image-crop-empty]');
+            const cropSubmit = form.querySelector('[data-image-crop-submit]');
 
             if (fileInputs.length === 0
                 || !(outputInput instanceof HTMLInputElement)
@@ -2804,6 +2779,9 @@
 
                 if (!(state.img instanceof Image)) {
                     outputInput.value = '';
+                    if (cropSubmit instanceof HTMLButtonElement) {
+                        cropSubmit.disabled = true;
+                    }
                     if (cropper instanceof HTMLElement) {
                         cropper.hidden = true;
                     }
@@ -2859,6 +2837,9 @@
                 });
                 if (cropper instanceof HTMLElement) {
                     cropper.hidden = false;
+                }
+                if (cropSubmit instanceof HTMLButtonElement) {
+                    cropSubmit.disabled = false;
                 }
 
                 const reader = new FileReader();
@@ -3028,6 +3009,86 @@
         window.addEventListener('resize', window.__fcGalleryMonthOverlayResizeHandler, { passive: true });
     };
 
+    const initGalleryImageStates = (scope = document) => {
+        const images = scope.querySelectorAll('[data-gallery-image]:not([data-gallery-image-ready])');
+        images.forEach((image) => {
+            if (!(image instanceof HTMLImageElement)) {
+                return;
+            }
+            image.dataset.galleryImageReady = '1';
+            const tile = image.closest('.photos-gallery-tile');
+            if (!(tile instanceof HTMLElement)) {
+                return;
+            }
+            const markLoaded = () => {
+                tile.classList.remove('is-image-loading', 'is-image-error');
+                tile.querySelector('[data-gallery-image-error]')?.remove();
+            };
+            const markFailed = () => {
+                tile.classList.remove('is-image-loading');
+                tile.classList.add('is-image-error');
+                if (tile.querySelector('[data-gallery-image-error]')) {
+                    return;
+                }
+                const root = tile.closest('[data-gallery-recent-root]');
+                const fallback = document.createElement('span');
+                fallback.className = 'gallery-image-error';
+                fallback.dataset.galleryImageError = '';
+                fallback.textContent = String(root?.dataset.galleryImageErrorLabel || image.alt || 'Image unavailable');
+                tile.appendChild(fallback);
+            };
+            image.addEventListener('load', markLoaded, { once: true });
+            image.addEventListener('error', markFailed, { once: true });
+            if (image.complete) {
+                if (image.naturalWidth > 0) {
+                    markLoaded();
+                } else {
+                    markFailed();
+                }
+            }
+        });
+    };
+
+    const initCompactDisclosures = () => {
+        document.querySelectorAll('[data-versus-details-toggle]:not([data-disclosure-ready])').forEach((button) => {
+            if (!(button instanceof HTMLButtonElement)) {
+                return;
+            }
+            button.dataset.disclosureReady = '1';
+            button.addEventListener('click', () => {
+                const detailId = String(button.getAttribute('aria-controls') || '');
+                const detail = detailId !== '' ? document.getElementById(detailId) : button.parentElement?.querySelector('[data-versus-details]');
+                if (!(detail instanceof HTMLElement)) {
+                    return;
+                }
+                const expanded = button.getAttribute('aria-expanded') !== 'true';
+                button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                button.classList.toggle('is-expanded', expanded);
+                detail.hidden = !expanded;
+                const label = button.querySelector('[data-versus-details-label]');
+                if (label instanceof HTMLElement) {
+                    label.textContent = expanded ? String(label.dataset.labelClose || '') : String(label.dataset.labelOpen || '');
+                }
+            });
+        });
+        document.querySelectorAll('[data-quest-detail-toggle]:not([data-disclosure-ready])').forEach((button) => {
+            if (!(button instanceof HTMLButtonElement)) {
+                return;
+            }
+            button.dataset.disclosureReady = '1';
+            button.addEventListener('click', () => {
+                const detail = button.closest('.quest-item')?.querySelector('[data-quest-detail]');
+                if (!(detail instanceof HTMLElement)) {
+                    return;
+                }
+                const expanded = button.getAttribute('aria-expanded') !== 'true';
+                button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                button.classList.toggle('is-expanded', expanded);
+                detail.hidden = !expanded;
+            });
+        });
+    };
+
     const initGalleryRecentInfinite = () => {
         const root = document.querySelector('[data-gallery-recent-root]');
         if (!(root instanceof HTMLElement) || root.dataset.galleryRecentReady === '1') {
@@ -3036,6 +3097,8 @@
 
         const grid = root.querySelector('[data-gallery-recent-grid]');
         const loadMoreButton = root.querySelector('[data-gallery-recent-load-more]');
+        const loadError = root.querySelector('[data-gallery-load-error]');
+        const loadRetryButton = root.querySelector('[data-gallery-load-retry]');
         const sentinel = root.querySelector('[data-gallery-recent-sentinel]');
         if (!(grid instanceof HTMLElement)) {
             return;
@@ -3052,6 +3115,13 @@
         let isLoading = false;
         let observer = null;
         let loadingSkeletons = [];
+
+        const setLoadError = (visible) => {
+            root.classList.toggle('has-load-error', visible);
+            if (loadError instanceof HTMLElement) {
+                loadError.hidden = !visible;
+            }
+        };
 
         const showLoadingSkeletons = () => {
             const fragment = document.createDocumentFragment();
@@ -3104,6 +3174,7 @@
 
                 const thumbUrl = String(item.thumb_url || '').trim();
                 if (thumbUrl !== '') {
+                    link.classList.add('is-image-loading');
                     const image = document.createElement('img');
                     image.src = thumbUrl;
                     const thumbSrcset = String(item.thumb_srcset || '').trim();
@@ -3114,9 +3185,10 @@
                     image.width = 400;
                     image.height = 400;
                     image.alt = photoLabel;
-                    image.loading = itemIndex < 18 ? 'eager' : 'lazy';
-                    image.setAttribute('fetchpriority', itemIndex < 8 ? 'high' : 'low');
+                    image.loading = itemIndex < 6 ? 'eager' : 'lazy';
+                    image.setAttribute('fetchpriority', itemIndex < 3 ? 'high' : 'low');
                     image.decoding = 'async';
+                    image.dataset.galleryImage = '';
                     link.appendChild(image);
                 } else {
                     const empty = document.createElement('span');
@@ -3132,6 +3204,7 @@
                 fragment.appendChild(link);
             });
             grid.appendChild(fragment);
+            initGalleryImageStates(grid);
             initGalleryMonthOverlay();
         };
 
@@ -3141,6 +3214,8 @@
             }
             isLoading = true;
             root.classList.add('is-loading');
+            root.setAttribute('aria-busy', 'true');
+            setLoadError(false);
             showLoadingSkeletons();
             try {
                 const url = new URL(endpoint, window.location.origin);
@@ -3165,13 +3240,19 @@
                 nextPage = Number.isFinite(payloadNextPage) ? payloadNextPage : 0;
                 root.dataset.galleryNextPage = Number.isFinite(payloadNextPage) ? String(payloadNextPage) : '';
                 setHasMore(payloadHasMore && Number.isFinite(payloadNextPage) && payloadNextPage > 0);
+                if (hasMore && observer instanceof IntersectionObserver && sentinel instanceof HTMLElement) {
+                    observer.observe(sentinel);
+                }
             } catch (error) {
-                console.error('Gallery incremental load failed:', error);
-                setHasMore(false);
+                setLoadError(true);
+                if (observer instanceof IntersectionObserver) {
+                    observer.disconnect();
+                }
             } finally {
                 clearLoadingSkeletons();
                 isLoading = false;
                 root.classList.remove('is-loading');
+                root.removeAttribute('aria-busy');
             }
         };
 
@@ -3179,6 +3260,9 @@
             loadMoreButton.addEventListener('click', () => {
                 loadNextPage();
             });
+        }
+        if (loadRetryButton instanceof HTMLButtonElement) {
+            loadRetryButton.addEventListener('click', loadNextPage);
         }
 
         if (window.IntersectionObserver && sentinel instanceof HTMLElement && hasMore) {
@@ -4504,6 +4588,10 @@
 
             const layoutItemMatches = (node) => node instanceof Element && node.matches(itemSelector);
             const layoutItems = () => [...list.querySelectorAll(itemSelector)].filter((node) => node instanceof HTMLElement);
+            const scopedLayoutItems = (item) => {
+                const scope = item instanceof HTMLElement ? String(item.dataset.layoutScope || '') : '';
+                return scope === '' ? layoutItems() : layoutItems().filter((candidate) => candidate.dataset.layoutScope === scope);
+            };
             const refreshOrderInputs = () => {
                 if (orderInputSelector === '') {
                     return;
@@ -4520,8 +4608,9 @@
                 });
             };
             const updateLayoutMoveButtons = () => {
-                const items = layoutItems();
-                items.forEach((item, index) => {
+                layoutItems().forEach((item) => {
+                    const items = scopedLayoutItems(item);
+                    const index = items.indexOf(item);
                     item.querySelectorAll('[data-layout-move]').forEach((button) => {
                         if (!(button instanceof HTMLButtonElement)) {
                             return;
@@ -4555,16 +4644,16 @@
                 if (!(item instanceof HTMLElement)) {
                     return;
                 }
-                const items = layoutItems();
+                const items = scopedLayoutItems(item);
                 const index = items.indexOf(item);
                 if (index === -1) {
                     return;
                 }
                 if (direction === 'up' && index > 0) {
-                    list.insertBefore(item, items[index - 1]);
+                    items[index - 1].before(item);
                 }
                 if (direction === 'down' && index < items.length - 1) {
-                    list.insertBefore(items[index + 1], item);
+                    items[index + 1].after(item);
                 }
                 persistLayoutOrder();
             };
@@ -4607,20 +4696,6 @@
                 persistLayoutOrder();
             });
 
-            list.addEventListener('click', (event) => {
-                const target = event.target instanceof Element ? event.target.closest('[data-layout-move]') : null;
-                if (!(target instanceof HTMLButtonElement)) {
-                    return;
-                }
-                event.preventDefault();
-                event.stopPropagation();
-                const item = target.closest(itemSelector);
-                if (!(item instanceof HTMLElement)) {
-                    return;
-                }
-                moveItem(item, String(target.dataset.layoutMove || '').toLowerCase());
-            });
-
             list.addEventListener('dragover', (event) => {
                 event.preventDefault();
                 if (!(dragged instanceof HTMLElement)) {
@@ -4642,6 +4717,15 @@
                 }
                 button.dataset.layoutMoveTouchReady = '1';
                 button.style.touchAction = 'manipulation';
+                button.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    const item = button.closest(itemSelector);
+                    // Dashboard touch controls are handled by its live-preview
+                    // controller below so one click also updates the real cards.
+                    if (!isDashboardLayout && item instanceof HTMLElement) {
+                        moveItem(item, String(button.dataset.layoutMove || '').toLowerCase());
+                    }
+                });
                 button.addEventListener('touchstart', (event) => {
                     event.stopPropagation();
                 }, { passive: true });
@@ -4781,7 +4865,7 @@
             if (href === '' || href.startsWith('#') || href.startsWith('javascript:')) {
                 return true;
             }
-            if (link.closest('[data-spa-link], [data-spa-back], [data-analytics-filter], [data-dashboard-control-form], [data-calendar-view-option], [data-no-pjax]')) {
+            if (link.closest('[data-analytics-filter], [data-dashboard-control-form], [data-calendar-view-option], [data-no-pjax]')) {
                 return true;
             }
             return false;
@@ -4937,7 +5021,13 @@
 
                 if (push) {
                     persistScrollState();
-                    history.pushState({ __fcPjax: true, scrollX: 0, scrollY: 0 }, '', targetUrl.toString());
+                    const currentDepth = Number(history.state?.__fcPjaxDepth || 0);
+                    history.pushState({
+                        __fcPjax: true,
+                        __fcPjaxDepth: Number.isFinite(currentDepth) ? currentDepth + 1 : 1,
+                        scrollX: 0,
+                        scrollY: 0,
+                    }, '', targetUrl.toString());
                 }
 
                 document.title = doc.title || document.title;
@@ -4963,6 +5053,19 @@
                 } else {
                     restoreScrollFromState(popState);
                 }
+                const navigationFocus = Array.from(nextMain.querySelectorAll(
+                    '[data-navigation-focus], .hierarchy-page-header h1, .profile-hero h1, .screen h1'
+                )).find((candidate) => candidate instanceof HTMLElement
+                    && !candidate.closest('[hidden]')
+                    && candidate.getClientRects().length > 0);
+                if (navigationFocus instanceof HTMLElement) {
+                    if (!navigationFocus.hasAttribute('tabindex')) {
+                        navigationFocus.setAttribute('tabindex', '-1');
+                    }
+                    window.setTimeout(() => {
+                        try { navigationFocus.focus({ preventScroll: true }); } catch (_) { navigationFocus.focus(); }
+                    }, 0);
+                }
                 document.dispatchEvent(new CustomEvent('fc:afterPageSwap', {
                     detail: {
                         url: targetUrl.toString(),
@@ -4984,6 +5087,7 @@
         if (!history.state || typeof history.state !== 'object' || history.state.__fcPjax !== true) {
             history.replaceState({
                 __fcPjax: true,
+                __fcPjaxDepth: 0,
                 scrollX: window.scrollX,
                 scrollY: window.scrollY,
             }, '', window.location.href);
@@ -4999,6 +5103,11 @@
                 return;
             }
             event.preventDefault();
+            const pjaxDepth = Number(history.state?.__fcPjaxDepth || 0);
+            if (link.matches('[data-spa-history]') && Number.isFinite(pjaxDepth) && pjaxDepth > 0) {
+                history.back();
+                return;
+            }
             navigateInPage(url, { push: true });
         }, true);
 
@@ -5120,6 +5229,95 @@
         });
     };
 
+    const initWorkoutLibraryFilters = () => {
+        const panel = document.querySelector('[data-workout-filter-panel]');
+        const openButton = document.querySelector('[data-workout-filter-open]');
+        if (!(panel instanceof HTMLElement) || !(openButton instanceof HTMLButtonElement)) {
+            return;
+        }
+        const closeButton = panel.querySelector('[data-workout-filter-close]');
+        const setOpen = (open) => {
+            const mobileSheet = window.matchMedia('(max-width: 700px)').matches;
+            panel.classList.toggle('is-open', open);
+            panel.setAttribute('aria-hidden', mobileSheet && !open ? 'true' : 'false');
+            document.body.classList.toggle('has-workout-filter-sheet', open);
+            if (open) {
+                window.requestAnimationFrame(() => panel.querySelector('select, input, button')?.focus());
+            }
+        };
+        if (panel.dataset.workoutFilterReady === '1') {
+            return;
+        }
+        panel.dataset.workoutFilterReady = '1';
+        openButton.addEventListener('click', () => setOpen(true));
+        closeButton?.addEventListener('click', () => setOpen(false));
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && panel.classList.contains('is-open')) {
+                setOpen(false);
+                openButton.focus();
+            }
+        });
+        setOpen(false);
+    };
+
+    const initContextualBack = () => {
+        const container = document.querySelector('[data-contextual-back-container]');
+        if (!(container instanceof HTMLElement)) {
+            return;
+        }
+        const depth = Number(window.history.state?.__fcPjaxDepth || 0);
+        let sameOriginReferrer = false;
+        try {
+            sameOriginReferrer = document.referrer !== ''
+                && new URL(document.referrer).origin === window.location.origin;
+        } catch (_) {
+            sameOriginReferrer = false;
+        }
+        container.hidden = !(Number.isFinite(depth) && depth > 0) && !sameOriginReferrer;
+    };
+
+    const initCollapsibleLists = () => {
+        document.querySelectorAll('[data-collapsible-list]').forEach((list) => {
+            if (!(list instanceof HTMLElement)) {
+                return;
+            }
+            const items = Array.from(list.querySelectorAll('[data-collapsible-item]'));
+            const toggle = list.querySelector('[data-collapsible-toggle]');
+            if (!(toggle instanceof HTMLButtonElement) || items.length === 0) {
+                if (toggle instanceof HTMLElement) {
+                    toggle.hidden = true;
+                }
+                return;
+            }
+            const limit = window.matchMedia('(max-width: 700px)').matches
+                ? Number(list.dataset.mobileCount || 4)
+                : Number(list.dataset.desktopCount || 6);
+            const hasOverflow = items.length > limit;
+            let expanded = list.dataset.collapsibleExpanded === '1';
+            const render = () => {
+                items.forEach((item, index) => {
+                    if (item instanceof HTMLElement) {
+                        item.hidden = !expanded && index >= limit;
+                    }
+                });
+                toggle.hidden = !hasOverflow;
+                toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                toggle.textContent = expanded
+                    ? (toggle.dataset.labelLess || '')
+                    : (toggle.dataset.labelMore || '');
+            };
+            if (list.dataset.collapsibleReady !== '1') {
+                list.dataset.collapsibleReady = '1';
+                toggle.addEventListener('click', () => {
+                    expanded = !expanded;
+                    list.dataset.collapsibleExpanded = expanded ? '1' : '0';
+                    render();
+                });
+            }
+            render();
+        });
+    };
+
     const runPageHydration = (includeOneTime = false) => {
         const safeInit = (initFn) => {
             try {
@@ -5136,7 +5334,10 @@
         safeInit(initLoginLocale);
         safeInit(initFlashNotifications);
         safeInit(initThemeToggle);
+        safeInit(initContextualBack);
+        safeInit(initCollapsibleLists);
         safeInit(initWorkoutHubTabs);
+        safeInit(initWorkoutLibraryFilters);
         safeInit(initSpaNavigation);
         safeInit(initAdminAchievementFields);
         safeInit(initAchievementInfoModal);
@@ -5152,7 +5353,9 @@
         safeInit(initPrivacyOptions);
         safeInit(initSettingsAvatarHashFallback);
         safeInit(initGalleryMonthOverlay);
+        safeInit(initGalleryImageStates);
         safeInit(initGalleryRecentInfinite);
+        safeInit(initCompactDisclosures);
         safeInit(initImageCroppers);
         safeInit(initProfilePdfExport);
         safeInit(initTeamLayoutEditor);
@@ -5332,6 +5535,9 @@
         menuBackdrops.delete(menu);
         const stack = menu.querySelector(':scope > [data-menu-stack]');
         resetMenuStack(stack);
+        if (menu.matches('details.bottom-nav-plus')) {
+            document.body.classList.remove('mobile-sheet-open');
+        }
         if (menu.matches('details[data-kebab-menu]')) restoreKebabPanel(menu);
         const trigger = menu.querySelector(':scope > summary');
         if (trigger instanceof HTMLElement) {
@@ -5378,12 +5584,21 @@
                     if (el.open) portalKebabPanel(el);
                 });
             } else if (el.matches('details.bottom-nav-plus') && window.matchMedia('(max-width: 899px)').matches) {
+                document.body.classList.add('mobile-sheet-open');
+                const stack = el.querySelector(':scope > [data-menu-stack]');
+                resetMenuStack(stack);
                 const backdrop = document.createElement('div');
                 backdrop.className = 'mobile-sheet-backdrop';
                 backdrop.setAttribute('aria-hidden', 'true');
                 document.body.appendChild(backdrop);
                 menuBackdrops.set(el, backdrop);
                 backdrop.addEventListener('click', () => closeMenu(el, true), { once: true });
+                window.requestAnimationFrame(() => {
+                    const focusTarget = stack?.querySelector('[data-menu-close], [data-menu-open], a, button');
+                    if (focusTarget instanceof HTMLElement) {
+                        try { focusTarget.focus({ preventScroll: true }); } catch (_) { focusTarget.focus(); }
+                    }
+                });
             }
         } else if (el instanceof HTMLDetailsElement && el.matches(MENU_SELECTOR)) {
             const stack = el.querySelector(':scope > [data-menu-stack]');
@@ -5392,6 +5607,7 @@
             if (menuBackdrop instanceof HTMLElement) menuBackdrop.remove();
             menuBackdrops.delete(el);
             if (el.matches('details[data-kebab-menu]')) restoreKebabPanel(el);
+            if (el.matches('details.bottom-nav-plus')) document.body.classList.remove('mobile-sheet-open');
         }
     }, true);
 
@@ -7971,7 +8187,8 @@
 
     function sync(list) {
         var layout = document.querySelector('.dashboard-layout');
-        if (!layout) {
+        var mobileHome = document.querySelector('.dashboard-mobile-home');
+        if (!layout && !mobileHome) {
             return;
         }
         var items = list.querySelectorAll('[data-dashboard-layout-item]');
@@ -7980,14 +8197,44 @@
             if (!box) {
                 return;
             }
-            var card = layout.querySelector('[data-dashboard-widget="' + box.value + '"]');
-            if (!card) {
-                return;
+            var card = layout ? layout.querySelector('[data-dashboard-widget="' + CSS.escape(box.value) + '"]') : null;
+            var mobileSurface = mobileHome ? mobileHome.querySelector('[data-dashboard-mobile-surface="' + CSS.escape(box.value) + '"]') : null;
+            [card, mobileSurface].forEach(function (surface) {
+                if (!(surface instanceof HTMLElement)) {
+                    return;
+                }
+                surface.hidden = !box.checked;
+                surface.classList.toggle('is-layout-hidden', !box.checked);
+                if (box.checked) {
+                    surface.style.removeProperty('display');
+                }
+            });
+            if (card instanceof HTMLElement) {
+                card.style.order = String(index + 1);
             }
-            card.style.order = String(index + 1);
-            card.hidden = !box.checked;
-            card.classList.toggle('is-layout-hidden', !box.checked);
         });
+
+        var form = list.closest('[data-dashboard-layout-editor]');
+        var state = form ? form.querySelector('[data-dashboard-layout-state]') : null;
+        if (state instanceof HTMLElement) {
+            var inputs = Array.prototype.slice.call(list.querySelectorAll('input[type="checkbox"][name="dashboard_widgets[]"]'));
+            var visible = inputs.filter(function (input) { return input.checked; }).length;
+            var hidden = Math.max(0, inputs.length - visible);
+            var visibleNode = state.querySelector('[data-layout-visible-count]');
+            var hiddenNode = state.querySelector('[data-layout-hidden-count]');
+            var changeNode = state.querySelector('[data-layout-change-state]');
+            if (visibleNode) {
+                visibleNode.textContent = String(state.dataset.visibleTemplate || '{count} visible').replace('{count}', String(visible));
+            }
+            if (hiddenNode) {
+                hiddenNode.textContent = String(state.dataset.hiddenTemplate || '{count} hidden').replace('{count}', String(hidden));
+            }
+            if (changeNode) {
+                changeNode.textContent = document.body.classList.contains('layout-has-unsaved')
+                    ? String(state.dataset.changedLabel || 'Unsaved changes')
+                    : String(state.dataset.savedLabel || 'Saved');
+            }
+        }
     }
 
     function init() {
@@ -7997,11 +8244,41 @@
             }
             list.dataset.livePreviewReady = '1';
             list.addEventListener('click', function (event) {
-                if (event.target.closest('[data-layout-move]')) {
-                    window.setTimeout(function () { sync(list); }, 0);
+                var button = event.target.closest('[data-layout-move]');
+                if (!button) {
+                    return;
                 }
+                var item = button.closest('[data-dashboard-layout-item]');
+                var direction = String(button.dataset.layoutMove || '');
+                var scope = item ? String(item.dataset.layoutScope || '') : '';
+                var scopedItems = item ? Array.prototype.slice.call(list.querySelectorAll('[data-dashboard-layout-item]')).filter(function (candidate) {
+                    return scope === '' || String(candidate.dataset.layoutScope || '') === scope;
+                }) : [];
+                var index = item ? scopedItems.indexOf(item) : -1;
+                var sibling = index >= 0
+                    ? (direction === 'up' ? scopedItems[index - 1] : scopedItems[index + 1])
+                    : null;
+                if (item && sibling) {
+                    if (direction === 'up') {
+                        sibling.before(item);
+                    } else {
+                        sibling.after(item);
+                    }
+                    list.querySelectorAll('[data-dashboard-layout-item]').forEach(function (layoutItem, index) {
+                        var input = layoutItem.querySelector('[data-dashboard-order-input]');
+                        if (input) input.value = String(index + 1);
+                    });
+                }
+                document.body.classList.add('layout-has-unsaved');
+                sync(list);
             });
-            list.addEventListener('change', function () { sync(list); });
+            list.addEventListener('change', function () {
+                document.body.classList.add('layout-has-unsaved');
+                sync(list);
+            });
+            var bodyObserver = new MutationObserver(function () { sync(list); });
+            bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+            sync(list);
         });
     }
 
@@ -8011,6 +8288,7 @@
         init();
     }
     document.addEventListener('pjax:loaded', init);
+    document.addEventListener('fc:afterPageSwap', init);
 })();
 
 /* Double-submit guard (#10).

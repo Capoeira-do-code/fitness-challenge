@@ -9,9 +9,11 @@ if (!in_array($dashboardSection, ['', 'progress', 'rewards', 'history', 'alerts'
 }
 $penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
 $dashboardLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
-$dashboardWidgets = $penaltiesEnabled
-    ? ['kpis', 'training_rank', 'training_progress', 'quests', 'season', 'achievements', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
-    : ['kpis', 'training_rank', 'training_progress', 'quests', 'season', 'achievements', 'duels', 'competitions', 'ranking', 'weekly'];
+$dashboardMobileSurfaces = ['mobile_today', 'mobile_primary', 'mobile_progress', 'mobile_shortcuts'];
+$dashboardDesktopWidgets = $penaltiesEnabled
+    ? ['kpis', 'training_rank', 'training_progress', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
+    : ['kpis', 'training_rank', 'training_progress', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'ranking', 'weekly'];
+$dashboardWidgets = array_merge($dashboardMobileSurfaces, $dashboardDesktopWidgets);
 $visibleWidgets = [];
 if (is_array($dashboardLayout) && $dashboardLayout !== []) {
     foreach ($dashboardLayout as $widget) {
@@ -34,6 +36,8 @@ foreach ($dashboardWidgets as $widget) {
         $dashboardEditorWidgets[] = $widget;
     }
 }
+$dashboardVisibleCount = count(array_intersect($dashboardEditorWidgets, $visibleWidgets));
+$dashboardHiddenCount = max(0, count($dashboardEditorWidgets) - $dashboardVisibleCount);
 $dashboardLayoutEditMode = $dashboardSection === '' && (string) ($_GET['layout_edit'] ?? '') === '1';
 $widgetOrder = static function (string ...$widgets) use ($visibleWidgets): int {
     $orders = [];
@@ -71,6 +75,12 @@ usort(
     static fn(array $left, array $right): int => strcmp((string) ($right['awarded_at'] ?? ''), (string) ($left['awarded_at'] ?? ''))
 );
 $dashboardAchievementPreview = array_slice($dashboardUnlockedAchievements, 0, 4);
+$dashboardLockedAchievements = array_values(array_filter($dashboardAchievementsAll, static fn(array $achievement): bool => empty($achievement['is_unlocked'])));
+usort($dashboardLockedAchievements, static function (array $left, array $right): int {
+    $progressCompare = ((float) ($right['progress_pct'] ?? 0)) <=> ((float) ($left['progress_pct'] ?? 0));
+    return $progressCompare !== 0 ? $progressCompare : strcasecmp((string) ($left['name'] ?? ''), (string) ($right['name'] ?? ''));
+});
+$dashboardAchievementProgressPreview = array_slice($dashboardLockedAchievements, 0, 3);
 $dashboardAchievementsUrl = '/?' . http_build_query([
     'page' => 'achievements',
     'scope' => 'user',
@@ -284,11 +294,11 @@ $topbarControls = ob_get_clean();
             </div>
             <nav class="hierarchy-nav-list">
                 <a class="hierarchy-nav-row" href="<?= e($dashboardAchievementsUrl) ?>"><span class="hierarchy-nav-icon" aria-hidden="true">&#9733;</span><span class="hierarchy-nav-copy"><strong><?= e(t('profile.achievements')) ?></strong><small><?= e(t('dashboard.mobile_rewards_achievements_hint')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
-                <a class="hierarchy-nav-row" href="/?page=profile"><span class="hierarchy-nav-icon" aria-hidden="true">XP</span><span class="hierarchy-nav-copy"><strong><?= e(t('season.title')) ?></strong><small><?= e((string) (($dashboardSeason ?? [])['name'] ?? '')) ?></small></span><span class="hierarchy-nav-meta"><?= (int) ($dashboardSeasonDaysLeft ?? 0) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <a class="hierarchy-nav-row" href="/?page=season"><span class="hierarchy-nav-icon" aria-hidden="true">XP</span><span class="hierarchy-nav-copy"><strong><?= e(t('season.title')) ?></strong><small><?= e((string) (($dashboardSeason ?? [])['name'] ?? '')) ?></small></span><span class="hierarchy-nav-meta"><?= (int) ($dashboardSeasonDaysLeft ?? 0) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
             </nav>
-            <?php $mobileQuests = array_slice(array_values((array) ($dashboardQuests['daily'] ?? $dashboardQuests ?? [])), 0, 3); ?>
+            <?php $mobileQuests = array_values((array) ($dashboardQuests['daily'] ?? $dashboardQuests ?? [])); ?>
             <?php if ($mobileQuests !== []): ?>
-                <article class="native-list-card"><h2><?= e(t('quests.title')) ?></h2><?php foreach ($mobileQuests as $quest): ?><div class="native-list-row"><span><?= e((string) ($quest['label'] ?? '')) ?></span><strong><?= (int) ($quest['pct'] ?? 0) ?>%</strong></div><?php endforeach; ?></article>
+                <article class="native-list-card" data-collapsible-list data-mobile-count="3" data-desktop-count="3"><h2><?= e(t('quests.title')) ?></h2><?php foreach ($mobileQuests as $quest): ?><div class="native-list-row" data-collapsible-item><span><?= e((string) ($quest['label'] ?? '')) ?></span><strong><?= (int) ($quest['pct'] ?? 0) ?>%</strong></div><?php endforeach; ?><button class="inline-list-toggle" type="button" data-collapsible-toggle data-label-more="<?= e(t('profile.show_more')) ?>" data-label-less="<?= e(t('profile.show_less')) ?>"><?= e(t('profile.show_more')) ?></button></article>
             <?php endif; ?>
         <?php elseif ($dashboardSection === 'history'): ?>
             <article class="native-list-card">
@@ -321,17 +331,18 @@ $topbarControls = ob_get_clean();
     <?php else: ?>
     <div class="dashboard-mobile-home">
         <header class="mobile-home-greeting"><p><?= e(t('dashboard.mobile_today')) ?></p><h1><?= e((string) ($selectedUser['display_name'] ?? t('nav.home'))) ?></h1></header>
-        <article class="mobile-today-card">
-            <div class="mobile-today-head"><span><?= e(t('dashboard.mobile_today_status')) ?></span><strong><?= e(number_format((float) ($selectedMetric['score'] ?? 0), 1, '.', '')) ?></strong></div>
+        <article class="mobile-today-card" data-dashboard-mobile-surface="mobile_today"<?= $showWidget('mobile_today') ? '' : ' hidden' ?>>
+            <?php $dashboardScoreDecimal = current_locale() === 'en' ? '.' : ','; ?>
+            <a class="mobile-today-head mobile-score-link" href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'score'])) ?>"><span><?= e(t('metric.score')) ?></span><strong><?= e(number_format((float) ($selectedMetric['score'] ?? 0), 1, $dashboardScoreDecimal, '')) ?> <small>/ 100</small></strong></a>
             <div class="mobile-today-metrics">
-                <?php foreach ($kpis as $kpi): ?><span><strong><?= e((string) $kpi['value']) ?></strong><small><?= e((string) $kpi['label']) ?></small></span><?php endforeach; ?>
-                <span><strong><?= e($formatCalories($calorieConsumedTotal)) ?> kcal</strong><small><?= e(t('dashboard.calories_consumed')) ?></small></span>
-                <span><strong><?= e($formatCalories($calorieBurnedTotal)) ?> kcal</strong><small><?= e(t('dashboard.calories_burned')) ?></small></span>
+                <?php foreach ($kpis as $kpi): ?><?php $mobileKpiHref = (string) ($kpi['key'] ?? '') === 'strikes' ? $strikesHref : '/?' . http_build_query($metricQueryBase + ['metric' => (string) ($kpi['key'] ?? '')]); ?><a href="<?= e($mobileKpiHref) ?>"><strong><?= e((string) $kpi['value']) ?></strong><small><?= e((string) $kpi['label']) ?></small></a><?php endforeach; ?>
+                <a href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'calories_consumed'])) ?>"><strong><?= e($formatCalories($calorieConsumedTotal)) ?> kcal</strong><small><?= e(t('dashboard.calories_consumed')) ?></small></a>
+                <a href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'calories_burned'])) ?>"><strong><?= e($formatCalories($calorieBurnedTotal)) ?> kcal</strong><small><?= e(t('dashboard.calories_burned')) ?></small></a>
             </div>
         </article>
-        <a class="mobile-primary-action" href="/?page=entries&mode=data"><span><strong><?= e(t('dashboard.quick_action_training')) ?></strong><small><?= e(t('dashboard.mobile_primary_hint')) ?></small></span><span aria-hidden="true">&rsaquo;</span></a>
-        <article class="mobile-progress-brief"><div><small><?= e(t('dashboard.training_rank_title')) ?></small><strong><?= e(t('workouts.rank_' . (string) (($dashboardTrainingRank ?? [])['key'] ?? 'unranked'))) ?></strong></div><div><small><?= e(t('workouts.streak')) ?></small><strong><?= (int) ($dashboardTrainingStreak ?? 0) ?></strong></div><a href="/?page=dashboard&section=progress"><?= e(t('common.view_all')) ?></a></article>
-        <nav class="mobile-home-shortcuts" aria-label="<?= e(t('dashboard.mobile_more')) ?>">
+        <a class="mobile-primary-action" data-dashboard-mobile-surface="mobile_primary"<?= $showWidget('mobile_primary') ? '' : ' hidden' ?> href="/?page=entries&mode=data"><span><strong><?= e(t('dashboard.quick_action_training')) ?></strong><small><?= e(t('dashboard.mobile_primary_hint')) ?></small></span><span aria-hidden="true">&rsaquo;</span></a>
+        <article class="mobile-progress-brief" data-dashboard-mobile-surface="mobile_progress"<?= $showWidget('mobile_progress') ? '' : ' hidden' ?>><div><small><?= e(t('dashboard.training_rank_title')) ?></small><strong><?= e(t('workouts.rank_' . (string) (($dashboardTrainingRank ?? [])['key'] ?? 'unranked'))) ?></strong></div><div><small><?= e(t('workouts.streak')) ?></small><strong><?= (int) ($dashboardTrainingStreak ?? 0) ?></strong></div><a href="/?page=dashboard&section=progress"><?= e(t('common.view_all')) ?></a></article>
+        <nav class="mobile-home-shortcuts" data-dashboard-mobile-surface="mobile_shortcuts"<?= $showWidget('mobile_shortcuts') ? '' : ' hidden' ?> aria-label="<?= e(t('dashboard.mobile_more')) ?>">
             <a href="/?page=dashboard&section=progress" data-tone="blue"><span aria-hidden="true">&#8645;</span><strong><?= e(t('dashboard.mobile_progress')) ?></strong></a>
             <a href="/?page=dashboard&section=rewards" data-tone="amber"><span aria-hidden="true">&#9733;</span><strong><?= e(t('dashboard.mobile_rewards')) ?></strong></a>
             <a href="/?page=dashboard&section=history" data-tone="violet"><span aria-hidden="true">&#8634;</span><strong><?= e(t('dashboard.mobile_history')) ?></strong></a>
@@ -356,12 +367,22 @@ $topbarControls = ob_get_clean();
             <div class="dashboard-editbar-row">
                 <p class="dashboard-editbar-hint">
                     <strong><?= e(t('dashboard.edit_layout')) ?></strong>
-                    <small><?= e(t('dashboard.drag_hint')) ?></small>
+                    <small><?= e(t('dashboard.layout_hint')) ?></small>
                 </p>
                 <div class="dashboard-editbar-actions">
                     <a class="btn btn-ghost small" href="<?= e($dashboardCancelEditLayoutUrl) ?>"><?= e(t('common.cancel')) ?></a>
                     <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
                 </div>
+            </div>
+
+            <div class="dashboard-layout-state" data-dashboard-layout-state
+                 data-visible-template="<?= e(t('dashboard.layout_visible_count', ['count' => '{count}'])) ?>"
+                 data-hidden-template="<?= e(t('dashboard.layout_hidden_count', ['count' => '{count}'])) ?>"
+                 data-saved-label="<?= e(t('common.saved')) ?>"
+                 data-changed-label="<?= e(t('dashboard.layout_changed')) ?>">
+                <span data-layout-visible-count><?= e(t('dashboard.layout_visible_count', ['count' => $dashboardVisibleCount])) ?></span>
+                <span data-layout-hidden-count><?= e(t('dashboard.layout_hidden_count', ['count' => $dashboardHiddenCount])) ?></span>
+                <strong data-layout-change-state><?= e(t('common.saved')) ?></strong>
             </div>
 
             <?php // The widget list still backs the form (order inputs + checkboxes the
@@ -371,14 +392,17 @@ $topbarControls = ob_get_clean();
                 <summary><?= e(t('dashboard.visible_widgets')) ?></summary>
                 <div class="team-layout-editor-list dashboard-layout-editor-list" data-dashboard-layout-list>
                     <?php foreach ($dashboardEditorWidgets as $idx => $widget): ?>
-                        <div class="team-layout-editor-item dashboard-layout-editor-item dashboard-layout-edit-card" data-dashboard-layout-item>
-                            <div class="dashboard-layout-mobile-actions">
-                                <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="Move up">&uarr;</button>
-                                <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="Move down">&darr;</button>
-                            </div>
+                        <?php $isMobileSurface = in_array($widget, $dashboardMobileSurfaces, true); ?>
+                        <div class="team-layout-editor-item dashboard-layout-editor-item dashboard-layout-edit-card<?= $isMobileSurface ? ' is-mobile-surface' : '' ?>" data-dashboard-layout-item data-layout-scope="<?= $isMobileSurface ? 'mobile' : 'desktop' ?>">
+                            <?php if (!$isMobileSurface): ?>
+                                <div class="dashboard-layout-mobile-actions">
+                                    <button class="btn btn-ghost small" type="button" data-layout-move="up" aria-label="<?= e(t('dashboard.move_up')) ?>">&uarr;</button>
+                                    <button class="btn btn-ghost small" type="button" data-layout-move="down" aria-label="<?= e(t('dashboard.move_down')) ?>">&darr;</button>
+                                </div>
+                            <?php endif; ?>
                             <label class="dashboard-layout-toggle">
                                 <input type="checkbox" name="dashboard_widgets[]" value="<?= e($widget) ?>" <?= in_array($widget, $visibleWidgets, true) ? 'checked' : '' ?>>
-                                <span><?= e(t('dashboard.widget_' . $widget)) ?></span>
+                                <span><strong><?= e(t('dashboard.widget_' . $widget)) ?></strong><small><?= e(t($isMobileSurface ? 'dashboard.layout_scope_mobile' : 'dashboard.layout_scope_desktop')) ?></small></span>
                             </label>
                             <input type="hidden" name="dashboard_order[<?= e($widget) ?>]" value="<?= e((string) ($idx + 1)) ?>" data-dashboard-order-input>
                         </div>
@@ -393,6 +417,17 @@ $topbarControls = ob_get_clean();
     <div class="dashboard-layout" data-unsaved-message="<?= e(t('dashboard.unsaved_changes')) ?>">
         <?php if ($showWidget('kpis')): ?>
         <div class="metric-grid dashboard-span-full dashboard-kpis" data-dashboard-widget="kpis" style="order: <?= $contentWidgetOrder('kpis') ?>">
+            <?php $dashboardScoreValue = (float) ($selectedMetric['score'] ?? 0); ?>
+            <a class="metric-card metric-card-link metric-card-score" href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'score'])) ?>" data-testid="metric-card-link-score">
+                <div class="progress-ring" style="--value: <?= e((string) min(100, max(0, $dashboardScoreValue))) ?>;">
+                    <span><?= e(number_format($dashboardScoreValue, 1, $dashboardScoreDecimal, '')) ?></span>
+                </div>
+                <div>
+                    <span><?= e(t('metric.score')) ?></span>
+                    <strong><?= e(number_format($dashboardScoreValue, 1, $dashboardScoreDecimal, '')) ?> / 100</strong>
+                    <p><?= e(t('dashboard.current_week')) ?></p>
+                </div>
+            </a>
             <?php foreach ($kpis as $kpi): ?>
                 <?php
                 $metricHref = '/?' . http_build_query($metricQueryBase + ['metric' => (string) $kpi['key']]);
@@ -411,7 +446,7 @@ $topbarControls = ob_get_clean();
                     </div>
                 </a>
             <?php endforeach; ?>
-            <article class="metric-card metric-card-calorie-goal" data-testid="metric-card-calorie-consumed">
+            <a class="metric-card metric-card-link metric-card-calorie-goal" href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'calories_consumed'])) ?>" data-testid="metric-card-calorie-consumed">
                 <div class="progress-ring" style="--value: <?= e((string) min(100, max(0, $calorieConsumedProgress))) ?>;">
                     <span><?= e($calorieConsumedRing) ?></span>
                 </div>
@@ -420,8 +455,8 @@ $topbarControls = ob_get_clean();
                     <strong><?= e($formatCalories($calorieConsumedTotal)) ?> kcal</strong>
                     <p><?= e($calorieConsumedMeta) ?></p>
                 </div>
-            </article>
-            <article class="metric-card metric-card-calorie-goal" data-testid="metric-card-calorie-burned">
+            </a>
+            <a class="metric-card metric-card-link metric-card-calorie-goal" href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'calories_burned'])) ?>" data-testid="metric-card-calorie-burned">
                 <div class="progress-ring" style="--value: <?= e((string) min(100, max(0, $calorieBurnProgress))) ?>;">
                     <span><?= e($calorieBurnRing) ?></span>
                 </div>
@@ -430,7 +465,7 @@ $topbarControls = ob_get_clean();
                     <strong><?= e($formatCalories($calorieBurnedTotal)) ?> kcal</strong>
                     <p><?= e($calorieBurnMeta) ?></p>
                 </div>
-            </article>
+            </a>
         </div>
         <?php endif; ?>
 
@@ -486,7 +521,7 @@ $topbarControls = ob_get_clean();
             $trainingNextScore = is_numeric($trainingRank['next_score'] ?? null) ? (float) $trainingRank['next_score'] : null;
             $trainingPointsToNext = $trainingNextScore !== null ? max(0.0, $trainingNextScore - $trainingRankScore) : 0.0;
             ?>
-            <article class="panel dashboard-panel dashboard-training-rank" data-dashboard-widget="training_rank" data-rank="<?= e($trainingRankKey) ?>" style="order: <?= $contentWidgetOrder('training_rank') ?>; --rank-color: <?= e((string) ($trainingRank['color'] ?? '#64748b')) ?>">
+            <article class="panel dashboard-panel dashboard-training-rank compact-panel glass-panel" data-dashboard-widget="training_rank" data-rank="<?= e($trainingRankKey) ?>" style="order: <?= $contentWidgetOrder('training_rank') ?>; --rank-color: <?= e((string) ($trainingRank['color'] ?? '#64748b')) ?>">
                 <div class="panel-head dashboard-panel-head-compact">
                     <div>
                         <p class="eyebrow"><?= e(t('dashboard.training_rank_title')) ?></p>
@@ -544,7 +579,7 @@ $topbarControls = ob_get_clean();
             $trainingAll = (array) ($dashboardTrainingAll ?? []);
             $trainingRecentSession = (array) (($dashboardTrainingRecentSessions ?? [])[0] ?? []);
             ?>
-            <article class="panel dashboard-panel dashboard-training-progress" data-dashboard-widget="training_progress" style="order: <?= $contentWidgetOrder('training_progress') ?>">
+            <article class="panel dashboard-panel dashboard-training-progress compact-panel glass-panel compact-progress-panel" data-dashboard-widget="training_progress" style="order: <?= $contentWidgetOrder('training_progress') ?>">
                 <div class="panel-head dashboard-panel-head-compact">
                     <div>
                         <p class="eyebrow"><?= e(t('dashboard.training_progress_title')) ?></p>
@@ -552,7 +587,7 @@ $topbarControls = ob_get_clean();
                     </div>
                     <a class="btn btn-ghost small dashboard-panel-action" href="/?page=workouts&amp;view=stats"><?= e(t('common.view_all')) ?></a>
                 </div>
-                <div class="dashboard-training-progress-grid">
+                <div class="dashboard-training-progress-grid compact-metrics-row">
                     <span><small><?= e(t('workouts.stat_sessions')) ?> · <?= e(t('workouts.this_month')) ?></small><strong><?= (int) ($trainingMonth['sessions'] ?? 0) ?></strong></span>
                     <span><small><?= e(t('workouts.stat_volume')) ?> · <?= e(t('workouts.this_month')) ?></small><strong><?= e(number_format((float) ($trainingMonth['volume'] ?? 0), 0, '.', ' ')) ?></strong></span>
                     <span><small><?= e(t('workouts.streak')) ?></small><strong><?= (int) ($dashboardTrainingStreak ?? 0) ?></strong></span>
@@ -571,7 +606,7 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <?php if ($showWidget('achievements')): ?>
-        <article class="panel dashboard-panel dashboard-achievements-panel dashboard-span-full" data-dashboard-widget="achievements" style="order: <?= $contentWidgetOrder('achievements') ?>">
+        <article class="panel dashboard-panel dashboard-achievements-panel dashboard-span-full compact-panel glass-panel" data-dashboard-widget="achievements" style="order: <?= $contentWidgetOrder('achievements') ?>">
             <div class="panel-head dashboard-panel-head-compact">
                 <div>
                     <p class="eyebrow"><?= e(t('achievements.title')) ?></p>
@@ -581,18 +616,19 @@ $topbarControls = ob_get_clean();
                     <a class="btn btn-ghost small dashboard-panel-action" href="<?= e($dashboardAchievementsUrl) ?>"><?= e(t('common.view_all')) ?></a>
                 </div>
             </div>
-            <div class="dashboard-achievements-grid">
+            <div class="dashboard-achievements-grid dashboard-achievement-rows">
                 <?php foreach ($dashboardAchievementPreview as $achievement): ?>
                     <?php
                     $progressPct = is_numeric($achievement['progress_pct'] ?? null) ? max(0.0, min(100.0, (float) $achievement['progress_pct'])) : null;
                     ?>
-                    <article class="achievement-card dashboard-achievement-card is-unlocked" <?= achievement_modal_attrs($achievement) ?>>
+                    <article class="achievement-card dashboard-achievement-card dashboard-achievement-row compact-list-item is-unlocked" data-state="unlocked" <?= achievement_modal_attrs($achievement) ?>>
                         <?= achievement_visual_html($achievement, 'achievement-visual') ?>
                         <div class="dashboard-achievement-content">
                             <div class="dashboard-achievement-title-row">
                                 <strong><?= e((string) ($achievement['name'] ?? '')) ?></strong>
                             </div>
                             <p><?= e((string) ($achievement['description'] ?? '')) ?></p>
+                            <small class="dashboard-achievement-open"><?= e(t('dashboard.achievement_open')) ?> <span aria-hidden="true">&rsaquo;</span></small>
                             <?php if ($progressPct !== null): ?>
                                 <div class="achievement-progress">
                                     <div class="goal-progress"><span style="width: <?= e((string) $progressPct) ?>%"></span></div>
@@ -609,8 +645,27 @@ $topbarControls = ob_get_clean();
         </article>
         <?php endif; ?>
 
+        <?php if ($showWidget('achievement_progress')): ?>
+        <article class="panel dashboard-panel dashboard-achievement-progress-panel dashboard-span-full compact-panel glass-panel compact-progress-panel" data-dashboard-widget="achievement_progress" style="order: <?= $contentWidgetOrder('achievement_progress') ?>">
+            <div class="panel-head dashboard-panel-head-compact">
+                <div><p class="eyebrow"><?= e(t('dashboard.widget_achievement_progress')) ?></p><p class="muted small"><?= e(t('dashboard.nearest_achievements')) ?></p></div>
+                <a class="btn btn-ghost small dashboard-panel-action" href="<?= e($dashboardAchievementsUrl) ?>"><?= e(t('common.view_all')) ?></a>
+            </div>
+            <div class="dashboard-achievement-progress-list">
+                <?php foreach ($dashboardAchievementProgressPreview as $achievement): ?>
+                    <?php $progressPct = max(0.0, min(100.0, (float) ($achievement['progress_pct'] ?? 0))); ?>
+                    <button class="dashboard-achievement-progress-row compact-list-item<?= $progressPct >= 75 ? ' is-nearly-complete' : ' is-locked' ?>" type="button" data-state="<?= $progressPct >= 75 ? 'nearly-complete' : 'locked' ?>" <?= achievement_modal_attrs($achievement) ?>>
+                        <?= achievement_visual_html($achievement, 'achievement-visual') ?>
+                        <span class="dashboard-achievement-progress-copy"><strong><?= e((string) ($achievement['name'] ?? '')) ?></strong><span class="goal-progress"><span style="width: <?= e((string) $progressPct) ?>%"></span></span><small><?= e((string) ($achievement['progress_text'] ?? round($progressPct) . '%')) ?></small></span>
+                    </button>
+                <?php endforeach; ?>
+                <?php if ($dashboardAchievementProgressPreview === []): ?><p class="muted panel-inline-empty"><?= e(t('achievements.empty')) ?></p><?php endif; ?>
+            </div>
+        </article>
+        <?php endif; ?>
+
         <?php if ($showWidget('quests')): ?>
-            <article class="panel dashboard-panel quests-widget dashboard-span-full" data-dashboard-widget="quests" style="order: <?= $contentWidgetOrder('quests') ?>">
+            <article class="panel dashboard-panel quests-widget dashboard-span-full compact-panel glass-panel" data-dashboard-widget="quests" data-collapsible-list data-mobile-count="3" data-desktop-count="3" style="order: <?= $contentWidgetOrder('quests') ?>">
                 <div class="panel-head">
                     <div>
                         <p class="eyebrow"><?= e(t('quests.title')) ?></p>
@@ -634,25 +689,35 @@ $topbarControls = ob_get_clean();
                     <p class="quests-group-label"><?= e(t('quests.' . $groupKey)) ?></p>
                     <ul class="quests-list">
                         <?php foreach ($groupQuests as $q): ?>
-                            <li class="quest-item<?= !empty($q['completed']) ? ' is-done' : '' ?>">
-                                <span class="quest-icon"><?= activity_icon_svg((string) $q['icon']) ?></span>
-                                <span class="quest-body">
-                                    <span class="quest-top">
-                                        <strong><?= e((string) $q['label']) ?></strong>
-                                        <span class="quest-xp">+<?= (int) $q['xp'] ?> XP</span>
+                            <li class="quest-item compact-list-item<?= !empty($q['completed']) ? ' is-done' : ' is-available' ?>" data-state="<?= !empty($q['completed']) ? 'completed' : 'available' ?>" data-collapsible-item>
+                                <button class="quest-summary" type="button" data-quest-detail-toggle aria-expanded="false">
+                                    <span class="quest-icon"><?= activity_icon_svg((string) $q['icon']) ?></span>
+                                    <span class="quest-body">
+                                        <span class="quest-top">
+                                            <strong><?= e((string) $q['label']) ?></strong>
+                                            <span class="quest-xp">+<?= (int) $q['xp'] ?> XP</span>
+                                        </span>
+                                        <span class="quest-bar"><span style="width: <?= (int) $q['pct'] ?>%"></span></span>
+                                        <small class="quest-meta">
+                                            <?= e(number_format((float) $q['progress'], 0, '.', ' ')) ?> / <?= e(number_format((float) $q['target'], 0, '.', ' ')) ?>
+                                        </small>
                                     </span>
-                                    <span class="quest-bar"><span style="width: <?= (int) $q['pct'] ?>%"></span></span>
-                                    <small class="quest-meta">
-                                        <?= e(number_format((float) $q['progress'], 0, '.', ' ')) ?> / <?= e(number_format((float) $q['target'], 0, '.', ' ')) ?>
-                                    </small>
-                                </span>
-                                <?php if (!empty($q['completed'])): ?>
-                                    <span class="quest-done" aria-label="<?= e(t('workouts.done')) ?>">&#10003;</span>
-                                <?php endif; ?>
+                                    <span class="quest-item-actions">
+                                        <?php if (!empty($q['completed'])): ?><span class="quest-done" aria-label="<?= e(t('workouts.done')) ?>">&#10003;</span><?php endif; ?>
+                                        <span class="quest-chevron" aria-hidden="true">&rsaquo;</span>
+                                    </span>
+                                </button>
+                                <div class="quest-detail" data-quest-detail hidden>
+                                    <span><small><?= e(t('common.status')) ?></small><strong><?= e(!empty($q['completed']) ? t('quests.status_completed') : t('quests.status_available')) ?></strong></span>
+                                    <span><small><?= e(t('quests.period')) ?></small><strong><?= e(t('quests.' . (string) $q['period'])) ?></strong></span>
+                                    <span><small><?= e(t('quests.reward')) ?></small><strong>+<?= (int) $q['xp'] ?> XP</strong></span>
+                                </div>
                             </li>
                         <?php endforeach; ?>
                     </ul>
                 <?php endforeach; ?>
+
+                <button class="inline-list-toggle" type="button" data-collapsible-toggle data-label-more="<?= e(t('profile.show_more')) ?>" data-label-less="<?= e(t('profile.show_less')) ?>"><?= e(t('profile.show_more')) ?></button>
 
                 <?php $badgeBoard = (array) ($dashboardBadges ?? []); ?>
                 <?php if ($badgeBoard !== []): ?>
@@ -683,11 +748,18 @@ $topbarControls = ob_get_clean();
             $seasonBoard = (array) ($dashboardSeasonBoard ?? []);
             $seasonDaysLeft = (int) ($dashboardSeasonDaysLeft ?? 0);
             $seasonTop = 0;
+            $seasonPosition = null;
             foreach ($seasonBoard as $srow) {
                 $seasonTop = max($seasonTop, (int) $srow['xp']);
+                if ((int) ($srow['user_id'] ?? 0) === (int) $currentUser['id']) {
+                    $seasonPosition = (int) ($srow['rank'] ?? 0);
+                }
             }
+            $seasonUserXp = (int) ($dashboardSeasonXp ?? 0);
+            $seasonGap = max(0, $seasonTop - $seasonUserXp);
+            $seasonProgress = $seasonTop > 0 ? min(100, (int) round(($seasonUserXp / $seasonTop) * 100)) : 0;
             ?>
-            <article class="panel dashboard-panel season-widget dashboard-span-full" data-dashboard-widget="season" style="order: <?= $contentWidgetOrder('season') ?>">
+            <article class="panel dashboard-panel season-widget dashboard-span-full compact-panel glass-panel compact-progress-panel" data-dashboard-widget="season" data-collapsible-list data-mobile-count="3" data-desktop-count="6" style="order: <?= $contentWidgetOrder('season') ?>">
                 <div class="panel-head">
                     <div>
                         <p class="eyebrow"><?= e(t('season.title')) ?></p>
@@ -698,10 +770,14 @@ $topbarControls = ob_get_clean();
                     </span>
                 </div>
 
-                <p class="season-your-xp">
-                    <span class="muted small"><?= e(t('season.your_xp')) ?></span>
-                    <strong><?= e(number_format((float) ($dashboardSeasonXp ?? 0), 0, '.', ' ')) ?> XP</strong>
-                </p>
+                <div class="season-widget-summary compact-metrics-row">
+                    <span><small><?= e(t('season.your_xp')) ?></small><strong><?= e(number_format($seasonUserXp, 0, '.', ' ')) ?> XP</strong></span>
+                    <span><small><?= e(t('common.position')) ?></small><strong><?= $seasonPosition !== null ? '#' . $seasonPosition : '&mdash;' ?></strong></span>
+                    <span><small><?= e(t('season.next_milestone')) ?></small><strong><?= e($seasonPosition === 1 ? t('season.leader') : t('season.xp_to_leader', ['xp' => number_format($seasonGap, 0, '.', ' ')])) ?></strong></span>
+                </div>
+                <div class="season-user-progress">
+                    <span class="goal-progress" role="progressbar" aria-label="<?= e(t('season.progress_to_leader')) ?>" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= $seasonProgress ?>"><span style="width: <?= $seasonProgress ?>%"></span></span>
+                </div>
 
                 <?php if ($seasonBoard === []): ?>
                     <p class="muted panel-inline-empty">&mdash;</p>
@@ -709,7 +785,7 @@ $topbarControls = ob_get_clean();
                     <ol class="season-board">
                         <?php foreach ($seasonBoard as $srow): ?>
                             <?php $pct = $seasonTop > 0 ? (int) round(((int) $srow['xp'] / $seasonTop) * 100) : 0; ?>
-                            <li class="season-row<?= (int) $srow['user_id'] === (int) $currentUser['id'] ? ' is-me' : '' ?>">
+                            <li class="season-row compact-list-item<?= (int) $srow['user_id'] === (int) $currentUser['id'] ? ' is-me' : '' ?>" data-collapsible-item>
                                 <span class="season-rank">#<?= (int) $srow['rank'] ?></span>
                                 <span class="season-name"><?= e((string) $srow['name']) ?></span>
                                 <span class="season-bar"><span style="width: <?= $pct ?>%"></span></span>
@@ -717,9 +793,10 @@ $topbarControls = ob_get_clean();
                             </li>
                         <?php endforeach; ?>
                     </ol>
+                    <button class="inline-list-toggle" type="button" data-collapsible-toggle data-label-more="<?= e(t('profile.show_more')) ?>" data-label-less="<?= e(t('profile.show_less')) ?>"><?= e(t('profile.show_more')) ?></button>
                 <?php endif; ?>
 
-                <p class="muted small season-hint"><?= e(t('season.hint')) ?></p>
+                <div class="season-widget-footer"><p class="muted small season-hint"><?= e(t('season.hint')) ?></p><a class="btn btn-ghost small" href="/?page=season"><?= e(t('common.view_all')) ?></a></div>
             </article>
         <?php endif; ?>
 
@@ -737,7 +814,7 @@ $topbarControls = ob_get_clean();
                     ],
                     '/?page=duels',
                     t('common.view_all'),
-                    'dashboard-panel'
+                    'dashboard-panel compact-panel glass-panel'
                 );
                 ?>
             </div>
@@ -757,19 +834,19 @@ $topbarControls = ob_get_clean();
                     ],
                     '/?page=competitions',
                     t('common.view_all'),
-                    'dashboard-panel'
+                    'dashboard-panel compact-panel glass-panel'
                 );
                 ?>
             </div>
         <?php endif; ?>
 
         <?php if ($showWidget('weekly')): ?>
-        <article class="panel dashboard-panel dashboard-span-full dashboard-weekly-history" data-dashboard-widget="weekly" style="order: <?= $contentWidgetOrder('weekly') ?>">
+        <article class="panel dashboard-panel dashboard-span-full dashboard-weekly-history compact-panel glass-panel" data-dashboard-widget="weekly" style="order: <?= $contentWidgetOrder('weekly') ?>">
             <div class="panel-head">
                 <h2><?= e(t('dashboard.weekly_history')) ?></h2>
                 <a class="btn btn-ghost small dashboard-panel-action" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week=<?= e(date_to_iso_week((string) $selectedWeekStart)) ?>"><?= e(t('table.open_editor')) ?></a>
             </div>
-            <div class="table-wrap dashboard-desktop-table-wrap">
+            <div class="table-wrap dashboard-desktop-table-wrap" data-collapsible-list data-mobile-count="6" data-desktop-count="6">
                 <table class="table compact dashboard-weekly-table">
                     <thead>
                     <tr>
@@ -805,7 +882,7 @@ $topbarControls = ob_get_clean();
                             'week' => date_to_iso_week($weekStartDate !== '' ? $weekStartDate : (string) $selectedWeekStart),
                         ]);
                         ?>
-                        <tr>
+                        <tr data-collapsible-item>
                             <td data-label="<?= e(t('common.week')) ?>"><?= e(format_date_eu((string) $week['week_start'])) ?> -> <?= e(format_date_eu((string) $week['week_end'])) ?></td>
                             <td data-label="<?= e(t('common.status')) ?>"><?= e(label_for_status((string) $week['status'])) ?></td>
                             <td data-label="<?= e(t('metric.step_failures')) ?>"><?= e((string) $week['step_failures']) ?></td>
@@ -832,8 +909,9 @@ $topbarControls = ob_get_clean();
                     <?php endforeach; ?>
                     </tbody>
                 </table>
+                <button class="inline-list-toggle dashboard-weekly-more" type="button" data-collapsible-toggle data-label-more="<?= e(t('profile.show_more')) ?>" data-label-less="<?= e(t('profile.show_less')) ?>"><?= e(t('profile.show_more')) ?></button>
             </div>
-            <div class="dashboard-mobile-card-list dashboard-weekly-mobile-list dashboard-weekly-compact-list" aria-label="<?= e(t('dashboard.weekly_history')) ?>">
+            <div class="dashboard-mobile-card-list dashboard-weekly-mobile-list dashboard-weekly-compact-list" data-collapsible-list data-mobile-count="4" data-desktop-count="4" aria-label="<?= e(t('dashboard.weekly_history')) ?>">
                 <?php foreach ($selectedMetric['weekly'] as $week): ?>
                     <?php
                     $weekStartDate = (string) ($week['week_start'] ?? $selectedWeekStart ?? '');
@@ -844,7 +922,7 @@ $topbarControls = ob_get_clean();
                     ]);
                     $weeklyPenalty = (float) ($week['penalty'] ?? 0);
                     ?>
-                    <a class="dashboard-week-row" href="<?= e($weekEditorHref) ?>">
+                    <a class="dashboard-week-row" data-collapsible-item href="<?= e($weekEditorHref) ?>">
                         <span class="dashboard-week-row-main">
                             <strong><?= e(format_date_eu((string) $week['week_start'])) ?></strong>
                             <small><?= e(label_for_status((string) $week['status'])) ?></small>
@@ -862,6 +940,7 @@ $topbarControls = ob_get_clean();
                         <span class="settings-chevron" aria-hidden="true">&gt;</span>
                     </a>
                 <?php endforeach; ?>
+                <button class="inline-list-toggle dashboard-weekly-more" type="button" data-collapsible-toggle data-label-more="<?= e(t('profile.show_more')) ?>" data-label-less="<?= e(t('profile.show_less')) ?>"><?= e(t('profile.show_more')) ?></button>
             </div>
         </article>
         <?php endif; ?>
@@ -911,16 +990,25 @@ $topbarControls = ob_get_clean();
 
 
         <?php if ($showWidget('ranking')): ?>
-        <article class="panel dashboard-panel" data-dashboard-widget="ranking" style="order: <?= $contentWidgetOrder('ranking') ?>">
+        <article class="panel dashboard-panel dashboard-ranking-panel compact-panel glass-panel" data-dashboard-widget="ranking" data-collapsible-list data-mobile-count="6" data-desktop-count="10" style="order: <?= $contentWidgetOrder('ranking') ?>">
             <h2><?= e(t('dashboard.challenge_ranking')) ?></h2>
             <div class="leaderboard-list">
-                <?php foreach ($metricsOrdered as $metric): ?>
+                <?php $leaderboardTopScore = (float) (($metricsOrdered[0]['score'] ?? 0)); $leaderboardPreviousScore = null; $leaderboardPreviousRank = 0; ?>
+                <?php foreach ($metricsOrdered as $leaderboardIndex => $metric): ?>
                     <?php
                     $leaderboardUser = is_array($metric['user'] ?? null) ? (array) $metric['user'] : [];
                     $leaderboardName = (string) ($leaderboardUser['display_name'] ?? t('common.user'));
                     $leaderboardAvatarUrl = avatar_url($leaderboardUser);
+                    $leaderboardScore = (float) ($metric['score'] ?? 0);
+                    $leaderboardRank = $leaderboardPreviousScore !== null && abs($leaderboardScore - $leaderboardPreviousScore) < 0.0001
+                        ? $leaderboardPreviousRank
+                        : $leaderboardIndex + 1;
+                    $leaderboardDifference = max(0.0, $leaderboardTopScore - $leaderboardScore);
+                    $leaderboardPreviousScore = $leaderboardScore;
+                    $leaderboardPreviousRank = $leaderboardRank;
                     ?>
-                    <article class="leaderboard-row">
+                    <article class="leaderboard-row compact-list-item<?= (int) ($leaderboardUser['id'] ?? 0) === (int) ($currentUser['id'] ?? 0) ? ' is-me' : '' ?>" data-collapsible-item>
+                        <strong class="leaderboard-position">#<?= $leaderboardRank ?></strong>
                         <a class="leaderboard-name user-profile-link" href="/?page=profile&amp;user_id=<?= (int) ($leaderboardUser['id'] ?? 0) ?>">
                             <?php if ($leaderboardAvatarUrl !== ''): ?>
                                 <img class="member-avatar leaderboard-avatar" src="<?= e($leaderboardAvatarUrl) ?>" alt="<?= e($leaderboardName) ?>">
@@ -938,9 +1026,11 @@ $topbarControls = ob_get_clean();
                             <span class="badge"><?= e(t('metric.score')) ?> <?= e((string) $metric['score']) ?></span>
                             <span class="badge"><?= e(t('metric.steps')) ?> <?= e((string) ($metric['total_steps'] ?? 0)) ?></span>
                         </div>
+                        <span class="leaderboard-delta" aria-label="<?= e(t('dashboard.ranking_gap')) ?>"><?= $leaderboardDifference > 0 ? '&minus;' . e(number_format($leaderboardDifference, 1, current_locale() === 'en' ? '.' : ',', '')) : '&mdash;' ?></span>
                     </article>
                 <?php endforeach; ?>
             </div>
+            <button class="inline-list-toggle" type="button" data-collapsible-toggle data-label-more="<?= e(t('profile.show_more')) ?>" data-label-less="<?= e(t('profile.show_less')) ?>"><?= e(t('profile.show_more')) ?></button>
         </article>
         <?php endif; ?>
 

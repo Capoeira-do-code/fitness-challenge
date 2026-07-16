@@ -8,7 +8,7 @@ for ($i = 0; $i < 7; $i++) {
 }
 $entityTypes = ['daily_log', 'approval_request', 'user', 'team_membership', 'goal', 'achievement', 'workout_type', 'exercise_definition', 'workout_rank_tier', 'season', 'photo_entry', 'app_setting', 'system_backup', 'motivational_quote'];
 $activeSection = (string) ($_GET['section'] ?? '');
-$allowedSections = ['users', 'challenge', 'app', 'notion', 'telegram', 'backups', 'habits', 'workout_types', 'training', 'achievements', 'motivational_quotes', 'xp', 'audit'];
+$allowedSections = ['users', 'challenge', 'app', 'appearance', 'notion', 'telegram', 'backups', 'habits', 'workout_types', 'training', 'achievements', 'motivational_quotes', 'xp', 'audit'];
 if (!in_array($activeSection, $allowedSections, true)) {
     $activeSection = '';
 }
@@ -30,21 +30,41 @@ foreach ((array) ($adminAchievements ?? []) as $adminAchievementCandidate) {
 $penaltiesEnabled = !empty($penaltiesEnabled);
 $achievementLocales = locale_options();
 $achievementIconOptions = achievement_icon_options();
-$sectionRows = [
-    'users' => 'Users',
-    'challenge' => 'Challenge',
-    'app' => 'App',
-    'notion' => 'Notion',
-    'telegram' => 'Telegram',
-    'backups' => 'Backups',
-    'habits' => 'Habits',
-    'workout_types' => 'Workout Types',
-    'training' => 'Training & ranked',
-    'achievements' => 'Achievements',
-    'motivational_quotes' => t('admin.motivational_quotes'),
-    'xp' => t('admin.xp_title'),
-    'audit' => 'Audit Log',
+$sectionRows = [];
+foreach ($allowedSections as $sectionKey) {
+    $sectionRows[$sectionKey] = t('admin.section_' . $sectionKey);
+}
+$adminGroups = [
+    'people' => ['title' => t('admin.group_people'), 'hint' => t('admin.group_people_hint'), 'icon' => 'users', 'tone' => 'blue', 'sections' => ['users', 'audit']],
+    'experience' => ['title' => t('admin.group_experience'), 'hint' => t('admin.group_experience_hint'), 'icon' => 'spark', 'tone' => 'violet', 'sections' => ['app', 'appearance', 'notion', 'telegram', 'motivational_quotes']],
+    'training' => ['title' => t('admin.group_training'), 'hint' => t('admin.group_training_hint'), 'icon' => 'dumbbell', 'tone' => 'green', 'sections' => ['habits', 'workout_types', 'training', 'achievements']],
+    'system' => ['title' => t('admin.group_system'), 'hint' => t('admin.group_system_hint'), 'icon' => 'shield', 'tone' => 'orange', 'sections' => ['challenge', 'xp', 'backups']],
 ];
+$adminGroup = trim((string) ($_GET['group'] ?? ''));
+if (!array_key_exists($adminGroup, $adminGroups)) {
+    $adminGroup = '';
+}
+$activeSectionGroup = '';
+if ($activeSection !== '') {
+    foreach ($adminGroups as $groupKey => $group) {
+        if (in_array($activeSection, (array) $group['sections'], true)) {
+            $activeSectionGroup = $groupKey;
+            break;
+        }
+    }
+}
+$adminHeaderTitle = $activeSection !== ''
+    ? (string) ($sectionRows[$activeSection] ?? t('admin.title'))
+    : ($adminGroup !== '' ? (string) $adminGroups[$adminGroup]['title'] : t('admin.title'));
+$adminHeaderHint = $activeSection !== ''
+    ? t('admin.subtitle')
+    : ($adminGroup !== '' ? (string) $adminGroups[$adminGroup]['hint'] : t('admin.hub_hint'));
+$visibleSectionRows = [];
+if ($adminGroup !== '') {
+    foreach ((array) $adminGroups[$adminGroup]['sections'] as $sectionKey) {
+        $visibleSectionRows[$sectionKey] = (string) ($sectionRows[$sectionKey] ?? $sectionKey);
+    }
+}
 $activeLoginBackgroundPath = trim((string) ($loginBackgroundPath ?? ''));
 $activeLoginBackgroundUrl = $activeLoginBackgroundPath !== '' ? media_url($activeLoginBackgroundPath) : '';
 $backupSettings = is_array($backupSettings ?? null) ? (array) $backupSettings : [];
@@ -107,26 +127,51 @@ try {
     $nextChallengeEnd = $nextChallengeStart;
 }
 ?>
-<section class="screen stack-lg spa-shell" data-spa-page="admin">
-    <div class="hero-panel">
+<section class="screen stack-lg spa-shell admin-settings-screen" data-spa-page="admin" data-admin-group="<?= e($adminGroup) ?>">
+    <header class="hierarchy-page-header<?= $activeSection === '' && $adminGroup === '' ? ' hierarchy-page-header-root settings-compact-header' : ' settings-focused-head settings-section-head' ?>">
+        <?php if ($activeSection !== '' || $adminGroup !== ''): ?>
+            <a class="hierarchy-back" href="<?= $activeSection !== '' && $activeSectionGroup !== '' ? '/?page=admin&amp;group=' . e($activeSectionGroup) : '/?page=admin' ?>" aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+        <?php endif; ?>
         <div>
             <p class="eyebrow"><?= e(t('nav.admin')) ?></p>
-            <h1><?= e(t('admin.title')) ?></h1>
-            <p class="muted"><?= e(t('admin.subtitle')) ?></p>
+            <h1><?= e($adminHeaderTitle) ?></h1>
+            <p class="muted"><?= e($adminHeaderHint) ?></p>
         </div>
-    </div>
+    </header>
 
-    <article class="panel settings-list<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-main <?= $activeSection !== '' ? 'hidden' : '' ?>>
-        <h2>Admin</h2>
-        <?php foreach ($sectionRows as $sectionKey => $label): ?>
+    <?php if ($activeSection === ''): ?>
+    <nav class="admin-settings-hub" data-spa-main aria-label="<?= e(t('admin.title')) ?>">
+        <?php if ($adminGroup === ''): ?>
+            <div class="settings-nav-grid admin-group-grid">
+                <?php foreach ($adminGroups as $groupKey => $group): ?>
+                    <a class="settings-nav-item" data-tone="<?= e((string) $group['tone']) ?>" href="/?page=admin&amp;group=<?= e($groupKey) ?>">
+                        <span class="settings-nav-icon" aria-hidden="true"><?= activity_icon_svg((string) $group['icon']) ?></span>
+                        <span class="settings-nav-copy"><strong><?= e((string) $group['title']) ?></strong><small><?= e((string) $group['hint']) ?></small></span>
+                        <span class="settings-nav-meta"><?= count((array) $group['sections']) ?></span>
+                        <span class="settings-nav-arrow" aria-hidden="true">&rsaquo;</span>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        <?php else: ?>
+        <div class="settings-list admin-section-list-menu">
+        <?php foreach ($visibleSectionRows as $sectionKey => $label): ?>
             <a class="settings-row" href="/?page=admin&section=<?= e($sectionKey) ?>" data-spa-link>
                 <span><?= e($label) ?></span>
                 <span class="settings-chevron" aria-hidden="true">›</span>
             </a>
         <?php endforeach; ?>
-    </article>
+        </div>
+        <?php endif; ?>
+    </nav>
+    <?php endif; ?>
 
-    <article class="panel settings-panel<?= $activeSection === 'users' ? ' active' : '' ?>" data-spa-section="users" <?= $activeSection === 'users' ? '' : 'hidden' ?>>
+    <?php if ($activeSection === ''): ?>
+</section>
+<?php return; ?>
+    <?php endif; ?>
+
+    <?php if ($activeSection === 'users'): ?>
+    <article class="panel settings-panel active" data-spa-section="users">
         <div class="panel-head admin-section-list" data-spa-show-when-no-param="create_user,user_id" <?= ($createUserMode || $selectedUserId > 0) ? 'hidden' : '' ?>>
             <h2>Users</h2>
             <div class="inline-actions-mini">
@@ -240,7 +285,9 @@ try {
         <?php endforeach; ?>
     </article>
 
-    <article class="panel settings-panel admin-challenge-panel<?= $activeSection === 'challenge' ? ' active' : '' ?>" data-spa-section="challenge" <?= $activeSection === 'challenge' ? '' : 'hidden' ?>>
+    <?php endif; ?>
+    <?php if ($activeSection === 'challenge'): ?>
+    <article class="panel settings-panel admin-challenge-panel active" data-spa-section="challenge">
         <div class="panel-head">
             <div>
                 <p class="eyebrow"><?= e(t('admin.challenge')) ?></p>
@@ -344,7 +391,9 @@ try {
         <?php endif; ?>
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'app' ? ' active' : '' ?>" data-spa-section="app" <?= $activeSection === 'app' ? '' : 'hidden' ?>>
+    <?php endif; ?>
+    <?php if ($activeSection === 'app'): ?>
+    <article class="panel settings-panel active" data-spa-section="app">
         <div class="panel-head">
             <div>
                 <h2><?= e(t('admin.app_settings')) ?></h2>
@@ -383,7 +432,9 @@ try {
         </section>
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'notion' ? ' active' : '' ?>" data-spa-section="notion" <?= $activeSection === 'notion' ? '' : 'hidden' ?>>
+    <?php endif; ?>
+    <?php if ($activeSection === 'notion'): ?>
+    <article class="panel settings-panel active" data-spa-section="notion">
         <div class="panel-head">
             <h2>Notion</h2>
             <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
@@ -634,7 +685,9 @@ try {
 
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'telegram' ? ' active' : '' ?>" data-spa-section="telegram" <?= $activeSection === 'telegram' ? '' : 'hidden' ?>>
+    <?php endif; ?>
+    <?php if ($activeSection === 'telegram'): ?>
+    <article class="panel settings-panel active" data-spa-section="telegram">
         <div class="panel-head">
             <h2>Telegram</h2>
             <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
@@ -719,7 +772,16 @@ try {
         </div>
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'app' ? ' active' : '' ?>" data-spa-section="app" <?= $activeSection === 'app' ? '' : 'hidden' ?>>
+    <?php endif; ?>
+    <?php if ($activeSection === 'appearance'): ?>
+    <article class="panel settings-panel active" data-spa-section="appearance">
+        <div class="panel-head">
+            <div>
+                <h2><?= e(t('admin.appearance_settings')) ?></h2>
+                <p class="muted admin-section-help"><?= e(t('admin.appearance_settings_hint')) ?></p>
+            </div>
+            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr; <?= e(t('common.back')) ?></a>
+        </div>
         <section class="admin-subsection">
         <h3><?= e(t('admin.app_icon')) ?></h3>
         <p class="muted small"><?= e(t('admin.app_icon_help')) ?></p>
@@ -845,7 +907,9 @@ try {
         </section>
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'backups' ? ' active' : '' ?>" data-spa-section="backups" <?= $activeSection === 'backups' ? '' : 'hidden' ?>>
+    <?php endif; ?>
+    <?php if ($activeSection === 'backups'): ?>
+    <article class="panel settings-panel active" data-spa-section="backups">
         <div class="panel-head">
             <h2><?= e(t('admin.backups_title')) ?></h2>
             <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
@@ -966,7 +1030,9 @@ try {
         <?php endif; ?>
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'habits' ? ' active' : '' ?>" data-spa-section="habits" <?= $activeSection === 'habits' ? '' : 'hidden' ?>>
+    <?php endif; ?>
+    <?php if ($activeSection === 'habits'): ?>
+    <article class="panel settings-panel active" data-spa-section="habits">
         <div class="panel-head admin-section-list" data-spa-show-when-no-param="habit_id" <?= $selectedHabitId !== '' ? 'hidden' : '' ?>>
             <div>
                 <h2>Habits</h2>
@@ -1029,7 +1095,9 @@ try {
         <?php endforeach; ?>
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'workout_types' ? ' active' : '' ?>" data-spa-section="workout_types" <?= $activeSection === 'workout_types' ? '' : 'hidden' ?>>
+    <?php endif; ?>
+    <?php if ($activeSection === 'workout_types'): ?>
+    <article class="panel settings-panel active" data-spa-section="workout_types">
         <div class="panel-head admin-section-list" data-spa-show-when-no-param="type_id" <?= $selectedTypeId !== '' ? 'hidden' : '' ?>>
             <div>
                 <h2>Workout Types</h2>
@@ -1169,20 +1237,22 @@ try {
         <?php endforeach; ?>
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'training' ? ' active' : '' ?>" data-spa-section="training" <?= $activeSection === 'training' ? '' : 'hidden' ?>>
+    <?php endif; ?>
+    <?php if ($activeSection === 'training'): ?>
+    <article class="panel settings-panel active" data-spa-section="training">
         <div class="panel-head admin-section-list" data-spa-show-when-no-param="exercise_id" <?= $selectedTrainingExerciseId !== '' ? 'hidden' : '' ?>>
             <div>
-                <p class="eyebrow">Training</p>
-                <h2>Training &amp; ranked</h2>
-                <p class="muted admin-section-help">Manage strength tiers, seasons, exercise guides and example media in one place.</p>
+                <p class="eyebrow"><?= e(t('admin.section_training')) ?></p>
+                <h2><?= e(t('admin.section_training')) ?></h2>
+                <p class="muted admin-section-help"><?= e(t('admin.training_help')) ?></p>
             </div>
             <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr; <?= e(t('common.back')) ?></a>
         </div>
 
         <div class="stack-lg admin-section-list admin-training-dashboard" data-spa-show-when-no-param="exercise_id" <?= $selectedTrainingExerciseId !== '' ? 'hidden' : '' ?>>
-            <details class="admin-training-block" open>
+            <details class="admin-training-block">
                 <summary>
-                    <span><strong>Rank tiers</strong><small>Thresholds and visual identity</small></span>
+                    <span><strong><?= e(t('admin.rank_tiers')) ?></strong><small><?= e(t('admin.rank_tiers_hint')) ?></small></span>
                     <span class="badge"><?= count((array) ($adminRankTiers ?? [])) ?></span>
                 </summary>
                 <form method="post" action="/?page=admin" class="stack compact-form admin-rank-tier-form">
@@ -1208,7 +1278,7 @@ try {
 
             <details class="admin-training-block">
                 <summary>
-                    <span><strong>Seasons</strong><small>Dates used by seasonal XP and leaderboards</small></span>
+                    <span><strong><?= e(t('admin.seasons')) ?></strong><small><?= e(t('admin.seasons_hint')) ?></small></span>
                     <span class="badge"><?= count((array) ($adminSeasons ?? [])) ?></span>
                 </summary>
                 <div class="stack admin-season-manager">
@@ -1257,13 +1327,13 @@ try {
 
             <details class="admin-training-block admin-training-exercises">
                 <summary>
-                    <span><strong>Exercise library</strong><small>Edit guides, ranking rules and example media</small></span>
+                    <span><strong><?= e(t('admin.exercise_library')) ?></strong><small><?= e(t('admin.exercise_library_hint')) ?></small></span>
                     <span class="badge"><?= count((array) ($adminTrainingExercises ?? [])) ?></span>
                 </summary>
                 <div class="admin-training-exercises-body">
                 <div class="panel-head compact-head">
                     <div>
-                        <p class="muted small">Choose an exercise or create a new guide with technique photos and video.</p>
+                        <p class="muted small"><?= e(t('admin.exercise_library_choose')) ?></p>
                     </div>
                     <a class="btn btn-primary small" href="/?page=admin&section=training&exercise_id=new" data-spa-link><?= e(t('common.create')) ?></a>
                 </div>
@@ -1316,7 +1386,9 @@ try {
         <?php endforeach; ?>
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'achievements' ? ' active' : '' ?>" data-spa-section="achievements" <?= $activeSection === 'achievements' ? '' : 'hidden' ?>>
+    <?php endif; ?>
+    <?php if ($activeSection === 'achievements'): ?>
+    <article class="panel settings-panel active" data-spa-section="achievements">
         <div class="panel-head admin-section-list" data-spa-show-when-no-param="achievement_id" <?= $selectedAchievementId !== '' ? 'hidden' : '' ?>>
             <div>
                 <h2>Achievements</h2>
@@ -1621,7 +1693,9 @@ try {
         </section>
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'motivational_quotes' ? ' active' : '' ?>" data-spa-section="motivational_quotes" <?= $activeSection === 'motivational_quotes' ? '' : 'hidden' ?>>
+    <?php endif; ?>
+    <?php if ($activeSection === 'motivational_quotes'): ?>
+    <article class="panel settings-panel active" data-spa-section="motivational_quotes">
         <div class="panel-head">
             <div>
                 <h2><?= e(t('admin.motivational_quotes')) ?></h2>
@@ -1697,7 +1771,9 @@ try {
         </section>
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'xp' ? ' active' : '' ?>" data-spa-section="xp" <?= $activeSection === 'xp' ? '' : 'hidden' ?>>
+    <?php endif; ?>
+    <?php if ($activeSection === 'xp'): ?>
+    <article class="panel settings-panel active" data-spa-section="xp">
         <div class="panel-head">
             <div>
                 <h2><?= e(t('admin.xp_title')) ?></h2>
@@ -1776,7 +1852,9 @@ try {
         </section>
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'audit' ? ' active' : '' ?>" data-spa-section="audit" <?= $activeSection === 'audit' ? '' : 'hidden' ?>>
+    <?php endif; ?>
+    <?php if ($activeSection === 'audit'): ?>
+    <article class="panel settings-panel active" data-spa-section="audit">
         <div class="panel-head">
             <h2>Audit Log</h2>
             <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
@@ -1810,4 +1888,5 @@ try {
             <?php endif; ?>
         </div>
     </article>
+    <?php endif; ?>
 </section>

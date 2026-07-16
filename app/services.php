@@ -5868,7 +5868,9 @@ function achievement_user_count(PDO $pdo, string $table, string $where, array $p
 function achievement_user_has_complete_week_without_failures(array $metric): bool
 {
     foreach ((array) ($metric['weekly'] ?? []) as $week) {
-        if ((string) ($week['status'] ?? '') === 'complete' && (int) ($week['total_failures'] ?? 0) === 0) {
+        if ((string) ($week['status'] ?? '') === 'complete'
+            && (int) ($week['total_failures'] ?? 0) === 0
+            && week_has_activity($week)) {
             return true;
         }
     }
@@ -5879,7 +5881,9 @@ function achievement_user_has_complete_week_without_failures(array $metric): boo
 function achievement_user_has_clean_week(array $metric): bool
 {
     foreach ((array) ($metric['weekly'] ?? []) as $week) {
-        if ((string) ($week['status'] ?? '') === 'complete' && (float) ($week['penalty'] ?? 0) <= 0.0) {
+        if ((string) ($week['status'] ?? '') === 'complete'
+            && (int) ($week['total_failures'] ?? 0) === 0
+            && week_has_activity($week)) {
             return true;
         }
     }
@@ -6669,7 +6673,9 @@ function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $t
         }
         if (isset($byTrigger['perfect_week'])) {
             foreach (($metric['weekly'] ?? []) as $week) {
-                if (($week['status'] ?? '') === 'complete' && (int) ($week['total_failures'] ?? 0) === 0) {
+                if (($week['status'] ?? '') === 'complete'
+                    && (int) ($week['total_failures'] ?? 0) === 0
+                    && week_has_activity($week)) {
                     award_achievement($pdo, (int) $byTrigger['perfect_week']['id'], $userId, null, null, 'Automatic unlock.');
                     break;
                 }

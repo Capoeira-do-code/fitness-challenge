@@ -182,7 +182,9 @@ const saveRowAs = async (page, userId) => {
     /* ---------------- Layout persistence -------------------------------------- */
     await page.goto(`${BASE}/?page=dashboard&layout_edit=1`);
     await page.waitForLoadState('networkidle');
-    const orderBefore = await page.$$eval('[data-dashboard-layout-item] input[name="dashboard_widgets[]"]', (e) => e.map((x) => x.value));
+    // Mobile home surfaces share the preference payload, but they are fixed and do
+    // not render as cards in the desktop feed. Reorder and compare the same scope.
+    const orderBefore = await page.$$eval('[data-dashboard-layout-item][data-layout-scope="desktop"] input[name="dashboard_widgets[]"]', (e) => e.map((x) => x.value));
     const visibilityDetails = page.locator('.dashboard-layout-visibility');
     if (await visibilityDetails.getAttribute('open') === null) {
         await visibilityDetails.locator(':scope > summary').click();
@@ -349,11 +351,11 @@ const saveRowAs = async (page, userId) => {
         items: document.querySelectorAll('.settings-nav-item').length,
         forms: document.querySelectorAll('.settings-index-screen form').length,
     }));
-    check('Settings home is navigation rather than one giant form', settingsIndex.items >= 6 && settingsIndex.forms === 0,
+    check('Settings home is navigation rather than one giant form', settingsIndex.items >= 7 && settingsIndex.forms === 0,
         `${settingsIndex.items} sections, ${settingsIndex.forms} forms`);
 
     const settingsRouteProblems = [];
-    for (const view of ['avatar', 'goals', 'preferences', 'privacy', 'integrations', 'account']) {
+    for (const view of ['avatar', 'body', 'goals', 'preferences', 'privacy', 'integrations', 'account']) {
         await page.goto(`${BASE}/?page=settings&view=${view}`);
         await page.waitForLoadState('networkidle');
         const routeState = await page.evaluate(() => ({
@@ -365,6 +367,59 @@ const saveRowAs = async (page, userId) => {
     }
     check('Every Settings section has a heading, back navigation and no overflow',
         settingsRouteProblems.length === 0, settingsRouteProblems.join(', '));
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${BASE}/?page=settings&view=body`);
+    await page.waitForLoadState('networkidle');
+    const bodySettingsState = await page.evaluate(() => ({
+        summaryItems: document.querySelectorAll('.settings-weight-summary > span').length,
+        targetInput: Boolean(document.querySelector('input[name="ideal_weight"]')),
+        history: Boolean(document.querySelector('.settings-weight-history')),
+        dailyLink: document.querySelector('.settings-weight-actions a')?.getAttribute('href') || '',
+    }));
+    check('Weight settings connect summary, goal, history and the daily log',
+        bodySettingsState.summaryItems === 3 && bodySettingsState.targetInput
+            && bodySettingsState.history && bodySettingsState.dailyLink.includes('page=entries')
+            && bodySettingsState.dailyLink.includes('#entry-weight'),
+        JSON.stringify(bodySettingsState));
+
+    await page.goto(`${BASE}/?page=settings&view=avatar`);
+    await page.waitForLoadState('networkidle');
+    const avatarSettingsState = await page.evaluate(() => {
+        const submit = document.querySelector('[data-image-crop-submit]');
+        const actions = document.querySelector('.settings-avatar-submit-actions');
+        const position = actions ? getComputedStyle(actions).position : '';
+        return {
+            preview: Boolean(document.querySelector('.settings-avatar-preview-stage')),
+            sources: document.querySelectorAll('.settings-avatar-source-option').length,
+            submitDisabled: submit instanceof HTMLButtonElement && submit.disabled,
+            staticActions: position !== 'fixed' && position !== 'sticky',
+        };
+    });
+    check('Profile photo editor exposes preview, file/camera sources and safe save state',
+        avatarSettingsState.preview && avatarSettingsState.sources === 2
+            && avatarSettingsState.submitDisabled && avatarSettingsState.staticActions,
+        JSON.stringify(avatarSettingsState));
+
+    await page.goto(`${BASE}/?page=entries&mode=data`);
+    await page.waitForLoadState('networkidle');
+    const entryWeightState = await page.evaluate(() => {
+        const control = document.querySelector('#entry-weight');
+        const input = control?.querySelector('input[name="weight"]');
+        const historyLink = control?.querySelector('a');
+        const rect = historyLink?.getBoundingClientRect();
+        return {
+            control: Boolean(control),
+            bounds: input?.getAttribute('min') === '25' && input?.getAttribute('max') === '400'
+                && input?.getAttribute('step') === '0.1',
+            historyLink: historyLink?.getAttribute('href') || '',
+            touchHeight: Math.round(rect?.height || 0),
+        };
+    });
+    check('Daily weight control is bounded, reachable and linked to its history',
+        entryWeightState.control && entryWeightState.bounds
+            && entryWeightState.historyLink.includes('view=body') && entryWeightState.touchHeight >= 44,
+        JSON.stringify(entryWeightState));
 
     await page.goto(`${BASE}/?page=competitions`);
     await page.waitForLoadState('networkidle');
@@ -405,7 +460,7 @@ const saveRowAs = async (page, userId) => {
 
     await page.goto(`${BASE}/?page=week_editor&range=week`);
     await page.waitForLoadState('networkidle');
-    const habitToggle = page.locator('[data-custom-habit-toggle]').first();
+    const habitToggle = page.locator('[data-week-day-card]:not(.is-mobile-collapsed) [data-custom-habit-toggle]').first();
     if (await habitToggle.count()) {
         await habitToggle.click();
         const habitPanel = await page.evaluate(() => {
@@ -423,7 +478,8 @@ const saveRowAs = async (page, userId) => {
     /* ---------------- No horizontal overflow ----------------------------------- */
     const pages = ['dashboard', 'entries&mode=data', 'week_editor&range=week', 'analytics', 'gallery',
         'profile', 'friends', 'duels', 'competitions', 'workouts', 'team', 'achievements', 'challenges',
-        'settings', 'settings&view=avatar', 'settings&view=preferences', 'settings&view=privacy'];
+        'settings', 'settings&view=avatar', 'settings&view=body', 'settings&view=preferences',
+        'settings&view=privacy', 'settings&view=integrations'];
     let overflow = [];
     for (const width of [320, 360, 390, 430, 768, 1024, 1280, 1440]) {
         await page.setViewportSize({ width, height: 900 });
@@ -536,14 +592,15 @@ const saveRowAs = async (page, userId) => {
         const itemHeights = [...panel.querySelectorAll('[data-menu-view="main"]:not([hidden]) .mobile-quick-nav, [data-menu-view="main"]:not([hidden]) .mobile-quick-action')]
             .map((item) => item.getBoundingClientRect().height);
         return {
-            valid: panelRect.width >= innerWidth - 22 && panelRect.left >= 0
-                && panelRect.right <= innerWidth && panelRect.bottom <= navRect.top
+            valid: panelRect.width >= innerWidth - 36
+                && Math.abs((panelRect.left + panelRect.right) / 2 - innerWidth / 2) <= 2
+                && panelRect.left >= 0 && panelRect.right <= innerWidth && panelRect.bottom <= navRect.top
                 && Math.min(...itemHeights) >= 44,
             width: Math.round(panelRect.width),
             minItem: Math.round(Math.min(...itemHeights)),
         };
     });
-    check('Mobile quick actions form a full-width touch sheet', mobileQuickMenu.valid,
+    check('Mobile quick actions form a centered touch sheet', mobileQuickMenu.valid,
         `width: ${mobileQuickMenu.width}px, min item: ${mobileQuickMenu.minItem}px`);
 
     await touchPage.locator('.mobile-sheet-backdrop').click({ position: { x: 4, y: 4 } });
@@ -651,6 +708,32 @@ const saveRowAs = async (page, userId) => {
         .map((heading) => heading.textContent.trim()));
     check('Notifications has one visible mobile page heading', visibleNotificationHeadings.length === 1,
         visibleNotificationHeadings.join(' | '));
+    const notificationTabs = touchPage.locator('.notifications-filter-tabs > a');
+    check('Notifications exposes All, Unread and Needs action filters',
+        await notificationTabs.count() === 3 && await touchPage.locator('.notifications-filter-tabs > a[aria-current="page"]').count() === 1,
+        `${await notificationTabs.count()} filters`);
+    const notificationTools = touchPage.locator('details.notifications-tools');
+    check('Notification management starts collapsed', !(await notificationTools.evaluate((details) => details.open))
+        && await notificationTools.locator('.notifications-toolbar:visible').count() === 0);
+    await notificationTools.locator(':scope > summary').click();
+    const notificationToolState = await notificationTools.evaluate((details) => {
+        const buttons = [...details.querySelectorAll('.notifications-toolbar .btn')];
+        return {
+            buttons: buttons.length,
+            minHeight: Math.min(...buttons.map((button) => button.getBoundingClientRect().height)),
+            overflow: details.scrollWidth > details.clientWidth + 1,
+        };
+    });
+    check('Notification management reveals three full-width touch actions',
+        notificationToolState.buttons === 3 && notificationToolState.minHeight >= 42 && !notificationToolState.overflow,
+        JSON.stringify(notificationToolState));
+    await notificationTabs.nth(1).click();
+    // Navigation is PJAX-backed, so a load-state wait can resolve before the URL
+    // and swapped fragment have changed.
+    await touchPage.waitForURL((url) => url.searchParams.get('filter') === 'unread');
+    check('Notification filter updates the URL and active state',
+        new URL(touchPage.url()).searchParams.get('filter') === 'unread'
+            && await touchPage.locator('.notifications-filter-tabs a[aria-current="page"][href*="filter=unread"]').count() === 1);
     await touchContext.close();
     check('No uncaught JS errors', jsErrors.length === 0, jsErrors.slice(0, 2).join(' | '));
 

@@ -5,8 +5,8 @@ declare(strict_types=1);
 $archives = is_array($archives ?? null) ? array_values((array) $archives) : [];
 ?>
 <section class="screen stack-lg">
-    <div class="hero-panel">
-        <div>
+    <div class="hero-panel app-page-hero">
+        <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('nav.team')) ?></p>
             <h1><?= e(t('challenges.title')) ?></h1>
             <p class="muted"><?= e(t('challenges.subtitle')) ?></p>

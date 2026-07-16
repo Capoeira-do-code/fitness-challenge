@@ -6,8 +6,8 @@ $selectedUser = $selectedMetric['user'];
 $displayValue = is_float($currentValue) ? rtrim(rtrim(number_format($currentValue, 2, '.', ''), '0'), '.') : (string) $currentValue;
 ?>
 <section class="screen stack-lg">
-    <div class="hero-panel">
-        <div>
+    <div class="hero-panel app-page-hero">
+        <div class="hero-copy">
             <p class="eyebrow"><?= e(t('metric.detail_title')) ?></p>
             <h1><?= e((string) $metricLabel) ?></h1>
             <p class="muted"><?= e(t('metric.current_value')) ?>: <strong><?= e($displayValue . (string) $currentValueSuffix) ?></strong></p>

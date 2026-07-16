@@ -163,7 +163,7 @@ const overflow = async (page) => page.evaluate(() => Math.max(
             await page.waitForFunction(() => document.body.dataset.theme === 'light');
         }
 
-        await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings`, { waitUntil: 'networkidle' });
+        await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings&settings_view=media`, { waitUntil: 'networkidle' });
         const editForm = page.locator('form.workouts-routine-form');
         ensure(await editForm.locator('[data-workout-image-preview]').isVisible(), 'editor recupera la foto guardada');
         ensure(await editForm.locator('[data-workout-video-preview] iframe').count() === 1, 'editor recupera la previsualización de vídeo');
@@ -178,7 +178,7 @@ const overflow = async (page) => page.evaluate(() => Math.max(
         ensure(await page.locator('.workouts-routine-summary-cover img').evaluate((image) => getComputedStyle(image).objectPosition === '50% 82%'), 'nuevo encuadre inferior persiste en la rutina');
         await page.screenshot({ path: path.join(reportDir, 'ui-routine-media-focus-mobile.png'), fullPage: true });
 
-        await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings`, { waitUntil: 'networkidle' });
+        await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings&settings_view=media`, { waitUntil: 'networkidle' });
         const videoModeForm = page.locator('form.workouts-routine-form');
         await videoModeForm.locator('input[name="cover_mode"][value="video"] + span').click();
         await Promise.all([
@@ -197,7 +197,7 @@ const overflow = async (page) => page.evaluate(() => Math.max(
             for (const url of [
                 '/?page=workouts',
                 `/?page=workouts&routine_id=${routineId}`,
-                `/?page=workouts&routine_id=${routineId}&section=settings`,
+                `/?page=workouts&routine_id=${routineId}&section=settings&settings_view=media`,
             ]) {
                 await page.goto(`${BASE}${url}`, { waitUntil: 'networkidle' });
                 const excess = await overflow(page);
@@ -207,7 +207,7 @@ const overflow = async (page) => page.evaluate(() => Math.max(
         check('portadas de rutina sin overflow de 320 a 1440 px', responsiveFailures.length === 0, responsiveFailures.join(', '));
 
         await page.setViewportSize({ width: 390, height: 844 });
-        await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings`, { waitUntil: 'networkidle' });
+        await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings&settings_view=management`, { waitUntil: 'networkidle' });
         const deleteForm = page.locator('.workouts-routine-danger form').filter({ has: page.locator('input[name="action"][value="routine_delete"]') });
         await Promise.all([
             page.waitForURL((url) => !url.searchParams.has('routine_id')),
@@ -230,7 +230,7 @@ const overflow = async (page) => page.evaluate(() => Math.max(
         }
         if (routineId > 0 && !page.isClosed()) {
             try {
-                await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings`, { waitUntil: 'networkidle', timeout: 5000 });
+                await page.goto(`${BASE}/?page=workouts&routine_id=${routineId}&section=settings&settings_view=management`, { waitUntil: 'networkidle', timeout: 5000 });
                 const cleanup = page.locator('.workouts-routine-danger form').filter({ has: page.locator('input[name="action"][value="routine_delete"]') });
                 if (await cleanup.count()) await cleanup.locator('button[type="submit"]').click({ timeout: 3000 });
             } catch (_) { /* best-effort cleanup */ }
