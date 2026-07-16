@@ -52,7 +52,7 @@ function social_notify(PDO $pdo, int $userId, string $kind, string $title, strin
     // Also push to Telegram if the recipient is linked and opted in. Queued to an
     // outbox so the web request never blocks on a Telegram API call.
     if (function_exists('telegram_enqueue')) {
-        telegram_enqueue($pdo, $userId, trim($title . "\n" . $message));
+        telegram_enqueue($pdo, $userId, trim($title . "\n" . $message), $kind);
     }
 }
 

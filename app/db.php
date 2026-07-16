@@ -101,6 +101,7 @@ function initialize_database(PDO $pdo, array $config): void
             primary_goals_spec TEXT,
             dashboard_view TEXT NOT NULL DEFAULT "current_week",
             dashboard_layout_json TEXT,
+            workout_library_layout TEXT NOT NULL DEFAULT "cards",
             team_layout_json TEXT,
             analytics_layout_json TEXT,
             meal_calendar_view TEXT NOT NULL DEFAULT "week",
@@ -707,10 +708,12 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'dashboard_view', 'TEXT NOT NULL DEFAULT "current_week"');
     ensure_column($pdo, 'users', 'dashboard_layout_json', 'TEXT');
     ensure_column($pdo, 'users', 'dashboard_widgets_known', 'TEXT');
+    ensure_column($pdo, 'users', 'workout_library_layout', 'TEXT NOT NULL DEFAULT "cards"');
     ensure_column($pdo, 'users', 'team_layout_json', 'TEXT');
     ensure_column($pdo, 'users', 'analytics_layout_json', 'TEXT');
     ensure_column($pdo, 'users', 'analytics_view', 'TEXT NOT NULL DEFAULT "total"');
     ensure_column($pdo, 'users', 'profile_layout_json', 'TEXT');
+    ensure_column($pdo, 'users', 'profile_widgets_known', 'TEXT');
     ensure_column($pdo, 'users', 'avatar_frame', "TEXT NOT NULL DEFAULT 'none'");
     // The team whose data the user is currently looking at. Persisted so every page
     // agrees on which team is active instead of silently falling back to the first.
@@ -733,6 +736,7 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'telegram_tz', "TEXT NOT NULL DEFAULT ''");
     ensure_column($pdo, 'users', 'telegram_notify_duel', 'INTEGER NOT NULL DEFAULT 1');
     ensure_column($pdo, 'users', 'telegram_notify_streak', 'INTEGER NOT NULL DEFAULT 1');
+    ensure_column($pdo, 'users', 'telegram_notify_social', 'INTEGER NOT NULL DEFAULT 1');
     ensure_column($pdo, 'users', 'telegram_last_reminded_on', 'TEXT');
     ensure_column($pdo, 'users', 'telegram_last_reminded_at', 'TEXT');
     ensure_column($pdo, 'users', 'telegram_reminder_count', 'INTEGER NOT NULL DEFAULT 0');
@@ -1072,6 +1076,12 @@ function seed_default_achievements(PDO $pdo): void
         'team_everyone_workout_week' => 'users',
         'team_photo_wall_20' => 'camera',
         'team_1000_calories_burned' => 'flame',
+        'rank_bronze' => 'medal',
+        'rank_silver' => 'medal',
+        'rank_gold' => 'trophy',
+        'rank_platinum' => 'trophy',
+        'rank_diamond' => 'sparkles',
+        'rank_elite' => 'sparkles',
     ];
     $achievements = [
         ['first_log', 'user', 'first_log', [
@@ -1452,6 +1462,36 @@ function seed_default_achievements(PDO $pdo): void
             'es' => ['Dinastia', 'Gana tres competiciones de equipos.', ''],
             'it' => ['Dinastia', 'Vinci tre competizioni a squadre.', ''],
         ]],
+        ['rank_bronze', 'user', 'strength_rank', [
+            'en' => ['Bronze Strength', 'Reach Bronze in the ranked training system.', ''],
+            'es' => ['Fuerza de bronce', 'Alcanza Bronce en el sistema ranked de entrenamiento.', ''],
+            'it' => ['Forza bronzo', 'Raggiungi Bronzo nel sistema ranked di allenamento.', ''],
+        ]],
+        ['rank_silver', 'user', 'strength_rank', [
+            'en' => ['Silver Strength', 'Reach Silver in the ranked training system.', ''],
+            'es' => ['Fuerza de plata', 'Alcanza Plata en el sistema ranked de entrenamiento.', ''],
+            'it' => ['Forza argento', 'Raggiungi Argento nel sistema ranked di allenamento.', ''],
+        ]],
+        ['rank_gold', 'user', 'strength_rank', [
+            'en' => ['Gold Strength', 'Reach Gold in the ranked training system.', ''],
+            'es' => ['Fuerza de oro', 'Alcanza Oro en el sistema ranked de entrenamiento.', ''],
+            'it' => ['Forza oro', 'Raggiungi Oro nel sistema ranked di allenamento.', ''],
+        ]],
+        ['rank_platinum', 'user', 'strength_rank', [
+            'en' => ['Platinum Strength', 'Reach Platinum in the ranked training system.', ''],
+            'es' => ['Fuerza de platino', 'Alcanza Platino en el sistema ranked de entrenamiento.', ''],
+            'it' => ['Forza platino', 'Raggiungi Platino nel sistema ranked di allenamento.', ''],
+        ]],
+        ['rank_diamond', 'user', 'strength_rank', [
+            'en' => ['Diamond Strength', 'Reach Diamond in the ranked training system.', ''],
+            'es' => ['Fuerza de diamante', 'Alcanza Diamante en el sistema ranked de entrenamiento.', ''],
+            'it' => ['Forza diamante', 'Raggiungi Diamante nel sistema ranked di allenamento.', ''],
+        ]],
+        ['rank_elite', 'user', 'strength_rank', [
+            'en' => ['Elite Strength', 'Reach Elite in the ranked training system.', ''],
+            'es' => ['Fuerza elite', 'Alcanza Elite en el sistema ranked de entrenamiento.', ''],
+            'it' => ['Forza elite', 'Raggiungi Elite nel sistema ranked di allenamento.', ''],
+        ]],
     ];
 
     foreach ($achievements as [$code, $scope, $trigger, $translations]) {
@@ -1516,6 +1556,44 @@ function seed_default_achievements(PDO $pdo): void
                 ]
             );
         }
+    }
+
+    $rankedAchievementTargets = [
+        'rank_bronze' => 25.0,
+        'rank_silver' => 45.0,
+        'rank_gold' => 70.0,
+        'rank_platinum' => 100.0,
+        'rank_diamond' => 140.0,
+        'rank_elite' => 180.0,
+    ];
+    foreach ($rankedAchievementTargets as $code => $target) {
+        $achievement = db_fetch_one($pdo, 'SELECT id FROM achievements WHERE code = :code', [':code' => $code]);
+        $achievementId = (int) ($achievement['id'] ?? 0);
+        if ($achievementId <= 0) {
+            continue;
+        }
+        $existingRule = db_fetch_one(
+            $pdo,
+            'SELECT id FROM achievement_rules WHERE achievement_id = :achievement_id AND active = 1 LIMIT 1',
+            [':achievement_id' => $achievementId]
+        );
+        if ($existingRule !== null) {
+            continue;
+        }
+        db_execute(
+            $pdo,
+            'INSERT INTO achievement_rules (achievement_id, metric_key, operator, target_value, "window", active, created_at, updated_at)
+             VALUES (:achievement_id, :metric_key, :operator, :target_value, :window, 1, :created_at, :updated_at)',
+            [
+                ':achievement_id' => $achievementId,
+                ':metric_key' => 'strength_rank',
+                ':operator' => '>=',
+                ':target_value' => $target,
+                ':window' => 'total',
+                ':created_at' => $now,
+                ':updated_at' => $now,
+            ]
+        );
     }
 }
 

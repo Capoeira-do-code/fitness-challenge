@@ -18,8 +18,8 @@ $penaltyClass = static function (int|float $penalty): string {
 };
 ?>
 <section class="screen stack-lg penalties-page">
-    <div class="hero-panel penalties-hero">
-        <div>
+    <div class="hero-panel app-page-hero penalties-hero">
+        <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('metric.penalty')) ?></p>
             <h1><?= e(t('penalties.title')) ?></h1>
             <p class="muted"><?= e(t('penalties.subtitle')) ?></p>

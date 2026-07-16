@@ -25,8 +25,8 @@ $statusClass = static function (string $status): string {
 };
 ?>
 <section class="screen stack-lg">
-    <div class="hero-panel">
-        <div>
+    <div class="hero-panel app-page-hero">
+        <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('metric.strikes')) ?></p>
             <h1><?= e(t('strikes.detail_title')) ?></h1>
             <p class="muted"><?= e(t('strikes.detail_subtitle')) ?></p>

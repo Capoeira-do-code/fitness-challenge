@@ -2190,6 +2190,35 @@ function format_upload_size(int $bytes): string
     return (string) $safeBytes . ' B';
 }
 
+/**
+ * Flatten one PHP upload group, supporting both a classic single input and a
+ * multiple input named with []. Entries without a selected file are omitted.
+ *
+ * @return array<int,array{name:mixed,type:mixed,tmp_name:mixed,error:mixed,size:mixed}>
+ */
+function normalize_uploaded_file_list(array $files): array
+{
+    $names = $files['name'] ?? null;
+    if (!is_array($names)) {
+        return (int) ($files['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE ? [] : [$files];
+    }
+    $result = [];
+    foreach (array_keys($names) as $index) {
+        $item = [
+            'name' => $files['name'][$index] ?? '',
+            'type' => $files['type'][$index] ?? '',
+            'tmp_name' => $files['tmp_name'][$index] ?? '',
+            'error' => $files['error'][$index] ?? UPLOAD_ERR_NO_FILE,
+            'size' => $files['size'][$index] ?? 0,
+        ];
+        if ((int) $item['error'] !== UPLOAD_ERR_NO_FILE) {
+            $result[] = $item;
+        }
+    }
+
+    return $result;
+}
+
 function save_uploaded_image(array $config, array $file, string $subDir, string $prefix, array $options = []): string
 {
     $errorCode = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
@@ -5524,7 +5553,7 @@ function normalize_achievement_rule_metric(string $metricKey, string $habitCode 
     $metricKey = str_replace([' ', '-'], '_', $metricKey);
     $habitCode = trim(strtolower($habitCode));
     $habitCode = str_replace([' ', '-'], '_', $habitCode);
-    $allowed = ['steps', 'distance_km', 'km', 'workouts', 'score', 'strikes', 'penalties', 'weight'];
+    $allowed = ['steps', 'distance_km', 'km', 'workouts', 'score', 'strikes', 'penalties', 'weight', 'strength_rank'];
 
     if ($metricKey === 'distance') {
         $metricKey = 'distance_km';
@@ -5767,6 +5796,7 @@ function achievement_metric_unit(string $metricKey): string
         'strikes' => 'strikes',
         'penalties' => 'EUR',
         'weight' => 'kg',
+        'strength_rank' => 'rank points',
         default => '',
     };
 }
@@ -5838,7 +5868,9 @@ function achievement_user_count(PDO $pdo, string $table, string $where, array $p
 function achievement_user_has_complete_week_without_failures(array $metric): bool
 {
     foreach ((array) ($metric['weekly'] ?? []) as $week) {
-        if ((string) ($week['status'] ?? '') === 'complete' && (int) ($week['total_failures'] ?? 0) === 0) {
+        if ((string) ($week['status'] ?? '') === 'complete'
+            && (int) ($week['total_failures'] ?? 0) === 0
+            && week_has_activity($week)) {
             return true;
         }
     }
@@ -5849,7 +5881,9 @@ function achievement_user_has_complete_week_without_failures(array $metric): boo
 function achievement_user_has_clean_week(array $metric): bool
 {
     foreach ((array) ($metric['weekly'] ?? []) as $week) {
-        if ((string) ($week['status'] ?? '') === 'complete' && (float) ($week['penalty'] ?? 0) <= 0.0) {
+        if ((string) ($week['status'] ?? '') === 'complete'
+            && (int) ($week['total_failures'] ?? 0) === 0
+            && week_has_activity($week)) {
             return true;
         }
     }
@@ -6639,7 +6673,9 @@ function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $t
         }
         if (isset($byTrigger['perfect_week'])) {
             foreach (($metric['weekly'] ?? []) as $week) {
-                if (($week['status'] ?? '') === 'complete' && (int) ($week['total_failures'] ?? 0) === 0) {
+                if (($week['status'] ?? '') === 'complete'
+                    && (int) ($week['total_failures'] ?? 0) === 0
+                    && week_has_activity($week)) {
                     award_achievement($pdo, (int) $byTrigger['perfect_week']['id'], $userId, null, null, 'Automatic unlock.');
                     break;
                 }
@@ -6945,6 +6981,24 @@ function metric_value_for_rule(array $metrics, string $metricKey, string $window
 {
     $metricKey = normalize_achievement_rule_metric($metricKey);
     $window = normalize_achievement_rule_window($window);
+
+    if ($metricKey === 'strength_rank') {
+        $rankPdo = db_current();
+        if (!$rankPdo instanceof PDO || !function_exists('wk_overall_rank_for_user')) {
+            return 0.0;
+        }
+        workouts_ensure_schema($rankPdo);
+        $scores = [];
+        foreach ($metrics as $metric) {
+            $rankUserId = (int) ($metric['user']['id'] ?? 0);
+            if ($rankUserId <= 0) {
+                continue;
+            }
+            $scores[] = (float) (wk_overall_rank_for_user($rankPdo, $rankUserId)['score'] ?? 0.0);
+        }
+
+        return $scores !== [] ? array_sum($scores) / count($scores) : 0.0;
+    }
 
     if ($window === 'current_week') {
         $value = 0.0;

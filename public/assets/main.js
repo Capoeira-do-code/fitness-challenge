@@ -16,8 +16,6 @@
     const bottomNav = document.querySelector('.bottom-nav');
     const floatingLog = document.querySelector('.floating-log');
     if (bottomNav || floatingLog) {
-        const pinnedBottomNavPages = new Set(['gallery', 'photo']);
-        const isPinnedBottomNavPage = () => pinnedBottomNavPages.has(String(document.body?.dataset?.page || ''));
         const syncMobileBottomNavHeight = () => {
             const navHeight = bottomNav instanceof HTMLElement
                 ? Math.ceil(bottomNav.getBoundingClientRect().height)
@@ -33,16 +31,11 @@
         let navHidden = false;
         let ticking = false;
         const toggleNav = () => {
-            if (isPinnedBottomNavPage()) {
-                [bottomNav, floatingLog].forEach((element) => {
-                    if (!element) {
-                        return;
-                    }
-                    element.classList.remove('nav-hidden', 'is-hidden');
-                });
-                navHidden = false;
-                ticking = false;
-                return;
+            // The mobile bottom navigation is the app's one global sticky surface.
+            // It must never disappear halfway through a task; only the legacy desktop
+            // floating action may collapse while scrolling.
+            if (bottomNav instanceof HTMLElement) {
+                bottomNav.classList.remove('nav-hidden', 'is-hidden');
             }
             const currentY = Math.max(0, window.scrollY);
             const goingDown = currentY > lastY + 6;
@@ -55,7 +48,7 @@
                     floatingLog.open = false;
                     floatingLog.classList.remove('is-open');
                 }
-                [bottomNav, floatingLog].forEach((element) => {
+                [floatingLog].forEach((element) => {
                     if (!element) {
                         return;
                     }
@@ -75,6 +68,24 @@
                 ticking = true;
             }
         }, { passive: true });
+
+        const syncMobileKeyboardState = () => {
+            const viewport = window.visualViewport;
+            const active = document.activeElement;
+            const acceptsText = active instanceof HTMLInputElement
+                || active instanceof HTMLTextAreaElement
+                || active instanceof HTMLSelectElement
+                || (active instanceof HTMLElement && active.isContentEditable);
+            const occluded = viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0;
+            document.body.classList.toggle('mobile-keyboard-open', acceptsText && occluded > 140);
+        };
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', syncMobileKeyboardState, { passive: true });
+            window.visualViewport.addEventListener('scroll', syncMobileKeyboardState, { passive: true });
+        }
+        document.addEventListener('focusin', syncMobileKeyboardState);
+        document.addEventListener('focusout', () => window.setTimeout(syncMobileKeyboardState, 0));
+        syncMobileKeyboardState();
     }
 
     let pageLoadingCount = 0;
@@ -1355,60 +1366,23 @@
             }
         };
 
-        const navigate = (root, href) => {
-            document.body.classList.add('is-view-changing');
-            window.__fcSpaDepth = (window.__fcSpaDepth || 0) + 1;
-            history.pushState({}, '', href);
-            applyState(root, href);
-            initAdminAchievementFields();
-            window.scrollTo(0, 0);
-            clearMobileViewTransitionState(true);
-            queueMobileViewTransitionStateCleanup(350, true);
-        };
-
+        // Section links used to reveal pre-rendered panels in place. That left
+        // root-only UI (the Profile hub, hero and widget heading) mounted above
+        // the selected section, so a tap appeared to merely make the page taller.
+        // The shared PJAX router now owns these links and replaces <main> with the
+        // server-rendered URL state. This initializer only normalizes the initial
+        // document and remains a safe no-JS/full-load fallback.
+        if (typeof window.__fcSpaPopstateHandler === 'function') {
+            window.removeEventListener('popstate', window.__fcSpaPopstateHandler);
+        }
+        window.__fcSpaPopstateHandler = null;
         roots.forEach((root) => {
-            if (!(root instanceof HTMLElement) || root.dataset.spaNavigationReady === '1') {
-                applyState(root, window.location.href);
+            if (!(root instanceof HTMLElement)) {
                 return;
             }
             root.dataset.spaNavigationReady = '1';
             applyState(root, window.location.href);
-            root.addEventListener('click', (event) => {
-                const target = event.target;
-                if (!(target instanceof Element)) {
-                    return;
-                }
-                const link = target.closest('a[data-spa-link], a[data-spa-back]');
-                if (!(link instanceof HTMLAnchorElement)) {
-                    return;
-                }
-                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-                    return;
-                }
-                event.preventDefault();
-                // Smart back: when there is in-app history, return to the exact
-                // previous view (e.g. a goal opened from Home returns to Home,
-                // one opened from the list returns to the list). Falls back to
-                // the static href on a deep link with no in-app history.
-                if (link.matches('[data-spa-history]') && (window.__fcSpaDepth || 0) > 0) {
-                    history.back();
-                    return;
-                }
-                navigate(root, link.href);
-            });
         });
-
-        if (typeof window.__fcSpaPopstateHandler === 'function') {
-            window.removeEventListener('popstate', window.__fcSpaPopstateHandler);
-        }
-        window.__fcSpaPopstateHandler = () => {
-            window.__fcSpaDepth = Math.max(0, (window.__fcSpaDepth || 0) - 1);
-            roots.forEach((root) => applyState(root, window.location.href));
-            initAdminAchievementFields();
-            clearMobileViewTransitionState(true);
-            queueMobileViewTransitionStateCleanup(350, true);
-        };
-        window.addEventListener('popstate', window.__fcSpaPopstateHandler);
     };
 
     const initProfileGoalsSection = () => {
@@ -2750,14 +2724,16 @@
                 return;
             }
 
-            const fileInput = form.querySelector('[data-image-crop-input]');
+            const fileInputs = Array.from(form.querySelectorAll('[data-image-crop-input]'))
+                .filter((input) => input instanceof HTMLInputElement);
             const outputInput = form.querySelector('[data-image-crop-output]');
             const cropper = form.querySelector('[data-image-cropper]');
             const canvas = form.querySelector('[data-image-crop-canvas]');
             const zoomInput = form.querySelector('[data-image-crop-zoom]');
             const emptyHint = form.querySelector('[data-image-crop-empty]');
+            const cropSubmit = form.querySelector('[data-image-crop-submit]');
 
-            if (!(fileInput instanceof HTMLInputElement)
+            if (fileInputs.length === 0
                 || !(outputInput instanceof HTMLInputElement)
                 || !(canvas instanceof HTMLCanvasElement)
                 || !(zoomInput instanceof HTMLInputElement)) {
@@ -2803,6 +2779,9 @@
 
                 if (!(state.img instanceof Image)) {
                     outputInput.value = '';
+                    if (cropSubmit instanceof HTMLButtonElement) {
+                        cropSubmit.disabled = true;
+                    }
                     if (cropper instanceof HTMLElement) {
                         cropper.hidden = true;
                     }
@@ -2848,15 +2827,19 @@
                 render();
             };
 
-            fileInput.addEventListener('change', () => {
+            fileInputs.forEach((fileInput) => fileInput.addEventListener('change', () => {
                 const selectedFile = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
                 if (!selectedFile) {
-                    state.img = null;
-                    render();
                     return;
                 }
+                fileInputs.forEach((otherInput) => {
+                    if (otherInput !== fileInput) otherInput.value = '';
+                });
                 if (cropper instanceof HTMLElement) {
                     cropper.hidden = false;
+                }
+                if (cropSubmit instanceof HTMLButtonElement) {
+                    cropSubmit.disabled = false;
                 }
 
                 const reader = new FileReader();
@@ -2866,7 +2849,7 @@
                     img.src = String(reader.result || '');
                 };
                 reader.readAsDataURL(selectedFile);
-            });
+            }));
 
             zoomInput.addEventListener('input', () => {
                 if (!(state.img instanceof Image)) {
@@ -3026,6 +3009,86 @@
         window.addEventListener('resize', window.__fcGalleryMonthOverlayResizeHandler, { passive: true });
     };
 
+    const initGalleryImageStates = (scope = document) => {
+        const images = scope.querySelectorAll('[data-gallery-image]:not([data-gallery-image-ready])');
+        images.forEach((image) => {
+            if (!(image instanceof HTMLImageElement)) {
+                return;
+            }
+            image.dataset.galleryImageReady = '1';
+            const tile = image.closest('.photos-gallery-tile');
+            if (!(tile instanceof HTMLElement)) {
+                return;
+            }
+            const markLoaded = () => {
+                tile.classList.remove('is-image-loading', 'is-image-error');
+                tile.querySelector('[data-gallery-image-error]')?.remove();
+            };
+            const markFailed = () => {
+                tile.classList.remove('is-image-loading');
+                tile.classList.add('is-image-error');
+                if (tile.querySelector('[data-gallery-image-error]')) {
+                    return;
+                }
+                const root = tile.closest('[data-gallery-recent-root]');
+                const fallback = document.createElement('span');
+                fallback.className = 'gallery-image-error';
+                fallback.dataset.galleryImageError = '';
+                fallback.textContent = String(root?.dataset.galleryImageErrorLabel || image.alt || 'Image unavailable');
+                tile.appendChild(fallback);
+            };
+            image.addEventListener('load', markLoaded, { once: true });
+            image.addEventListener('error', markFailed, { once: true });
+            if (image.complete) {
+                if (image.naturalWidth > 0) {
+                    markLoaded();
+                } else {
+                    markFailed();
+                }
+            }
+        });
+    };
+
+    const initCompactDisclosures = () => {
+        document.querySelectorAll('[data-versus-details-toggle]:not([data-disclosure-ready])').forEach((button) => {
+            if (!(button instanceof HTMLButtonElement)) {
+                return;
+            }
+            button.dataset.disclosureReady = '1';
+            button.addEventListener('click', () => {
+                const detailId = String(button.getAttribute('aria-controls') || '');
+                const detail = detailId !== '' ? document.getElementById(detailId) : button.parentElement?.querySelector('[data-versus-details]');
+                if (!(detail instanceof HTMLElement)) {
+                    return;
+                }
+                const expanded = button.getAttribute('aria-expanded') !== 'true';
+                button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                button.classList.toggle('is-expanded', expanded);
+                detail.hidden = !expanded;
+                const label = button.querySelector('[data-versus-details-label]');
+                if (label instanceof HTMLElement) {
+                    label.textContent = expanded ? String(label.dataset.labelClose || '') : String(label.dataset.labelOpen || '');
+                }
+            });
+        });
+        document.querySelectorAll('[data-quest-detail-toggle]:not([data-disclosure-ready])').forEach((button) => {
+            if (!(button instanceof HTMLButtonElement)) {
+                return;
+            }
+            button.dataset.disclosureReady = '1';
+            button.addEventListener('click', () => {
+                const detail = button.closest('.quest-item')?.querySelector('[data-quest-detail]');
+                if (!(detail instanceof HTMLElement)) {
+                    return;
+                }
+                const expanded = button.getAttribute('aria-expanded') !== 'true';
+                button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                button.classList.toggle('is-expanded', expanded);
+                detail.hidden = !expanded;
+            });
+        });
+    };
+
     const initGalleryRecentInfinite = () => {
         const root = document.querySelector('[data-gallery-recent-root]');
         if (!(root instanceof HTMLElement) || root.dataset.galleryRecentReady === '1') {
@@ -3034,6 +3097,8 @@
 
         const grid = root.querySelector('[data-gallery-recent-grid]');
         const loadMoreButton = root.querySelector('[data-gallery-recent-load-more]');
+        const loadError = root.querySelector('[data-gallery-load-error]');
+        const loadRetryButton = root.querySelector('[data-gallery-load-retry]');
         const sentinel = root.querySelector('[data-gallery-recent-sentinel]');
         if (!(grid instanceof HTMLElement)) {
             return;
@@ -3049,6 +3114,30 @@
         let hasMore = String(root.dataset.galleryHasMore || '0') === '1';
         let isLoading = false;
         let observer = null;
+        let loadingSkeletons = [];
+
+        const setLoadError = (visible) => {
+            root.classList.toggle('has-load-error', visible);
+            if (loadError instanceof HTMLElement) {
+                loadError.hidden = !visible;
+            }
+        };
+
+        const showLoadingSkeletons = () => {
+            const fragment = document.createDocumentFragment();
+            loadingSkeletons = Array.from({ length: 6 }, () => {
+                const skeleton = document.createElement('span');
+                skeleton.className = 'photos-gallery-tile gallery-tile-skeleton';
+                skeleton.setAttribute('aria-hidden', 'true');
+                fragment.appendChild(skeleton);
+                return skeleton;
+            });
+            grid.appendChild(fragment);
+        };
+        const clearLoadingSkeletons = () => {
+            loadingSkeletons.forEach((skeleton) => skeleton.remove());
+            loadingSkeletons = [];
+        };
 
         const setHasMore = (value) => {
             hasMore = value;
@@ -3085,6 +3174,7 @@
 
                 const thumbUrl = String(item.thumb_url || '').trim();
                 if (thumbUrl !== '') {
+                    link.classList.add('is-image-loading');
                     const image = document.createElement('img');
                     image.src = thumbUrl;
                     const thumbSrcset = String(item.thumb_srcset || '').trim();
@@ -3095,9 +3185,10 @@
                     image.width = 400;
                     image.height = 400;
                     image.alt = photoLabel;
-                    image.loading = itemIndex < 18 ? 'eager' : 'lazy';
-                    image.setAttribute('fetchpriority', itemIndex < 8 ? 'high' : 'low');
+                    image.loading = itemIndex < 6 ? 'eager' : 'lazy';
+                    image.setAttribute('fetchpriority', itemIndex < 3 ? 'high' : 'low');
                     image.decoding = 'async';
+                    image.dataset.galleryImage = '';
                     link.appendChild(image);
                 } else {
                     const empty = document.createElement('span');
@@ -3113,6 +3204,7 @@
                 fragment.appendChild(link);
             });
             grid.appendChild(fragment);
+            initGalleryImageStates(grid);
             initGalleryMonthOverlay();
         };
 
@@ -3122,6 +3214,9 @@
             }
             isLoading = true;
             root.classList.add('is-loading');
+            root.setAttribute('aria-busy', 'true');
+            setLoadError(false);
+            showLoadingSkeletons();
             try {
                 const url = new URL(endpoint, window.location.origin);
                 url.searchParams.set('user_id', String(Number.isFinite(userId) ? userId : 0));
@@ -3145,12 +3240,19 @@
                 nextPage = Number.isFinite(payloadNextPage) ? payloadNextPage : 0;
                 root.dataset.galleryNextPage = Number.isFinite(payloadNextPage) ? String(payloadNextPage) : '';
                 setHasMore(payloadHasMore && Number.isFinite(payloadNextPage) && payloadNextPage > 0);
+                if (hasMore && observer instanceof IntersectionObserver && sentinel instanceof HTMLElement) {
+                    observer.observe(sentinel);
+                }
             } catch (error) {
-                console.error('Gallery incremental load failed:', error);
-                setHasMore(false);
+                setLoadError(true);
+                if (observer instanceof IntersectionObserver) {
+                    observer.disconnect();
+                }
             } finally {
+                clearLoadingSkeletons();
                 isLoading = false;
                 root.classList.remove('is-loading');
+                root.removeAttribute('aria-busy');
             }
         };
 
@@ -3158,6 +3260,9 @@
             loadMoreButton.addEventListener('click', () => {
                 loadNextPage();
             });
+        }
+        if (loadRetryButton instanceof HTMLButtonElement) {
+            loadRetryButton.addEventListener('click', loadNextPage);
         }
 
         if (window.IntersectionObserver && sentinel instanceof HTMLElement && hasMore) {
@@ -4483,6 +4588,10 @@
 
             const layoutItemMatches = (node) => node instanceof Element && node.matches(itemSelector);
             const layoutItems = () => [...list.querySelectorAll(itemSelector)].filter((node) => node instanceof HTMLElement);
+            const scopedLayoutItems = (item) => {
+                const scope = item instanceof HTMLElement ? String(item.dataset.layoutScope || '') : '';
+                return scope === '' ? layoutItems() : layoutItems().filter((candidate) => candidate.dataset.layoutScope === scope);
+            };
             const refreshOrderInputs = () => {
                 if (orderInputSelector === '') {
                     return;
@@ -4499,8 +4608,9 @@
                 });
             };
             const updateLayoutMoveButtons = () => {
-                const items = layoutItems();
-                items.forEach((item, index) => {
+                layoutItems().forEach((item) => {
+                    const items = scopedLayoutItems(item);
+                    const index = items.indexOf(item);
                     item.querySelectorAll('[data-layout-move]').forEach((button) => {
                         if (!(button instanceof HTMLButtonElement)) {
                             return;
@@ -4534,16 +4644,16 @@
                 if (!(item instanceof HTMLElement)) {
                     return;
                 }
-                const items = layoutItems();
+                const items = scopedLayoutItems(item);
                 const index = items.indexOf(item);
                 if (index === -1) {
                     return;
                 }
                 if (direction === 'up' && index > 0) {
-                    list.insertBefore(item, items[index - 1]);
+                    items[index - 1].before(item);
                 }
                 if (direction === 'down' && index < items.length - 1) {
-                    list.insertBefore(items[index + 1], item);
+                    items[index + 1].after(item);
                 }
                 persistLayoutOrder();
             };
@@ -4586,20 +4696,6 @@
                 persistLayoutOrder();
             });
 
-            list.addEventListener('click', (event) => {
-                const target = event.target instanceof Element ? event.target.closest('[data-layout-move]') : null;
-                if (!(target instanceof HTMLButtonElement)) {
-                    return;
-                }
-                event.preventDefault();
-                event.stopPropagation();
-                const item = target.closest(itemSelector);
-                if (!(item instanceof HTMLElement)) {
-                    return;
-                }
-                moveItem(item, String(target.dataset.layoutMove || '').toLowerCase());
-            });
-
             list.addEventListener('dragover', (event) => {
                 event.preventDefault();
                 if (!(dragged instanceof HTMLElement)) {
@@ -4621,6 +4717,15 @@
                 }
                 button.dataset.layoutMoveTouchReady = '1';
                 button.style.touchAction = 'manipulation';
+                button.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    const item = button.closest(itemSelector);
+                    // Dashboard touch controls are handled by its live-preview
+                    // controller below so one click also updates the real cards.
+                    if (!isDashboardLayout && item instanceof HTMLElement) {
+                        moveItem(item, String(button.dataset.layoutMove || '').toLowerCase());
+                    }
+                });
                 button.addEventListener('touchstart', (event) => {
                     event.stopPropagation();
                 }, { passive: true });
@@ -4760,7 +4865,7 @@
             if (href === '' || href.startsWith('#') || href.startsWith('javascript:')) {
                 return true;
             }
-            if (link.closest('[data-spa-link], [data-spa-back], [data-analytics-filter], [data-dashboard-control-form], [data-calendar-view-option], [data-no-pjax]')) {
+            if (link.closest('[data-analytics-filter], [data-dashboard-control-form], [data-calendar-view-option], [data-no-pjax]')) {
                 return true;
             }
             return false;
@@ -4823,20 +4928,34 @@
             });
         };
 
-        const executeInsertedScripts = () => {
-            document.querySelectorAll('main.container script').forEach((script) => {
+        const executeInsertedScripts = async () => {
+            const scripts = [...document.querySelectorAll('main.container script')];
+            for (const script of scripts) {
                 if (!(script instanceof HTMLScriptElement) || !canRunInlineScript(script)) {
-                    return;
+                    continue;
+                }
+                const source = String(script.getAttribute('src') || '').trim();
+                if (source !== '' && /chart(?:\.umd(?:\.min)?|\.min)?\.js/i.test(source) && window.Chart) {
+                    script.remove();
+                    continue;
                 }
                 const nextScript = document.createElement('script');
                 Array.from(script.attributes).forEach((attribute) => {
                     nextScript.setAttribute(attribute.name, attribute.value);
                 });
-                if (!nextScript.src) {
+                if (source === '') {
                     nextScript.textContent = script.textContent || '';
+                    script.replaceWith(nextScript);
+                    continue;
                 }
+                nextScript.async = false;
+                const loaded = new Promise((resolve, reject) => {
+                    nextScript.addEventListener('load', resolve, { once: true });
+                    nextScript.addEventListener('error', () => reject(new Error(`Failed to load page script: ${source}`)), { once: true });
+                });
                 script.replaceWith(nextScript);
-            });
+                await loaded;
+            }
         };
 
         const persistScrollState = () => {
@@ -4902,7 +5021,13 @@
 
                 if (push) {
                     persistScrollState();
-                    history.pushState({ __fcPjax: true, scrollX: 0, scrollY: 0 }, '', targetUrl.toString());
+                    const currentDepth = Number(history.state?.__fcPjaxDepth || 0);
+                    history.pushState({
+                        __fcPjax: true,
+                        __fcPjaxDepth: Number.isFinite(currentDepth) ? currentDepth + 1 : 1,
+                        scrollX: 0,
+                        scrollY: 0,
+                    }, '', targetUrl.toString());
                 }
 
                 document.title = doc.title || document.title;
@@ -4920,13 +5045,26 @@
 
                 currentMain.replaceWith(nextMain);
                 syncBottomNav(doc);
-                executeInsertedScripts();
+                await executeInsertedScripts();
                 runPageHydration(false);
 
                 if (push) {
                     window.scrollTo(0, 0);
                 } else {
                     restoreScrollFromState(popState);
+                }
+                const navigationFocus = Array.from(nextMain.querySelectorAll(
+                    '[data-navigation-focus], .hierarchy-page-header h1, .profile-hero h1, .screen h1'
+                )).find((candidate) => candidate instanceof HTMLElement
+                    && !candidate.closest('[hidden]')
+                    && candidate.getClientRects().length > 0);
+                if (navigationFocus instanceof HTMLElement) {
+                    if (!navigationFocus.hasAttribute('tabindex')) {
+                        navigationFocus.setAttribute('tabindex', '-1');
+                    }
+                    window.setTimeout(() => {
+                        try { navigationFocus.focus({ preventScroll: true }); } catch (_) { navigationFocus.focus(); }
+                    }, 0);
                 }
                 document.dispatchEvent(new CustomEvent('fc:afterPageSwap', {
                     detail: {
@@ -4949,6 +5087,7 @@
         if (!history.state || typeof history.state !== 'object' || history.state.__fcPjax !== true) {
             history.replaceState({
                 __fcPjax: true,
+                __fcPjaxDepth: 0,
                 scrollX: window.scrollX,
                 scrollY: window.scrollY,
             }, '', window.location.href);
@@ -4964,6 +5103,11 @@
                 return;
             }
             event.preventDefault();
+            const pjaxDepth = Number(history.state?.__fcPjaxDepth || 0);
+            if (link.matches('[data-spa-history]') && Number.isFinite(pjaxDepth) && pjaxDepth > 0) {
+                history.back();
+                return;
+            }
             navigateInPage(url, { push: true });
         }, true);
 
@@ -5067,6 +5211,113 @@
         });
     };
 
+    const initWorkoutHubTabs = () => {
+        document.querySelectorAll('[data-workouts-tabs]').forEach((tabs) => {
+            if (!(tabs instanceof HTMLElement) || tabs.dataset.workoutsTabsReady === '1') {
+                return;
+            }
+            tabs.dataset.workoutsTabsReady = '1';
+            const revealActive = () => {
+                const active = tabs.querySelector('[aria-current="page"]');
+                if (!(active instanceof HTMLElement) || tabs.scrollWidth <= tabs.clientWidth) {
+                    return;
+                }
+                tabs.scrollLeft = Math.max(0, active.offsetLeft - ((tabs.clientWidth - active.offsetWidth) / 2));
+            };
+            window.requestAnimationFrame(revealActive);
+            window.addEventListener('resize', revealActive, { passive: true });
+        });
+    };
+
+    const initWorkoutLibraryFilters = () => {
+        const panel = document.querySelector('[data-workout-filter-panel]');
+        const openButton = document.querySelector('[data-workout-filter-open]');
+        if (!(panel instanceof HTMLElement) || !(openButton instanceof HTMLButtonElement)) {
+            return;
+        }
+        const closeButton = panel.querySelector('[data-workout-filter-close]');
+        const setOpen = (open) => {
+            const mobileSheet = window.matchMedia('(max-width: 700px)').matches;
+            panel.classList.toggle('is-open', open);
+            panel.setAttribute('aria-hidden', mobileSheet && !open ? 'true' : 'false');
+            document.body.classList.toggle('has-workout-filter-sheet', open);
+            if (open) {
+                window.requestAnimationFrame(() => panel.querySelector('select, input, button')?.focus());
+            }
+        };
+        if (panel.dataset.workoutFilterReady === '1') {
+            return;
+        }
+        panel.dataset.workoutFilterReady = '1';
+        openButton.addEventListener('click', () => setOpen(true));
+        closeButton?.addEventListener('click', () => setOpen(false));
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && panel.classList.contains('is-open')) {
+                setOpen(false);
+                openButton.focus();
+            }
+        });
+        setOpen(false);
+    };
+
+    const initContextualBack = () => {
+        const container = document.querySelector('[data-contextual-back-container]');
+        if (!(container instanceof HTMLElement)) {
+            return;
+        }
+        const depth = Number(window.history.state?.__fcPjaxDepth || 0);
+        let sameOriginReferrer = false;
+        try {
+            sameOriginReferrer = document.referrer !== ''
+                && new URL(document.referrer).origin === window.location.origin;
+        } catch (_) {
+            sameOriginReferrer = false;
+        }
+        container.hidden = !(Number.isFinite(depth) && depth > 0) && !sameOriginReferrer;
+    };
+
+    const initCollapsibleLists = () => {
+        document.querySelectorAll('[data-collapsible-list]').forEach((list) => {
+            if (!(list instanceof HTMLElement)) {
+                return;
+            }
+            const items = Array.from(list.querySelectorAll('[data-collapsible-item]'));
+            const toggle = list.querySelector('[data-collapsible-toggle]');
+            if (!(toggle instanceof HTMLButtonElement) || items.length === 0) {
+                if (toggle instanceof HTMLElement) {
+                    toggle.hidden = true;
+                }
+                return;
+            }
+            const limit = window.matchMedia('(max-width: 700px)').matches
+                ? Number(list.dataset.mobileCount || 4)
+                : Number(list.dataset.desktopCount || 6);
+            const hasOverflow = items.length > limit;
+            let expanded = list.dataset.collapsibleExpanded === '1';
+            const render = () => {
+                items.forEach((item, index) => {
+                    if (item instanceof HTMLElement) {
+                        item.hidden = !expanded && index >= limit;
+                    }
+                });
+                toggle.hidden = !hasOverflow;
+                toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                toggle.textContent = expanded
+                    ? (toggle.dataset.labelLess || '')
+                    : (toggle.dataset.labelMore || '');
+            };
+            if (list.dataset.collapsibleReady !== '1') {
+                list.dataset.collapsibleReady = '1';
+                toggle.addEventListener('click', () => {
+                    expanded = !expanded;
+                    list.dataset.collapsibleExpanded = expanded ? '1' : '0';
+                    render();
+                });
+            }
+            render();
+        });
+    };
+
     const runPageHydration = (includeOneTime = false) => {
         const safeInit = (initFn) => {
             try {
@@ -5083,6 +5334,10 @@
         safeInit(initLoginLocale);
         safeInit(initFlashNotifications);
         safeInit(initThemeToggle);
+        safeInit(initContextualBack);
+        safeInit(initCollapsibleLists);
+        safeInit(initWorkoutHubTabs);
+        safeInit(initWorkoutLibraryFilters);
         safeInit(initSpaNavigation);
         safeInit(initAdminAchievementFields);
         safeInit(initAchievementInfoModal);
@@ -5098,7 +5353,9 @@
         safeInit(initPrivacyOptions);
         safeInit(initSettingsAvatarHashFallback);
         safeInit(initGalleryMonthOverlay);
+        safeInit(initGalleryImageStates);
         safeInit(initGalleryRecentInfinite);
+        safeInit(initCompactDisclosures);
         safeInit(initImageCroppers);
         safeInit(initProfilePdfExport);
         safeInit(initTeamLayoutEditor);
@@ -5126,17 +5383,231 @@
     // like the kebab menus now: one open at a time, closed by an outside click or Escape.
     const MENU_SELECTOR = 'details[data-kebab-menu], details.notif-menu, details.user-menu,'
         + ' details.add-menu, details.topbar-context';
+    const portaledKebabs = new WeakMap();
+    const kebabPanelOwners = new WeakMap();
+    const menuBackdrops = new WeakMap();
+    let suppressMenuScrollCloseUntil = 0;
+    // Each menu owns a real navigation history. The old controller remembered a
+    // single trigger, so opening a submenu from another submenu made Back jump to
+    // the root and lose focus. Entries keep both the view and the control that
+    // opened the next level, which supports any depth while the UI intentionally
+    // exposes at most three levels.
+    const menuViewHistories = new WeakMap();
+
+    const resetMenuStack = (stack) => {
+        if (!(stack instanceof HTMLElement)) return;
+        const views = Array.from(stack.querySelectorAll(':scope > [data-menu-view]'));
+        views.forEach((view) => { view.hidden = view.getAttribute('data-menu-view') !== 'main'; });
+        stack.dataset.activeMenuView = 'main';
+        menuViewHistories.set(stack, [{ viewName: 'main', trigger: null }]);
+    };
+
+    const showMenuView = (stack, viewName, returnControl = null, pushHistory = true, focusView = true) => {
+        if (!(stack instanceof HTMLElement)) return false;
+        const views = Array.from(stack.querySelectorAll(':scope > [data-menu-view]'));
+        const targetView = views.find((view) => view.getAttribute('data-menu-view') === viewName);
+        if (!(targetView instanceof HTMLElement)) return false;
+        let history = menuViewHistories.get(stack);
+        if (!Array.isArray(history) || history.length === 0) {
+            const currentView = String(stack.dataset.activeMenuView || 'main');
+            history = [{ viewName: currentView, trigger: null }];
+        }
+        if (pushHistory) {
+            const activeName = String(stack.dataset.activeMenuView || history[history.length - 1]?.viewName || 'main');
+            const currentEntry = history[history.length - 1];
+            if (!currentEntry || currentEntry.viewName !== activeName) {
+                history.push({ viewName: activeName, trigger: null });
+            }
+            history.push({ viewName, trigger: returnControl instanceof HTMLElement ? returnControl : null });
+        } else if (history.length === 0 || history[history.length - 1]?.viewName !== viewName) {
+            history.push({ viewName, trigger: null });
+        }
+        menuViewHistories.set(stack, history);
+        views.forEach((view) => { view.hidden = view !== targetView; });
+        stack.dataset.activeMenuView = viewName;
+        const focusTarget = targetView.querySelector('[data-menu-back], .kebab-menu-item, a, button');
+        if (focusView && focusTarget instanceof HTMLElement) {
+            window.requestAnimationFrame(() => {
+                try { focusTarget.focus({ preventScroll: true }); } catch (_) { focusTarget.focus(); }
+            });
+        }
+        return true;
+    };
+
+    const restoreKebabPanel = (menu) => {
+        const state = portaledKebabs.get(menu);
+        if (!state) return;
+        const { panel, placeholder, backdrop } = state;
+        resetMenuStack(panel);
+        if (placeholder.parentNode) {
+            placeholder.replaceWith(panel);
+        } else {
+            panel.remove();
+        }
+        if (backdrop instanceof HTMLElement) backdrop.remove();
+        kebabPanelOwners.delete(panel);
+        panel.classList.remove('is-portaled');
+        panel.removeAttribute('data-kebab-portaled');
+        panel.removeAttribute('style');
+        portaledKebabs.delete(menu);
+        const trigger = menu.querySelector(':scope > summary');
+        if (trigger instanceof HTMLElement) trigger.setAttribute('aria-expanded', 'false');
+        if (!document.querySelector('.kebab-menu-panel.is-portaled')) {
+            document.body.classList.remove('kebab-menu-open-mobile');
+        }
+    };
+
+    const portalKebabPanel = (menu) => {
+        if (!(menu instanceof HTMLDetailsElement) || portaledKebabs.has(menu)) return;
+        const trigger = menu.querySelector(':scope > summary');
+        const panel = menu.querySelector(':scope > .kebab-menu-panel');
+        if (!(trigger instanceof HTMLElement) || !(panel instanceof HTMLElement)) return;
+
+        const placeholder = document.createComment('kebab-menu-panel');
+        const mobile = window.matchMedia('(max-width: 600px)').matches;
+        let backdrop = null;
+        panel.replaceWith(placeholder);
+        if (mobile) {
+            backdrop = document.createElement('div');
+            backdrop.className = 'kebab-menu-backdrop';
+            backdrop.setAttribute('aria-hidden', 'true');
+            document.body.appendChild(backdrop);
+            document.body.classList.add('kebab-menu-open-mobile');
+        }
+        document.body.appendChild(panel);
+        panel.classList.add('is-portaled');
+        panel.setAttribute('data-kebab-portaled', 'true');
+        panel.style.position = 'fixed';
+        // The mobile liquid nav sits at 9999 in the final theme layer. Context
+        // sheets must cover app chrome or its labels bleed into the actions.
+        panel.style.zIndex = '12020';
+        kebabPanelOwners.set(panel, menu);
+
+        if (mobile) {
+            panel.style.left = '0.6rem';
+            panel.style.right = '0.6rem';
+            panel.style.bottom = 'calc(0.6rem + env(safe-area-inset-bottom))';
+            panel.style.top = 'auto';
+            panel.style.minWidth = '0';
+        } else {
+            const rect = trigger.getBoundingClientRect();
+            const panelWidth = Math.max(190, Math.min(280, panel.offsetWidth || 190));
+            const preferredLeft = menu.dataset.align === 'start'
+                ? rect.left
+                : rect.right - panelWidth;
+            const left = Math.max(8, Math.min(window.innerWidth - panelWidth - 8, preferredLeft));
+            const estimatedHeight = Math.max(48, panel.offsetHeight || 160);
+            const opensUp = rect.bottom + 8 + estimatedHeight > window.innerHeight && rect.top > estimatedHeight;
+            panel.style.width = `${panelWidth}px`;
+            panel.style.left = `${left}px`;
+            panel.style.right = 'auto';
+            panel.style.top = opensUp ? 'auto' : `${Math.min(window.innerHeight - 8, rect.bottom + 6)}px`;
+            panel.style.bottom = opensUp ? `${Math.max(8, window.innerHeight - rect.top + 6)}px` : 'auto';
+        }
+        portaledKebabs.set(menu, { panel, placeholder, backdrop, mobile });
+        // Focusing/scrolling the trigger into view can emit a delayed scroll event
+        // immediately after opening. Ignore that synthetic tail so desktop popovers
+        // do not close on the same interaction that opened them.
+        suppressMenuScrollCloseUntil = window.performance.now() + 250;
+        trigger.setAttribute('aria-expanded', 'true');
+        if (backdrop instanceof HTMLElement) {
+            backdrop.addEventListener('click', () => {
+                menu.removeAttribute('open');
+                restoreKebabPanel(menu);
+                try { trigger.focus({ preventScroll: true }); } catch (_) { trigger.focus(); }
+            }, { once: true });
+        }
+    };
+
+    const menuForTarget = (target) => {
+        if (!(target instanceof Element)) return null;
+        const directMenu = target.closest(MENU_SELECTOR);
+        if (directMenu instanceof HTMLDetailsElement) return directMenu;
+        const portaledPanel = target.closest('.kebab-menu-panel.is-portaled');
+        return portaledPanel instanceof HTMLElement ? kebabPanelOwners.get(portaledPanel) || null : null;
+    };
+
+    const closeMenu = (menu, restoreFocus = false) => {
+        if (!(menu instanceof HTMLDetailsElement)) return;
+        menu.removeAttribute('open');
+        const menuBackdrop = menuBackdrops.get(menu);
+        if (menuBackdrop instanceof HTMLElement) menuBackdrop.remove();
+        menuBackdrops.delete(menu);
+        const stack = menu.querySelector(':scope > [data-menu-stack]');
+        resetMenuStack(stack);
+        if (menu.matches('details.bottom-nav-plus')) {
+            document.body.classList.remove('mobile-sheet-open');
+        }
+        if (menu.matches('details[data-kebab-menu]')) restoreKebabPanel(menu);
+        const trigger = menu.querySelector(':scope > summary');
+        if (trigger instanceof HTMLElement) {
+            trigger.setAttribute('aria-expanded', 'false');
+            if (restoreFocus) {
+                try { trigger.focus({ preventScroll: true }); } catch (_) { trigger.focus(); }
+            }
+        }
+    };
 
     const closeAllKebabs = (except) => {
         document.querySelectorAll(MENU_SELECTOR).forEach((el) => {
-            if (el !== except && el.open) el.removeAttribute('open');
+            if (el !== except && el.open) closeMenu(el, false);
         });
     };
+
+    document.addEventListener('click', (event) => {
+        const target = event.target instanceof Element ? event.target.closest('[data-hierarchy-back]') : null;
+        if (!(target instanceof HTMLElement)) return;
+        event.preventDefault();
+        const fallback = String(target.getAttribute('data-fallback') || '/');
+        let sameOriginReferrer = false;
+        try {
+            sameOriginReferrer = document.referrer !== '' && new URL(document.referrer).origin === window.location.origin;
+        } catch (_) {
+            sameOriginReferrer = false;
+        }
+        if (window.history.length > 1 && (sameOriginReferrer || window.history.state !== null)) {
+            window.history.back();
+            return;
+        }
+        window.location.assign(fallback);
+    });
 
     document.addEventListener('toggle', (event) => {
         const el = event.target;
         if (el instanceof HTMLDetailsElement && el.matches(MENU_SELECTOR) && el.open) {
+            suppressMenuScrollCloseUntil = window.performance.now() + 250;
             closeAllKebabs(el);
+            const trigger = el.querySelector(':scope > summary');
+            if (trigger instanceof HTMLElement) trigger.setAttribute('aria-expanded', 'true');
+            if (el.matches('details[data-kebab-menu]')) {
+                window.requestAnimationFrame(() => {
+                    if (el.open) portalKebabPanel(el);
+                });
+            } else if (el.matches('details.bottom-nav-plus') && window.matchMedia('(max-width: 899px)').matches) {
+                document.body.classList.add('mobile-sheet-open');
+                const stack = el.querySelector(':scope > [data-menu-stack]');
+                resetMenuStack(stack);
+                const backdrop = document.createElement('div');
+                backdrop.className = 'mobile-sheet-backdrop';
+                backdrop.setAttribute('aria-hidden', 'true');
+                document.body.appendChild(backdrop);
+                menuBackdrops.set(el, backdrop);
+                backdrop.addEventListener('click', () => closeMenu(el, true), { once: true });
+                window.requestAnimationFrame(() => {
+                    const focusTarget = stack?.querySelector('[data-menu-close], [data-menu-open], a, button');
+                    if (focusTarget instanceof HTMLElement) {
+                        try { focusTarget.focus({ preventScroll: true }); } catch (_) { focusTarget.focus(); }
+                    }
+                });
+            }
+        } else if (el instanceof HTMLDetailsElement && el.matches(MENU_SELECTOR)) {
+            const stack = el.querySelector(':scope > [data-menu-stack]');
+            resetMenuStack(stack);
+            const menuBackdrop = menuBackdrops.get(el);
+            if (menuBackdrop instanceof HTMLElement) menuBackdrop.remove();
+            menuBackdrops.delete(el);
+            if (el.matches('details[data-kebab-menu]')) restoreKebabPanel(el);
+            if (el.matches('details.bottom-nav-plus')) document.body.classList.remove('mobile-sheet-open');
         }
     }, true);
 
@@ -5144,7 +5615,50 @@
     document.addEventListener('click', (event) => {
         const target = event.target;
         if (!(target instanceof Element)) return;
-        const insideMenu = target.closest(MENU_SELECTOR);
+        const confirmAction = target.closest('[data-confirm-action]');
+        if (confirmAction) {
+            const message = String(confirmAction.getAttribute('data-confirm-action') || '').trim();
+            if (message !== '' && !window.confirm(message)) {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+        }
+        const stack = target.closest('[data-menu-stack]');
+        const submenuOpen = target.closest('[data-menu-open]');
+        if (submenuOpen instanceof HTMLElement && stack instanceof HTMLElement) {
+            event.preventDefault();
+            event.stopPropagation();
+            showMenuView(stack, String(submenuOpen.getAttribute('data-menu-open') || ''), submenuOpen);
+            return;
+        }
+        const submenuBack = target.closest('[data-menu-back]');
+        if (submenuBack instanceof HTMLElement && stack instanceof HTMLElement) {
+            event.preventDefault();
+            event.stopPropagation();
+            const history = menuViewHistories.get(stack) || [{ viewName: 'main', trigger: null }];
+            const leaving = history.length > 1 ? history.pop() : history[0];
+            const previous = history[history.length - 1] || { viewName: 'main', trigger: null };
+            menuViewHistories.set(stack, history);
+            // Back is different from opening a view: the control that opened the
+            // level is the deterministic focus target. Do not queue the generic
+            // first-control focus as it can win the race on the next frame.
+            showMenuView(stack, String(previous.viewName || 'main'), null, false, false);
+            const returnControl = leaving?.trigger;
+            if (returnControl instanceof HTMLElement) {
+                try { returnControl.focus({ preventScroll: true }); } catch (_) { returnControl.focus(); }
+            }
+            return;
+        }
+        const menuClose = target.closest('[data-menu-close]');
+        if (menuClose instanceof HTMLElement) {
+            event.preventDefault();
+            event.stopPropagation();
+            closeMenu(menuForTarget(target), true);
+            return;
+        }
+
+        const insideMenu = menuForTarget(target);
         if (!insideMenu) {
             closeAllKebabs(null);
             return;
@@ -5154,7 +5668,7 @@
         // editor - must not close it under the user's fingers.
         const item = target.closest('.kebab-menu-item, .notif-menu-item a, .notif-menu-all, .user-menu-panel a, .add-menu-panel a');
         if (item) {
-            setTimeout(() => insideMenu.removeAttribute('open'), 0);
+            setTimeout(() => closeMenu(insideMenu, false), 0);
         }
     });
 
@@ -5166,11 +5680,17 @@
         event.preventDefault();
         const menuToFocus = openMenus[openMenus.length - 1];
         closeAllKebabs(null);
-        const summary = menuToFocus.querySelector(':scope > summary');
-        if (summary instanceof HTMLElement) {
-            try { summary.focus({ preventScroll: true }); } catch (_) { summary.focus(); }
-        }
+        closeMenu(menuToFocus, true);
     });
+
+    window.addEventListener('resize', () => closeAllKebabs(null), { passive: true });
+    // Close anchored desktop popovers on intentional wheel scrolling. Listening to
+    // the resulting `scroll` event also catches Playwright/browser focus scrolling
+    // and used to close a menu during the very click that opened it.
+    window.addEventListener('wheel', () => {
+        if (!window.matchMedia('(max-width: 600px)').matches
+            && window.performance.now() >= suppressMenuScrollCloseUntil) closeAllKebabs(null);
+    }, { passive: true });
 
     // ---- App modal / drawer ----
     const openOverlay = (overlay) => {
@@ -5264,6 +5784,47 @@
     update();
 })();
 
+/* Settings subpages: warn only after a real form change, and clear the guard on save. */
+(() => {
+    const dirtyForms = new Set();
+    const liveDirtyForms = () => Array.from(dirtyForms).filter((form) => document.contains(form));
+
+    document.addEventListener('change', (event) => {
+        const form = event.target instanceof Element
+            ? event.target.closest('form[data-settings-dirty-form]')
+            : null;
+        if (form instanceof HTMLFormElement) {
+            dirtyForms.add(form);
+            form.classList.add('has-unsaved-changes');
+        }
+    });
+    document.addEventListener('submit', (event) => {
+        if (event.target instanceof HTMLFormElement) {
+            dirtyForms.delete(event.target);
+        }
+    });
+    window.addEventListener('beforeunload', (event) => {
+        if (liveDirtyForms().length === 0) return;
+        event.preventDefault();
+        event.returnValue = '';
+    });
+    document.addEventListener('click', (event) => {
+        if (liveDirtyForms().length === 0) return;
+        const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+        if (!(link instanceof HTMLAnchorElement) || link.target === '_blank') return;
+        const root = document.querySelector('[data-settings-section]');
+        const message = root instanceof HTMLElement
+            ? String(root.dataset.unsavedMessage || '')
+            : '';
+        if (message !== '' && !window.confirm(message)) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+        dirtyForms.clear();
+    }, true);
+})();
+
 /* ==========================================================================
    Workouts — kebab menu actions submit a POST form (#5)
    ========================================================================== */
@@ -5323,6 +5884,10 @@
         if (!container || forms.length === 0) {
             return;
         }
+        if (container.dataset.layoutDragReady === '1') {
+            return;
+        }
+        container.dataset.layoutDragReady = '1';
 
         // Only the cards that are actually laid out: a hidden widget has no place in
         // the running order, and dropping onto one would be dropping into nothing.
@@ -5331,11 +5896,160 @@
 
         const keyOf = (el) => el.getAttribute(config.keyAttr) || '';
 
+        const labels = {
+            drag: document.body.dataset.layoutDragLabel || 'Drag to reorder',
+            remove: document.body.dataset.layoutRemoveLabel || 'Remove widget',
+            add: document.body.dataset.layoutAddLabel || 'Add widget',
+            visible: document.body.dataset.layoutVisibleLabel || 'Visible',
+        };
+
         let dirty = false;
         const markDirty = () => {
             dirty = true;
             document.body.classList.add('layout-has-unsaved');
         };
+
+        const editorRows = () => forms.flatMap((form) => {
+            const list = form.querySelector(config.list);
+            return list ? [...list.querySelectorAll(config.listItem)] : [];
+        });
+
+        const checkboxForKey = (key) => {
+            for (const form of forms) {
+                const checkbox = form.querySelector(`${config.list} input[type="checkbox"][value="${CSS.escape(key)}"]`);
+                if (checkbox instanceof HTMLInputElement) {
+                    return checkbox;
+                }
+            }
+            return null;
+        };
+
+        const cardForKey = (key) => [...container.querySelectorAll(config.item)]
+            .find((card) => keyOf(card) === key) || null;
+
+        const refreshVisibilityButtons = () => {
+            editorRows().forEach((row) => {
+                const checkbox = row.querySelector('input[type="checkbox"]');
+                const button = row.querySelector('[data-layout-visibility-toggle]');
+                if (!(checkbox instanceof HTMLInputElement) || !(button instanceof HTMLButtonElement)) {
+                    return;
+                }
+                button.dataset.visible = checkbox.checked ? '1' : '0';
+                button.setAttribute('aria-pressed', checkbox.checked ? 'true' : 'false');
+                button.textContent = checkbox.checked ? labels.visible : labels.add;
+            });
+        };
+
+        const syncVisibilityFromEditors = () => {
+            editorRows().forEach((row, index) => {
+                const checkbox = row.querySelector('input[type="checkbox"]');
+                if (!(checkbox instanceof HTMLInputElement)) {
+                    return;
+                }
+                const card = cardForKey(checkbox.value);
+                if (!(card instanceof HTMLElement)) {
+                    return;
+                }
+                card.hidden = !checkbox.checked;
+                card.classList.toggle('is-layout-hidden', !checkbox.checked);
+                if (checkbox.checked) {
+                    card.style.removeProperty('display');
+                }
+                card.style.order = String((index + 1) * 10);
+                container.querySelectorAll(`[data-team-follows="${CSS.escape(checkbox.value)}"]`).forEach((follower) => {
+                    follower.style.order = String((index + 1) * 10 - 1);
+                });
+                if (config.orderInput) {
+                    const input = row.querySelector(`[name="${config.orderInput}[${CSS.escape(checkbox.value)}]"]`);
+                    if (input instanceof HTMLInputElement) {
+                        input.value = String(index + 1);
+                    }
+                }
+            });
+            refreshVisibilityButtons();
+        };
+
+        const setCardVisible = (key, visible) => {
+            const checkbox = checkboxForKey(key);
+            if (!(checkbox instanceof HTMLInputElement)) {
+                return;
+            }
+            checkbox.checked = visible;
+            checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+            syncVisibilityFromEditors();
+            markDirty();
+        };
+
+        container.querySelectorAll(config.item).forEach((card) => {
+            if (card.querySelector(':scope > [data-layout-card-controls]')) {
+                return;
+            }
+            const controls = document.createElement('div');
+            controls.className = 'layout-card-controls';
+            controls.dataset.layoutCardControls = '1';
+
+            const handle = document.createElement('span');
+            handle.className = 'layout-card-drag-handle';
+            handle.setAttribute('aria-hidden', 'true');
+            handle.title = labels.drag;
+            handle.textContent = '\u283f';
+
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'layout-card-remove';
+            remove.dataset.layoutRemoveCard = keyOf(card);
+            remove.setAttribute('aria-label', labels.remove);
+            remove.title = labels.remove;
+            remove.textContent = '\u00d7';
+
+            controls.append(handle, remove);
+            card.appendChild(controls);
+        });
+
+        forms.forEach((form) => {
+            form.querySelectorAll(config.listItem).forEach((row) => {
+                if (row.querySelector('[data-layout-visibility-toggle]')) {
+                    return;
+                }
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'layout-visibility-toggle';
+                button.dataset.layoutVisibilityToggle = '1';
+                row.appendChild(button);
+            });
+        });
+        refreshVisibilityButtons();
+
+        container.addEventListener('click', (event) => {
+            const remove = event.target instanceof Element ? event.target.closest('[data-layout-remove-card]') : null;
+            if (!(remove instanceof HTMLButtonElement)) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            setCardVisible(String(remove.dataset.layoutRemoveCard || ''), false);
+        });
+
+        forms.forEach((form) => {
+            form.addEventListener('click', (event) => {
+                const toggle = event.target instanceof Element ? event.target.closest('[data-layout-visibility-toggle]') : null;
+                if (!(toggle instanceof HTMLButtonElement)) {
+                    return;
+                }
+                event.preventDefault();
+                const row = toggle.closest(config.listItem);
+                const checkbox = row?.querySelector('input[type="checkbox"]');
+                if (!(checkbox instanceof HTMLInputElement)) {
+                    return;
+                }
+                setCardVisible(checkbox.value, !checkbox.checked);
+            });
+            form.addEventListener('change', (event) => {
+                if (event.target instanceof HTMLInputElement && event.target.type === 'checkbox') {
+                    syncVisibilityFromEditors();
+                }
+            });
+        });
 
         /* ---- the drag result has to reach the form, or Save saves the old order ----
            Three things move together: the card's visual order, the matching row in the
@@ -5450,20 +6164,29 @@
             if (!isEditing() || event.button !== 0 || !dragSupported()) {
                 return;
             }
-            const el = event.target instanceof Element ? event.target.closest(config.item) : null;
+            const target = event.target instanceof Element ? event.target : null;
+            const handle = target ? target.closest('.layout-card-drag-handle') : null;
+            const el = handle ? handle.closest(config.item) : (target ? target.closest(config.item) : null);
             if (!el || !container.contains(el)) {
                 return;
             }
-            if (event.target instanceof Element && event.target.closest('a, button, input, select, textarea')) {
+            const rect = el.getBoundingClientRect();
+            const inCardGripStrip = event.clientY >= rect.top && event.clientY <= rect.top + 48;
+            const onInteractiveControl = Boolean(target?.closest('a, button, input, select, textarea, summary, [role="button"]'));
+            // The visible handle is the clearest affordance, while the card's top
+            // strip keeps the original desktop "grab the card" interaction working.
+            // Content and controls below it remain fully selectable/clickable.
+            if (!handle && (!inCardGripStrip || onInteractiveControl)) {
                 return;
             }
+            event.preventDefault();
             dragEl = el;
-            const rect = el.getBoundingClientRect();
             startX = event.clientX;
             startY = event.clientY;
             offX = event.clientX - rect.left;
             offY = event.clientY - rect.top;
             active = false;
+            try { (handle || el).setPointerCapture(event.pointerId); } catch (_) { /* not fatal */ }
         });
 
         window.addEventListener('pointermove', (event) => {
@@ -5487,7 +6210,6 @@
                 dragEl.style.zIndex = '9999';
                 dragEl.style.pointerEvents = 'none';
                 document.body.classList.add('layout-dragging');
-                try { dragEl.setPointerCapture(event.pointerId); } catch (_) { /* not fatal */ }
             }
             event.preventDefault();
             dragEl.style.left = `${event.clientX - offX}px`;
@@ -5519,10 +6241,22 @@
                 const rect = over.getBoundingClientRect();
                 // Reading order: past the vertical midpoint (or, within the same row,
                 // past the horizontal midpoint) means "insert after".
-                const sameRow = Math.abs(event.clientY - (rect.top + rect.height / 2)) < rect.height / 2;
+                // Full-width cards form a vertical list: their lower half must mean
+                // “after”. Only use the horizontal midpoint for cards that actually
+                // occupy a column in a multi-column grid.
+                const containerRect = container.getBoundingClientRect();
+                const sameRow = rect.width < containerRect.width * 0.8
+                    && Math.abs(event.clientY - (rect.top + rect.height / 2)) < rect.height / 2;
+                const verticalMidpoint = rect.top + rect.height / 2;
+                // Dropping exactly on the centre of a full-width card used to be
+                // a no-op. Resolve that neutral point from the drag direction so
+                // moving down inserts after and moving up inserts before.
+                const afterVertically = Math.abs(event.clientY - verticalMidpoint) <= 1
+                    ? event.clientY > startY
+                    : event.clientY > verticalMidpoint;
                 const after = sameRow
                     ? event.clientX > rect.left + rect.width / 2
-                    : event.clientY > rect.top + rect.height / 2;
+                    : afterVertically;
                 placeholder.style.order = over.style.order;
                 over.parentNode.insertBefore(placeholder, after ? over.nextSibling : over);
             }
@@ -5592,6 +6326,1758 @@
     } else {
         initAll();
     }
+    document.addEventListener('fc:afterPageSwap', initAll);
+})();
+
+/* Structured exercise-guide builder. It keeps the existing newline payload for
+   compatibility, while giving mobile users real items they can add, reorder and
+   remove without editing three large text blobs. */
+(() => {
+    const initBuilder = (builder) => {
+        if (!(builder instanceof HTMLElement) || builder.dataset.guideBuilderReady === '1') return;
+        builder.dataset.guideBuilderReady = '1';
+        const limit = Math.max(1, Math.min(50, Number(builder.dataset.maxItems) || 20));
+        const sections = [...builder.querySelectorAll('[data-guide-section]')];
+
+        const autoGrow = (input) => {
+            if (!(input instanceof HTMLTextAreaElement)) return;
+            input.style.height = 'auto';
+            input.style.height = `${Math.min(120, Math.max(44, input.scrollHeight))}px`;
+        };
+        const sectionParts = (section) => ({
+            items: section.querySelector('[data-guide-items]'),
+            output: section.querySelector('[data-guide-output]'),
+            counter: section.querySelector('[data-guide-count]'),
+            empty: section.querySelector('[data-guide-empty]'),
+            add: section.querySelector('[data-guide-add]'),
+            template: section.querySelector('[data-guide-item-template]'),
+        });
+        const syncSection = (section) => {
+            const { items, output, counter, empty, add } = sectionParts(section);
+            if (!(items instanceof HTMLElement)) return;
+            const rows = [...items.querySelectorAll(':scope > [data-guide-item]')];
+            const values = [];
+            rows.forEach((row, index) => {
+                const input = row.querySelector('[data-guide-item-input]');
+                const value = input instanceof HTMLTextAreaElement
+                    ? input.value.replace(/\s*(?:\r?\n)+\s*/g, ' ').trim()
+                    : '';
+                if (value !== '') values.push(value);
+                const position = row.querySelector('[data-guide-index]');
+                if (position instanceof HTMLElement) position.textContent = String(index + 1);
+                const up = row.querySelector('[data-guide-move="up"]');
+                const down = row.querySelector('[data-guide-move="down"]');
+                if (up instanceof HTMLButtonElement) up.disabled = index === 0;
+                if (down instanceof HTMLButtonElement) down.disabled = index === rows.length - 1;
+            });
+            if (output instanceof HTMLTextAreaElement) output.value = values.join('\n');
+            if (counter instanceof HTMLElement) {
+                counter.textContent = String(values.length);
+                counter.setAttribute('aria-label', String(builder.dataset.countTemplate || '{count}').replace('{count}', String(values.length)));
+            }
+            if (empty instanceof HTMLElement) empty.hidden = rows.length > 0;
+            if (add instanceof HTMLButtonElement) add.disabled = rows.length >= limit;
+        };
+        const createItem = (section, value = '', after = null, focus = true) => {
+            const { items, template } = sectionParts(section);
+            if (!(items instanceof HTMLElement) || !(template instanceof HTMLTemplateElement)) return null;
+            if (items.querySelectorAll(':scope > [data-guide-item]').length >= limit) return null;
+            const fragment = template.content.cloneNode(true);
+            const item = fragment.querySelector('[data-guide-item]');
+            if (!(item instanceof HTMLElement)) return null;
+            const input = item.querySelector('[data-guide-item-input]');
+            if (input instanceof HTMLTextAreaElement) input.value = String(value || '').replace(/\s*(?:\r?\n)+\s*/g, ' ').trim();
+            if (after instanceof HTMLElement && after.parentElement === items) after.insertAdjacentElement('afterend', item);
+            else items.appendChild(item);
+            autoGrow(input);
+            syncSection(section);
+            if (focus && input instanceof HTMLTextAreaElement) {
+                input.focus({ preventScroll: true });
+                if (window.matchMedia('(max-width: 700px)').matches) {
+                    window.requestAnimationFrame(() => input.scrollIntoView({ block: 'center', inline: 'nearest' }));
+                }
+            }
+            return item;
+        };
+
+        sections.forEach((section) => {
+            if (!(section instanceof HTMLDetailsElement)) return;
+            section.querySelectorAll('[data-guide-item-input]').forEach(autoGrow);
+            syncSection(section);
+            section.addEventListener('toggle', () => {
+                if (!section.open || !window.matchMedia('(max-width: 700px)').matches) return;
+                sections.forEach((other) => {
+                    if (other !== section && other instanceof HTMLDetailsElement) other.open = false;
+                });
+            });
+            section.addEventListener('click', (event) => {
+                const target = event.target;
+                if (!(target instanceof Element)) return;
+                const add = target.closest('[data-guide-add]');
+                if (add) {
+                    section.open = true;
+                    createItem(section);
+                    return;
+                }
+                const item = target.closest('[data-guide-item]');
+                if (!(item instanceof HTMLElement)) return;
+                const remove = target.closest('[data-guide-remove]');
+                if (remove) {
+                    const nextFocus = item.previousElementSibling?.querySelector('[data-guide-item-input]')
+                        || item.nextElementSibling?.querySelector('[data-guide-item-input]')
+                        || section.querySelector('[data-guide-add]');
+                    item.remove();
+                    syncSection(section);
+                    if (nextFocus instanceof HTMLElement) nextFocus.focus({ preventScroll: true });
+                    return;
+                }
+                const move = target.closest('[data-guide-move]');
+                if (!(move instanceof HTMLButtonElement)) return;
+                const items = item.parentElement;
+                const sibling = move.dataset.guideMove === 'up' ? item.previousElementSibling : item.nextElementSibling;
+                if (!(items instanceof HTMLElement) || !(sibling instanceof HTMLElement)) return;
+                if (move.dataset.guideMove === 'up') items.insertBefore(item, sibling);
+                else items.insertBefore(sibling, item);
+                syncSection(section);
+                move.focus({ preventScroll: true });
+            });
+            section.addEventListener('input', (event) => {
+                const input = event.target;
+                if (!(input instanceof HTMLTextAreaElement) || !input.matches('[data-guide-item-input]')) return;
+                const lines = input.value.split(/\r?\n/);
+                if (lines.length > 1) {
+                    input.value = lines.shift() || '';
+                    let anchor = input.closest('[data-guide-item]');
+                    lines.filter((line) => line.trim() !== '').forEach((line) => {
+                        anchor = createItem(section, line, anchor, false) || anchor;
+                    });
+                    const lastInput = anchor instanceof HTMLElement ? anchor.querySelector('[data-guide-item-input]') : null;
+                    if (lastInput instanceof HTMLTextAreaElement) lastInput.focus({ preventScroll: true });
+                }
+                autoGrow(input);
+                syncSection(section);
+            });
+            section.addEventListener('keydown', (event) => {
+                const input = event.target;
+                if (!(input instanceof HTMLTextAreaElement) || !input.matches('[data-guide-item-input]')) return;
+                const item = input.closest('[data-guide-item]');
+                if (!(item instanceof HTMLElement)) return;
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    createItem(section, '', item);
+                    return;
+                }
+                if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+                    event.preventDefault();
+                    const button = item.querySelector(`[data-guide-move="${event.key === 'ArrowUp' ? 'up' : 'down'}"]`);
+                    if (button instanceof HTMLButtonElement && !button.disabled) button.click();
+                    input.focus({ preventScroll: true });
+                    return;
+                }
+                if (event.key === 'Backspace' && input.value === '') {
+                    const rows = item.parentElement?.querySelectorAll(':scope > [data-guide-item]') || [];
+                    if (rows.length > 1) {
+                        event.preventDefault();
+                        const previous = item.previousElementSibling?.querySelector('[data-guide-item-input]');
+                        item.remove();
+                        syncSection(section);
+                        if (previous instanceof HTMLTextAreaElement) previous.focus({ preventScroll: true });
+                    }
+                }
+            });
+        });
+
+        const form = builder.closest('form');
+        form?.addEventListener('submit', () => sections.forEach(syncSection));
+    };
+
+    const init = () => document.querySelectorAll('[data-workout-guide-builder]').forEach(initBuilder);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+    document.addEventListener('fc:afterPageSwap', init);
+})();
+
+/* Ordered exercise photo gallery. Existing paths stay opaque to the client;
+   fresh files use new:N tokens that the server resolves after upload. */
+(() => {
+    'use strict';
+
+    const imagePositionPresets = {
+        top: { x: 50, y: 18 },
+        bottom: { x: 50, y: 82 },
+        left: { x: 18, y: 50 },
+        right: { x: 82, y: 50 },
+        center: { x: 50, y: 50 },
+    };
+    const positionDetails = (value) => {
+        const raw = String(value || '').trim().toLowerCase();
+        if (Object.hasOwn(imagePositionPresets, raw)) return { value: raw, ...imagePositionPresets[raw] };
+        const match = /^focal:(\d{1,3}):(\d{1,3})$/.exec(raw);
+        if (match) {
+            const x = Number(match[1]);
+            const y = Number(match[2]);
+            if (x >= 0 && x <= 100 && y >= 0 && y <= 100) return { value: `focal:${x}:${y}`, x, y };
+        }
+        return { value: 'center', ...imagePositionPresets.center };
+    };
+    const positionCss = (value) => {
+        const position = positionDetails(value);
+        return `${position.x}% ${position.y}%`;
+    };
+
+    const initGallery = (gallery) => {
+        if (!(gallery instanceof HTMLDetailsElement) || gallery.dataset.workoutGalleryReady === '1') return;
+        gallery.dataset.workoutGalleryReady = '1';
+        const form = gallery.closest('form');
+        const list = gallery.querySelector('[data-workout-gallery-list]');
+        const template = gallery.querySelector('[data-workout-gallery-template]');
+        const fileInput = gallery.querySelector('[data-workout-gallery-input]');
+        const empty = gallery.querySelector('[data-workout-gallery-empty]');
+        const status = gallery.querySelector('[data-workout-gallery-status]');
+        const focusStatus = gallery.querySelector('[data-workout-gallery-focus-status]');
+        const positionInputs = [...gallery.querySelectorAll('[data-workout-image-position-input]')];
+        const focalEditor = gallery.querySelector('[data-workout-gallery-focal-editor]');
+        const focalPreview = gallery.querySelector('[data-workout-gallery-focal-preview]');
+        const focalSurface = gallery.querySelector('[data-workout-gallery-focal-surface]');
+        const focalMarker = gallery.querySelector('[data-workout-gallery-focal-marker]');
+        const focalX = gallery.querySelector('[data-workout-gallery-focal-x]');
+        const focalY = gallery.querySelector('[data-workout-gallery-focal-y]');
+        const focalXOutput = gallery.querySelector('[data-workout-gallery-focal-x-output]');
+        const focalYOutput = gallery.querySelector('[data-workout-gallery-focal-y-output]');
+        const focalValue = gallery.querySelector('[data-workout-gallery-focal-value]');
+        const limit = Math.max(1, Number.parseInt(gallery.dataset.galleryLimit || '4', 10) || 4);
+        if (!form || !list || !(template instanceof HTMLTemplateElement) || !(fileInput instanceof HTMLInputElement)) return;
+
+        const items = () => [...list.querySelectorAll('[data-workout-gallery-item]')];
+        const storedItems = () => items().filter((item) => !String(item.dataset.galleryToken || '').startsWith('new:'));
+        const announceChange = () => gallery.dispatchEvent(new CustomEvent('workout:gallerychange', { bubbles: true }));
+        const selectedPosition = () => form.querySelector('[data-workout-image-position-input]:checked')?.value || 'center';
+        const normalizedPosition = (value) => positionDetails(value).value;
+        const itemPosition = (item) => normalizedPosition(item?.querySelector('[data-workout-gallery-position]')?.value || 'center');
+        const itemCaption = (item) => String(item?.querySelector('[data-workout-gallery-caption]')?.value || '').trim();
+        const fileKey = (file) => `${file.name}:${file.size}:${file.type}`;
+
+        const update = (announce = true) => {
+            const rows = items();
+            let selectedCover = rows.find((item) => item.querySelector('[data-workout-gallery-cover]')?.checked);
+            if (!selectedCover && rows[0]) {
+                const firstCover = rows[0].querySelector('[data-workout-gallery-cover]');
+                if (firstCover) firstCover.checked = true;
+                selectedCover = rows[0];
+            }
+            let selectedFocus = rows.find((item) => item.classList.contains('is-editing'));
+            if (!selectedFocus && rows[0]) selectedFocus = selectedCover || rows[0];
+            rows.forEach((item, index) => {
+                item.classList.toggle('is-cover', item === selectedCover);
+                item.classList.toggle('is-editing', item === selectedFocus);
+                const figure = item.querySelector('figure');
+                if (figure) figure.dataset.photoNumber = String(index + 1);
+                const image = item.querySelector('[data-workout-gallery-image]');
+                const position = itemPosition(item);
+                if (image) {
+                    image.alt = itemCaption(item) || `${gallery.dataset.galleryPhotoLabel || 'Photo'} ${index + 1}`;
+                    image.style.objectPosition = positionCss(position);
+                }
+                const focus = item.querySelector('[data-workout-gallery-focus]');
+                if (focus) {
+                    focus.setAttribute('aria-pressed', item === selectedFocus ? 'true' : 'false');
+                    focus.setAttribute('aria-label', String(gallery.dataset.galleryAdjustLabel || 'Adjust photo {count}').replace('{count}', String(index + 1)));
+                }
+                const up = item.querySelector('[data-workout-gallery-move="up"]');
+                const down = item.querySelector('[data-workout-gallery-move="down"]');
+                if (up) up.disabled = index === 0;
+                if (down) down.disabled = index === rows.length - 1;
+            });
+            if (selectedFocus) {
+                const focusPosition = itemPosition(selectedFocus);
+                const coordinates = positionDetails(focusPosition);
+                const selectedImage = selectedFocus.querySelector('[data-workout-gallery-image]');
+                const coordinateText = String(gallery.dataset.galleryFocalTemplate || '{x}% · {y}%')
+                    .replace('{x}', String(coordinates.x))
+                    .replace('{y}', String(coordinates.y));
+                positionInputs.forEach((input) => {
+                    input.checked = input.value === focusPosition;
+                });
+                if (focusStatus) {
+                    focusStatus.hidden = false;
+                    focusStatus.textContent = String(gallery.dataset.gallerySelectedTemplate || 'Editing photo {count}')
+                        .replace('{count}', String(rows.indexOf(selectedFocus) + 1));
+                }
+                if (focalEditor instanceof HTMLElement) focalEditor.hidden = false;
+                if (focalPreview instanceof HTMLImageElement && selectedImage instanceof HTMLImageElement) {
+                    focalPreview.src = selectedImage.currentSrc || selectedImage.src;
+                    focalPreview.style.objectPosition = positionCss(focusPosition);
+                }
+                if (focalMarker instanceof HTMLElement) {
+                    focalMarker.style.left = `${coordinates.x}%`;
+                    focalMarker.style.top = `${coordinates.y}%`;
+                }
+                if (focalX instanceof HTMLInputElement) focalX.value = String(coordinates.x);
+                if (focalY instanceof HTMLInputElement) focalY.value = String(coordinates.y);
+                if (focalXOutput) focalXOutput.textContent = `${coordinates.x}%`;
+                if (focalYOutput) focalYOutput.textContent = `${coordinates.y}%`;
+                if (focalValue) focalValue.textContent = coordinateText;
+                if (focalSurface instanceof HTMLButtonElement) {
+                    focalSurface.setAttribute('aria-label', `${gallery.dataset.galleryFocalLabel || ''} ${coordinateText}`.trim());
+                }
+            } else {
+                if (focusStatus) {
+                    focusStatus.hidden = true;
+                    focusStatus.textContent = '';
+                }
+                if (focalEditor instanceof HTMLElement) focalEditor.hidden = true;
+                if (focalPreview instanceof HTMLImageElement) focalPreview.removeAttribute('src');
+            }
+            gallery.classList.toggle('has-media', rows.length > 0);
+            if (empty) empty.hidden = rows.length > 0;
+            if (status) status.textContent = String(gallery.dataset.galleryCountTemplate || '{count} / 4').replace('{count}', String(rows.length));
+            if (announce) announceChange();
+        };
+
+        const createNewItem = (file, index, previousState = null) => {
+            const fragment = template.content.cloneNode(true);
+            const item = fragment.querySelector('[data-workout-gallery-item]');
+            const token = `new:${index}`;
+            item.dataset.galleryToken = token;
+            const order = item.querySelector('[data-workout-gallery-order]');
+            const position = item.querySelector('[data-workout-gallery-position]');
+            const caption = item.querySelector('[data-workout-gallery-caption]');
+            const cover = item.querySelector('[data-workout-gallery-cover]');
+            const image = item.querySelector('[data-workout-gallery-image]');
+            if (order) order.value = token;
+            if (position) position.value = normalizedPosition(previousState?.position || selectedPosition());
+            if (caption) caption.value = String(previousState?.caption || '');
+            if (cover) cover.value = token;
+            item.dataset.galleryFileKey = fileKey(file);
+            if (image) {
+                const objectUrl = URL.createObjectURL(file);
+                image.src = objectUrl;
+                image.dataset.galleryObjectUrl = objectUrl;
+            }
+            return item;
+        };
+
+        const revokeItem = (item) => {
+            const image = item?.querySelector?.('[data-gallery-object-url], [data-workout-gallery-image][data-gallery-object-url]');
+            const objectUrl = image?.dataset?.galleryObjectUrl || '';
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+        };
+
+        const renderNewFiles = () => {
+            const previousCover = items().find((item) => item.querySelector('[data-workout-gallery-cover]')?.checked);
+            const previousFocus = items().find((item) => item.classList.contains('is-editing'));
+            const previousCoverToken = String(previousCover?.dataset.galleryToken || '');
+            const previousCoverFileKey = String(previousCover?.dataset.galleryFileKey || '');
+            const previousFocusToken = String(previousFocus?.dataset.galleryToken || '');
+            const previousFocusFileKey = String(previousFocus?.dataset.galleryFileKey || '');
+            const previousNewState = new Map(items()
+                .filter((item) => String(item.dataset.galleryToken || '').startsWith('new:') && item.dataset.galleryFileKey)
+                .map((item) => [String(item.dataset.galleryFileKey), {
+                    caption: itemCaption(item),
+                    position: itemPosition(item),
+                }]));
+            items().filter((item) => String(item.dataset.galleryToken || '').startsWith('new:')).forEach((item) => {
+                revokeItem(item);
+                item.remove();
+            });
+            const available = Math.max(0, limit - storedItems().length);
+            let files = [...(fileInput.files || [])].filter((file) => file.type.startsWith('image/')).slice(0, available);
+            if (files.length !== (fileInput.files?.length || 0) && typeof DataTransfer === 'function') {
+                const transfer = new DataTransfer();
+                files.forEach((file) => transfer.items.add(file));
+                fileInput.files = transfer.files;
+                files = [...fileInput.files];
+            }
+            files.forEach((file, index) => list.appendChild(createNewItem(file, index, previousNewState.get(fileKey(file)) || null)));
+            const nextRows = items();
+            const restoredCover = nextRows.find((item) => (
+                previousCoverFileKey !== ''
+                    ? item.dataset.galleryFileKey === previousCoverFileKey
+                    : item.dataset.galleryToken === previousCoverToken
+            ));
+            const restoredFocus = nextRows.find((item) => (
+                previousFocusFileKey !== ''
+                    ? item.dataset.galleryFileKey === previousFocusFileKey
+                    : item.dataset.galleryToken === previousFocusToken
+            ));
+            const restoredCoverInput = restoredCover?.querySelector('[data-workout-gallery-cover]');
+            if (restoredCoverInput) restoredCoverInput.checked = true;
+            if (restoredFocus) restoredFocus.classList.add('is-editing');
+            update();
+        };
+
+        fileInput.addEventListener('change', renderNewFiles);
+        list.addEventListener('input', (event) => {
+            const target = event.target instanceof Element ? event.target : null;
+            if (!target?.matches('[data-workout-gallery-caption]')) return;
+            const item = target.closest('[data-workout-gallery-item]');
+            const image = item?.querySelector('[data-workout-gallery-image]');
+            const index = items().indexOf(item);
+            if (image) image.alt = String(target.value || '').trim() || `${gallery.dataset.galleryPhotoLabel || 'Photo'} ${Math.max(0, index) + 1}`;
+            announceChange();
+        });
+        list.addEventListener('change', (event) => {
+            const cover = event.target instanceof Element ? event.target.closest('[data-workout-gallery-cover]') : null;
+            if (!cover) return;
+            items().forEach((row) => row.classList.toggle('is-editing', row === cover.closest('[data-workout-gallery-item]')));
+            update();
+        });
+        list.addEventListener('click', (event) => {
+            const button = event.target instanceof Element ? event.target.closest('button') : null;
+            const item = button?.closest('[data-workout-gallery-item]');
+            if (!button || !item) return;
+            const rows = items();
+            const index = rows.indexOf(item);
+            if (button.matches('[data-workout-gallery-focus]')) {
+                rows.forEach((row) => row.classList.toggle('is-editing', row === item));
+                update();
+                button.focus({ preventScroll: true });
+                if (window.matchMedia('(max-width: 700px)').matches && focalEditor instanceof HTMLElement) {
+                    window.requestAnimationFrame(() => focalEditor.scrollIntoView({ block: 'nearest' }));
+                }
+                return;
+            }
+            if (button.matches('[data-workout-gallery-move="up"]') && index > 0) {
+                list.insertBefore(item, rows[index - 1]);
+                update();
+                button.focus({ preventScroll: true });
+                return;
+            }
+            if (button.matches('[data-workout-gallery-move="down"]') && index >= 0 && index < rows.length - 1) {
+                list.insertBefore(rows[index + 1], item);
+                update();
+                button.focus({ preventScroll: true });
+                return;
+            }
+            if (!button.matches('[data-workout-gallery-remove]')) return;
+            const token = String(item.dataset.galleryToken || '');
+            if (token.startsWith('new:') && typeof DataTransfer === 'function') {
+                const removeIndex = Number.parseInt(token.slice(4), 10);
+                const transfer = new DataTransfer();
+                [...(fileInput.files || [])].forEach((file, fileIndex) => {
+                    if (fileIndex !== removeIndex) transfer.items.add(file);
+                });
+                fileInput.files = transfer.files;
+                renderNewFiles();
+                const nextRows = items();
+                const nextFocus = nextRows[Math.min(index, nextRows.length - 1)]?.querySelector('[data-workout-gallery-remove]') || fileInput;
+                if (nextFocus instanceof HTMLElement) nextFocus.focus({ preventScroll: true });
+            } else {
+                revokeItem(item);
+                item.remove();
+                update();
+                const nextRows = items();
+                const nextFocus = nextRows[Math.min(index, nextRows.length - 1)]?.querySelector('[data-workout-gallery-remove]') || fileInput;
+                if (nextFocus instanceof HTMLElement) nextFocus.focus({ preventScroll: true });
+            }
+        });
+        const setFocusedPosition = (value) => {
+            const selectedFocus = items().find((item) => item.classList.contains('is-editing'));
+            const position = selectedFocus?.querySelector('[data-workout-gallery-position]');
+            if (!(position instanceof HTMLInputElement)) return;
+            position.value = normalizedPosition(value);
+            update();
+        };
+        const applyFocalControls = () => {
+            if (!(focalX instanceof HTMLInputElement) || !(focalY instanceof HTMLInputElement)) return;
+            const x = Math.max(0, Math.min(100, Math.round(Number(focalX.value) || 0)));
+            const y = Math.max(0, Math.min(100, Math.round(Number(focalY.value) || 0)));
+            setFocusedPosition(`focal:${x}:${y}`);
+        };
+        focalX?.addEventListener('input', applyFocalControls);
+        focalY?.addEventListener('input', applyFocalControls);
+        focalSurface?.addEventListener('click', (event) => {
+            if (!(focalSurface instanceof HTMLButtonElement)) return;
+            if (event.detail === 0) {
+                if (focalX instanceof HTMLInputElement) focalX.focus({ preventScroll: true });
+                return;
+            }
+            const rect = focalSurface.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+            const x = Math.max(0, Math.min(100, Math.round(((event.clientX - rect.left) / rect.width) * 100)));
+            const y = Math.max(0, Math.min(100, Math.round(((event.clientY - rect.top) / rect.height) * 100)));
+            setFocusedPosition(`focal:${x}:${y}`);
+        });
+        positionInputs.forEach((input) => input.addEventListener('change', () => {
+            setFocusedPosition(input.value);
+        }));
+        update(false);
+    };
+
+    const init = () => document.querySelectorAll('[data-workout-gallery-editor]').forEach(initGallery);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+    document.addEventListener('fc:afterPageSwap', init);
+})();
+
+/* Exercise media editor: local image and safe video previews for personal and
+   admin exercise forms. It is PJAX-aware and never injects user HTML. */
+(() => {
+    'use strict';
+
+    const parseVideo = (rawValue) => {
+        const raw = String(rawValue || '').trim();
+        if (!raw) return null;
+
+        let url;
+        try {
+            url = new URL(raw);
+        } catch (_) {
+            return null;
+        }
+        if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+
+        const host = url.hostname.toLowerCase().replace(/^www\./, '');
+        let id = '';
+        if (host === 'youtu.be') {
+            id = url.pathname.split('/').filter(Boolean)[0] || '';
+        } else if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'youtube-nocookie.com') {
+            const parts = url.pathname.split('/').filter(Boolean);
+            id = url.pathname === '/watch' ? (url.searchParams.get('v') || '') : (parts[1] || '');
+        }
+        if (id && /^[a-zA-Z0-9_-]{6,20}$/.test(id)) {
+            return {
+                type: 'embed',
+                provider: 'youtube',
+                url: `https://www.youtube-nocookie.com/embed/${id}`,
+                thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+            };
+        }
+
+        if (host === 'vimeo.com' || host === 'player.vimeo.com') {
+            const vimeoId = url.pathname.split('/').filter(Boolean).find((part) => /^\d+$/.test(part));
+            if (vimeoId) return { type: 'embed', provider: 'vimeo', url: `https://player.vimeo.com/video/${vimeoId}` };
+        }
+
+        if (/\.(mp4|webm|ogv|ogg)$/i.test(url.pathname)) {
+            return { type: 'video', provider: 'direct', url: url.href };
+        }
+        return { type: 'link', provider: 'link', url: url.href, label: url.hostname };
+    };
+
+    const renderVideo = (container, rawValue) => {
+        if (!container) return;
+        container.replaceChildren();
+        const media = parseVideo(rawValue);
+        if (!media) return;
+
+        if (media.type === 'embed') {
+            const frame = document.createElement('iframe');
+            frame.src = media.url;
+            frame.title = container.dataset.videoTitle || 'Exercise video';
+            frame.loading = 'lazy';
+            frame.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+            frame.allowFullscreen = true;
+            container.appendChild(frame);
+            return;
+        }
+        if (media.type === 'video') {
+            const video = document.createElement('video');
+            video.src = media.url;
+            video.controls = true;
+            video.preload = 'metadata';
+            container.appendChild(video);
+            return;
+        }
+        const link = document.createElement('a');
+        link.href = media.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = media.label || media.url;
+        container.appendChild(link);
+    };
+
+    const initEditor = (form) => {
+        if (!(form instanceof HTMLElement) || form.dataset.workoutMediaReady === '1') return;
+        form.dataset.workoutMediaReady = '1';
+
+        const editorSteps = [...form.querySelectorAll('[data-workout-editor-step]')];
+        const editorStepTriggers = [...form.querySelectorAll('[data-workout-editor-step-trigger]')];
+        const editorSectionInput = form.querySelector('[data-workout-editor-section-input]');
+        const editorMobileQuery = window.matchMedia('(max-width: 700px)');
+        const availableEditorSections = editorSteps.map((step) => step.dataset.workoutEditorStep || '').filter(Boolean);
+        let activeEditorSection = availableEditorSections.includes(form.dataset.workoutEditorSection || '')
+            ? form.dataset.workoutEditorSection
+            : (availableEditorSections[0] || 'basics');
+        let refreshLivePreview = () => {};
+
+        const applyEditorSection = (updateUrl = false) => {
+            const isMobile = editorMobileQuery.matches;
+            editorSteps.forEach((step) => {
+                step.hidden = isMobile && step.dataset.workoutEditorStep !== activeEditorSection;
+            });
+            editorStepTriggers.forEach((trigger) => {
+                const selected = trigger.dataset.workoutEditorStepTrigger === activeEditorSection;
+                trigger.setAttribute('aria-pressed', selected ? 'true' : 'false');
+            });
+            form.dataset.workoutEditorSection = activeEditorSection;
+            if (editorSectionInput) editorSectionInput.value = activeEditorSection;
+            if (updateUrl) {
+                const url = new URL(window.location.href);
+                url.searchParams.set('editor_section', activeEditorSection);
+                window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+            }
+        };
+
+        editorStepTriggers.forEach((trigger) => {
+            trigger.addEventListener('click', () => {
+                const requested = trigger.dataset.workoutEditorStepTrigger || '';
+                if (!availableEditorSections.includes(requested)) return;
+                activeEditorSection = requested;
+                applyEditorSection(true);
+            });
+        });
+        const syncEditorLayout = () => applyEditorSection(false);
+        if (typeof editorMobileQuery.addEventListener === 'function') editorMobileQuery.addEventListener('change', syncEditorLayout);
+        else if (typeof editorMobileQuery.addListener === 'function') editorMobileQuery.addListener(syncEditorLayout);
+        applyEditorSection(false);
+
+        const trainingDefaults = form.querySelector('[data-workout-training-defaults]');
+        const exerciseTypeInput = form.querySelector('[data-workout-exercise-type]');
+        if (trainingDefaults && exerciseTypeInput) {
+            const defaultPanels = [...trainingDefaults.querySelectorAll('[data-workout-default-panel]')];
+            const defaultStatus = trainingDefaults.querySelector('[data-workout-default-status]');
+            const setsLabel = trainingDefaults.querySelector('[data-workout-default-sets-label]');
+            const setsInput = trainingDefaults.querySelector('[data-workout-default-value="sets"]');
+            const repsInput = trainingDefaults.querySelector('[data-workout-default-value="reps"]');
+            const minutesInput = trainingDefaults.querySelector('[data-workout-default-value="minutes"]');
+            const secondsInput = trainingDefaults.querySelector('[data-workout-default-value="seconds"]');
+            const trackedInputs = [...trainingDefaults.querySelectorAll('input, select, textarea')];
+            let activeType = exerciseTypeInput.value || 'strength';
+
+            trackedInputs.forEach((input) => input.addEventListener('input', () => {
+                input.dataset.workoutDefaultTouched = '1';
+                syncDefaults(false);
+            }));
+            trackedInputs.forEach((input) => input.addEventListener('change', () => {
+                input.dataset.workoutDefaultTouched = '1';
+                syncDefaults(false);
+            }));
+
+            function syncDefaults(typeChanged = false) {
+                const type = exerciseTypeInput.value || 'strength';
+                if (typeChanged) {
+                    if (setsInput && setsInput.dataset.workoutDefaultTouched !== '1') {
+                        setsInput.value = type === 'cardio' ? '1' : '3';
+                    }
+                    if (type === 'cardio' && minutesInput && !minutesInput.value) minutesInput.value = '20';
+                    if (type === 'isometric' && secondsInput && !secondsInput.value) secondsInput.value = '30';
+                    if (!['cardio', 'isometric'].includes(type) && repsInput && !repsInput.value) repsInput.value = '10';
+                }
+                activeType = type;
+                defaultPanels.forEach((panel) => {
+                    const types = String(panel.dataset.workoutDefaultPanel || '').split(',').map((value) => value.trim());
+                    const visible = types.includes(type);
+                    panel.hidden = !visible;
+                    panel.querySelectorAll('input, select, textarea').forEach((input) => {
+                        input.disabled = !visible;
+                    });
+                });
+                if (setsLabel) setsLabel.textContent = type === 'cardio' ? setsLabel.dataset.roundsLabel : setsLabel.dataset.setsLabel;
+                if (defaultStatus) {
+                    const sets = setsInput?.value || '—';
+                    if (type === 'cardio') defaultStatus.textContent = `${sets}×${minutesInput?.value || '—'} min`;
+                    else if (type === 'isometric') defaultStatus.textContent = `${sets}×${secondsInput?.value || '—'}s`;
+                    else defaultStatus.textContent = `${sets}×${repsInput?.value || '—'}`;
+                }
+            }
+
+            exerciseTypeInput.addEventListener('change', () => syncDefaults(exerciseTypeInput.value !== activeType));
+            syncDefaults(false);
+        }
+
+        const mobileMediaPanels = [...form.querySelectorAll('.workouts-custom-media > .workouts-custom-color-details, .workouts-custom-media-details')];
+        const mobileMediaQuery = window.matchMedia('(max-width: 700px)');
+        mobileMediaPanels.forEach((panel) => panel.addEventListener('toggle', () => {
+            if (!panel.open || !mobileMediaQuery.matches) return;
+            mobileMediaPanels.forEach((otherPanel) => {
+                if (otherPanel !== panel) otherPanel.open = false;
+            });
+        }));
+
+        const normalizeWorkoutMark = (value) => {
+            const clean = String(value || '').trim().replace(/[<>&\u0000-\u001f\u007f]/g, '');
+            if (!clean) return '•';
+            if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+                const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+                return [...segmenter.segment(clean)].slice(0, 3).map((part) => part.segment).join('');
+            }
+            return [...clean].slice(0, 3).join('');
+        };
+        [...form.querySelectorAll('[data-workout-mark-picker]')].forEach((picker) => {
+            const markInput = picker.querySelector('[data-workout-mark-input]');
+            const markPresets = [...picker.querySelectorAll('[data-workout-mark-preset]')];
+            if (!markInput) return;
+            const markPreviews = [...form.querySelectorAll('[data-workout-mark-preview]')];
+            const applyWorkoutMark = (value) => {
+                const mark = normalizeWorkoutMark(value);
+                markInput.value = mark;
+                markPresets.forEach((preset) => {
+                    preset.checked = normalizeWorkoutMark(preset.value) === mark;
+                });
+                markPreviews.forEach((preview) => {
+                    preview.textContent = mark;
+                });
+            };
+            markPresets.forEach((preset) => preset.addEventListener('change', () => {
+                if (preset.checked) applyWorkoutMark(preset.value);
+            }));
+            markInput.addEventListener('input', () => applyWorkoutMark(markInput.value));
+            markInput.addEventListener('change', () => applyWorkoutMark(markInput.value));
+            applyWorkoutMark(markInput.value);
+        });
+
+        const normalizeWorkoutColor = (value) => /^#[0-9a-f]{6}$/i.test(String(value || '').trim())
+            ? String(value).trim().toLowerCase()
+            : '#14b8a6';
+        [...form.querySelectorAll('[data-workout-color-picker]')].forEach((picker) => {
+            const colorInput = picker.querySelector('[data-workout-color-input]');
+            const colorOutput = picker.querySelector('[data-workout-color-output]');
+            const colorPresets = [...picker.querySelectorAll('[data-workout-color-preset]')];
+            if (!colorInput) return;
+            const property = picker.dataset.workoutColorProperty || '--workout-accent';
+            const colorTargets = [
+                picker,
+                form,
+                picker.closest('.workouts-custom-color-details'),
+                picker.closest('.admin-training-color-details'),
+                form.closest('.workouts-routine-editor'),
+                ...form.querySelectorAll('[data-workout-exercise-live-preview]'),
+            ].filter(Boolean);
+            const applyWorkoutColor = (value) => {
+                const color = normalizeWorkoutColor(value);
+                colorInput.value = color;
+                if (colorOutput) {
+                    colorOutput.value = color.toUpperCase();
+                    colorOutput.textContent = color.toUpperCase();
+                }
+                colorPresets.forEach((preset) => {
+                    preset.checked = normalizeWorkoutColor(preset.value) === color;
+                });
+                colorTargets.forEach((target) => {
+                    target.style.setProperty(property, color);
+                    target.style.setProperty('--workout-accent', color);
+                });
+            };
+            colorPresets.forEach((preset) => preset.addEventListener('change', () => {
+                if (preset.checked) applyWorkoutColor(preset.value);
+            }));
+            colorInput.addEventListener('input', () => applyWorkoutColor(colorInput.value));
+            colorInput.addEventListener('change', () => applyWorkoutColor(colorInput.value));
+            applyWorkoutColor(colorInput.value);
+        });
+
+        const imageInput = form.querySelector('[data-workout-image-input]');
+        const image = form.querySelector('[data-workout-image-preview]');
+        const imageWrap = form.querySelector('[data-workout-image-preview-wrap]');
+        const imageEmpty = form.querySelector('[data-workout-image-empty]');
+        const removeImage = form.querySelector('[data-workout-remove-image]');
+        const photoDetails = form.querySelector('[data-workout-photo-details]');
+        const imageStatus = form.querySelector('[data-workout-image-status]');
+        const imagePositionInputs = [...form.querySelectorAll('[data-workout-image-position-input]')];
+        const originalImage = image ? image.getAttribute('src') || '' : '';
+        let objectUrl = '';
+
+        const imagePositions = {
+            top: '50% 18%',
+            bottom: '50% 82%',
+            left: '18% 50%',
+            right: '82% 50%',
+            center: '50% 50%',
+        };
+        const applyImagePosition = () => {
+            if (!image) return;
+            const selected = imagePositionInputs.find((input) => input.checked);
+            image.style.objectPosition = imagePositions[selected ? selected.value : 'center'] || imagePositions.center;
+            refreshLivePreview();
+        };
+        imagePositionInputs.forEach((input) => input.addEventListener('change', applyImagePosition));
+        applyImagePosition();
+
+        const showImage = (src, isNew = false) => {
+            if (!image || !imageWrap || !imageEmpty) return;
+            if (src) {
+                image.src = src;
+                imageWrap.hidden = false;
+                imageEmpty.hidden = true;
+            } else {
+                image.removeAttribute('src');
+                imageWrap.hidden = true;
+                imageEmpty.hidden = false;
+            }
+            if (photoDetails) photoDetails.classList.toggle('has-media', Boolean(src));
+            if (imageStatus) {
+                imageStatus.textContent = src
+                    ? (isNew ? imageStatus.dataset.newLabel : imageStatus.dataset.readyLabel)
+                    : imageStatus.dataset.emptyLabel;
+            }
+            refreshLivePreview();
+        };
+
+        if (imageInput) {
+            imageInput.addEventListener('change', () => {
+                if (objectUrl) URL.revokeObjectURL(objectUrl);
+                objectUrl = '';
+                const file = imageInput.files && imageInput.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    objectUrl = URL.createObjectURL(file);
+                    if (removeImage) removeImage.checked = false;
+                    showImage(objectUrl, true);
+                    applyImagePosition();
+                } else {
+                    showImage(removeImage && removeImage.checked ? '' : originalImage);
+                }
+            });
+        }
+        if (removeImage) {
+            removeImage.addEventListener('change', () => {
+                const selected = imageInput && imageInput.files && imageInput.files[0];
+                showImage(removeImage.checked ? '' : (selected && objectUrl ? objectUrl : originalImage));
+            });
+        }
+
+        const videoInput = form.querySelector('[data-workout-video-input]');
+        const videoPreview = form.querySelector('[data-workout-video-preview]');
+        const clearVideo = form.querySelector('[data-workout-clear-video]');
+        const videoDetails = form.querySelector('[data-workout-video-details]');
+        const videoStatus = form.querySelector('[data-workout-video-status]');
+        if (videoInput && videoPreview) {
+            const refresh = () => {
+                renderVideo(videoPreview, videoInput.value);
+                const hasVideo = videoInput.value.trim() !== '';
+                if (videoDetails) videoDetails.classList.toggle('has-media', hasVideo);
+                if (videoStatus) videoStatus.textContent = hasVideo ? videoStatus.dataset.readyLabel : videoStatus.dataset.emptyLabel;
+                refreshLivePreview();
+            };
+            videoInput.addEventListener('input', refresh);
+            videoInput.addEventListener('change', refresh);
+            refresh();
+            if (clearVideo) {
+                clearVideo.addEventListener('click', () => {
+                    videoInput.value = '';
+                    refresh();
+                    videoInput.focus();
+                });
+            }
+        }
+
+        const livePreview = form.querySelector('[data-workout-exercise-live-preview]');
+        if (livePreview) {
+            if (livePreview instanceof HTMLDetailsElement && editorMobileQuery.matches) livePreview.open = false;
+            const previewTabs = [...livePreview.querySelectorAll('[data-workout-preview-mode]')];
+            const previewPanels = [...livePreview.querySelectorAll('[data-workout-preview-panel]')];
+            const nameInput = form.querySelector('input[name="name"]');
+            const summaryInput = form.querySelector('textarea[name="summary"]');
+            const muscleInput = form.querySelector('select[name="muscle_group"]');
+            const equipmentInput = form.querySelector('select[name="equipment"]');
+            const difficultyInput = form.querySelector('select[name="difficulty"]');
+            const typeInput = form.querySelector('select[name="exercise_type"]');
+            const markInput = form.querySelector('[data-workout-mark-input]');
+            const colorInput = form.querySelector('[data-workout-color-input]');
+            const setsInput = form.querySelector('[data-workout-default-value="sets"]');
+            const repsInput = form.querySelector('[data-workout-default-value="reps"]');
+            const minutesInput = form.querySelector('[data-workout-default-value="minutes"]');
+            const secondsInput = form.querySelector('[data-workout-default-value="seconds"]');
+
+            const selectedText = (select, fallback = '') => {
+                if (!(select instanceof HTMLSelectElement)) return fallback;
+                return (select.selectedOptions[0]?.textContent || fallback).trim();
+            };
+            const coverMode = () => {
+                const checked = form.querySelector('input[name="cover_mode"]:checked');
+                if (checked) return checked.value || 'auto';
+                const select = form.querySelector('select[name="cover_mode"]');
+                return select instanceof HTMLSelectElement ? (select.value || 'auto') : 'auto';
+            };
+            const targetLabel = () => {
+                const type = typeInput?.value || 'strength';
+                const sets = setsInput?.value || '\u2014';
+                if (type === 'cardio') return `${sets}\u00d7${minutesInput?.value || '\u2014'} min`;
+                if (type === 'isometric') return `${sets}\u00d7${secondsInput?.value || '\u2014'}s`;
+                return `${sets}\u00d7${repsInput?.value || '\u2014'}`;
+            };
+            const updateText = (selector, value) => {
+                livePreview.querySelectorAll(selector).forEach((node) => {
+                    node.textContent = value;
+                });
+            };
+            const activatePreviewMode = (mode, focus = false) => {
+                const activeMode = previewTabs.some((tab) => tab.dataset.workoutPreviewMode === mode) ? mode : 'library';
+                previewTabs.forEach((tab) => {
+                    const selected = tab.dataset.workoutPreviewMode === activeMode;
+                    tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+                    tab.tabIndex = selected ? 0 : -1;
+                    if (selected && focus) tab.focus({ preventScroll: true });
+                });
+                previewPanels.forEach((panel) => {
+                    panel.hidden = panel.dataset.workoutPreviewPanel !== activeMode;
+                });
+            };
+            previewTabs.forEach((tab, index) => {
+                tab.addEventListener('click', () => activatePreviewMode(tab.dataset.workoutPreviewMode || 'library'));
+                tab.addEventListener('keydown', (event) => {
+                    let nextIndex = index;
+                    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') nextIndex = (index - 1 + previewTabs.length) % previewTabs.length;
+                    else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIndex = (index + 1) % previewTabs.length;
+                    else if (event.key === 'Home') nextIndex = 0;
+                    else if (event.key === 'End') nextIndex = previewTabs.length - 1;
+                    else return;
+                    event.preventDefault();
+                    activatePreviewMode(previewTabs[nextIndex].dataset.workoutPreviewMode || 'library', true);
+                });
+            });
+
+            refreshLivePreview = () => {
+                const mark = normalizeWorkoutMark(markInput?.value || '');
+                const color = normalizeWorkoutColor(colorInput?.value || '');
+                const selectedGalleryCover = form.querySelector('[data-workout-gallery-cover]:checked')?.closest('[data-workout-gallery-item]');
+                const selectedGalleryImage = selectedGalleryCover?.querySelector('[data-workout-gallery-image]');
+                const legacyImageSource = image && imageWrap && !imageWrap.hidden ? (image.getAttribute('src') || '') : '';
+                const imageSource = legacyImageSource || selectedGalleryImage?.getAttribute('src') || '';
+                const video = parseVideo(videoInput?.value || '');
+                const requestedCover = coverMode();
+                let resolvedSource = 'simple';
+                if (requestedCover === 'photo') resolvedSource = imageSource ? 'photo' : 'simple';
+                else if (requestedCover === 'video') resolvedSource = video ? 'video' : 'simple';
+                else if (requestedCover === 'auto') resolvedSource = imageSource ? 'photo' : (video ? 'video' : 'simple');
+                const resolvedImage = resolvedSource === 'photo' ? imageSource : (resolvedSource === 'video' ? (video?.thumbnail || '') : '');
+                const selectedPosition = imagePositionInputs.find((input) => input.checked)?.value || 'center';
+                const galleryCoverPosition = selectedGalleryImage?.style?.objectPosition || '';
+                const position = resolvedSource === 'photo' && galleryCoverPosition !== ''
+                    ? galleryCoverPosition
+                    : (imagePositions[selectedPosition] || imagePositions.center);
+
+                livePreview.style.setProperty('--exercise-accent', color);
+                livePreview.style.setProperty('--workout-accent', color);
+                updateText('[data-workout-preview-head-mark]', mark);
+                updateText('[data-workout-preview-mark]', mark);
+                updateText('[data-workout-preview-name]', String(nameInput?.value || '').trim() || livePreview.dataset.placeholderName || 'Exercise');
+                updateText('[data-workout-preview-summary]', String(summaryInput?.value || '').trim() || livePreview.dataset.placeholderSummary || '');
+                updateText('[data-workout-preview-muscle]', selectedText(muscleInput));
+                updateText('[data-workout-preview-equipment]', selectedText(equipmentInput));
+                updateText('[data-workout-preview-difficulty]', selectedText(difficultyInput));
+                updateText('[data-workout-preview-type]', selectedText(typeInput));
+                updateText('[data-workout-preview-target]', targetLabel());
+                updateText('[data-workout-preview-muscle-token]', String(muscleInput?.value || 'X').slice(0, 2).toUpperCase());
+
+                const labels = {
+                    auto: livePreview.dataset.coverAutoLabel || 'Auto',
+                    photo: livePreview.dataset.coverPhotoLabel || 'Photo',
+                    video: livePreview.dataset.coverVideoLabel || 'Video',
+                    simple: livePreview.dataset.coverSimpleLabel || 'Simple',
+                };
+                updateText('[data-workout-preview-cover-status]', `${labels[requestedCover] || labels.auto} \u00b7 ${labels[resolvedSource] || labels.simple}`);
+                livePreview.querySelectorAll('[data-workout-preview-media]').forEach((mediaNode) => {
+                    mediaNode.dataset.previewSource = resolvedSource;
+                    const previewImage = mediaNode.querySelector('[data-workout-preview-image]');
+                    const previewMark = mediaNode.querySelector('[data-workout-preview-mark]');
+                    const previewPlay = mediaNode.querySelector('[data-workout-preview-play]');
+                    if (previewImage) {
+                        if (resolvedImage) previewImage.src = resolvedImage;
+                        else previewImage.removeAttribute('src');
+                        previewImage.style.objectPosition = position;
+                        previewImage.hidden = !resolvedImage;
+                    }
+                    if (previewMark) previewMark.hidden = Boolean(resolvedImage);
+                    if (previewPlay) previewPlay.hidden = resolvedSource !== 'video';
+                });
+            };
+
+            form.addEventListener('input', refreshLivePreview);
+            form.addEventListener('change', refreshLivePreview);
+            form.addEventListener('workout:gallerychange', refreshLivePreview);
+            activatePreviewMode('library');
+            refreshLivePreview();
+        }
+    };
+
+    const init = () => document.querySelectorAll('[data-workout-media-editor]').forEach(initEditor);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+    document.addEventListener('fc:afterPageSwap', init);
+})();
+
+/* Personal exercise drafts. Textual configuration is kept per user/editor
+   context in localStorage. File objects are deliberately never persisted: a
+   restored draft asks the user to select those files again. */
+(() => {
+    'use strict';
+
+    const FORM_SELECTOR = 'form[data-workout-draft-key]';
+    const PENDING_CLEAR_KEY = 'fitness-challenge:exercise-draft:pending-clear';
+    const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+    const MAX_SERIALIZED_SIZE = 200000;
+    const ignoredNames = new Set([
+        'csrf_token',
+        'action',
+        'exercise_id',
+        'editor_section',
+        'target_routine_id',
+        'target_routine_exercise_id',
+        'target_session_id',
+        'gallery_editor',
+        'gallery_order[]',
+        'gallery_position[]',
+        'gallery_caption[]',
+        'gallery_cover',
+        'image_position',
+    ]);
+
+    const storageRead = (key) => {
+        try {
+            const parsed = JSON.parse(window.localStorage.getItem(key) || 'null');
+            if (!parsed || parsed.version !== 1 || !Number.isFinite(parsed.updatedAt)) return null;
+            if (Date.now() - parsed.updatedAt > MAX_AGE_MS) {
+                window.localStorage.removeItem(key);
+                return null;
+            }
+            return parsed;
+        } catch (_) {
+            return null;
+        }
+    };
+    const storageRemove = (key) => {
+        try {
+            window.localStorage.removeItem(key);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    };
+    const pendingRead = () => {
+        try {
+            const raw = window.sessionStorage.getItem(PENDING_CLEAR_KEY) || '';
+            if (!raw) return null;
+            try {
+                const parsed = JSON.parse(raw);
+                if (parsed?.version === 1 && typeof parsed.key === 'string' && parsed.key !== '') return parsed;
+            } catch (_) {}
+            return { version: 1, key: raw, action: 'legacy', success: null };
+        } catch (_) {
+            return null;
+        }
+    };
+    const pendingWrite = (key, action, success) => {
+        try {
+            window.sessionStorage.setItem(PENDING_CLEAR_KEY, JSON.stringify({
+                version: 1,
+                key,
+                action,
+                success,
+                createdAt: Date.now(),
+            }));
+        } catch (_) {}
+    };
+    const pendingRemove = () => {
+        try { window.sessionStorage.removeItem(PENDING_CLEAR_KEY); } catch (_) {}
+    };
+    const formatTime = (timestamp) => {
+        try {
+            return new Intl.DateTimeFormat(document.documentElement.lang || undefined, {
+                hour: '2-digit',
+                minute: '2-digit',
+            }).format(new Date(timestamp));
+        } catch (_) {
+            return '';
+        }
+    };
+    const withTime = (template, timestamp) => String(template || '').replaceAll('{time}', formatTime(timestamp));
+
+    const matchesSuccessfulRedirect = (pending) => {
+        if (pending?.action === 'legacy') return true;
+        const success = pending?.success && typeof pending.success === 'object' ? pending.success : {};
+        const params = new URL(window.location.href).searchParams;
+        if (params.get('page') !== 'workouts' || params.has('custom_exercise')) return false;
+        if (success.route === 'exercise') {
+            const exerciseId = Number(params.get('exercise_id') || 0);
+            return exerciseId > 0 && (Number(success.exerciseId || 0) <= 0 || exerciseId === Number(success.exerciseId));
+        }
+        if (success.route === 'routine_exercise') {
+            return Number(params.get('routine_id') || 0) === Number(success.routineId || 0)
+                && Number(params.get('routine_exercise_id') || 0) === Number(success.routineExerciseId || 0);
+        }
+        if (success.route === 'routine') return Number(params.get('routine_id') || 0) === Number(success.routineId || 0);
+        if (success.route === 'session') return Number(params.get('session_id') || 0) === Number(success.sessionId || 0);
+        if (success.route === 'library_mine') return params.get('view') === 'library' && params.get('scope') === 'mine';
+        return false;
+    };
+    const reconcilePendingSave = (forms) => {
+        const pending = pendingRead();
+        if (!pending) return;
+        const returnedToSameEditor = forms.some((form) => form.dataset.workoutDraftKey === pending.key);
+        if (!returnedToSameEditor && matchesSuccessfulRedirect(pending)) storageRemove(pending.key);
+        pendingRemove();
+    };
+
+    const successRedirectFor = (form) => {
+        const numberValue = (name) => Math.max(0, Number(form.elements.namedItem(name)?.value || 0));
+        const routineId = numberValue('target_routine_id');
+        const routineExerciseId = numberValue('target_routine_exercise_id');
+        const sessionId = numberValue('target_session_id');
+        const exerciseId = numberValue('exercise_id');
+        if (routineExerciseId > 0) return { route: 'routine_exercise', routineId, routineExerciseId };
+        if (sessionId > 0) return { route: 'session', sessionId };
+        if (routineId > 0) return { route: 'routine', routineId };
+        return { route: 'exercise', exerciseId };
+    };
+
+    const collectDraft = (form) => {
+        const values = {};
+        let hasFiles = false;
+        [...form.elements].forEach((control) => {
+            if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement)) return;
+            if (!control.name || control.disabled || ignoredNames.has(control.name) || control.matches('[data-guide-output]')) return;
+            if (control instanceof HTMLInputElement && control.type === 'file') {
+                hasFiles = hasFiles || (control.files?.length || 0) > 0;
+                return;
+            }
+            if (control instanceof HTMLInputElement && ['submit', 'button', 'reset', 'image'].includes(control.type)) return;
+            if (!values[control.name]) values[control.name] = [];
+            if (control instanceof HTMLInputElement && ['checkbox', 'radio'].includes(control.type)) {
+                if (control.checked) values[control.name].push(String(control.value).slice(0, 10000));
+                return;
+            }
+            values[control.name].push(String(control.value).slice(0, 10000));
+        });
+
+        const gallery = [...form.querySelectorAll('[data-workout-gallery-item]')]
+            .map((item) => ({
+                token: String(item.dataset.galleryToken || ''),
+                position: String(item.querySelector('[data-workout-gallery-position]')?.value || 'center'),
+                caption: String(item.querySelector('[data-workout-gallery-caption]')?.value || '').slice(0, 120),
+                cover: Boolean(item.querySelector('[data-workout-gallery-cover]')?.checked),
+                focus: item.classList.contains('is-editing'),
+            }))
+            .filter((item) => item.token !== '' && !item.token.startsWith('new:'));
+
+        return {
+            version: 1,
+            revision: String(form.dataset.workoutDraftRevision || ''),
+            updatedAt: Date.now(),
+            section: String(form.dataset.workoutEditorSection || 'basics'),
+            values,
+            gallery,
+            hasFiles,
+        };
+    };
+
+    const reconcileGuideItems = (form, values) => {
+        ['steps', 'tips', 'mistakes'].forEach((key) => {
+            const section = form.querySelector(`[data-guide-key="${key}"]`);
+            if (!(section instanceof HTMLElement)) return;
+            const wasOpen = section instanceof HTMLDetailsElement ? section.open : false;
+            const desired = Array.isArray(values[`${key}_items[]`]) ? values[`${key}_items[]`] : [];
+            let rows = [...section.querySelectorAll('[data-guide-item]')];
+            const add = section.querySelector('[data-guide-add]');
+            while (rows.length < desired.length && add instanceof HTMLButtonElement) {
+                add.click();
+                rows = [...section.querySelectorAll('[data-guide-item]')];
+            }
+            while (rows.length > desired.length) {
+                const remove = rows.at(-1)?.querySelector('[data-guide-remove]');
+                if (!(remove instanceof HTMLButtonElement)) break;
+                remove.click();
+                rows = [...section.querySelectorAll('[data-guide-item]')];
+            }
+            if (section instanceof HTMLDetailsElement) section.open = wasOpen;
+        });
+    };
+
+    const restoreGallery = (form, draft) => {
+        if (!Array.isArray(draft.gallery)) return;
+        const list = form.querySelector('[data-workout-gallery-list]');
+        if (!(list instanceof HTMLElement)) return;
+        const desiredTokens = new Set(draft.gallery.map((item) => String(item.token || '')));
+        if (String(draft.revision || '') === String(form.dataset.workoutDraftRevision || '')) {
+            [...list.querySelectorAll('[data-workout-gallery-item]')].forEach((item) => {
+                const token = String(item.dataset.galleryToken || '');
+                if (token && !token.startsWith('new:') && !desiredTokens.has(token)) {
+                    item.querySelector('[data-workout-gallery-remove]')?.click();
+                }
+            });
+        }
+        const byToken = new Map([...list.querySelectorAll('[data-workout-gallery-item]')]
+            .map((item) => [String(item.dataset.galleryToken || ''), item]));
+        draft.gallery.forEach((saved) => {
+            const item = byToken.get(String(saved.token || ''));
+            if (!(item instanceof HTMLElement)) return;
+            list.appendChild(item);
+            const position = item.querySelector('[data-workout-gallery-position]');
+            const caption = item.querySelector('[data-workout-gallery-caption]');
+            const cover = item.querySelector('[data-workout-gallery-cover]');
+            if (position) position.value = String(saved.position || 'center');
+            if (caption) caption.value = String(saved.caption || '').slice(0, 120);
+            if (cover) cover.checked = Boolean(saved.cover);
+        });
+        const focusItem = draft.gallery.find((item) => item.focus);
+        const focusButton = byToken.get(String(focusItem?.token || ''))?.querySelector('[data-workout-gallery-focus]');
+        if (focusButton instanceof HTMLButtonElement) focusButton.click();
+        const coverInput = list.querySelector('[data-workout-gallery-cover]:checked')
+            || list.querySelector('[data-workout-gallery-cover]');
+        if (coverInput instanceof HTMLInputElement) {
+            coverInput.checked = true;
+            coverInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        list.closest('[data-workout-gallery-editor]')?.dispatchEvent(new CustomEvent('workout:gallerychange', { bubbles: true }));
+    };
+
+    const restoreDraft = (form, draft) => {
+        const values = draft && typeof draft.values === 'object' && draft.values ? draft.values : {};
+        reconcileGuideItems(form, values);
+        const groupIndexes = new Map();
+        [...form.elements].forEach((control) => {
+            if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement)) return;
+            if (!control.name || ignoredNames.has(control.name) || control.matches('[data-guide-output]') || control.type === 'file') return;
+            const savedValues = Array.isArray(values[control.name]) ? values[control.name] : [];
+            if (control instanceof HTMLInputElement && ['checkbox', 'radio'].includes(control.type)) {
+                const nextChecked = savedValues.includes(String(control.value));
+                if (control.checked !== nextChecked) {
+                    control.checked = nextChecked;
+                    control.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                return;
+            }
+            const index = groupIndexes.get(control.name) || 0;
+            groupIndexes.set(control.name, index + 1);
+            if (index >= savedValues.length) return;
+            const nextValue = String(savedValues[index] ?? '');
+            if (control.value !== nextValue) {
+                control.value = nextValue;
+                control.dispatchEvent(new Event('input', { bubbles: true }));
+                control.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        });
+        restoreGallery(form, draft);
+        const section = ['basics', 'guide', 'media'].includes(String(draft.section || '')) ? String(draft.section) : 'basics';
+        form.querySelector(`[data-workout-editor-step-trigger="${section}"]`)?.click();
+    };
+
+    const initForm = (form) => {
+        if (!(form instanceof HTMLFormElement) || form.dataset.workoutDraftReady === '1') return;
+        form.dataset.workoutDraftReady = '1';
+        const key = String(form.dataset.workoutDraftKey || '');
+        const status = form.querySelector('[data-workout-draft-status]');
+        const title = status?.querySelector('[data-workout-draft-title]');
+        const hint = status?.querySelector('[data-workout-draft-hint]');
+        const actions = status?.querySelector('[data-workout-draft-actions]');
+        const restore = status?.querySelector('[data-workout-draft-restore]');
+        const discard = status?.querySelector('[data-workout-draft-discard]');
+        if (!key || !(status instanceof HTMLElement) || !title || !hint || !actions) return;
+
+        let restoring = false;
+        let timer = 0;
+        let foundDraft = storageRead(key);
+        const label = (name) => String(status.dataset[name] || '');
+        const setStatus = (state, heading, detail, showActions = false) => {
+            status.dataset.state = state;
+            title.textContent = heading;
+            hint.textContent = detail;
+            actions.hidden = !showActions;
+        };
+        const readyStatus = (heading = label('readyLabel')) => setStatus('ready', heading, '');
+        const showFound = (draft) => {
+            const detail = withTime(label('foundTemplate'), draft.updatedAt)
+                + (draft.hasFiles ? ` ${label('filesLabel')}` : '');
+            setStatus('found', label('foundLabel'), detail, true);
+            if (window.matchMedia('(max-width: 700px)').matches) {
+                window.requestAnimationFrame(() => {
+                    if (status.dataset.state === 'found') status.scrollIntoView({ block: 'start' });
+                });
+            }
+        };
+        const saveNow = () => {
+            window.clearTimeout(timer);
+            const draft = collectDraft(form);
+            try {
+                const serialized = JSON.stringify(draft);
+                if (serialized.length > MAX_SERIALIZED_SIZE) throw new Error('draft-too-large');
+                window.localStorage.setItem(key, serialized);
+                foundDraft = draft;
+                const detail = draft.hasFiles ? label('filesLabel') : '';
+                setStatus('saved', withTime(label('savedTemplate'), draft.updatedAt), detail);
+                return true;
+            } catch (_) {
+                setStatus('unavailable', label('unavailableLabel'), '');
+                return false;
+            }
+        };
+        const scheduleSave = () => {
+            if (restoring) return;
+            foundDraft = null;
+            setStatus('saving', label('savingLabel'), label('filesLabel'));
+            window.clearTimeout(timer);
+            timer = window.setTimeout(saveNow, 500);
+        };
+
+        if (foundDraft) showFound(foundDraft);
+        else readyStatus();
+
+        form.addEventListener('input', scheduleSave);
+        form.addEventListener('change', scheduleSave);
+        form.addEventListener('workout:gallerychange', scheduleSave);
+        form.addEventListener('click', (event) => {
+            const target = event.target instanceof Element ? event.target : null;
+            if (!target || target.closest('[data-workout-draft-restore], [data-workout-draft-discard], button[type="submit"]')) return;
+            if (!target.closest('[data-workout-editor-step-trigger], [data-guide-add], [data-guide-move], [data-guide-remove], [data-workout-gallery-move], [data-workout-gallery-remove], [data-workout-gallery-focus], [data-workout-clear-video]')) return;
+            window.setTimeout(scheduleSave, 0);
+        });
+        form.addEventListener('submit', () => {
+            saveNow();
+            pendingWrite(key, 'save', successRedirectFor(form));
+        });
+        restore?.addEventListener('click', () => {
+            if (!foundDraft) return;
+            restoring = true;
+            restoreDraft(form, foundDraft);
+            restoring = false;
+            const restoredAt = Date.now();
+            setStatus('restored', label('restoredLabel'), foundDraft.hasFiles ? label('filesLabel') : '');
+            foundDraft.updatedAt = restoredAt;
+            window.setTimeout(saveNow, 0);
+        });
+        discard?.addEventListener('click', () => {
+            window.clearTimeout(timer);
+            storageRemove(key);
+            foundDraft = null;
+            readyStatus(label('discardedLabel'));
+        });
+    };
+
+    const init = () => {
+        const forms = [...document.querySelectorAll(FORM_SELECTOR)];
+        reconcilePendingSave(forms);
+        forms.forEach(initForm);
+    };
+    document.addEventListener('submit', (event) => {
+        if (event.defaultPrevented) return;
+        const deleteForm = event.target instanceof Element ? event.target.closest('[data-workout-draft-delete-key]') : null;
+        const key = String(deleteForm?.dataset?.workoutDraftDeleteKey || '');
+        if (key) pendingWrite(key, 'delete', { route: 'library_mine' });
+    });
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+    document.addEventListener('fc:afterPageSwap', init);
+})();
+
+/* Session rest timer: the exercise prescription becomes an active tool. The
+   clock is kept in sessionStorage so a normal set POST or exercise navigation
+   never resets a recovery that is already running. */
+(() => {
+    const STORAGE_PREFIX = 'fitness-challenge:workout-rest:';
+    const MAX_SECONDS = 3600;
+    const MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+    const clampSeconds = (value) => Math.max(0, Math.min(MAX_SECONDS, Math.round(Number(value) || 0)));
+    const storageKey = (sessionId) => `${STORAGE_PREFIX}${sessionId}`;
+    const formatClock = (seconds) => {
+        const value = clampSeconds(seconds);
+        return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+    };
+    const removeState = (sessionId) => {
+        try { window.sessionStorage.removeItem(storageKey(sessionId)); } catch (_) {}
+    };
+    const saveState = (sessionId, state) => {
+        try {
+            window.sessionStorage.setItem(storageKey(sessionId), JSON.stringify({
+                duration: clampSeconds(state.duration),
+                remaining: clampSeconds(state.remaining),
+                running: Boolean(state.running),
+                started: state.started !== false,
+                complete: Boolean(state.complete),
+                endsAt: Math.max(0, Number(state.endsAt) || 0),
+                updatedAt: Date.now(),
+            }));
+        } catch (_) {}
+    };
+    const readState = (sessionId) => {
+        try {
+            const parsed = JSON.parse(window.sessionStorage.getItem(storageKey(sessionId)) || 'null');
+            if (!parsed || typeof parsed !== 'object') return null;
+            if (Date.now() - Math.max(0, Number(parsed.updatedAt) || 0) > MAX_AGE_MS) {
+                removeState(sessionId);
+                return null;
+            }
+            const duration = clampSeconds(parsed.duration);
+            const remaining = clampSeconds(parsed.remaining);
+            if (duration <= 0) return null;
+            return {
+                duration,
+                remaining,
+                running: Boolean(parsed.running),
+                started: parsed.started !== false,
+                complete: Boolean(parsed.complete),
+                endsAt: Math.max(0, Number(parsed.endsAt) || 0),
+            };
+        } catch (_) {
+            removeState(sessionId);
+            return null;
+        }
+    };
+
+    const initTimer = (timer) => {
+        if (!(timer instanceof HTMLElement) || timer.dataset.restTimerReady === '1') return;
+        const sessionId = String(timer.dataset.sessionId || '').trim();
+        if (!sessionId) return;
+        timer.dataset.restTimerReady = '1';
+
+        const defaultSeconds = clampSeconds(timer.dataset.defaultSeconds);
+        const clock = timer.querySelector('[data-rest-timer-clock]');
+        const time = timer.querySelector('[data-rest-timer-time]');
+        const title = timer.querySelector('[data-rest-timer-title]');
+        const status = timer.querySelector('[data-rest-timer-status]');
+        const toggle = timer.querySelector('[data-rest-timer-toggle]');
+        const toggleLabel = timer.querySelector('[data-rest-timer-toggle-label]');
+        const toggleIcon = timer.querySelector('[data-rest-timer-icon]');
+        const skip = timer.querySelector('[data-rest-timer-skip]');
+        const adjusters = [...timer.querySelectorAll('[data-rest-timer-adjust]')];
+        const labels = {
+            ready: String(timer.dataset.readyLabel || ''),
+            readyHint: String(timer.dataset.readyHint || ''),
+            running: String(timer.dataset.runningLabel || ''),
+            paused: String(timer.dataset.pausedLabel || ''),
+            complete: String(timer.dataset.completeLabel || ''),
+            start: String(timer.dataset.startLabel || ''),
+            pause: String(timer.dataset.pauseLabel || ''),
+            resume: String(timer.dataset.resumeLabel || ''),
+            restart: String(timer.dataset.restartLabel || ''),
+            skip: String(timer.dataset.skipLabel || ''),
+            close: String(timer.dataset.closeLabel || ''),
+        };
+        let state = readState(sessionId);
+        let intervalId = 0;
+        let completionAnnounced = Boolean(state?.complete);
+
+        const remainingNow = () => {
+            if (!state) return defaultSeconds;
+            if (!state.running) return clampSeconds(state.remaining);
+            return clampSeconds(Math.ceil((state.endsAt - Date.now()) / 1000));
+        };
+        const persist = () => {
+            if (state) saveState(sessionId, state);
+            else removeState(sessionId);
+        };
+        const stopTicking = () => {
+            if (intervalId) window.clearInterval(intervalId);
+            intervalId = 0;
+        };
+        const finish = () => {
+            if (!state) return;
+            state.remaining = 0;
+            state.running = false;
+            state.started = true;
+            state.complete = true;
+            state.endsAt = 0;
+            persist();
+            if (!completionAnnounced && typeof navigator.vibrate === 'function') {
+                try { navigator.vibrate([120, 70, 120]); } catch (_) {}
+            }
+            completionAnnounced = true;
+        };
+
+        const render = () => {
+            if (!timer.isConnected) {
+                stopTicking();
+                return;
+            }
+            let remaining = remainingNow();
+            if (state?.running && remaining <= 0) {
+                finish();
+                remaining = 0;
+            }
+            const mode = !state || state.started === false
+                ? 'idle'
+                : (state.complete ? 'complete' : (state.running ? 'running' : 'paused'));
+            const duration = Math.max(1, state?.duration || defaultSeconds || 1);
+            const progress = mode === 'complete' ? 100 : Math.max(0, Math.min(100, (remaining / duration) * 100));
+            const visible = mode !== 'idle' || remaining > 0;
+            timer.hidden = !visible;
+            timer.dataset.state = mode;
+            if (clock instanceof HTMLElement) clock.style.setProperty('--rest-progress', `${progress}%`);
+            if (time instanceof HTMLTimeElement) {
+                time.textContent = formatClock(remaining);
+                time.dateTime = `PT${remaining}S`;
+            }
+
+            const stateLabel = mode === 'running'
+                ? labels.running
+                : (mode === 'paused' ? labels.paused : (mode === 'complete' ? labels.complete : labels.ready));
+            const buttonLabel = mode === 'running'
+                ? labels.pause
+                : (mode === 'paused' ? labels.resume : (mode === 'complete' ? labels.restart : labels.start));
+            if (title instanceof HTMLElement) title.textContent = stateLabel;
+            if (status instanceof HTMLElement) status.textContent = mode === 'idle' ? labels.readyHint : formatClock(remaining);
+            if (toggle instanceof HTMLButtonElement) toggle.setAttribute('aria-label', buttonLabel);
+            if (toggleLabel instanceof HTMLElement) toggleLabel.textContent = buttonLabel;
+            if (toggleIcon instanceof HTMLElement) toggleIcon.textContent = mode === 'running' ? 'Ⅱ' : (mode === 'complete' ? '↻' : '▶');
+            if (skip instanceof HTMLButtonElement) {
+                skip.hidden = mode === 'idle';
+                skip.textContent = mode === 'complete' ? labels.close : labels.skip;
+            }
+            adjusters.forEach((button) => {
+                if (button instanceof HTMLButtonElement) button.disabled = mode === 'complete';
+            });
+            if (state?.running && !intervalId) {
+                intervalId = window.setInterval(render, 250);
+            } else if (!state?.running) {
+                stopTicking();
+            }
+        };
+
+        const start = (seconds) => {
+            const duration = clampSeconds(seconds);
+            if (duration <= 0) return;
+            state = {
+                duration,
+                remaining: duration,
+                running: true,
+                started: true,
+                complete: false,
+                endsAt: Date.now() + duration * 1000,
+            };
+            completionAnnounced = false;
+            persist();
+            render();
+        };
+        const pause = () => {
+            if (!state?.running) return;
+            state.remaining = remainingNow();
+            state.running = false;
+            state.endsAt = 0;
+            persist();
+            render();
+        };
+        const resume = () => {
+            if (!state || state.remaining <= 0) {
+                start(state?.duration || defaultSeconds);
+                return;
+            }
+            state.running = true;
+            state.started = true;
+            state.complete = false;
+            state.endsAt = Date.now() + state.remaining * 1000;
+            completionAnnounced = false;
+            persist();
+            render();
+        };
+
+        toggle?.addEventListener('click', () => {
+            if (state?.running) pause();
+            else if (state && !state.complete && state.remaining > 0) resume();
+            else start(state?.duration || defaultSeconds);
+        });
+        adjusters.forEach((button) => {
+            button.addEventListener('click', () => {
+                const delta = Number(button.dataset.restTimerAdjust) || 0;
+                const current = remainingNow();
+                const next = clampSeconds(current + delta);
+                if (next <= 0 && state?.started) {
+                    finish();
+                    render();
+                    return;
+                }
+                const wasRunning = Boolean(state?.running);
+                state = {
+                    duration: Math.max(next, state?.duration || defaultSeconds || next),
+                    remaining: next,
+                    running: wasRunning,
+                    started: state?.started ?? false,
+                    complete: false,
+                    endsAt: wasRunning ? Date.now() + next * 1000 : 0,
+                };
+                completionAnnounced = false;
+                persist();
+                render();
+            });
+        });
+        skip?.addEventListener('click', () => {
+            if (state?.complete) {
+                state = null;
+                completionAnnounced = false;
+                persist();
+            } else {
+                finish();
+            }
+            render();
+        });
+
+        document.querySelectorAll(`[data-workout-set-form][data-session-id="${CSS.escape(sessionId)}"]`).forEach((form) => {
+            if (!(form instanceof HTMLFormElement) || form.dataset.restTimerReady === '1') return;
+            form.dataset.restTimerReady = '1';
+            form.addEventListener('click', (event) => {
+                const submitter = event.target instanceof Element
+                    ? event.target.closest('[data-workout-set-toggle]')
+                    : null;
+                if (!(submitter instanceof HTMLButtonElement) || submitter.dataset.nextCompleted !== '1') return;
+                const restSeconds = clampSeconds(form.dataset.restSeconds);
+                if (restSeconds <= 0) return;
+                form.dataset.restTimerStarted = '1';
+                start(restSeconds);
+            });
+            form.addEventListener('submit', (event) => {
+                if (form.dataset.restTimerStarted === '1') {
+                    delete form.dataset.restTimerStarted;
+                    return;
+                }
+                const submitter = event.submitter instanceof HTMLButtonElement
+                    ? event.submitter
+                    : form.querySelector('[data-workout-set-toggle][data-next-completed="1"]');
+                if (!(submitter instanceof HTMLButtonElement) || submitter.dataset.nextCompleted !== '1') return;
+                const restSeconds = clampSeconds(form.dataset.restSeconds);
+                if (restSeconds > 0) start(restSeconds);
+            });
+        });
+        document.querySelectorAll(`[data-workout-session-end][data-session-id="${CSS.escape(sessionId)}"]`).forEach((form) => {
+            if (!(form instanceof HTMLFormElement) || form.dataset.restTimerEndReady === '1') return;
+            form.dataset.restTimerEndReady = '1';
+            form.addEventListener('submit', (event) => {
+                if (!event.defaultPrevented) removeState(sessionId);
+            });
+        });
+
+        render();
+    };
+
+    const init = () => document.querySelectorAll('[data-workout-rest-timer]').forEach(initTimer);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+    document.addEventListener('fc:afterPageSwap', init);
+})();
+
+/* Exercise technique viewer: one compact photo/video surface everywhere the
+   exercise is consumed. Provider iframes are created only after an explicit
+   play action, keeping session navigation fast and privacy-friendly. */
+(() => {
+    'use strict';
+
+    const initViewer = (viewer) => {
+        if (!(viewer instanceof HTMLElement) || viewer.dataset.workoutMediaViewerReady === '1') return;
+        viewer.dataset.workoutMediaViewerReady = '1';
+
+        const tabs = [...viewer.querySelectorAll('[data-workout-media-tab]')];
+        const panels = [...viewer.querySelectorAll('[data-workout-media-panel]')];
+        const availableViews = panels.map((panel) => panel.dataset.workoutMediaPanel || '').filter(Boolean);
+        let activeView = availableViews.includes(viewer.dataset.defaultView || '')
+            ? viewer.dataset.defaultView
+            : (availableViews[0] || '');
+
+        const activate = (nextView, focusTab = false) => {
+            if (!availableViews.includes(nextView)) return;
+            activeView = nextView;
+            panels.forEach((panel) => {
+                panel.hidden = panel.dataset.workoutMediaPanel !== activeView;
+            });
+            tabs.forEach((tab) => {
+                const selected = tab.dataset.workoutMediaTab === activeView;
+                tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+                tab.tabIndex = selected ? 0 : -1;
+                if (selected && focusTab) tab.focus();
+            });
+        };
+
+        tabs.forEach((tab, index) => {
+            tab.addEventListener('click', () => activate(tab.dataset.workoutMediaTab || ''));
+            tab.addEventListener('keydown', (event) => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+                let nextIndex = index;
+                if (event.key === 'Home') nextIndex = 0;
+                else if (event.key === 'End') nextIndex = tabs.length - 1;
+                else nextIndex = (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+                activate(tabs[nextIndex]?.dataset.workoutMediaTab || '', true);
+            });
+        });
+        activate(activeView);
+
+        viewer.querySelectorAll('[data-workout-media-gallery]').forEach((gallery) => {
+            const slides = [...gallery.querySelectorAll('[data-workout-gallery-slide]')];
+            const captions = [...gallery.querySelectorAll('[data-workout-gallery-caption-slide]')];
+            const thumbs = [...gallery.querySelectorAll('[data-workout-gallery-viewer-thumb]')];
+            const status = gallery.querySelector('[data-workout-gallery-viewer-status]');
+            const stage = gallery.querySelector('.workouts-media-gallery-stage');
+            let activeIndex = 0;
+            let pointerStart = null;
+            const show = (rawIndex, focusThumb = false) => {
+                if (slides.length === 0) return;
+                activeIndex = (rawIndex + slides.length) % slides.length;
+                slides.forEach((slide, index) => {
+                    slide.hidden = index !== activeIndex;
+                });
+                captions.forEach((caption, index) => {
+                    caption.hidden = index !== activeIndex || String(caption.textContent || '').trim() === '';
+                });
+                thumbs.forEach((thumb, index) => {
+                    const selected = index === activeIndex;
+                    thumb.setAttribute('aria-pressed', selected ? 'true' : 'false');
+                    if (selected && focusThumb) thumb.focus({ preventScroll: true });
+                });
+                if (status) status.textContent = `${activeIndex + 1} / ${slides.length}`;
+            };
+            gallery.querySelectorAll('[data-workout-gallery-viewer-move]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    show(activeIndex + (button.dataset.workoutGalleryViewerMove === 'next' ? 1 : -1));
+                });
+            });
+            thumbs.forEach((thumb, index) => {
+                thumb.addEventListener('click', () => show(index));
+                thumb.addEventListener('keydown', (event) => {
+                    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                    event.preventDefault();
+                    const nextIndex = event.key === 'Home'
+                        ? 0
+                        : (event.key === 'End' ? thumbs.length - 1 : index + (event.key === 'ArrowRight' ? 1 : -1));
+                    show(nextIndex, true);
+                });
+            });
+            stage?.addEventListener('pointerdown', (event) => {
+                if (event.pointerType === 'mouse' && event.button !== 0) return;
+                pointerStart = { x: event.clientX, y: event.clientY };
+            });
+            stage?.addEventListener('pointerup', (event) => {
+                if (!pointerStart) return;
+                const deltaX = event.clientX - pointerStart.x;
+                const deltaY = event.clientY - pointerStart.y;
+                pointerStart = null;
+                if (Math.abs(deltaX) >= 42 && Math.abs(deltaX) > Math.abs(deltaY)) show(activeIndex + (deltaX < 0 ? 1 : -1));
+            });
+            stage?.addEventListener('pointercancel', () => {
+                pointerStart = null;
+            });
+            show(0);
+        });
+
+        viewer.querySelectorAll('[data-workout-video-load]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const host = button.closest('[data-workout-lazy-video]');
+                if (!(host instanceof HTMLElement) || host.dataset.videoLoaded === '1') return;
+                const source = String(host.dataset.videoSrc || '').trim();
+                if (!source) return;
+
+                host.dataset.videoLoaded = '1';
+                host.classList.add('is-loaded');
+                button.disabled = true;
+                const frame = document.createElement('iframe');
+                frame.src = source;
+                frame.title = host.dataset.videoTitle || 'Exercise video';
+                frame.loading = 'eager';
+                frame.referrerPolicy = 'strict-origin-when-cross-origin';
+                frame.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+                frame.allowFullscreen = true;
+                frame.tabIndex = 0;
+                const status = host.querySelector('[data-workout-video-load-status]');
+                [...host.children].forEach((child) => {
+                    if (child !== status) child.hidden = true;
+                });
+                host.appendChild(frame);
+                if (status) status.textContent = host.dataset.loadedLabel || '';
+                frame.focus({ preventScroll: true });
+            });
+        });
+    };
+
+    const init = () => document.querySelectorAll('[data-workout-media-viewer]').forEach(initViewer);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+    document.addEventListener('fc:afterPageSwap', init);
 })();
 
 /* ==========================================================================
@@ -5701,7 +8187,8 @@
 
     function sync(list) {
         var layout = document.querySelector('.dashboard-layout');
-        if (!layout) {
+        var mobileHome = document.querySelector('.dashboard-mobile-home');
+        if (!layout && !mobileHome) {
             return;
         }
         var items = list.querySelectorAll('[data-dashboard-layout-item]');
@@ -5710,14 +8197,44 @@
             if (!box) {
                 return;
             }
-            var card = layout.querySelector('[data-dashboard-widget="' + box.value + '"]');
-            if (!card) {
-                return;
+            var card = layout ? layout.querySelector('[data-dashboard-widget="' + CSS.escape(box.value) + '"]') : null;
+            var mobileSurface = mobileHome ? mobileHome.querySelector('[data-dashboard-mobile-surface="' + CSS.escape(box.value) + '"]') : null;
+            [card, mobileSurface].forEach(function (surface) {
+                if (!(surface instanceof HTMLElement)) {
+                    return;
+                }
+                surface.hidden = !box.checked;
+                surface.classList.toggle('is-layout-hidden', !box.checked);
+                if (box.checked) {
+                    surface.style.removeProperty('display');
+                }
+            });
+            if (card instanceof HTMLElement) {
+                card.style.order = String(index + 1);
             }
-            card.style.order = String(index + 1);
-            card.hidden = !box.checked;
-            card.classList.toggle('is-layout-hidden', !box.checked);
         });
+
+        var form = list.closest('[data-dashboard-layout-editor]');
+        var state = form ? form.querySelector('[data-dashboard-layout-state]') : null;
+        if (state instanceof HTMLElement) {
+            var inputs = Array.prototype.slice.call(list.querySelectorAll('input[type="checkbox"][name="dashboard_widgets[]"]'));
+            var visible = inputs.filter(function (input) { return input.checked; }).length;
+            var hidden = Math.max(0, inputs.length - visible);
+            var visibleNode = state.querySelector('[data-layout-visible-count]');
+            var hiddenNode = state.querySelector('[data-layout-hidden-count]');
+            var changeNode = state.querySelector('[data-layout-change-state]');
+            if (visibleNode) {
+                visibleNode.textContent = String(state.dataset.visibleTemplate || '{count} visible').replace('{count}', String(visible));
+            }
+            if (hiddenNode) {
+                hiddenNode.textContent = String(state.dataset.hiddenTemplate || '{count} hidden').replace('{count}', String(hidden));
+            }
+            if (changeNode) {
+                changeNode.textContent = document.body.classList.contains('layout-has-unsaved')
+                    ? String(state.dataset.changedLabel || 'Unsaved changes')
+                    : String(state.dataset.savedLabel || 'Saved');
+            }
+        }
     }
 
     function init() {
@@ -5727,11 +8244,41 @@
             }
             list.dataset.livePreviewReady = '1';
             list.addEventListener('click', function (event) {
-                if (event.target.closest('[data-layout-move]')) {
-                    window.setTimeout(function () { sync(list); }, 0);
+                var button = event.target.closest('[data-layout-move]');
+                if (!button) {
+                    return;
                 }
+                var item = button.closest('[data-dashboard-layout-item]');
+                var direction = String(button.dataset.layoutMove || '');
+                var scope = item ? String(item.dataset.layoutScope || '') : '';
+                var scopedItems = item ? Array.prototype.slice.call(list.querySelectorAll('[data-dashboard-layout-item]')).filter(function (candidate) {
+                    return scope === '' || String(candidate.dataset.layoutScope || '') === scope;
+                }) : [];
+                var index = item ? scopedItems.indexOf(item) : -1;
+                var sibling = index >= 0
+                    ? (direction === 'up' ? scopedItems[index - 1] : scopedItems[index + 1])
+                    : null;
+                if (item && sibling) {
+                    if (direction === 'up') {
+                        sibling.before(item);
+                    } else {
+                        sibling.after(item);
+                    }
+                    list.querySelectorAll('[data-dashboard-layout-item]').forEach(function (layoutItem, index) {
+                        var input = layoutItem.querySelector('[data-dashboard-order-input]');
+                        if (input) input.value = String(index + 1);
+                    });
+                }
+                document.body.classList.add('layout-has-unsaved');
+                sync(list);
             });
-            list.addEventListener('change', function () { sync(list); });
+            list.addEventListener('change', function () {
+                document.body.classList.add('layout-has-unsaved');
+                sync(list);
+            });
+            var bodyObserver = new MutationObserver(function () { sync(list); });
+            bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+            sync(list);
         });
     }
 
@@ -5741,6 +8288,7 @@
         init();
     }
     document.addEventListener('pjax:loaded', init);
+    document.addEventListener('fc:afterPageSwap', init);
 })();
 
 /* Double-submit guard (#10).
@@ -5902,4 +8450,104 @@
     }
     window.addEventListener('load', sweep);
     document.addEventListener('fc:afterPageSwap', function () { window.setTimeout(sweep, 300); });
+})();
+
+/* Accessible routine and live-session exercise organizer.
+
+   Arrow controls are deliberate here: they are predictable with touch, keyboard
+   and assistive technology, and avoid accidental drag gestures while scrolling a
+   workout on a phone. Hidden order inputs move with each row and submit the exact
+   sequence shown on screen. */
+(function () {
+    'use strict';
+
+    function refresh(form) {
+        var items = Array.prototype.slice.call(form.querySelectorAll('[data-exercise-organizer-item]'));
+        items.forEach(function (item, index) {
+            var position = item.querySelector('[data-exercise-organizer-position]');
+            var up = item.querySelector('[data-exercise-organizer-move="up"]');
+            var down = item.querySelector('[data-exercise-organizer-move="down"]');
+            if (position) {
+                position.textContent = String(index + 1);
+            }
+            if (up) {
+                up.disabled = index === 0;
+            }
+            if (down) {
+                down.disabled = index === items.length - 1;
+            }
+        });
+    }
+
+    function init() {
+        document.querySelectorAll('[data-exercise-organizer]').forEach(function (form) {
+            if (form.dataset.exerciseOrganizerReady === '1') {
+                return;
+            }
+            form.dataset.exerciseOrganizerReady = '1';
+            refresh(form);
+            form.addEventListener('click', function (event) {
+                var button = event.target instanceof Element
+                    ? event.target.closest('[data-exercise-organizer-move]')
+                    : null;
+                if (!button || button.disabled) {
+                    return;
+                }
+                var item = button.closest('[data-exercise-organizer-item]');
+                var list = form.querySelector('[data-exercise-organizer-list]');
+                if (!item || !list) {
+                    return;
+                }
+                var direction = button.dataset.exerciseOrganizerMove;
+                var sibling = direction === 'up' ? item.previousElementSibling : item.nextElementSibling;
+                if (!sibling) {
+                    return;
+                }
+                if (direction === 'up') {
+                    list.insertBefore(item, sibling);
+                } else {
+                    list.insertBefore(sibling, item);
+                }
+                refresh(form);
+
+                var focusTarget = button.disabled
+                    ? item.querySelector('[data-exercise-organizer-move]:not(:disabled)')
+                    : button;
+                if (focusTarget) {
+                    focusTarget.focus({ preventScroll: true });
+                }
+                var status = form.querySelector('[data-exercise-organizer-status]');
+                if (status) {
+                    status.textContent = '';
+                    window.requestAnimationFrame(function () {
+                        status.textContent = button.dataset.announcement || '';
+                    });
+                }
+            });
+            form.addEventListener('change', function (event) {
+                var remove = event.target instanceof Element
+                    ? event.target.closest('[data-exercise-organizer-remove]')
+                    : null;
+                if (!(remove instanceof HTMLInputElement)) {
+                    return;
+                }
+                var item = remove.closest('[data-exercise-organizer-item]');
+                if (item) {
+                    item.classList.toggle('is-marked-for-removal', remove.checked);
+                }
+                var status = form.querySelector('[data-exercise-organizer-status]');
+                if (status) {
+                    status.textContent = remove.checked ? (remove.dataset.announcement || '') : '';
+                }
+            });
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+    document.addEventListener('pjax:loaded', init);
+    document.addEventListener('fc:afterPageSwap', init);
 })();

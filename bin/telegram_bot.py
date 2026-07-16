@@ -48,7 +48,7 @@ ADD_DATA_PATH = "/?page=entries&mode=data"
 
 MESSAGES = {
     "en": {
-        "linked": "Linked! You will get reminders and motivation here.\nType /progress anytime to see how you are doing.",
+        "linked": "Linked! You will get reminders and motivation here.\nType /progress to see how you are doing or /notifications to manage alerts.",
         "invalid_link": "This Telegram link is invalid or expired. Open Settings in the app and press Link Telegram again.",
         "not_linked": "Your Telegram is not linked yet. Open Settings in the app and press Link Telegram.",
         "no_challenge": "There is no active challenge right now.",
@@ -59,7 +59,7 @@ MESSAGES = {
         "progress_head": "Your progress, {name}",
         "motivation": "Motivation for today: {quote}",
         "motivation_progress": "You are at {pct}% consistency. Keep going!",
-        "help": "Commands:\n/progress - your challenge progress\n/week - this week so far\n/streak - your current streak\n/today - is today logged?\n/ranking - team ranking\n/help - this help",
+        "help": "Commands:\n/progress - your challenge progress\n/week - this week so far\n/streak - your current streak\n/today - is today logged?\n/ranking - team ranking\n/notifications - manage Telegram alerts\n/time HH:MM - change reminder time\n/help - this help",
         "l_streak": "Streak", "l_logged": "Days logged", "l_steps": "Steps",
         "l_workouts": "Workouts", "l_stepgoal": "Step goal", "l_remaining": "Remaining",
         "u_days": "days", "u_avg": "avg", "u_perday": "/day",
@@ -70,9 +70,20 @@ MESSAGES = {
         "today_not_logged": "Today is NOT logged yet, {name}.",
         "ranking_head": "Team ranking", "ranking_empty": "No data to rank yet.",
         "milestone": "{name}, {streak}-day streak! You are on fire. Keep going!",
+        "notifications_head": "Telegram alerts",
+        "notifications_hint": "Tap to turn each alert on or off. Changes are saved instantly.",
+        "pref_reminders": "Log reminder", "pref_motivation": "Daily motivation",
+        "pref_duel": "Duels ending", "pref_streak": "Streak alerts",
+        "pref_social": "Social activity",
+        "pref_weekends": "Pause on weekends", "pref_time": "Reminder time",
+        "pref_quiet": "Quiet hours", "pref_timezone": "Timezone",
+        "pref_saved": "Preference saved", "pref_invalid": "Use /time HH:MM, for example /time 20:30.",
+        "pref_on": "On", "pref_off": "Off", "pref_none": "Not set",
+        "duel_ending": "Your duel ends soon. Time for a final push.",
+        "streak_risk": "Your {streak}-day streak is at risk. You have not logged today yet.",
     },
     "es": {
-        "linked": "Vinculado! Recibiras recordatorios y motivacion aqui.\nEscribe /progress cuando quieras ver como vas.",
+        "linked": "Vinculado! Recibiras recordatorios y motivacion aqui.\nEscribe /progress para ver como vas o /notifications para gestionar avisos.",
         "invalid_link": "Este enlace de Telegram no es valido o ha caducado. Abre Ajustes en la app y pulsa Vincular Telegram otra vez.",
         "not_linked": "Tu Telegram no esta vinculado. Ve a Ajustes en la app y pulsa Vincular Telegram.",
         "no_challenge": "No hay un challenge activo ahora mismo.",
@@ -83,7 +94,7 @@ MESSAGES = {
         "progress_head": "Tu progreso, {name}",
         "motivation": "Motivacion de hoy: {quote}",
         "motivation_progress": "Vas al {pct}% de constancia. Sigue asi!",
-        "help": "Comandos:\n/progress - tu progreso del challenge\n/week - tu semana hasta ahora\n/streak - tu racha actual\n/today - has registrado hoy?\n/ranking - ranking del equipo\n/help - esta ayuda",
+        "help": "Comandos:\n/progress - tu progreso del challenge\n/week - tu semana hasta ahora\n/streak - tu racha actual\n/today - has registrado hoy?\n/ranking - ranking del equipo\n/notifications - gestionar avisos\n/time HH:MM - cambiar la hora\n/help - esta ayuda",
         "l_streak": "Racha", "l_logged": "Dias registrados", "l_steps": "Pasos",
         "l_workouts": "Entrenos", "l_stepgoal": "Meta de pasos", "l_remaining": "Quedan",
         "u_days": "dias", "u_avg": "media", "u_perday": "/dia",
@@ -94,9 +105,20 @@ MESSAGES = {
         "today_not_logged": "Hoy AUN no esta registrado, {name}.",
         "ranking_head": "Ranking del equipo", "ranking_empty": "Aun no hay datos para el ranking.",
         "milestone": "{name}, racha de {streak} dias! Imparable. Sigue asi!",
+        "notifications_head": "Avisos de Telegram",
+        "notifications_hint": "Pulsa para activar o desactivar cada aviso. Los cambios se guardan al instante.",
+        "pref_reminders": "Recordar registro", "pref_motivation": "Motivacion diaria",
+        "pref_duel": "Final de duelos", "pref_streak": "Avisos de racha",
+        "pref_social": "Actividad social",
+        "pref_weekends": "Pausar en fin de semana", "pref_time": "Hora del aviso",
+        "pref_quiet": "Horas de silencio", "pref_timezone": "Zona horaria",
+        "pref_saved": "Preferencia guardada", "pref_invalid": "Usa /time HH:MM, por ejemplo /time 20:30.",
+        "pref_on": "Activo", "pref_off": "Inactivo", "pref_none": "Sin configurar",
+        "duel_ending": "Tu duelo termina pronto. Ultimo empujon.",
+        "streak_risk": "Tu racha de {streak} dias esta en riesgo. Aun no has registrado hoy.",
     },
     "it": {
-        "linked": "Collegato! Riceverai promemoria e motivazione qui.\nScrivi /progress per vedere come stai andando.",
+        "linked": "Collegato! Riceverai promemoria e motivazione qui.\nScrivi /progress per vedere i progressi o /notifications per gestire gli avvisi.",
         "invalid_link": "Questo link Telegram non e valido o e scaduto. Apri Impostazioni nell'app e premi Collega Telegram di nuovo.",
         "not_linked": "Il tuo Telegram non e collegato. Apri Impostazioni nell'app e premi Collega Telegram.",
         "no_challenge": "Non c'e una challenge attiva al momento.",
@@ -107,7 +129,7 @@ MESSAGES = {
         "progress_head": "I tuoi progressi, {name}",
         "motivation": "Motivazione di oggi: {quote}",
         "motivation_progress": "Sei al {pct}% di costanza. Continua cosi!",
-        "help": "Comandi:\n/progress - i tuoi progressi\n/week - la tua settimana\n/streak - la tua striscia\n/today - hai registrato oggi?\n/ranking - classifica del team\n/help - questo aiuto",
+        "help": "Comandi:\n/progress - i tuoi progressi\n/week - la tua settimana\n/streak - la tua striscia\n/today - hai registrato oggi?\n/ranking - classifica del team\n/notifications - gestisci gli avvisi\n/time HH:MM - cambia l'orario\n/help - questo aiuto",
         "week_head": "La tua settimana, {name}", "l_week": "Questa settimana",
         "streak_msg": "{name}, la tua striscia e di {streak} giorni. {tip}",
         "streak_tip_on": "Tienila viva!", "streak_tip_off": "Registra oggi per iniziarne una nuova.",
@@ -115,6 +137,17 @@ MESSAGES = {
         "today_not_logged": "Oggi NON e ancora registrato, {name}.",
         "ranking_head": "Classifica del team", "ranking_empty": "Ancora nessun dato per la classifica.",
         "milestone": "{name}, striscia di {streak} giorni! Inarrestabile. Continua!",
+        "notifications_head": "Avvisi Telegram",
+        "notifications_hint": "Tocca per attivare o disattivare ogni avviso. Le modifiche vengono salvate subito.",
+        "pref_reminders": "Promemoria registro", "pref_motivation": "Motivazione giornaliera",
+        "pref_duel": "Fine duelli", "pref_streak": "Avvisi serie",
+        "pref_social": "Attivita social",
+        "pref_weekends": "Pausa nel weekend", "pref_time": "Ora promemoria",
+        "pref_quiet": "Ore silenziose", "pref_timezone": "Fuso orario",
+        "pref_saved": "Preferenza salvata", "pref_invalid": "Usa /time HH:MM, ad esempio /time 20:30.",
+        "pref_on": "Attivo", "pref_off": "Disattivo", "pref_none": "Non impostato",
+        "duel_ending": "Il tuo duello termina presto. Ultimo sforzo.",
+        "streak_risk": "La tua serie di {streak} giorni e a rischio. Non hai ancora registrato oggi.",
         "l_streak": "Striscia", "l_logged": "Giorni registrati", "l_steps": "Passi",
         "l_workouts": "Allenamenti", "l_stepgoal": "Obiettivo passi", "l_remaining": "Restano",
         "u_days": "giorni", "u_avg": "media", "u_perday": "/giorno",
@@ -171,6 +204,13 @@ class BotDB:
             "CREATE TABLE IF NOT EXISTS telegram_progress ("
             "user_id INTEGER PRIMARY KEY, last_streak_milestone INTEGER DEFAULT 0)"
         )
+        user_columns = {
+            str(row["name"]) for row in self.conn.execute("PRAGMA table_info(users)").fetchall()
+        }
+        if user_columns and "telegram_notify_social" not in user_columns:
+            self.conn.execute(
+                "ALTER TABLE users ADD COLUMN telegram_notify_social INTEGER NOT NULL DEFAULT 1"
+            )
         self.conn.commit()
 
     def milestone(self, user_id: int) -> int:
@@ -238,7 +278,8 @@ class BotDB:
         return self.conn.execute(
             "SELECT * FROM users WHERE active = 1 "
             "AND telegram_chat_id IS NOT NULL AND TRIM(telegram_chat_id) <> '' "
-            "AND (telegram_reminders_enabled = 1 OR telegram_motivation_enabled = 1)"
+            "AND (telegram_reminders_enabled = 1 OR telegram_motivation_enabled = 1 "
+            "OR telegram_notify_duel = 1 OR telegram_notify_streak = 1)"
         ).fetchall()
 
     def logged_today(self, user_id: int, date: str) -> bool:
@@ -298,6 +339,59 @@ class BotDB:
             "SELECT * FROM users WHERE telegram_chat_id = ? AND active = 1", (chat_id,)
         ).fetchone()
 
+    def user_by_id(self, user_id: int) -> Optional[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM users WHERE id = ? AND active = 1", (user_id,)
+        ).fetchone()
+
+    def toggle_notification_pref(self, user_id: int, preference: str) -> bool:
+        columns = {
+            "reminders": "telegram_reminders_enabled",
+            "motivation": "telegram_motivation_enabled",
+            "duel": "telegram_notify_duel",
+            "streak": "telegram_notify_streak",
+            "social": "telegram_notify_social",
+            "weekends": "telegram_weekends_off",
+        }
+        column = columns.get(preference)
+        if column is None:
+            raise ValueError("unsupported notification preference")
+        row = self.user_by_id(user_id)
+        enabled = not bool(int(rget(row, column, 0) or 0)) if row is not None else False
+        self.conn.execute(
+            f"UPDATE users SET {column} = ?, updated_at = ? WHERE id = ?",
+            (1 if enabled else 0, now_iso(), user_id),
+        )
+        self.conn.commit()
+        return enabled
+
+    def set_notification_pref(self, user_id: int, preference: str, enabled: bool) -> None:
+        columns = {
+            "reminders": "telegram_reminders_enabled",
+            "motivation": "telegram_motivation_enabled",
+            "duel": "telegram_notify_duel",
+            "streak": "telegram_notify_streak",
+            "social": "telegram_notify_social",
+            "weekends": "telegram_weekends_off",
+        }
+        column = columns.get(preference)
+        if column is None:
+            raise ValueError("unsupported notification preference")
+        self.conn.execute(
+            f"UPDATE users SET {column} = ?, updated_at = ? WHERE id = ?",
+            (1 if enabled else 0, now_iso(), user_id),
+        )
+        self.conn.commit()
+
+    def set_reminder_time(self, user_id: int, reminder_time: str) -> None:
+        if re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", reminder_time) is None:
+            raise ValueError("invalid reminder time")
+        self.conn.execute(
+            "UPDATE users SET telegram_reminder_time = ?, updated_at = ? WHERE id = ?",
+            (reminder_time, now_iso(), user_id),
+        )
+        self.conn.commit()
+
     def challenge_range(self) -> Optional[tuple[str, str]]:
         row = self.conn.execute(
             "SELECT challenge_start, challenge_end FROM challenge_settings WHERE id = 1"
@@ -321,8 +415,15 @@ class BotDB:
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS telegram_outbox ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, "
-            "text TEXT NOT NULL, created_at TEXT NOT NULL, sent_at TEXT)"
+            "kind TEXT NOT NULL DEFAULT 'social', text TEXT NOT NULL, created_at TEXT NOT NULL, sent_at TEXT)"
         )
+        columns = {
+            str(row["name"]) for row in self.conn.execute("PRAGMA table_info(telegram_outbox)").fetchall()
+        }
+        if "kind" not in columns:
+            self.conn.execute(
+                "ALTER TABLE telegram_outbox ADD COLUMN kind TEXT NOT NULL DEFAULT 'social'"
+            )
         self.conn.commit()
 
     def outbox_pending(self, limit: int = 25) -> list[sqlite3.Row]:
@@ -366,11 +467,55 @@ def api_call(token: str, method: str, params: Optional[dict] = None, timeout: in
     return body.get("result"), None
 
 
-def send_message(token: str, chat_id: str, text: str) -> tuple[bool, Optional[str]]:
+def send_message(
+    token: str, chat_id: str, text: str, reply_markup: Optional[dict] = None
+) -> tuple[bool, Optional[str]]:
+    params = {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
+    if reply_markup is not None:
+        params["reply_markup"] = reply_markup
     result, error = api_call(
-        token, "sendMessage", {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
+        token, "sendMessage", params
     )
     return (error is None), error
+
+
+def edit_message(
+    token: str, chat_id: str, message_id: int, text: str, reply_markup: Optional[dict] = None
+) -> tuple[bool, Optional[str]]:
+    params = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "text": text,
+        "disable_web_page_preview": True,
+    }
+    if reply_markup is not None:
+        params["reply_markup"] = reply_markup
+    _, error = api_call(token, "editMessageText", params)
+    # Telegram returns this harmless error when two quick taps reach the same state.
+    if error and "message is not modified" in error.lower():
+        return True, None
+    return (error is None), error
+
+
+def answer_callback(token: str, callback_id: str, text: str = "") -> None:
+    params = {"callback_query_id": callback_id}
+    if text:
+        params["text"] = text
+    api_call(token, "answerCallbackQuery", params)
+
+
+def configure_bot_commands(token: str) -> None:
+    commands = [
+        {"command": "progress", "description": "Challenge progress"},
+        {"command": "week", "description": "This week"},
+        {"command": "today", "description": "Today's status"},
+        {"command": "ranking", "description": "Team ranking"},
+        {"command": "notifications", "description": "Manage alerts"},
+        {"command": "help", "description": "Help"},
+    ]
+    _, error = api_call(token, "setMyCommands", {"commands": commands})
+    if error is not None:
+        log(f"setMyCommands failed: {error}")
 
 
 def ensure_no_webhook(token: str) -> None:
@@ -407,6 +552,7 @@ def claim_ownership(db: BotDB, settings: dict) -> None:
         log(f"connected to Telegram bot @{username}")
     else:
         log("connected to Telegram bot but no username was returned")
+    configure_bot_commands(token)
 
 
 def rget(row, key, default=None):
@@ -527,6 +673,23 @@ def add_data_url(settings: dict) -> str:
     return base + ADD_DATA_PATH if base else ""
 
 
+def action_keyboard(settings: dict, path: str, label: str) -> Optional[dict]:
+    """Build one clear, direct action without exposing a broken relative URL."""
+    base = str(settings.get("base_url") or "").strip().rstrip("/")
+    if not base:
+        return None
+    return {"inline_keyboard": [[{"text": label, "url": base + path}]]}
+
+
+def action_label(locale: str, action: str = "open") -> str:
+    labels = {
+        "en": {"open": "Open app", "log": "Log now", "duel": "View duel"},
+        "es": {"open": "Abrir app", "log": "Registrar ahora", "duel": "Ver duelo"},
+        "it": {"open": "Apri app", "log": "Registra ora", "duel": "Vedi duello"},
+    }
+    return labels.get(locale, labels["en"]).get(action, labels.get(locale, labels["en"])["open"])
+
+
 def build_reminder(user: sqlite3.Row, stats: Optional[dict], settings: dict, attempt: int) -> str:
     locale = user["locale"]
     head = T(locale, f"rem{min(max(attempt, 1), 3)}", name=str(user["display_name"] or ""))
@@ -641,6 +804,138 @@ def check_streak_milestone(db: BotDB, user: sqlite3.Row, stats: Optional[dict], 
     return ok
 
 
+def user_now(user: sqlite3.Row) -> datetime:
+    user_tz = resolve_tz(str(rget(user, "telegram_tz", "") or "").strip())
+    zone = user_tz or TZ
+    return datetime.now(zone) if zone is not None else datetime.now()
+
+
+def normalize_hm(value, fallback: str = "") -> str:
+    raw = str(value or "").strip()
+    return raw if re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", raw) else fallback
+
+
+def in_quiet_hours(user: sqlite3.Row, current_hm: str) -> bool:
+    start = normalize_hm(rget(user, "telegram_quiet_start", ""))
+    end = normalize_hm(rget(user, "telegram_quiet_end", ""))
+    if not start or not end or start == end:
+        return False
+    if start < end:
+        return start <= current_hm < end
+    return current_hm >= start or current_hm < end
+
+
+def preference_enabled(user: sqlite3.Row, column: str, default: int = 0) -> bool:
+    return bool(int(rget(user, column, default) or 0))
+
+
+def preference_line(user: sqlite3.Row, locale: str, key: str, column: str, default: int = 0) -> str:
+    enabled = preference_enabled(user, column, default)
+    return f"{'✅' if enabled else '○'} {T(locale, key)}: {T(locale, 'pref_on' if enabled else 'pref_off')}"
+
+
+def build_notifications_panel(user: sqlite3.Row) -> str:
+    locale = str(rget(user, "locale", "en") or "en")
+    reminder_time = normalize_hm(rget(user, "telegram_reminder_time", "20:00"), "20:00")
+    quiet_start = normalize_hm(rget(user, "telegram_quiet_start", ""))
+    quiet_end = normalize_hm(rget(user, "telegram_quiet_end", ""))
+    quiet = f"{quiet_start}-{quiet_end}" if quiet_start and quiet_end else T(locale, "pref_none")
+    timezone = str(rget(user, "telegram_tz", "") or "").strip() or T(locale, "pref_none")
+    return "\n".join([
+        T(locale, "notifications_head"),
+        T(locale, "notifications_hint"),
+        "",
+        preference_line(user, locale, "pref_reminders", "telegram_reminders_enabled"),
+        preference_line(user, locale, "pref_motivation", "telegram_motivation_enabled"),
+        preference_line(user, locale, "pref_duel", "telegram_notify_duel", 1),
+        preference_line(user, locale, "pref_streak", "telegram_notify_streak", 1),
+        preference_line(user, locale, "pref_social", "telegram_notify_social", 1),
+        preference_line(user, locale, "pref_weekends", "telegram_weekends_off"),
+        f"🕘 {T(locale, 'pref_time')}: {reminder_time}",
+        f"🌙 {T(locale, 'pref_quiet')}: {quiet}",
+        f"🌍 {T(locale, 'pref_timezone')}: {timezone}",
+    ])
+
+
+def notification_keyboard(user: sqlite3.Row, settings: dict) -> dict:
+    locale = str(rget(user, "locale", "en") or "en")
+
+    def toggle(label_key: str, column: str, callback: str, default: int = 0) -> dict:
+        mark = "✅" if preference_enabled(user, column, default) else "○"
+        return {"text": f"{mark} {T(locale, label_key)}", "callback_data": f"tgpref:{callback}"}
+
+    rows = [
+        [
+            toggle("pref_reminders", "telegram_reminders_enabled", "reminders"),
+            toggle("pref_motivation", "telegram_motivation_enabled", "motivation"),
+        ],
+        [
+            toggle("pref_duel", "telegram_notify_duel", "duel", 1),
+            toggle("pref_streak", "telegram_notify_streak", "streak", 1),
+        ],
+        [toggle("pref_social", "telegram_notify_social", "social", 1)],
+        [toggle("pref_weekends", "telegram_weekends_off", "weekends")],
+        [
+            {"text": "−30 min", "callback_data": "tgtime:-30"},
+            {"text": normalize_hm(rget(user, "telegram_reminder_time", "20:00"), "20:00"), "callback_data": "tgtime:0"},
+            {"text": "+30 min", "callback_data": "tgtime:30"},
+        ],
+    ]
+    base_url = str(settings.get("base_url") or "").rstrip("/")
+    if base_url:
+        rows.append([{"text": "⚙️ App", "url": base_url + "/?page=settings&view=integrations#telegram"}])
+    return {"inline_keyboard": rows}
+
+
+def send_notifications_panel(db: BotDB, settings: dict, chat_id: str, user: sqlite3.Row) -> None:
+    fresh = db.user_by_id(int(user["id"])) or user
+    send_message(
+        settings["token"], chat_id, build_notifications_panel(fresh), notification_keyboard(fresh, settings)
+    )
+
+
+def parse_switch(value: str) -> Optional[bool]:
+    value = value.strip().lower()
+    if value in ("1", "on", "yes", "true", "si", "sí", "active", "attivo"):
+        return True
+    if value in ("0", "off", "no", "false", "inactive", "inactivo", "disattivo"):
+        return False
+    return None
+
+
+def handle_callback(db: BotDB, settings: dict, callback: dict) -> None:
+    callback_id = str(callback.get("id") or "")
+    message = callback.get("message") or {}
+    chat_id = str((message.get("chat") or {}).get("id") or "")
+    message_id = int(message.get("message_id") or 0)
+    data = str(callback.get("data") or "")
+    user = db.user_by_chat_id(chat_id)
+    if user is None:
+        answer_callback(settings["token"], callback_id, T(update_locale({"from": callback.get("from") or {}}), "not_linked"))
+        return
+
+    try:
+        if data.startswith("tgpref:"):
+            db.toggle_notification_pref(int(user["id"]), data.split(":", 1)[1])
+        elif data.startswith("tgtime:"):
+            delta = int(data.split(":", 1)[1])
+            current = normalize_hm(rget(user, "telegram_reminder_time", "20:00"), "20:00")
+            base = datetime.strptime(current, "%H:%M") + timedelta(minutes=delta)
+            db.set_reminder_time(int(user["id"]), base.strftime("%H:%M"))
+        else:
+            answer_callback(settings["token"], callback_id)
+            return
+    except (TypeError, ValueError):
+        answer_callback(settings["token"], callback_id)
+        return
+
+    fresh = db.user_by_id(int(user["id"])) or user
+    edit_message(
+        settings["token"], chat_id, message_id, build_notifications_panel(fresh), notification_keyboard(fresh, settings)
+    )
+    answer_callback(settings["token"], callback_id, T(str(rget(fresh, "locale", "en")), "pref_saved"))
+
+
 def update_locale(message: dict) -> str:
     sender = message.get("from") if isinstance(message, dict) else {}
     if not isinstance(sender, dict):
@@ -651,6 +946,11 @@ def update_locale(message: dict) -> str:
 
 
 def process_update(db: BotDB, settings: dict, update: dict) -> None:
+    callback = update.get("callback_query")
+    if isinstance(callback, dict):
+        handle_callback(db, settings, callback)
+        return
+
     message = update.get("message") or {}
     text = str(message.get("text") or "").strip()
     chat = message.get("chat") or {}
@@ -673,7 +973,9 @@ def process_update(db: BotDB, settings: dict, update: dict) -> None:
         return
 
     # Any other command needs an already-linked user.
-    command = text.split()[0].lower().lstrip("/").split("@")[0]
+    parts = text.split(maxsplit=1)
+    command = parts[0].lower().lstrip("/").split("@")[0]
+    argument = parts[1].strip() if len(parts) > 1 else ""
     user = db.user_by_chat_id(chat_id)
     if user is None:
         send_message(settings["token"], chat_id, T(update_locale(message), "not_linked"))
@@ -690,6 +992,30 @@ def process_update(db: BotDB, settings: dict, update: dict) -> None:
         send_message(settings["token"], chat_id, build_today(db, user, settings, locale))
     elif command == "ranking":
         send_message(settings["token"], chat_id, build_ranking(db, locale))
+    elif command in ("notifications", "notification", "avisos", "settings"):
+        send_notifications_panel(db, settings, chat_id, user)
+    elif command in ("reminders", "motivation", "duels", "streakalerts", "social", "weekends"):
+        pref = {
+            "reminders": "reminders",
+            "motivation": "motivation",
+            "duels": "duel",
+            "streakalerts": "streak",
+            "social": "social",
+            "weekends": "weekends",
+        }[command]
+        enabled = parse_switch(argument)
+        if enabled is None:
+            send_notifications_panel(db, settings, chat_id, user)
+        else:
+            db.set_notification_pref(int(user["id"]), pref, enabled)
+            send_notifications_panel(db, settings, chat_id, user)
+    elif command == "time":
+        reminder_time = normalize_hm(argument)
+        if not reminder_time:
+            send_message(settings["token"], chat_id, T(locale, "pref_invalid"))
+        else:
+            db.set_reminder_time(int(user["id"]), reminder_time)
+            send_notifications_panel(db, settings, chat_id, user)
     else:
         send_message(settings["token"], chat_id, T(locale, "help"))
 
@@ -697,7 +1023,7 @@ def process_update(db: BotDB, settings: dict, update: dict) -> None:
 def poll_once(db: BotDB, settings: dict, timeout: int) -> None:
     result, error = api_call(
         settings["token"], "getUpdates",
-        {"offset": settings["offset"], "timeout": timeout, "allowed_updates": ["message"]},
+        {"offset": settings["offset"], "timeout": timeout, "allowed_updates": ["message", "callback_query"]},
         timeout=timeout + 10,
     )
     if error is not None:
@@ -718,24 +1044,73 @@ def poll_once(db: BotDB, settings: dict, timeout: int) -> None:
 
 
 def run_reminders(db: BotDB, settings: dict) -> None:
-    current = now()
-    current_naive = current.replace(tzinfo=None)
-    today = current.strftime("%Y-%m-%d")
-    now_hm = current.strftime("%H:%M")
     sends = 0
     for user in db.reminder_candidates():
         if sends >= MAX_SENDS_PER_PASS:
             break
-        reminder_time = str(user["telegram_reminder_time"] or "20:00")
+        # Every delivery rule is evaluated in the user's own timezone. This keeps
+        # the always-on bot in parity with the PHP fallback scheduler.
+        current = user_now(user)
+        current_naive = current.replace(tzinfo=None)
+        today = current.strftime("%Y-%m-%d")
+        now_hm = current.strftime("%H:%M")
+        reminder_time = normalize_hm(rget(user, "telegram_reminder_time", "20:00"), "20:00")
         if now_hm < reminder_time:
+            continue
+        if in_quiet_hours(user, now_hm):
+            continue
+        if preference_enabled(user, "telegram_weekends_off") and current.isoweekday() in (6, 7):
             continue
         chat_id = str(user["telegram_chat_id"])
         user_id = int(user["id"])
         logged = db.logged_today(user_id, today)
+        stats = compute_stats(db, user)
 
         # Celebrate streak milestones once each (progressions).
-        if check_streak_milestone(db, user, compute_stats(db, user), settings):
+        if preference_enabled(user, "telegram_notify_streak", 1) and check_streak_milestone(db, user, stats, settings):
             sends += 1
+
+        # Event alerts use the same daily de-duplication keys as the PHP
+        # scheduler, so switching bot modes cannot produce duplicate messages.
+        if sends < MAX_SENDS_PER_PASS and preference_enabled(user, "telegram_notify_duel", 1):
+            marker = f"tg_evt:{user_id}:duel_ending:{today}"
+            if not db.setting(marker, ""):
+                tomorrow = (current + timedelta(days=1)).strftime("%Y-%m-%d")
+                try:
+                    row = db.conn.execute(
+                        "SELECT COUNT(*) AS c FROM user_duels WHERE status = 'active' "
+                        "AND (challenger_id = ? OR opponent_id = ?) "
+                        "AND end_date IS NOT NULL AND end_date <= ?",
+                        (user_id, user_id, tomorrow),
+                    ).fetchone()
+                except sqlite3.OperationalError:
+                    row = None
+                if row is not None and int(row["c"] or 0) > 0:
+                    ok, error = send_message(
+                        settings["token"], chat_id, T(user["locale"], "duel_ending"),
+                        action_keyboard(settings, "/?page=duels", action_label(user["locale"], "duel")),
+                    )
+                    if ok:
+                        sends += 1
+                        db.set_setting(marker, "1")
+                    else:
+                        log(f"duel alert send failed -> #{user_id}: {error}")
+
+        streak = int((stats or {}).get("streak", 0) or 0)
+        if (sends < MAX_SENDS_PER_PASS and preference_enabled(user, "telegram_notify_streak", 1)
+                and not logged and streak >= 3):
+            marker = f"tg_evt:{user_id}:streak_risk:{today}"
+            if not db.setting(marker, ""):
+                text = T(user["locale"], "streak_risk", streak=streak)
+                ok, error = send_message(
+                    settings["token"], chat_id, text,
+                    action_keyboard(settings, ADD_DATA_PATH, action_label(user["locale"], "log")),
+                )
+                if ok:
+                    sends += 1
+                    db.set_setting(marker, "1")
+                else:
+                    log(f"streak alert send failed -> #{user_id}: {error}")
 
         # Escalating reminders: a first nudge, then follow-ups while still unlogged,
         # up to MAX_REMINDERS_PER_DAY, spaced by FOLLOWUP_MINUTES.
@@ -748,8 +1123,11 @@ def run_reminders(db: BotDB, settings: dict) -> None:
             )
             if count_today < MAX_REMINDERS_PER_DAY and due:
                 attempt = count_today + 1
-                text = build_reminder(user, compute_stats(db, user), settings, attempt)
-                ok, error = send_message(settings["token"], chat_id, text)
+                text = build_reminder(user, stats, settings, attempt)
+                ok, error = send_message(
+                    settings["token"], chat_id, text,
+                    action_keyboard(settings, ADD_DATA_PATH, action_label(user["locale"], "log")),
+                )
                 if ok:
                     sends += 1
                     db.mark_reminder_sent(user_id, current.strftime("%Y-%m-%d %H:%M:%S"), attempt, today)
@@ -762,8 +1140,11 @@ def run_reminders(db: BotDB, settings: dict) -> None:
                 and str(user["telegram_last_motivation_on"] or "") != today):
             quote = db.pick_quote(user)
             if quote:
-                text = build_motivation(user, compute_stats(db, user), quote, user["locale"])
-                ok, error = send_message(settings["token"], chat_id, text)
+                text = build_motivation(user, stats, quote, user["locale"])
+                ok, error = send_message(
+                    settings["token"], chat_id, text,
+                    action_keyboard(settings, "/?page=dashboard", action_label(user["locale"])),
+                )
                 if ok:
                     sends += 1
                     db.mark_motivated(user_id, today)
@@ -779,11 +1160,31 @@ def drain_outbox(db: BotDB, settings: dict) -> None:
         if sent >= MAX_SENDS_PER_PASS:
             break
         outbox_id = int(row["id"])
-        chat_id = db.chat_id_for(int(row["user_id"]))
-        if not chat_id:
+        user = db.user_by_id(int(row["user_id"]))
+        chat_id = str(rget(user, "telegram_chat_id", "") or "").strip() if user is not None else ""
+        if user is None or not chat_id:
             db.mark_outbox_sent(outbox_id)  # recipient unlinked; drop it
             continue
-        ok, error = send_message(settings["token"], chat_id, str(row["text"]))
+        kind = str(rget(row, "kind", "social") or "social")
+        opted_in = (
+            preference_enabled(user, "telegram_notify_duel", 1)
+            if kind.startswith("duel_")
+            else preference_enabled(user, "telegram_notify_social", 1)
+        )
+        if not opted_in:
+            db.mark_outbox_sent(outbox_id)
+            continue
+        if in_quiet_hours(user, user_now(user).strftime("%H:%M")):
+            continue
+        if preference_enabled(user, "telegram_weekends_off") and user_now(user).isoweekday() in (6, 7):
+            continue
+        destination = "/?page=duels" if kind.startswith("duel_") else (
+            "/?page=competitions" if kind.startswith("competition_") else "/?page=social"
+        )
+        ok, error = send_message(
+            settings["token"], chat_id, str(row["text"]),
+            action_keyboard(settings, destination, action_label(str(rget(user, "locale", "en") or "en"))),
+        )
         if ok:
             db.mark_outbox_sent(outbox_id)
             sent += 1

@@ -789,12 +789,14 @@ function json_response(array $data, int $status = 200): never
  *   - 'attrs'  (array<string,string>) extra attributes (e.g. data-*)
  *   - 'danger' (bool) styles the item as destructive
  *   - 'type'   (string) button type, defaults to 'button'
+ *   - 'children' (array) renders a drill-down submenu instead of an action
  *
  * $opts:
  *   - 'label'         (string) accessible label for the trigger
  *   - 'align'         (string) 'end' (default) or 'start'
  *   - 'class'         (string) extra classes on the <details> wrapper
  *   - 'trigger_class' (string) extra classes on the <summary>
+ *   - 'title'         (string) heading shown inside the popover/sheet
  *
  * @param array<int,array<string,mixed>> $items
  * @param array<string,mixed> $opts
@@ -810,31 +812,75 @@ function render_kebab_menu(array $items, array $opts = []): string
     $align = ($opts['align'] ?? 'end') === 'start' ? 'start' : 'end';
     $wrapClass = trim('kebab-menu ' . (string) ($opts['class'] ?? ''));
     $triggerClass = trim('kebab-menu-trigger btn btn-ghost small ' . (string) ($opts['trigger_class'] ?? ''));
+    $panelTitle = trim((string) ($opts['title'] ?? $triggerLabel));
+    $panelTitle = $panelTitle !== '' ? $panelTitle : $triggerLabel;
+    $backLabel = function_exists('t') ? t('common.back') : 'Back';
+    $closeLabel = function_exists('t') ? t('menu.close') : 'Close menu';
+    static $menuCounter = 0;
+    $menuCounter++;
+    $menuId = 'kebab-menu-' . $menuCounter;
 
-    $html = '<details class="' . e($wrapClass) . '" data-kebab-menu data-align="' . e($align) . '">';
-    $html .= '<summary class="' . e($triggerClass) . '" aria-label="' . e($triggerLabel) . '" aria-haspopup="menu">';
-    $html .= '<span class="kebab-menu-dots" aria-hidden="true"><span></span><span></span><span></span></span>';
-    $html .= '</summary>';
-    $html .= '<div class="kebab-menu-panel" role="menu">';
-
-    foreach ($items as $item) {
-        $label = (string) $item['label'];
+    $renderAction = static function (array $item): string {
+        $label = (string) ($item['label'] ?? '');
         $danger = !empty($item['danger']);
         $itemClass = 'kebab-menu-item' . ($danger ? ' is-danger' : '');
         $attrParts = '';
         foreach ((array) ($item['attrs'] ?? []) as $attrKey => $attrVal) {
             $attrParts .= ' ' . e((string) $attrKey) . '="' . e((string) $attrVal) . '"';
         }
+        $description = trim((string) ($item['description'] ?? ''));
+        $content = '<span class="kebab-menu-item-copy"><span>' . e($label) . '</span>';
+        if ($description !== '') {
+            $content .= '<small>' . e($description) . '</small>';
+        }
+        $content .= '</span>';
 
         if (($item['href'] ?? '') !== '') {
-            $html .= '<a class="' . e($itemClass) . '" role="menuitem" href="' . e((string) $item['href']) . '"' . $attrParts . '>' . e($label) . '</a>';
-        } else {
-            $type = (string) ($item['type'] ?? 'button');
-            $html .= '<button class="' . e($itemClass) . '" role="menuitem" type="' . e($type) . '"' . $attrParts . '>' . e($label) . '</button>';
+            return '<a class="' . e($itemClass) . '" role="menuitem" href="' . e((string) $item['href']) . '"' . $attrParts . '>' . $content . '</a>';
         }
-    }
+        $type = (string) ($item['type'] ?? 'button');
 
-    $html .= '</div></details>';
+        return '<button class="' . e($itemClass) . '" role="menuitem" type="' . e($type) . '"' . $attrParts . '>' . $content . '</button>';
+    };
+
+    $renderHeader = static function (string $title, bool $withBack) use ($backLabel, $closeLabel): string {
+        $leading = $withBack
+            ? '<button class="kebab-menu-sheet-back" type="button" data-menu-back aria-label="' . e($backLabel) . '"><span aria-hidden="true">&larr;</span></button>'
+            : '<span class="kebab-menu-sheet-spacer" aria-hidden="true"></span>';
+
+        return '<div class="kebab-menu-sheet-head" role="presentation">'
+            . $leading
+            . '<strong>' . e($title) . '</strong>'
+            . '<button class="kebab-menu-sheet-close" type="button" data-menu-close aria-label="' . e($closeLabel) . '">&times;</button>'
+            . '</div>';
+    };
+
+    $html = '<details id="' . e($menuId) . '" class="' . e($wrapClass) . '" data-kebab-menu data-align="' . e($align) . '">';
+    $html .= '<summary class="' . e($triggerClass) . '" aria-label="' . e($triggerLabel) . '" aria-haspopup="menu" aria-expanded="false">';
+    $html .= '<span class="kebab-menu-dots" aria-hidden="true"><span></span><span></span><span></span></span>';
+    $html .= '</summary>';
+    $html .= '<div class="kebab-menu-panel" role="menu" aria-label="' . e($panelTitle) . '" data-menu-stack>';
+    $html .= '<div class="kebab-menu-view" data-menu-view="main">' . $renderHeader($panelTitle, false);
+
+    $submenuViews = '';
+    foreach ($items as $index => $item) {
+        $children = array_values(array_filter((array) ($item['children'] ?? []), static fn ($child) => is_array($child) && ($child['label'] ?? '') !== ''));
+        if ($children === []) {
+            $html .= $renderAction($item);
+            continue;
+        }
+        $submenuKey = 'submenu-' . $index;
+        $submenuLabel = (string) $item['label'];
+        $html .= '<button class="kebab-menu-item has-submenu" role="menuitem" type="button" data-menu-open="' . e($submenuKey) . '" aria-haspopup="menu">'
+            . '<span class="kebab-menu-item-copy"><span>' . e($submenuLabel) . '</span></span>'
+            . '<span class="kebab-menu-chevron" aria-hidden="true">&rsaquo;</span></button>';
+        $submenuViews .= '<div class="kebab-menu-view" data-menu-view="' . e($submenuKey) . '" hidden>' . $renderHeader($submenuLabel, true);
+        foreach ($children as $child) {
+            $submenuViews .= $renderAction($child);
+        }
+        $submenuViews .= '</div>';
+    }
+    $html .= '</div>' . $submenuViews . '</div></details>';
 
     return $html;
 }
@@ -987,6 +1033,14 @@ function activity_icon_svg(string $name): string
         'users' => '<circle cx="9" cy="8" r="3.5"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M17 11a3.5 3.5 0 0 0 0-6M22 21a6 6 0 0 0-4-5.6"/>',
         'sword' => '<path d="M14.5 4 20 4v5.5L9 20.5 3.5 15z"/><path d="m13 11 2 2M4 21l3-3"/>',
         'dumbbell' => '<path d="M6 7v10M18 7v10M3 9v6M21 9v6M6 12h12"/>',
+        'bolt' => '<path d="m13 2-9 12h7l-1 8 9-12h-7z"/>',
+        'flame' => '<path d="M12 22c4 0 7-2.8 7-7 0-3-1.7-5.7-5-8.5.2 2-1 3.3-2 4.1C11.7 7.8 10 5 7.7 3 8 7 5 9.3 5 14.8 5 19 8 22 12 22Z"/><path d="M9.5 18.5c-1.2-2 .1-3.7 2.5-5.8-.1 1.8.8 2.7 1.5 3.5.7.8.5 1.8 0 2.5"/>',
+        'run' => '<circle cx="15" cy="4" r="2"/><path d="m13 8-3 4 4 2 2 6M10 12l-4-2M14 14l4-4 3 2M9 20l3-4"/>',
+        'cycle' => '<circle cx="6" cy="17" r="4"/><circle cx="18" cy="17" r="4"/><path d="m6 17 4-8h4l4 8M9 12h7M10 9 8 6h3"/>',
+        'shield' => '<path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6z"/><path d="m9 12 2 2 4-5"/>',
+        'sliders' => '<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="18" r="2"/>',
+        'link' => '<path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.2 1.2"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.2-1.2"/>',
+        'bell' => '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>',
         'spark' => '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/>',
     ];
     $p = $paths[$name] ?? $paths['spark'];

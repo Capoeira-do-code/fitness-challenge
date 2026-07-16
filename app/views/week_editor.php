@@ -74,7 +74,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
 };
 ?>
 <section class="screen stack-lg">
-    <div class="hero-panel">
+    <div class="hero-panel app-page-hero">
         <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('nav.table')) ?></p>
             <h1><?= e(t('table.editor_title')) ?></h1>
@@ -183,6 +183,9 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
 
                     $stepsRaw = isset($log['steps']) ? (string) $log['steps'] : '';
                     $stepValue = $stepsRaw === '' ? null : (int) $stepsRaw;
+                    $dayHasData = $log !== [];
+                    $dayIncomplete = !$dayHasData || $stepValue === null;
+                    $isToday = $date === to_date(null);
                     $logTimeValue = normalize_log_time($log['log_time'] ?? '', '00:00');
                     $showStepExcuse = $userStepGoal > 0 && ($stepValue === null || $stepValue < $userStepGoal);
                     $distanceRaw = isset($log['distance_km']) ? (string) $log['distance_km'] : '';
@@ -243,12 +246,20 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                     ?>
                     <tr class="week-day-card"
                         data-date="<?= e($date) ?>"
+                        data-week-day-card
+                        data-current-day="<?= $isToday ? '1' : '0' ?>"
+                        data-incomplete="<?= $dayIncomplete ? '1' : '0' ?>"
                         data-step-goal="<?= $userStepGoal ?>"
                         data-distance-goal="<?= e((string) $userDistanceGoal) ?>"
                         data-request-state="<?= e($requestState) ?>">
                         <th scope="row" class="sheet-day-cell" data-label="<?= e(t('common.date')) ?>">
-                            <strong><?= e($weekdayNames[$weekdayIndex] ?? $date) ?></strong>
-                            <span><?= e(format_date_eu($date)) ?></span>
+                            <button class="week-day-summary" type="button" data-week-day-toggle aria-expanded="false">
+                                <span class="week-day-summary-title"><strong><?= e($weekdayNames[$weekdayIndex] ?? $date) ?></strong><small><?= e(format_date_eu($date)) ?></small></span>
+                                <span class="week-day-summary-metrics"><small><?= e(t('metric.steps')) ?></small><strong><?= $stepValue !== null ? e(number_format($stepValue, 0, '.', ' ')) : '&mdash;' ?></strong></span>
+                                <span class="week-day-summary-metrics"><small><?= e(t('metric.workouts')) ?></small><strong><?= $completedWorkout ? e(t('common.yes')) : e(t('common.no')) ?></strong></span>
+                                <span class="week-day-summary-state <?= $dayIncomplete ? 'is-incomplete' : 'is-complete' ?>" aria-label="<?= e($dayIncomplete ? t('common.pending') : t('common.complete')) ?>"></span>
+                                <span class="week-day-summary-chevron" aria-hidden="true">&rsaquo;</span>
+                            </button>
                         </th>
                         <td class="sheet-time-cell" data-label="<?= e(t('entries.log_time')) ?>">
                             <label class="sheet-field">
@@ -528,6 +539,41 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
     if (!grid) {
         return;
     }
+
+    const weekDayCards = [...grid.querySelectorAll('[data-week-day-card]')];
+    const weekDayMedia = window.matchMedia('(max-width: 700px)');
+    const setOpenWeekDay = (target) => {
+        weekDayCards.forEach((card) => {
+            const expanded = card === target;
+            card.classList.toggle('is-mobile-collapsed', weekDayMedia.matches && !expanded);
+            const toggle = card.querySelector('[data-week-day-toggle]');
+            if (toggle) {
+                toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            }
+        });
+    };
+    const initializeWeekDayAccordion = () => {
+        if (!weekDayMedia.matches) {
+            weekDayCards.forEach((card) => card.classList.remove('is-mobile-collapsed'));
+            return;
+        }
+        const active = weekDayCards.find((card) => card.querySelector('[data-week-day-toggle][aria-expanded="true"]'))
+            || weekDayCards.find((card) => card.dataset.currentDay === '1')
+            || weekDayCards.find((card) => card.dataset.incomplete === '1')
+            || weekDayCards[0];
+        setOpenWeekDay(active);
+    };
+    weekDayCards.forEach((card) => {
+        card.querySelector('[data-week-day-toggle]')?.addEventListener('click', () => {
+            if (!weekDayMedia.matches) {
+                return;
+            }
+            const isOpen = !card.classList.contains('is-mobile-collapsed');
+            setOpenWeekDay(isOpen ? null : card);
+        });
+    });
+    weekDayMedia.addEventListener?.('change', initializeWeekDayAccordion);
+    initializeWeekDayAccordion();
 
     // Extra-workout popover: opening the panel inline would grow the whole table
     // row, so float it over the sheet with fixed positioning (no reparenting, so
@@ -968,6 +1014,53 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
         const createTrigger = card.querySelector('[data-custom-habit-create]');
         const status = card.querySelector('[data-custom-habit-status]');
         const existingWrap = card.querySelector('[data-custom-habit-existing]');
+        const panelPlaceholder = document.createComment('custom-habit-panel');
+
+        const closeCustomHabitPanel = () => {
+            if (panel.hidden) {
+                return;
+            }
+            panel.hidden = true;
+            panel.classList.remove('is-portaled');
+            panel.removeAttribute('style');
+            if (panelPlaceholder.parentNode) {
+                panelPlaceholder.replaceWith(panel);
+            }
+            toggle.setAttribute('aria-expanded', 'false');
+        };
+
+        const openCustomHabitPanel = () => {
+            if (!panel.parentNode) {
+                return;
+            }
+            panel.replaceWith(panelPlaceholder);
+            document.body.appendChild(panel);
+            panel.hidden = false;
+            panel.classList.add('is-portaled');
+            panel.style.position = 'fixed';
+            // Portaled sheets must sit above the fixed mobile navigation; otherwise
+            // the nav steals taps from the last habit or action in the panel.
+            panel.style.zIndex = '10080';
+            if (window.matchMedia('(max-width: 700px)').matches) {
+                panel.style.left = '0.6rem';
+                panel.style.right = '0.6rem';
+                panel.style.bottom = 'calc(0.6rem + env(safe-area-inset-bottom))';
+                panel.style.top = 'auto';
+                panel.style.width = 'auto';
+                panel.style.maxWidth = 'none';
+            } else {
+                const rect = toggle.getBoundingClientRect();
+                const width = Math.min(320, window.innerWidth - 16);
+                panel.style.width = width + 'px';
+                panel.style.maxWidth = width + 'px';
+                panel.style.left = Math.max(8, Math.min(window.innerWidth - width - 8, rect.right - width)) + 'px';
+                panel.style.top = Math.min(window.innerHeight - 16, rect.bottom + 6) + 'px';
+                panel.style.bottom = 'auto';
+            }
+            toggle.setAttribute('aria-expanded', 'true');
+            form.hidden = true;
+            setStatus('', '');
+        };
 
         const setStatus = (message, className) => {
             if (!(status instanceof HTMLElement)) {
@@ -980,11 +1073,25 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
         // The panel opens on the list of habits you already have. Creating is a
         // deliberate second step, so you can no longer make a duplicate habit
         // without first seeing that it exists.
+        toggle.setAttribute('aria-expanded', 'false');
         toggle.addEventListener('click', () => {
-            panel.hidden = !panel.hidden;
-            if (!panel.hidden) {
-                form.hidden = true;
-                setStatus('', '');
+            if (panel.hidden) {
+                openCustomHabitPanel();
+            } else {
+                closeCustomHabitPanel();
+            }
+        });
+        document.addEventListener('pointerdown', (event) => {
+            const target = event.target;
+            if (panel.hidden || !(target instanceof Node) || panel.contains(target) || toggle.contains(target)) {
+                return;
+            }
+            closeCustomHabitPanel();
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !panel.hidden) {
+                closeCustomHabitPanel();
+                toggle.focus();
             }
         });
 
@@ -1039,6 +1146,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                             box.parentElement.remove();
                         }
                     });
+                    panel.querySelectorAll('[data-custom-habit-code="' + code + '"]').forEach((row) => row.remove());
                     setStatus('', '');
                 } catch (error) {
                     setStatus(labels.customHabitError, 'save-status error');
@@ -1095,6 +1203,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                     addHabitToCard(targetCard, json.habit, targetCard === card);
                     addCustomHabitRow(targetCard, json.habit);
                 });
+                addCustomHabitRow(panel, json.habit);
 
                 setStatus(labels.customHabitCreated, 'save-status ok');
                 input.value = '';

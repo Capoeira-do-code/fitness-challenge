@@ -3,8 +3,8 @@
 declare(strict_types=1);
 ?>
 <section class="screen stack-lg">
-    <div class="hero-panel">
-        <div>
+    <div class="hero-panel app-page-hero">
+        <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('nav.team')) ?></p>
             <h1><?= e(t('team.join_team')) ?></h1>
             <p class="muted"><?= e(t('team.join_splash')) ?></p>

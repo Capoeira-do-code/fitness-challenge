@@ -65,7 +65,7 @@ foreach ($nutritionFields as $field => $meta) {
 }
 ?>
 <section class="screen stack-lg">
-    <article class="panel photo-post">
+    <article class="panel photo-post compact-panel glass-panel">
         <div class="panel-head photo-post-head">
             <div>
                 <p class="eyebrow"><?= e(t('common.photo')) ?></p>
@@ -113,7 +113,7 @@ foreach ($nutritionFields as $field => $meta) {
         <div class="photo-post-layout">
             <figure class="photo-post-media">
                 <?php if ($photoUrl !== ''): ?>
-                    <img src="<?= e($photoUrl) ?>" alt="<?= e(t('common.photo')) ?>">
+                    <img src="<?= e($photoUrl) ?>" alt="<?= e(t('common.photo')) ?>" loading="eager" fetchpriority="high" decoding="async">
                 <?php else: ?>
                     <div class="photo-placeholder">
                         <div class="photo-placeholder-content">
@@ -124,9 +124,9 @@ foreach ($nutritionFields as $field => $meta) {
             </figure>
 
             <div class="photo-post-side stack">
-                <article class="mini-card photo-post-meta">
+                <article class="mini-card photo-post-meta compact-panel glass-panel">
                     <div class="photo-post-meta-main">
-                        <div class="photo-post-author">
+                        <a class="photo-post-author user-profile-link" href="/?page=profile&amp;user_id=<?= $photoOwnerId ?>">
                             <?php
                             $authorForAvatar = [
                                 'display_name' => $ownerName,
@@ -136,7 +136,7 @@ foreach ($nutritionFields as $field => $meta) {
                             $authorAvatarUrl = avatar_url($authorForAvatar);
                             ?>
                             <?php if ($authorAvatarUrl !== ''): ?>
-                                <img class="profile-avatar" src="<?= e($authorAvatarUrl) ?>" alt="<?= e($ownerName) ?>">
+                                <img class="profile-avatar" src="<?= e($authorAvatarUrl) ?>" alt="<?= e($ownerName) ?>" loading="lazy" decoding="async">
                             <?php else: ?>
                                 <span class="profile-avatar initials"><?= e(initials_for($ownerName)) ?></span>
                             <?php endif; ?>
@@ -144,7 +144,7 @@ foreach ($nutritionFields as $field => $meta) {
                                 <strong><?= e($ownerName) ?></strong>
                                 <span><?= e($formatDateTime((string) ($photo['created_at'] ?? ''))) ?></span>
                             </div>
-                        </div>
+                        </a>
                         <div class="photo-post-tags">
                             <span class="badge"><?= e($categoryLabel) ?></span>
                             <span class="badge"><?= e(format_date_eu($photoLogDate)) ?></span>
@@ -157,7 +157,7 @@ foreach ($nutritionFields as $field => $meta) {
                 </article>
 
                 <?php if ($nutritionRows !== []): ?>
-                    <article class="mini-card photo-post-nutrition">
+                    <article class="mini-card photo-post-nutrition compact-panel glass-panel">
                         <h3><?= e(t('photo.nutrition')) ?></h3>
                         <ul>
                             <?php foreach ($nutritionRows as $row): ?>
@@ -215,9 +215,9 @@ foreach ($nutritionFields as $field => $meta) {
                         ?>
                         <article class="photo-comment-item">
                             <div class="photo-comment-head">
-                                <div class="photo-comment-author">
+                                <a class="photo-comment-author user-profile-link" href="/?page=profile&amp;user_id=<?= (int) ($comment['user_id'] ?? 0) ?>">
                                     <?php if ($commentAvatarUrl !== ''): ?>
-                                        <img class="profile-avatar" src="<?= e($commentAvatarUrl) ?>" alt="<?= e($commentAuthor) ?>">
+                                        <img class="profile-avatar" src="<?= e($commentAvatarUrl) ?>" alt="<?= e($commentAuthor) ?>" loading="lazy" decoding="async">
                                     <?php else: ?>
                                         <span class="profile-avatar initials"><?= e(initials_for($commentAuthor)) ?></span>
                                     <?php endif; ?>
@@ -225,14 +225,23 @@ foreach ($nutritionFields as $field => $meta) {
                                         <strong><?= e($commentAuthor) ?></strong>
                                         <span><?= e($formatDateTime((string) ($comment['created_at'] ?? ''))) ?></span>
                                     </div>
-                                </div>
+                                </a>
                                 <?php if ($commentCanDelete): ?>
-                                    <form method="post" action="/?page=photo&photo_id=<?= $photoId ?>">
+                                    <?php $commentDeleteFormId = 'photo-comment-delete-' . (int) ($comment['id'] ?? 0); ?>
+                                    <?= render_kebab_menu([[
+                                        'label' => t('photo.delete_comment'),
+                                        'danger' => true,
+                                        'type' => 'submit',
+                                        'attrs' => [
+                                            'form' => $commentDeleteFormId,
+                                            'data-confirm-action' => t('photo.delete_comment') . '?',
+                                        ],
+                                    ]], ['label' => t('common.actions')]) ?>
+                                    <form id="<?= e($commentDeleteFormId) ?>" method="post" action="/?page=photo&photo_id=<?= $photoId ?>" hidden>
                                         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                                         <input type="hidden" name="action" value="delete_photo_comment">
                                         <input type="hidden" name="photo_id" value="<?= $photoId ?>">
                                         <input type="hidden" name="comment_id" value="<?= (int) ($comment['id'] ?? 0) ?>">
-                                        <button type="submit" class="btn btn-ghost small"><?= e(t('photo.delete_comment')) ?></button>
                                     </form>
                                 <?php endif; ?>
                             </div>

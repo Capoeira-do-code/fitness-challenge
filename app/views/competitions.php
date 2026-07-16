@@ -73,9 +73,30 @@ $duelActionForm = static function (string $action, string $field, int $id, strin
     </form>
     <?php
 };
+$renderCompetitionDetails = static function (array $competition): void {
+    $detailId = 'competition-card-details-' . (int) ($competition['id'] ?? 0);
+    $status = (string) ($competition['status'] ?? 'pending');
+    $statusLabel = match ($status) {
+        'active' => t('common.active'),
+        'completed' => t('workouts.done'),
+        default => t('common.pending'),
+    };
+    ?>
+    <button class="versus-details-toggle" type="button" data-versus-details-toggle aria-expanded="false" aria-controls="<?= e($detailId) ?>">
+        <span data-versus-details-label data-label-open="<?= e(t('duels.card_details')) ?>" data-label-close="<?= e(t('duels.card_details_hide')) ?>"><?= e(t('duels.card_details')) ?></span>
+        <span aria-hidden="true">&rsaquo;</span>
+    </button>
+    <div class="versus-details" id="<?= e($detailId) ?>" data-versus-details hidden>
+        <span><small><?= e(t('common.status')) ?></small><strong><?= e($statusLabel) ?></strong></span>
+        <span><small><?= e(t('duels.days')) ?></small><strong><?= e(t('duels.duration', ['days' => (int) ($competition['duration_days'] ?? 0)])) ?></strong></span>
+        <?php if (trim((string) ($competition['start_date'] ?? '')) !== ''): ?><span><small><?= e(t('duels.start_date')) ?></small><strong><?= e(format_date_eu((string) $competition['start_date'])) ?></strong></span><?php endif; ?>
+        <?php if (trim((string) ($competition['end_date'] ?? '')) !== ''): ?><span><small><?= e(t('duels.end_date')) ?></small><strong><?= e(format_date_eu((string) $competition['end_date'])) ?></strong></span><?php endif; ?>
+    </div>
+    <?php
+};
 ?>
 <section class="screen stack-lg">
-    <div class="hero-panel">
+    <div class="hero-panel app-page-hero">
         <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('friends.eyebrow')) ?></p>
             <h1><?= e(t('competitions.title')) ?></h1>
@@ -88,9 +109,9 @@ $duelActionForm = static function (string $action, string $field, int $id, strin
             <div class="panel-head"><h2><?= e(t('competitions.incoming')) ?></h2><span class="badge"><?= count($incoming) ?></span></div>
             <div class="stack-md">
                 <?php foreach ($incoming as $view): $c = (array) $view['comp']; ?>
-                    <div class="duel-card">
+                    <div class="duel-card compact-list-item is-pending" data-state="pending-incoming">
                         <?php $compVs($view); ?>
-                        <p class="muted small"><?= e(t('duels.duration', ['days' => (int) $c['duration_days']])) ?></p>
+                        <?php $renderCompetitionDetails($c); ?>
                         <div class="inline-actions">
                             <?php $duelActionForm('comp_accept', 'comp_id', (int) $c['id'], t('friends.accept'), 'btn-primary'); ?>
                             <?php $duelActionForm('comp_decline', 'comp_id', (int) $c['id'], t('friends.reject'), 'btn-ghost'); ?>
@@ -104,13 +125,28 @@ $duelActionForm = static function (string $action, string $field, int $id, strin
     <article class="panel">
         <div class="panel-head"><h2><?= e(t('competitions.active')) ?></h2><span class="badge"><?= count($active) ?></span></div>
         <?php if ($active === []): ?>
-            <p class="muted"><?= e(t('competitions.no_active')) ?></p>
+            <div class="empty-state competition-empty-state">
+                <span class="empty-state-icon"><?= activity_icon_svg('trophy') ?></span>
+                <p><strong><?= e(t('competitions.no_active')) ?></strong></p>
+                <p class="muted small"><?= e($mySquads !== [] ? t('competitions.no_active_hint') : t('competitions.no_teams')) ?></p>
+                <a class="btn btn-primary small" href="<?= $mySquads === [] ? '#competition-create-team' : ($challengeableSquads !== [] ? '#competition-teams' : '/?page=team') ?>">
+                    <?= e($mySquads === [] ? t('competitions.create_team') : ($challengeableSquads !== [] ? t('competitions.create_competition') : t('profile.back_to_team'))) ?>
+                </a>
+            </div>
         <?php else: ?>
             <div class="stack-md">
                 <?php foreach ($active as $view): $c = (array) $view['comp']; ?>
-                    <div class="duel-card">
+                    <?php
+                    try {
+                        $competitionDaysLeft = max(0, (int) (new DateTimeImmutable('today'))->diff(new DateTimeImmutable((string) ($c['end_date'] ?? 'today')))->days);
+                    } catch (Throwable) {
+                        $competitionDaysLeft = 0;
+                    }
+                    ?>
+                    <div class="duel-card compact-list-item is-active" data-state="active">
                         <?php $compVs($view); ?>
-                        <p class="muted small"><?= e(t('duels.ends_on', ['date' => format_date_eu((string) ($c['end_date'] ?? ''))])) ?></p>
+                        <p class="duel-standing"><span class="duel-standing-time"><?= $competitionDaysLeft > 0 ? e(t('season.days_left', ['n' => $competitionDaysLeft])) : e(t('season.ends_today')) ?></span></p>
+                        <?php $renderCompetitionDetails($c); ?>
                         <?php $duelActionForm('comp_cancel', 'comp_id', (int) $c['id'], t('duels.cancel'), 'btn-ghost'); ?>
                     </div>
                 <?php endforeach; ?>
@@ -123,9 +159,10 @@ $duelActionForm = static function (string $action, string $field, int $id, strin
             <div class="panel-head"><h2><?= e(t('duels.sent')) ?></h2><span class="badge"><?= count($outgoing) ?></span></div>
             <div class="stack-md">
                 <?php foreach ($outgoing as $view): $c = (array) $view['comp']; $s = (array) $view['standing']; ?>
-                    <div class="duel-card">
+                    <div class="duel-card compact-list-item is-pending" data-state="pending-outgoing">
                         <p><strong><?= e((string) (($s['opponent_squad'] ?? [])['name'] ?? '')) ?></strong> · <?= e(duels_metric_label((string) $c['metric'])) ?> · <?= e(t('duels.duration', ['days' => (int) $c['duration_days']])) ?></p>
                         <p class="muted small"><?= e(t('duels.waiting')) ?></p>
+                        <?php $renderCompetitionDetails($c); ?>
                         <?php $duelActionForm('comp_cancel', 'comp_id', (int) $c['id'], t('duels.cancel'), 'btn-ghost'); ?>
                     </div>
                 <?php endforeach; ?>
@@ -133,7 +170,7 @@ $duelActionForm = static function (string $action, string $field, int $id, strin
         </article>
     <?php endif; ?>
 
-    <article class="panel">
+    <article class="panel" id="competition-teams">
         <div class="panel-head"><h2><?= e(t('competitions.my_teams')) ?></h2><span class="badge"><?= count($mySquads) ?></span></div>
         <?php if ($mySquads === []): ?>
             <p class="muted"><?= e(t('competitions.no_teams')) ?></p>
@@ -150,24 +187,46 @@ $duelActionForm = static function (string $action, string $field, int $id, strin
                     <div class="squad-card">
                         <div class="squad-card-head">
                             <strong><?= e((string) $squad['name']) ?></strong>
-                            <?php $duelActionForm('squad_delete', 'squad_id', $squadId, t('competitions.delete_team'), 'btn-ghost'); ?>
+                            <?php
+                            $squadDeleteFormId = 'squad-delete-' . $squadId;
+                            echo render_kebab_menu([[
+                                'label' => t('competitions.delete_team'),
+                                'danger' => true,
+                                'type' => 'submit',
+                                'attrs' => [
+                                    'form' => $squadDeleteFormId,
+                                    'data-confirm-action' => t('team.delete_confirm'),
+                                ],
+                            ]], ['label' => t('common.actions')]);
+                            ?>
+                            <form id="<?= e($squadDeleteFormId) ?>" method="post" action="/?page=competitions" hidden>
+                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="squad_delete">
+                                <input type="hidden" name="squad_id" value="<?= $squadId ?>">
+                            </form>
                         </div>
                         <div class="squad-members">
                             <?php foreach ($members as $member): ?>
                                 <span class="squad-member-chip">
-                                    <?= e((string) ($member['display_name'] ?? $member['username'] ?? '')) ?>
+                                    <a class="squad-member-profile" href="/?page=profile&amp;user_id=<?= (int) ($member['id'] ?? 0) ?>">
+                                        <?= e((string) ($member['display_name'] ?? $member['username'] ?? '')) ?>
+                                    </a>
                                     <?php if ((int) $member['id'] !== (int) $squad['owner_id']): ?>
                                         <form method="post" action="/?page=competitions" class="inline-form">
                                             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                                             <input type="hidden" name="action" value="squad_remove_member">
                                             <input type="hidden" name="squad_id" value="<?= $squadId ?>">
                                             <input type="hidden" name="user_id" value="<?= (int) $member['id'] ?>">
-                                            <button class="squad-member-x" type="submit" aria-label="remove">×</button>
+                                            <button class="squad-member-x" type="submit" aria-label="<?= e(t('friends.remove')) ?>">&times;</button>
                                         </form>
                                     <?php endif; ?>
                                 </span>
                             <?php endforeach; ?>
                         </div>
+                        <?php if ($addable !== [] || $challengeableSquads !== []): ?>
+                        <details class="squad-secondary-actions">
+                            <summary><?= e(t('common.actions')) ?> <span aria-hidden="true">&rsaquo;</span></summary>
+                            <div class="squad-secondary-actions-body">
                         <?php if ($addable !== []): ?>
                             <form method="post" action="/?page=competitions" class="control-strip wrap squad-add-form">
                                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -208,6 +267,9 @@ $duelActionForm = static function (string $action, string $field, int $id, strin
                                 <button class="btn btn-primary small" type="submit"><?= e(t('competitions.challenge')) ?></button>
                             </form>
                         <?php endif; ?>
+                            </div>
+                        </details>
+                        <?php endif; ?>
                     </div>
                 <?php endforeach; ?>
             </div>
@@ -218,7 +280,7 @@ $duelActionForm = static function (string $action, string $field, int $id, strin
           // to a team it becomes a deliberate, secondary step, so the page stops looking
           // like it forgot you already have one. ?>
     <?php if ($mySquads === []): ?>
-        <article class="panel">
+        <article class="panel" id="competition-create-team">
             <div class="panel-head"><h2><?= e(t('competitions.create_team')) ?></h2></div>
             <form method="post" action="/?page=competitions" class="control-strip wrap">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -230,19 +292,6 @@ $duelActionForm = static function (string $action, string $field, int $id, strin
                 <button class="btn btn-primary" type="submit"><?= e(t('competitions.create')) ?></button>
             </form>
         </article>
-    <?php else: ?>
-        <details class="panel squad-create-secondary">
-            <summary><?= e(t('competitions.create_another_team')) ?></summary>
-            <form method="post" action="/?page=competitions" class="control-strip wrap">
-                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="squad_create">
-                <label class="friends-add-select">
-                    <span class="sr-only"><?= e(t('competitions.team_name')) ?></span>
-                    <input type="text" name="name" maxlength="60" placeholder="<?= e(t('competitions.team_name')) ?>" required>
-                </label>
-                <button class="btn btn-ghost" type="submit"><?= e(t('competitions.create')) ?></button>
-            </form>
-        </details>
     <?php endif; ?>
 
     <?php if ($done !== []): ?>
@@ -256,12 +305,13 @@ $duelActionForm = static function (string $action, string $field, int $id, strin
                         ? (string) (($s['challenger_squad'] ?? [])['name'] ?? '')
                         : ($winnerId === (int) $c['opponent_squad_id'] ? (string) (($s['opponent_squad'] ?? [])['name'] ?? '') : '');
                     ?>
-                    <div class="duel-card is-done">
+                    <div class="duel-card compact-list-item is-done" data-state="completed">
                         <?php $compVs($view); ?>
                         <p class="duel-result">
                             <?= isset($mySquadIds[$winnerId]) ? '🏆 ' : '' ?>
                             <?= $winnerName !== '' ? e(t('duels.winner', ['name' => $winnerName])) : e(t('duels.tie')) ?>
                         </p>
+                        <?php $renderCompetitionDetails($c); ?>
                     </div>
                 <?php endforeach; ?>
             </div>

@@ -65,8 +65,8 @@ $weeklyWorkoutFailures = array_sum(array_map(static fn(array $row): int => (int)
 $weeklyWarnings = array_sum(array_map(static fn(array $row): int => (int) ($row['skip_warnings'] ?? 0), $weeklyRows));
 $weeklyPenalty = array_sum(array_map(static fn(array $row): float => (float) ($row['penalty'] ?? 0), $weeklyRows));
 ?>
-<section class="screen stack-lg">
-    <div class="hero-panel">
+<section class="screen stack-lg training-summary-screen">
+    <div class="hero-panel app-page-hero">
         <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('nav.table')) ?></p>
             <h1><?= e($isAllTrainingScope ? t('table.all_summary') : t('table.week_summary')) ?></h1>

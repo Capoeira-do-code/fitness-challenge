@@ -12,17 +12,24 @@ $ownerName = $achievementScope === 'team'
     : (string) ($achievementOwner['display_name'] ?? t('common.user'));
 $achievementsUrl = (string) ($achievementsUrl ?? '/?page=achievements');
 $backHref = (string) ($backHref ?? '/?page=profile');
-$canDeleteAchievements = !empty($canDeleteAchievements);
 $achievementTotalCount = count($achievementsAll);
 $achievementUnlockedCount = count($unlockedAchievements);
 $achievementLockedCount = count($lockedAchievements);
 $achievementCompletionPct = $achievementTotalCount > 0 ? round(($achievementUnlockedCount / $achievementTotalCount) * 100) : 0.0;
 $achievementCompletionText = number_format($achievementCompletionPct, 0);
+$achievementFilter = strtolower(trim((string) ($_GET['filter'] ?? 'all')));
+if (!in_array($achievementFilter, ['all', 'unlocked', 'locked'], true)) {
+    $achievementFilter = 'all';
+}
+$achievementFilterHref = static function (string $filter) use ($achievementsUrl): string {
+    if ($filter === 'all') {
+        return $achievementsUrl;
+    }
 
-$renderAchievementCard = static function (array $achievement) use ($achievementsUrl, $canDeleteAchievements): void {
+    return $achievementsUrl . (str_contains($achievementsUrl, '?') ? '&' : '?') . 'filter=' . rawurlencode($filter);
+};
+$renderAchievementCard = static function (array $achievement): void {
     $isUnlocked = !empty($achievement['is_unlocked']);
-    $awardId = (int) ($achievement['award_id'] ?? 0);
-    $deleteFormId = 'delete-achievement-page-' . (int) ($achievement['id'] ?? 0) . '-' . $awardId;
     $progressPct = is_numeric($achievement['progress_pct'] ?? null) ? max(0.0, min(100.0, (float) $achievement['progress_pct'])) : null;
     ?>
     <article class="achievement-card achievement-list-card <?= $isUnlocked ? 'is-unlocked' : 'is-locked' ?>" <?= achievement_modal_attrs($achievement) ?>>
@@ -50,26 +57,19 @@ $renderAchievementCard = static function (array $achievement) use ($achievements
                 </div>
             <?php endif; ?>
         </div>
-        <?php if ($isUnlocked && $canDeleteAchievements && $awardId > 0): ?>
-            <form method="post" action="<?= e($achievementsUrl) ?>" class="achievement-remove" id="<?= e($deleteFormId) ?>">
-                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="delete_achievement_award">
-                <input type="hidden" name="award_id" value="<?= $awardId ?>">
-                <button class="achievement-delete-btn" type="button" aria-label="<?= e(t('achievements.delete_award')) ?>" data-achievement-delete-trigger data-form-id="<?= e($deleteFormId) ?>">x</button>
-            </form>
-        <?php endif; ?>
     </article>
     <?php
 };
 ?>
 
-<section class="page-hero achievements-page-hero<?= $achievementScope === 'team' ? ' achievements-page-hero-team' : '' ?>">
-    <a class="btn btn-ghost achievements-back-btn" href="<?= e($backHref) ?>"><?= e(t('common.back')) ?></a>
-    <div class="hero-copy hero-copy-page-title">
-        <p class="eyebrow"><?= e($achievementScope === 'team' ? t('nav.team') : t('common.user')) ?></p>
-        <h1><?= e(t('achievements.all_title')) ?></h1>
+<header class="hierarchy-page-header achievements-page-header<?= $achievementScope === 'team' ? ' achievements-page-header-team' : '' ?>">
+    <a class="hierarchy-back" href="<?= e($backHref) ?>" aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+    <div>
+        <p class="eyebrow"><?= e($ownerName) ?></p>
+        <h1 data-navigation-focus tabindex="-1"><?= e(t('achievements.all_title')) ?></h1>
+        <p><?= e(t('achievements.completion')) ?> · <?= e($achievementCompletionText) ?>%</p>
     </div>
-</section>
+</header>
 
 <section class="achievement-summary-strip">
     <span class="achievement-summary-card"><strong><?= $achievementUnlockedCount ?></strong><small><?= e(t('achievements.unlocked')) ?></small></span>
@@ -77,6 +77,13 @@ $renderAchievementCard = static function (array $achievement) use ($achievements
     <span class="achievement-summary-card"><strong><?= e($achievementCompletionText) ?>%</strong><small><?= e(t('achievements.completion')) ?></small></span>
 </section>
 
+<nav class="achievement-filter-tabs" aria-label="<?= e(t('achievements.title')) ?>">
+    <a href="<?= e($achievementFilterHref('all')) ?>"<?= $achievementFilter === 'all' ? ' aria-current="page"' : '' ?>><span><?= e(t('notifications.filter_all')) ?></span><strong><?= $achievementTotalCount ?></strong></a>
+    <a href="<?= e($achievementFilterHref('unlocked')) ?>"<?= $achievementFilter === 'unlocked' ? ' aria-current="page"' : '' ?>><span><?= e(t('achievements.unlocked')) ?></span><strong><?= $achievementUnlockedCount ?></strong></a>
+    <a href="<?= e($achievementFilterHref('locked')) ?>"<?= $achievementFilter === 'locked' ? ' aria-current="page"' : '' ?>><span><?= e(t('achievements.locked')) ?></span><strong><?= $achievementLockedCount ?></strong></a>
+</nav>
+
+<?php if ($achievementFilter !== 'locked'): ?>
 <article class="panel achievements-page-panel">
     <div class="panel-head">
         <div>
@@ -94,7 +101,9 @@ $renderAchievementCard = static function (array $achievement) use ($achievements
         <?php endif; ?>
     </div>
 </article>
+<?php endif; ?>
 
+<?php if ($achievementFilter !== 'unlocked'): ?>
 <article class="panel achievements-page-panel">
     <div class="panel-head">
         <div>
@@ -112,3 +121,4 @@ $renderAchievementCard = static function (array $achievement) use ($achievements
         <?php endif; ?>
     </div>
 </article>
+<?php endif; ?>

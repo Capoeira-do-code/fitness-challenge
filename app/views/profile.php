@@ -6,6 +6,8 @@ $profileUser = $profileUser ?? $currentUser;
 $isOwnProfile = (bool) ($isOwnProfile ?? ((int) ($profileUser['id'] ?? 0) === (int) ($currentUser['id'] ?? 0)));
 $canEditProfile = (bool) ($canEditProfile ?? $isOwnProfile);
 $profileBaseUrl = (string) ($profileBaseUrl ?? '/?page=profile');
+$profileBackUrl = (string) ($profileBackUrl ?? '');
+$profileBackParams = is_array($profileBackParams ?? null) ? (array) $profileBackParams : [];
 $profileFriends = is_array($profileFriends ?? null) ? array_values((array) $profileFriends) : [];
 $profileFriendIncoming = is_array($profileFriendIncoming ?? null) ? array_values((array) $profileFriendIncoming) : [];
 $profileFriendOutgoing = is_array($profileFriendOutgoing ?? null) ? array_values((array) $profileFriendOutgoing) : [];
@@ -15,9 +17,18 @@ $profileFriendCount = count($profileFriends);
 $profileFriendPreview = array_slice($profileFriends, 0, 5);
 $profileFriendIncomingPreview = array_slice($profileFriendIncoming, 0, 2);
 $profileFriendOutgoingCount = count($profileFriendOutgoing);
+$profileTrainingRank = is_array($profileTrainingRank ?? null) ? (array) $profileTrainingRank : wk_rank_from_score(0.0);
+$profileTrainingMonth = is_array($profileTrainingMonth ?? null) ? (array) $profileTrainingMonth : [];
+$profileTrainingAll = is_array($profileTrainingAll ?? null) ? (array) $profileTrainingAll : [];
+$profileTrainingRecentSessions = is_array($profileTrainingRecentSessions ?? null) ? array_values((array) $profileTrainingRecentSessions) : [];
+$profileTrainingRecords = is_array($profileTrainingRecords ?? null) ? array_values((array) $profileTrainingRecords) : [];
+$profileTrainingMuscles = is_array($profileTrainingMuscles ?? null) ? array_values((array) $profileTrainingMuscles) : [];
+$profileTeamsList = is_array($profileTeams ?? null) ? array_values((array) $profileTeams) : [];
 
 $activeSection = (string) ($_GET['section'] ?? '');
-$allowedSections = ['goals', 'achievements', 'config', 'activity'];
+$allowedSections = $isOwnProfile
+    ? ['goals', 'training', 'social', 'achievements', 'config', 'activity']
+    : ['goals', 'training', 'social', 'achievements'];
 if (!in_array($activeSection, $allowedSections, true)) {
     $activeSection = '';
 }
@@ -56,6 +67,7 @@ $profileQueryBase = ['page' => 'profile'];
 if (!$isOwnProfile) {
     $profileQueryBase['user_id'] = (int) ($profileUser['id'] ?? 0);
 }
+$profileQueryBase = array_merge($profileQueryBase, $profileBackParams);
 $profileSelectedChallengeKey = (string) ($profileSelectedChallengeKey ?? 'current');
 if ($profileSelectedChallengeKey !== '' && $profileSelectedChallengeKey !== 'current') {
     $profileQueryBase['challenge'] = $profileSelectedChallengeKey;
@@ -71,10 +83,15 @@ $profileUrl = static function (string $section = '', array $extra = []) use ($pr
 
 // #15 — customizable Profile home layout. Order comes from the profile owner's
 // saved arrangement; default (no saved layout) keeps the original DOM order.
-$profileLayoutBlocks = ['goals', 'friends', 'achievements', 'duels', 'competitions', 'setup', 'activity'];
+$profileLayoutBlocks = $isOwnProfile
+    ? ['goals', 'friends', 'teams', 'training_rank', 'training_progress', 'achievements', 'duels', 'competitions', 'setup', 'activity']
+    : ['goals', 'friends', 'teams', 'training_rank', 'training_progress', 'achievements'];
 $profileLayoutLabels = [
     'goals' => t('goals.personal'),
     'friends' => t('nav.friends'),
+    'teams' => t('social_hub.teams'),
+    'training_rank' => t('dashboard.training_rank_title'),
+    'training_progress' => t('dashboard.training_progress_title'),
     'achievements' => t('profile.achievements'),
     'duels' => t('nav.duels'),
     'competitions' => t('nav.competitions'),
@@ -143,29 +160,70 @@ $profileFriendActionForm = static function (string $action, int $userId, string 
     </form>
     <?php
 };
-$renderProfileFriendActions = static function (string $status, int $targetUserId, string $contextClass = '') use ($profileFriendActionForm): void {
+$profileFriendSecondaryMenu = static function (
+    string $action,
+    int $userId,
+    string $label,
+    bool $danger = false,
+    string $contextClass = '',
+    array $extraItems = []
+) use ($profileUrl): void {
+    static $menuCounter = 0;
+    $menuCounter++;
+    $formId = 'profile-friend-secondary-' . $userId . '-' . $menuCounter;
+    ?>
+    <form id="<?= e($formId) ?>" method="post" action="<?= e($profileUrl()) ?>" hidden>
+        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+        <input type="hidden" name="user_id" value="<?= $userId ?>">
+    </form>
+    <?php
+    $menuItems = array_values($extraItems);
+    $menuItems[] = [
+        'label' => $label,
+        'danger' => $danger,
+        'type' => 'submit',
+        'attrs' => array_filter([
+            'form' => $formId,
+            'name' => 'action',
+            'value' => $action,
+            'data-confirm-action' => $danger ? t('friends.remove_confirm') : '',
+        ], static fn(string $value): bool => $value !== ''),
+    ];
+    echo render_kebab_menu($menuItems, [
+        'label' => t('common.actions'),
+        'class' => trim('profile-friend-secondary-menu ' . $contextClass),
+    ]);
+};
+$renderProfileFriendActions = static function (string $status, int $targetUserId, string $contextClass = '', array $extraMenuItems = []) use ($profileFriendActionForm, $profileFriendSecondaryMenu): void {
     if ($targetUserId <= 0) {
         return;
     }
 
     if ($status === 'none') {
         $profileFriendActionForm('friend_request', $targetUserId, t('friends.send_request'), 'btn-primary', $contextClass);
+        if ($extraMenuItems !== []) {
+            echo render_kebab_menu($extraMenuItems, [
+                'label' => t('common.actions'),
+                'class' => trim('profile-friend-secondary-menu ' . $contextClass),
+            ]);
+        }
         return;
     }
     if ($status === 'pending_out') {
-        $profileFriendActionForm('friend_remove', $targetUserId, t('friends.cancel_request'), 'btn-ghost', $contextClass);
+        $profileFriendSecondaryMenu('friend_remove', $targetUserId, t('friends.cancel_request'), false, $contextClass, $extraMenuItems);
         return;
     }
     if ($status === 'pending_in') {
         $profileFriendActionForm('friend_accept', $targetUserId, t('friends.accept'), 'btn-primary', $contextClass);
-        $profileFriendActionForm('friend_reject', $targetUserId, t('friends.reject'), 'btn-ghost', $contextClass);
+        $profileFriendSecondaryMenu('friend_reject', $targetUserId, t('friends.reject'), false, $contextClass, $extraMenuItems);
         return;
     }
     if ($status === 'friends') {
-        ?>
-        <a class="btn btn-primary small <?= e($contextClass) ?>" href="/?page=friends&amp;compare=<?= $targetUserId ?>" data-spa-link><?= e(t('friends.compare')) ?></a>
-        <?php
-        $profileFriendActionForm('friend_remove', $targetUserId, t('friends.remove'), 'btn-ghost', $contextClass);
+        array_unshift($extraMenuItems, [
+            'label' => t('friends.compare'),
+            'href' => '/?page=friends&compare=' . $targetUserId,
+        ]);
+        $profileFriendSecondaryMenu('friend_remove', $targetUserId, t('friends.remove'), true, $contextClass, $extraMenuItems);
     }
 };
 $profileFriendStatusText = match ($profileFriendStatus) {
@@ -615,6 +673,10 @@ $profileCurrentGoalChips = array_values(array_filter(array_map(
     $profileCurrentGoalRows
 )));
 $profileCalorieConfigDisplay = $calorieConfigParts !== [] ? implode(' / ', $calorieConfigParts) : '-';
+$profileTrainingRankKey = (string) ($profileTrainingRank['key'] ?? 'unranked');
+if (!array_key_exists($profileTrainingRankKey, wk_rank_tiers())) {
+    $profileTrainingRankKey = 'unranked';
+}
 $featuredGoal = $activeGoals[0] ?? null;
 $featuredGoalCurrent = is_array($featuredGoal) ? $goalCurrentValue($featuredGoal) : 0.0;
 $featuredGoalProgress = is_array($featuredGoal) ? $goalProgressPercent($featuredGoal, $featuredGoalCurrent) : 0.0;
@@ -627,10 +689,23 @@ $profileSetupRows = [
     ['label' => t('profile.workout_target'), 'value' => (string) ($profileUser['workout_target'] ?? 0) . '/' . strtolower(t('common.week'))],
     ['label' => t('metric.ideal_weight'), 'value' => ($profileUser['ideal_weight'] ?? null) !== null ? (string) $profileUser['ideal_weight'] . ' kg' : '-'],
     ['label' => t('profile.calorie_config'), 'value' => $profileCalorieConfigDisplay],
+    ['label' => t('metric.steps'), 'value' => number_format((int) ($profileUser['step_goal'] ?? 0))],
+    ['label' => t('dashboard.training_rank_title'), 'value' => t('workouts.rank_' . $profileTrainingRankKey) . ' · ' . number_format((float) ($profileTrainingRank['score'] ?? 0), 1, '.', '')],
+    ['label' => t('workouts.stat_sessions') . ' · ' . t('workouts.this_month'), 'value' => number_format((int) ($profileTrainingMonth['sessions'] ?? 0))],
+    ['label' => t('workouts.stat_sessions') . ' · ' . t('workouts.all_time'), 'value' => number_format((int) ($profileTrainingAll['sessions'] ?? 0))],
+    ['label' => t('workouts.stat_sets') . ' · ' . t('workouts.all_time'), 'value' => number_format((int) ($profileTrainingAll['sets'] ?? 0))],
+    ['label' => t('workouts.stat_reps') . ' · ' . t('workouts.all_time'), 'value' => number_format((int) ($profileTrainingAll['reps'] ?? 0))],
 ];
+$profileSetupVisibleRows = array_slice($profileSetupRows, 0, 4);
+$profileSetupMoreRows = array_slice($profileSetupRows, 4);
 ?>
-<section class="screen stack-lg spa-shell" data-spa-page="profile">
-    <div class="hero-panel profile-hero">
+<section class="screen stack-lg spa-shell profile-hierarchy-screen" data-spa-page="profile" data-profile-section="<?= e($activeSection) ?>">
+    <?php if (!$isOwnProfile && $profileBackUrl !== ''): ?>
+        <nav class="context-back-nav" aria-label="<?= e(t('common.back')) ?>">
+            <a class="btn btn-ghost context-back-btn" href="<?= e($profileBackUrl) ?>">← <?= e(t('profile.back_to_team')) ?></a>
+        </nav>
+    <?php endif; ?>
+    <div class="hero-panel profile-hero compact-panel glass-panel">
         <div class="profile-title">
             <?php $profileAvatarUrl = avatar_url($profileUser); ?>
             <?php $profileFrameClass = cosmetic_frame_class($profileUser); ?>
@@ -654,17 +729,6 @@ $profileSetupRows = [
                 <p class="eyebrow"><?= e(t('nav.profile')) ?></p>
                 <h1><?= e((string) $profileUser['display_name']) ?></h1>
                 <p class="muted">@<?= e((string) $profileUser['username']) ?> &middot; <?= e($profileHeroMessage) ?><?php if (!$isOwnProfile): ?> &middot; <?= e(t('profile.read_only')) ?><?php endif; ?></p>
-                <?php $profileTeamsList = (array) ($profileTeams ?? []); ?>
-                <?php if ($profileTeamsList !== []): ?>
-                    <div class="profile-team-badges" aria-label="<?= e(t('nav.team')) ?>">
-                        <?php foreach ($profileTeamsList as $profileTeamItem): ?>
-                            <a class="profile-team-badge" href="/?page=team&team_id=<?= (int) ($profileTeamItem['id'] ?? 0) ?>">
-                                <span class="profile-team-badge-dot" aria-hidden="true"></span>
-                                <?= e((string) ($profileTeamItem['name'] ?? '')) ?>
-                            </a>
-                        <?php endforeach; ?>
-                    </div>
-                <?php endif; ?>
                 <?php $xp = (array) ($profileXp ?? []); ?>
                 <button type="button" class="profile-level profile-level-trigger" data-app-modal-open="profile-level-modal" title="<?= e(t('xp.progress_title')) ?>" aria-haspopup="dialog">
                     <span class="profile-level-badge"><?= e(t('xp.level_short')) ?> <?= (int) ($xp['level'] ?? 1) ?></span>
@@ -692,10 +756,19 @@ $profileSetupRows = [
                 <?php if ($showProfileFriendActions): ?>
                     <div class="profile-friend-actions profile-friend-actions-hero" aria-label="<?= e(t('profile.friendship')) ?>">
                         <span class="profile-friend-status"><?= e($profileFriendStatusText) ?></span>
-                        <?php $renderProfileFriendActions($profileFriendStatus, (int) $profileUser['id'], 'profile-friend-hero-action'); ?>
+                        <?php
+                        $profileFriendHeroMenuItems = [];
+                        if (!empty($canExportProfilePdf)) {
+                            $profileFriendHeroMenuItems[] = [
+                                'label' => t('profile.export_data'),
+                                'attrs' => ['data-profile-pdf-export' => ''],
+                            ];
+                        }
+                        $renderProfileFriendActions($profileFriendStatus, (int) $profileUser['id'], 'profile-friend-hero-action', $profileFriendHeroMenuItems);
+                        ?>
                     </div>
                 <?php endif; ?>
-                <?php if ($isOwnProfile || !empty($canExportProfilePdf)): ?>
+                <?php if ($isOwnProfile): ?>
                     <?php
                     $profileMenuItems = [];
                     if ($isOwnProfile) {
@@ -708,8 +781,14 @@ $profileSetupRows = [
                             'href' => '/?page=settings',
                         ];
                         $profileMenuItems[] = [
-                            'label' => t('profile.edit_tagline'),
-                            'attrs' => ['data-app-modal-open' => 'profile-tagline-modal'],
+                            'label' => t('menu.personalize'),
+                            'children' => [[
+                                'label' => t('profile.edit_tagline'),
+                                'attrs' => ['data-app-modal-open' => 'profile-tagline-modal'],
+                            ], [
+                                'label' => t('profile.customize_layout'),
+                                'href' => $profileUrl('', ['layout_edit' => '1']),
+                            ]],
                         ];
                     }
                     if (!empty($canExportProfilePdf)) {
@@ -718,14 +797,9 @@ $profileSetupRows = [
                             'attrs' => ['data-profile-pdf-export' => ''],
                         ];
                     }
-                    if ($isOwnProfile) {
-                        $profileMenuItems[] = [
-                            'label' => t('profile.customize_layout'),
-                            'href' => $profileUrl('', ['layout_edit' => '1']),
-                        ];
-                    }
                     echo render_kebab_menu($profileMenuItems, [
                         'label' => t('profile.manage'),
+                        'title' => t('profile.manage'),
                         'align' => 'end',
                         'class' => 'profile-hero-menu',
                     ]);
@@ -734,6 +808,26 @@ $profileSetupRows = [
             </div>
         <?php endif; ?>
     </div>
+
+    <?php if ($activeSection === ''): ?>
+        <div class="profile-mobile-root">
+            <div class="hierarchy-status-strip">
+                <span><strong><?= count($profileActiveGoalCards) ?></strong><small><?= e(t('goals.personal')) ?></small></span>
+                <span><strong><?= count((array) ($userAchievements ?? [])) ?></strong><small><?= e(t('profile.achievements')) ?></small></span>
+                <span><strong><?= count($profileFriends) ?></strong><small><?= e(t('nav.friends')) ?></small></span>
+            </div>
+            <nav class="hierarchy-nav-list mobile-hub-section-grid" aria-label="<?= e(t('nav.profile')) ?>">
+                <a class="hierarchy-nav-row" data-tone="orange" href="<?= e($profileUrl('goals')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('profile.mobile_goals')) ?></strong><small><?= e(t('profile.mobile_goals_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count($profileActiveGoalCards) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <a class="hierarchy-nav-row" data-tone="blue" href="<?= e($profileUrl('training')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.training_short')) ?></strong><small><?= e(t('profile.mobile_training_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= e(t('workouts.rank_' . $profileTrainingRankKey)) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <a class="hierarchy-nav-row" data-tone="green" href="<?= e($profileUrl('social')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('profile.mobile_social')) ?></strong><small><?= e(t('profile.mobile_social_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count($profileFriends) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <a class="hierarchy-nav-row" data-tone="amber" href="<?= e($profileUrl('achievements')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('medal') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('profile.achievements')) ?></strong><small><?= e(t('profile.mobile_achievements_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count((array) ($userAchievements ?? [])) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <?php if ($isOwnProfile): ?>
+                    <a class="hierarchy-nav-row" data-tone="violet" href="<?= e($profileUrl('activity')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('spark') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('profile.mobile_activity')) ?></strong><small><?= e(t('profile.mobile_activity_hint')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                    <a class="hierarchy-nav-row" data-tone="slate" href="/?page=settings"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('sliders') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.settings')) ?></strong><small><?= e(t('profile.mobile_settings_hint')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <?php endif; ?>
+            </nav>
+        </div>
+    <?php endif; ?>
 
     <?php if (count($profileChallengeOptions) > 1): ?>
         <article class="panel profile-challenge-switcher">
@@ -818,7 +912,7 @@ $profileSetupRows = [
     <?php endif; ?>
 
     <?php if ($isOwnProfile): ?>
-    <article class="panel profile-data-overview<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-home-extra <?= $activeSection !== '' ? 'hidden' : '' ?>>
+        <article class="panel profile-data-overview compact-panel glass-panel<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-home-extra <?= $activeSection !== '' ? 'hidden' : '' ?>>
         <div class="panel-head">
             <div>
                 <p class="eyebrow"><?= e(t('profile.my_data')) ?></p>
@@ -904,8 +998,9 @@ $profileSetupRows = [
         </div>
     <?php endif; ?>
 
+    <?php if ($activeSection === ''): ?><header class="mobile-widget-feed-head"><div><p><?= e(t('dashboard.visible_widgets')) ?></p><h2><?= e(t('nav.profile')) ?></h2></div><?php if ($isOwnProfile): ?><a href="<?= e($profileUrl('', ['layout_edit' => '1'])) ?>"><?= e(t('profile.customize_layout')) ?></a><?php endif; ?></header><?php endif; ?>
     <section class="profile-home-grid<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-main <?= $activeSection !== '' ? 'hidden' : '' ?>>
-        <article class="panel profile-home-card profile-home-goals" data-profile-block="goals" style="<?= e($profileBlockStyle('goals')) ?>">
+        <article class="panel profile-home-card profile-home-goals compact-panel glass-panel" data-profile-block="goals" style="<?= e($profileBlockStyle('goals')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow"><?= count($profileActiveGoalCards) ?> <?= e(t('profile.active_goals_suffix')) ?> · <?= count($profileCompletedGoalCards) ?> <?= e(t('settings.completed_goals')) ?></p>
@@ -947,7 +1042,7 @@ $profileSetupRows = [
             <?php endif; ?>
         </article>
 
-        <article class="panel profile-home-card profile-friends-card" data-profile-block="friends" style="<?= e($profileBlockStyle('friends')) ?>">
+        <article class="panel profile-home-card profile-friends-card compact-panel glass-panel" data-profile-block="friends" style="<?= e($profileBlockStyle('friends')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow">
@@ -977,10 +1072,9 @@ $profileSetupRows = [
                                     <small>@<?= e((string) ($requester['username'] ?? '')) ?></small>
                                 </span>
                             </a>
-                            <div class="profile-friend-actions">
-                                <?php $profileFriendActionForm('friend_accept', (int) ($requester['id'] ?? 0), t('friends.accept'), 'btn-primary', 'profile-friend-card-action'); ?>
-                                <?php $profileFriendActionForm('friend_reject', (int) ($requester['id'] ?? 0), t('friends.reject'), 'btn-ghost', 'profile-friend-card-action'); ?>
-                            </div>
+                                <div class="profile-friend-actions">
+                                    <?php $renderProfileFriendActions('pending_in', (int) ($requester['id'] ?? 0), 'profile-friend-card-action'); ?>
+                                </div>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -1001,8 +1095,7 @@ $profileSetupRows = [
                             </a>
                             <?php if ($isOwnProfile): ?>
                                 <div class="profile-friend-actions">
-                                    <a class="btn btn-primary small profile-friend-card-action" href="/?page=friends&amp;compare=<?= (int) ($friend['id'] ?? 0) ?>" data-spa-link><?= e(t('friends.compare')) ?></a>
-                                    <?php $profileFriendActionForm('friend_remove', (int) ($friend['id'] ?? 0), t('friends.remove'), 'btn-ghost', 'profile-friend-card-action'); ?>
+                                    <?php $renderProfileFriendActions('friends', (int) ($friend['id'] ?? 0), 'profile-friend-card-action'); ?>
                                 </div>
                             <?php endif; ?>
                         </div>
@@ -1015,7 +1108,97 @@ $profileSetupRows = [
 
         </article>
 
-        <article class="panel profile-home-card" data-profile-block="achievements" style="<?= e($profileBlockStyle('achievements')) ?>">
+        <article class="panel profile-home-card profile-teams-card compact-panel glass-panel" data-profile-block="teams" style="<?= e($profileBlockStyle('teams')) ?>">
+            <div class="profile-home-card-head">
+                <div><p class="eyebrow"><?= count($profileTeamsList) ?></p><h2><?= e(t('social_hub.teams')) ?></h2></div>
+                <?php if ($isOwnProfile): ?><a class="btn btn-ghost small" href="/?page=competitions"><?= e(t('common.view_all')) ?></a><?php endif; ?>
+            </div>
+            <?php if ($profileTeamsList === []): ?>
+                <p class="muted small"><?= e(t('social_hub.team_empty')) ?></p>
+            <?php else: ?>
+                <div class="profile-team-list">
+                    <?php foreach ($profileTeamsList as $profileTeamItem): ?>
+                        <a class="profile-team-row" href="/?page=team&amp;team_id=<?= (int) ($profileTeamItem['id'] ?? 0) ?>">
+                            <span class="profile-team-row-mark" aria-hidden="true"><?= e(initials_for((string) ($profileTeamItem['name'] ?? t('nav.team')))) ?></span>
+                            <span><strong><?= e((string) ($profileTeamItem['name'] ?? '')) ?></strong><small><?= e(t('nav.team')) ?></small></span>
+                            <span class="settings-chevron" aria-hidden="true">&rsaquo;</span>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </article>
+
+        <article class="panel profile-home-card profile-training-rank-card compact-panel glass-panel" data-profile-block="training_rank" data-rank="<?= e($profileTrainingRankKey) ?>" style="<?= e($profileBlockStyle('training_rank')) ?>; --rank-color: <?= e((string) ($profileTrainingRank['color'] ?? '#64748b')) ?>">
+            <div class="profile-home-card-head">
+                <div>
+                    <p class="eyebrow"><?= e(t('workouts.overall_rank')) ?></p>
+                    <h2><?= e(t('dashboard.training_rank_title')) ?></h2>
+                </div>
+                <?php if ($isOwnProfile): ?>
+                    <a class="btn btn-ghost small" href="/?page=workouts&amp;view=ranks"><?= e(t('common.view_all')) ?></a>
+                <?php endif; ?>
+            </div>
+            <div class="profile-training-rank-main">
+                <span class="profile-training-rank-emblem">
+                    <strong><?= e(t('workouts.rank_' . $profileTrainingRankKey)) ?></strong>
+                    <b><?= e(number_format((float) ($profileTrainingRank['score'] ?? 0), 1, '.', '')) ?></b>
+                    <small><?= e(t('workouts.lift_points')) ?></small>
+                </span>
+                <span class="profile-training-rank-detail">
+                    <strong><?= ($profileTrainingPosition ?? null) !== null ? e(t('dashboard.training_rank_position', ['position' => (int) $profileTrainingPosition])) : e(t('workouts.rank_unranked')) ?></strong>
+                    <small><?= e(t('workouts.ranked_count', [
+                        'ranked' => (int) ($profileTrainingRank['body_parts_ranked'] ?? 0),
+                        'total' => (int) ($profileTrainingRank['body_parts_total'] ?? 0),
+                    ])) ?></small>
+                    <span class="profile-training-rank-bar"><i style="width: <?= (int) ($profileTrainingRank['progress'] ?? 0) ?>%"></i></span>
+                </span>
+            </div>
+            <?php if ($profileTrainingMuscles !== []): ?>
+                <div class="profile-training-muscles">
+                    <?php foreach ($profileTrainingMuscles as $muscleRank): ?>
+                        <?php $muscleRankInfo = (array) ($muscleRank['rank'] ?? []); ?>
+                        <span>
+                            <small><?= e(t('workouts.muscle_' . (string) ($muscleRank['muscle'] ?? 'other'))) ?></small>
+                            <strong><?= e(t('workouts.rank_' . (string) ($muscleRankInfo['key'] ?? 'unranked'))) ?></strong>
+                        </span>
+                    <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <a class="profile-training-empty" href="/?page=workouts"><?= e(t('dashboard.training_empty')) ?></a>
+            <?php endif; ?>
+        </article>
+
+        <article class="panel profile-home-card profile-training-progress-card compact-panel glass-panel" data-profile-block="training_progress" style="<?= e($profileBlockStyle('training_progress')) ?>">
+            <div class="profile-home-card-head">
+                <div>
+                    <p class="eyebrow"><?= e(t('workouts.this_month')) ?></p>
+                    <h2><?= e(t('dashboard.training_progress_title')) ?></h2>
+                </div>
+                <?php if ($isOwnProfile): ?>
+                    <a class="btn btn-ghost small" href="/?page=workouts&amp;view=stats"><?= e(t('common.view_all')) ?></a>
+                <?php endif; ?>
+            </div>
+            <div class="profile-training-stat-grid compact-metrics-row glass-panel">
+                <span><small><?= e(t('workouts.stat_sessions')) ?></small><strong><?= (int) ($profileTrainingMonth['sessions'] ?? 0) ?></strong></span>
+                <span><small><?= e(t('workouts.stat_volume')) ?></small><strong><?= e(number_format((float) ($profileTrainingMonth['volume'] ?? 0), 0, '.', ' ')) ?></strong></span>
+                <span><small><?= e(t('workouts.streak')) ?></small><strong><?= (int) ($profileTrainingStreak ?? 0) ?></strong></span>
+                <span><small><?= e(t('workouts.stat_reps')) ?></small><strong><?= e(number_format((int) ($profileTrainingAll['reps'] ?? 0), 0, '.', ' ')) ?></strong></span>
+            </div>
+            <?php if ($profileTrainingRecentSessions !== [] || $profileTrainingRecords !== []): ?>
+                <div class="profile-training-recent">
+                    <?php foreach (array_slice($profileTrainingRecentSessions, 0, 2) as $trainingSession): ?>
+                        <span><small><?= e(format_date_eu(substr((string) ($trainingSession['started_at'] ?? ''), 0, 10))) ?></small><strong><?= e((string) (($trainingSession['title'] ?? '') !== '' ? $trainingSession['title'] : t('workouts.session'))) ?></strong></span>
+                    <?php endforeach; ?>
+                    <?php foreach (array_slice($profileTrainingRecords, 0, 1) as $trainingRecord): ?>
+                        <span><small><?= e(t('workouts.personal_records')) ?></small><strong><?= e((string) ($trainingRecord['exercise_name'] ?? '')) ?> · <?= e(number_format((float) ($trainingRecord['value'] ?? 0), 1, '.', '')) ?> kg</strong></span>
+                    <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <a class="profile-training-empty" href="/?page=workouts"><?= e(t('dashboard.training_empty')) ?></a>
+            <?php endif; ?>
+        </article>
+
+        <article class="panel profile-home-card compact-panel glass-panel" data-profile-block="achievements" style="<?= e($profileBlockStyle('achievements')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow"><?= e((string) $achievementCount) ?> <?= e(t('profile.unlocked_suffix')) ?></p>
@@ -1074,7 +1257,8 @@ $profileSetupRows = [
             </div>
         <?php endif; ?>
 
-        <article class="panel profile-home-card profile-current-setup-card" data-profile-block="setup" style="<?= e($profileBlockStyle('setup')) ?>">
+        <?php if ($isOwnProfile): ?>
+        <article class="panel profile-home-card profile-current-setup-card compact-panel glass-panel" data-profile-block="setup" style="<?= e($profileBlockStyle('setup')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow"><?= e(t('profile.current_config')) ?></p>
@@ -1104,16 +1288,29 @@ $profileSetupRows = [
                 </div>
             </div>
             <dl class="profile-home-facts">
-                <?php foreach ($profileSetupRows as $row): ?>
+                <?php foreach ($profileSetupVisibleRows as $row): ?>
                     <div>
                         <dt><?= e((string) $row['label']) ?></dt>
                         <dd><?= e((string) $row['value']) ?></dd>
                     </div>
                 <?php endforeach; ?>
             </dl>
+            <?php if ($profileSetupMoreRows !== []): ?>
+                <details class="profile-setup-more">
+                    <summary><span><?= e(t('profile.show_more')) ?></span><span><?= e(t('profile.show_less')) ?></span></summary>
+                    <dl class="profile-home-facts">
+                        <?php foreach ($profileSetupMoreRows as $row): ?>
+                            <div>
+                                <dt><?= e((string) $row['label']) ?></dt>
+                                <dd><?= e((string) $row['value']) ?></dd>
+                            </div>
+                        <?php endforeach; ?>
+                    </dl>
+                </details>
+            <?php endif; ?>
         </article>
 
-        <article class="panel profile-home-card" data-profile-block="activity" style="<?= e($profileBlockStyle('activity')) ?>">
+        <article class="panel profile-home-card compact-panel glass-panel" data-profile-block="activity" style="<?= e($profileBlockStyle('activity')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow"><?= e((string) $activityCount) ?> events</p>
@@ -1149,18 +1346,17 @@ $profileSetupRows = [
                 </ul>
             <?php endif; ?>
         </article>
+        <?php endif; ?>
     </section>
 
-    <article class="panel settings-panel<?= $activeSection === 'goals' ? ' active' : '' ?>" data-spa-section="goals" <?= $activeSection === 'goals' ? '' : 'hidden' ?>>
+    <article class="panel settings-panel profile-native-section<?= $activeSection === 'goals' ? ' active' : '' ?>" data-spa-section="goals" <?= $activeSection === 'goals' ? '' : 'hidden' ?>>
         <div class="stack profile-section-list" data-spa-show-when-no-param="goal_id,goal_new" <?= $goalCreateMode || $goalDetailId > 0 ? 'hidden' : '' ?>>
-            <div class="panel-head">
-                <h2><?= e(t('goals.personal')) ?></h2>
-                <div class="inline-actions-mini">
-                    <?php if ($canEditProfile): ?>
-                        <a class="btn btn-primary" href="<?= e($profileUrl('goals', ['goal_new' => 1])) ?>" data-spa-link><?= e(t('profile.new_goal')) ?></a>
-                    <?php endif; ?>
-                    <a class="btn btn-ghost" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
-                </div>
+            <div class="panel-head profile-section-header">
+                <a class="hierarchy-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+                <div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.mobile_goals')) ?></h2></div>
+                <?php if ($canEditProfile): ?>
+                    <a class="btn btn-primary profile-section-action" href="<?= e($profileUrl('goals', ['goal_new' => 1])) ?>" data-spa-link><?= e(t('profile.new_goal')) ?></a>
+                <?php endif; ?>
             </div>
 
             <div class="settings-list" data-profile-goals-list>
@@ -1189,9 +1385,9 @@ $profileSetupRows = [
 
         <?php if ($canEditProfile): ?>
             <div class="stack goal-subview profile-create-view" data-spa-param-show="goal_new" data-spa-value="1" <?= $goalCreateMode ? '' : 'hidden' ?>>
-                <div class="panel-head compact-head">
-                    <h3><?= e(t('profile.new_goal')) ?></h3>
-                    <a class="btn btn-ghost" href="<?= e($profileUrl('goals')) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+                <div class="panel-head compact-head profile-section-header">
+                    <a class="hierarchy-back" href="<?= e($profileUrl('goals')) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+                    <div class="profile-section-heading"><p class="eyebrow"><?= e(t('profile.mobile_goals')) ?></p><h3 data-navigation-focus tabindex="-1"><?= e(t('profile.new_goal')) ?></h3></div>
                 </div>
                 <form method="post" action="<?= e($profileUrl('goals')) ?>" class="stack compact-form">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -1225,9 +1421,9 @@ $profileSetupRows = [
             <?php $goalProgress = $goalProgressPercent($goal, $goalCurrent); ?>
             <?php $goalDueDate = (string) ($goal['due_date'] ?? ''); ?>
             <div class="stack goal-subview profile-detail-view" data-spa-param-show="goal_id" data-spa-value="<?= (int) $goal['id'] ?>" <?= $isActiveGoalDetail ? '' : 'hidden' ?>>
-                <div class="panel-head compact-head">
-                    <h3><?= e((string) $goal['title']) ?></h3>
-                    <a class="btn btn-ghost" href="<?= e($profileUrl('goals')) ?>" data-spa-back data-spa-history aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+                <div class="panel-head compact-head profile-section-header">
+                    <a class="hierarchy-back" href="<?= e($profileUrl('goals')) ?>" data-spa-back data-spa-history aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+                    <div class="profile-section-heading"><p class="eyebrow"><?= e(t('profile.mobile_goals')) ?></p><h3 data-navigation-focus tabindex="-1"><?= e((string) $goal['title']) ?></h3></div>
                 </div>
 
                 <article class="mini-card goal-detail-card goal-detail-summary">
@@ -1340,18 +1536,42 @@ $profileSetupRows = [
         <?php endforeach; ?>
     </article>
 
-    <article class="panel settings-panel profile-achievements-panel<?= $activeSection === 'achievements' ? ' active' : '' ?>" data-spa-section="achievements" <?= $activeSection === 'achievements' ? '' : 'hidden' ?>>
-        <div class="panel-head">
-            <h2><?= e(t('profile.achievements')) ?></h2>
-            <a class="btn btn-ghost" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+    <article class="panel settings-panel profile-native-section<?= $activeSection === 'training' ? ' active' : '' ?>" data-spa-section="training" <?= $activeSection === 'training' ? '' : 'hidden' ?>>
+        <div class="panel-head profile-native-section-head profile-section-header"><a class="hierarchy-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr;</a><div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.mobile_training')) ?></h2></div></div>
+        <div class="mobile-kpi-grid">
+            <div><small><?= e(t('dashboard.training_rank_title')) ?></small><strong><?= e(t('workouts.rank_' . $profileTrainingRankKey)) ?></strong><span><?= e(number_format((float) ($profileTrainingRank['score'] ?? 0), 1, '.', '')) ?> <?= e(t('workouts.lift_points')) ?></span></div>
+            <div><small><?= e(t('workouts.stat_sessions')) ?> · <?= e(t('workouts.this_month')) ?></small><strong><?= (int) ($profileTrainingMonth['sessions'] ?? 0) ?></strong><span><?= e(number_format((float) ($profileTrainingMonth['volume'] ?? 0), 0, '.', ' ')) ?> kg</span></div>
+            <div><small><?= e(t('workouts.streak')) ?></small><strong><?= (int) ($profileTrainingStreak ?? 0) ?></strong><span><?= e(t('common.days')) ?></span></div>
+            <div><small><?= e(t('workouts.stat_reps')) ?> · <?= e(t('workouts.all_time')) ?></small><strong><?= e(number_format((int) ($profileTrainingAll['reps'] ?? 0), 0, '.', ' ')) ?></strong><span><?= e(t('workouts.stat_sets')) ?> <?= e(number_format((int) ($profileTrainingAll['sets'] ?? 0), 0, '.', ' ')) ?></span></div>
+        </div>
+        <nav class="hierarchy-nav-list">
+            <a class="hierarchy-nav-row" href="/?page=workouts&view=ranks"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('workouts.tab_ranks')) ?></strong><small><?= e(t('workouts.rank_subtitle')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+            <a class="hierarchy-nav-row" href="/?page=workouts&view=stats"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('run') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('workouts.stats')) ?></strong><small><?= e(t('workouts.stats_subtitle')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+        </nav>
+        <?php if ($profileTrainingRecentSessions !== []): ?><article class="native-list-card"><h3><?= e(t('workouts.recent_sessions')) ?></h3><?php foreach ($profileTrainingRecentSessions as $session): ?><div class="native-list-row"><span><strong><?= e((string) (($session['title'] ?? '') !== '' ? $session['title'] : t('workouts.session'))) ?></strong><small><?= e(human_time_ago((string) ($session['started_at'] ?? ''))) ?></small></span><strong><?= e(number_format((float) ($session['total_volume'] ?? 0), 0, '.', ' ')) ?> kg</strong></div><?php endforeach; ?></article><?php endif; ?>
+    </article>
+
+    <article class="panel settings-panel profile-native-section<?= $activeSection === 'social' ? ' active' : '' ?>" data-spa-section="social" <?= $activeSection === 'social' ? '' : 'hidden' ?>>
+        <div class="panel-head profile-native-section-head profile-section-header"><a class="hierarchy-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr;</a><div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.mobile_social')) ?></h2></div></div>
+        <div class="hierarchy-status-strip"><span><strong><?= count($profileFriends) ?></strong><small><?= e(t('nav.friends')) ?></small></span><span><strong><?= count((array) ($profileTeams ?? [])) ?></strong><small><?= e(t('social_hub.teams')) ?></small></span><span><strong><?= (int) (($profileDuelsSummary ?? [])['won'] ?? 0) + (int) (($profileCompetitionsSummary ?? [])['won'] ?? 0) ?></strong><small><?= e(t('common.won')) ?></small></span></div>
+        <nav class="hierarchy-nav-list">
+            <a class="hierarchy-nav-row" href="/?page=friends"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.friends')) ?></strong><small><?= e(t('social_hub.friends_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count($profileFriends) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+            <a class="hierarchy-nav-row" href="/?page=duels"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('sword') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.duels')) ?></strong><small><?= e(t('social_hub.duels_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= (int) (($profileDuelsSummary ?? [])['active'] ?? 0) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+            <a class="hierarchy-nav-row" href="/?page=competitions"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.competitions')) ?></strong><small><?= e(t('social_hub.competitions_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= (int) (($profileCompetitionsSummary ?? [])['active'] ?? 0) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+            <a class="hierarchy-nav-row" href="/?page=team"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.team')) ?></strong><small><?= e(t('social_hub.team_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count((array) ($profileTeams ?? [])) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+        </nav>
+    </article>
+
+    <article class="panel settings-panel profile-native-section profile-achievements-panel<?= $activeSection === 'achievements' ? ' active' : '' ?>" data-spa-section="achievements" <?= $activeSection === 'achievements' ? '' : 'hidden' ?>>
+        <div class="panel-head profile-section-header">
+            <a class="hierarchy-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+            <div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.achievements')) ?></h2></div>
         </div>
         <div class="achievement-grid achievement-grid-collapsible" data-achievement-grid>
             <?php if (($userAchievements ?? []) === []): ?>
                 <p class="muted"><?= e(t('achievements.empty')) ?></p>
             <?php else: ?>
                 <?php foreach ($userAchievements as $achievementIndex => $achievement): ?>
-                    <?php $awardId = (int) ($achievement['award_id'] ?? $achievement['id'] ?? 0); ?>
-                    <?php $deleteFormId = 'delete-achievement-profile-' . $awardId . '-' . (int) $achievementIndex; ?>
                     <article class="achievement-card profile-achievement-card" <?= achievement_modal_attrs($achievement) ?>>
                         <?= achievement_visual_html($achievement, 'achievement-visual profile-achievement-media') ?>
                         <div class="profile-achievement-content">
@@ -1366,14 +1586,6 @@ $profileSetupRows = [
                                 <?php endif; ?>
                             </div>
                         </div>
-                        <?php if (!empty($canDeleteAchievements)): ?>
-                            <form method="post" action="<?= e($profileUrl('achievements')) ?>" class="achievement-remove" id="<?= e($deleteFormId) ?>">
-                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                <input type="hidden" name="action" value="delete_achievement_award">
-                                <input type="hidden" name="award_id" value="<?= $awardId ?>">
-                                <button class="achievement-delete-btn" type="button" aria-label="<?= e(t('achievements.delete_award')) ?>" data-achievement-delete-trigger data-form-id="<?= e($deleteFormId) ?>">×</button>
-                            </form>
-                        <?php endif; ?>
                     </article>
                 <?php endforeach; ?>
             <?php endif; ?>
@@ -1383,15 +1595,14 @@ $profileSetupRows = [
         </div>
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'config' ? ' active' : '' ?>" data-spa-section="config" <?= $activeSection === 'config' ? '' : 'hidden' ?>>
-        <div class="panel-head">
-            <h2><?= e(t('profile.current_config')) ?></h2>
-            <div class="inline-actions-mini">
-                <?php if ($canEditProfile): ?>
-                    <a class="btn btn-ghost" href="<?= e($profileUrl('config', ['edit' => 1])) ?>" data-config-edit-link><?= e(t('common.edit')) ?></a>
-                <?php endif; ?>
-                <a class="btn btn-ghost" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
-            </div>
+    <?php if ($isOwnProfile): ?>
+    <article class="panel settings-panel profile-native-section<?= $activeSection === 'config' ? ' active' : '' ?>" data-spa-section="config" <?= $activeSection === 'config' ? '' : 'hidden' ?>>
+        <div class="panel-head profile-section-header">
+            <a class="hierarchy-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+            <div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.current_config')) ?></h2></div>
+            <?php if ($canEditProfile): ?>
+                <a class="btn btn-ghost profile-section-action" href="<?= e($profileUrl('config', ['edit' => 1])) ?>" data-config-edit-link><?= e(t('common.edit')) ?></a>
+            <?php endif; ?>
         </div>
 
         <div class="profile-config" data-config-editor>
@@ -1531,12 +1742,10 @@ $profileSetupRows = [
         </div>
     </article>
 
-    <article class="panel settings-panel<?= $activeSection === 'activity' ? ' active' : '' ?>" data-spa-section="activity" <?= $activeSection === 'activity' ? '' : 'hidden' ?>>
-        <div class="panel-head">
-            <h2><?= e(t('profile.recent_activity')) ?></h2>
-            <div class="inline-actions-mini">
-                <a class="btn btn-ghost" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
-            </div>
+    <article class="panel settings-panel profile-native-section<?= $activeSection === 'activity' ? ' active' : '' ?>" data-spa-section="activity" <?= $activeSection === 'activity' ? '' : 'hidden' ?>>
+        <div class="panel-head profile-section-header">
+            <a class="hierarchy-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+            <div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.recent_activity')) ?></h2></div>
         </div>
         <?php
         $humanActivityFull = [];
@@ -1566,6 +1775,7 @@ $profileSetupRows = [
             </ul>
         <?php endif; ?>
     </article>
+    <?php endif; ?>
 </section>
 
 <?php $xp = (array) ($profileXp ?? []); ?>
@@ -1639,7 +1849,7 @@ $profileSetupRows = [
         </div>
 
         <?php // Two clearly separate things: the picture itself, and the frame around it. ?>
-        <a class="avatar-menu-option" href="/?page=settings#avatar">
+        <a class="avatar-menu-option" href="/?page=settings&amp;view=avatar">
             <span class="avatar-menu-icon" aria-hidden="true">&#128247;</span>
             <span class="avatar-menu-copy">
                 <strong><?= e(t('settings.change_avatar')) ?></strong>
@@ -1662,7 +1872,12 @@ $profileSetupRows = [
                                    <?= !empty($cosmetic['equipped']) ? 'checked' : '' ?>
                                    <?= empty($cosmetic['unlocked']) ? 'disabled' : '' ?>>
                             <span class="cosmetic-swatch avatar-frame frame-<?= e((string) $cosmetic['key']) ?>" aria-hidden="true">
-                                <?= empty($cosmetic['unlocked']) ? '&#128274;' : '' ?>
+                                <?php if ($profileAvatarUrl !== ''): ?>
+                                    <img src="<?= e($profileAvatarUrl) ?>" alt="">
+                                <?php else: ?>
+                                    <span><?= e(initials_for((string) ($profileUser['display_name'] ?? ''))) ?></span>
+                                <?php endif; ?>
+                                <?php if (empty($cosmetic['unlocked'])): ?><b class="cosmetic-lock">&#128274;</b><?php endif; ?>
                             </span>
                             <span class="cosmetic-label"><?= e((string) $cosmetic['label']) ?></span>
                             <?php if (!empty($cosmetic['hint'])): ?>
@@ -1674,6 +1889,7 @@ $profileSetupRows = [
                 <div class="cosmetics-actions">
                     <button class="btn btn-primary small" type="submit"><?= e(t('cosmetic.equip')) ?></button>
                     <button class="btn btn-ghost small" type="submit" name="frame" value="none"><?= e(t('cosmetic.reset')) ?></button>
+                    <button class="btn btn-ghost small" type="button" data-app-modal-close><?= e(t('common.cancel')) ?></button>
                 </div>
             </form>
         <?php endif; ?>

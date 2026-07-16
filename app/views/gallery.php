@@ -112,6 +112,10 @@ ob_start();
 $topbarControls = ob_get_clean();
 ?>
 <section class="screen gallery-page gallery-page-clean">
+    <header class="gallery-page-header">
+        <div><p class="eyebrow"><?= e(t('gallery.eyebrow')) ?></p><h1><?= e(t('gallery.title')) ?></h1></div>
+        <a class="btn btn-primary small" href="/?page=entries&amp;mode=meal&amp;date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
+    </header>
     <?php if ($galleryView === 'calendar'): ?>
         <article class="panel entries-calendar-panel gallery-calendar-panel" data-meal-calendar-root data-calendar-page="gallery" data-user-id="<?= $selectedUserId ?>" data-include-photos="0">
             <?php if ($calendarView === 'month'): ?>
@@ -209,7 +213,8 @@ $topbarControls = ob_get_clean();
             </div>
         </article>
     <?php elseif ($photos === []): ?>
-        <div class="gallery-empty">
+        <div class="gallery-empty compact-panel glass-panel empty-state">
+            <span class="empty-state-icon" aria-hidden="true"><?= activity_icon_svg('image') ?></span>
             <strong><?= e(t('gallery.empty_title')) ?></strong>
             <p><?= e(t('gallery.empty_body')) ?></p>
             <a class="btn btn-primary" href="/?page=entries&mode=meal"><?= e(t('entries.create_entry')) ?></a>
@@ -226,6 +231,7 @@ $topbarControls = ob_get_clean();
             data-gallery-has-more="<?= $galleryHasMore ? '1' : '0' ?>"
             data-gallery-no-photo-label="<?= e(t('entries.no_photo')) ?>"
             data-gallery-photo-label="<?= e(t('common.photo')) ?>"
+            data-gallery-image-error-label="<?= e(t('gallery.image_error')) ?>"
         >
             <div class="gallery-month-floating" data-gallery-month-floating hidden></div>
             <div class="photos-gallery-grid photos-gallery-grid-continuous" data-gallery-recent-grid>
@@ -236,8 +242,8 @@ $topbarControls = ob_get_clean();
                     $photoPath = (string) ($photo['file_path'] ?? '');
                     $photoUrl = media_thumbnail_url($photoPath, 400);
                     $photoSrcset = media_thumbnail_srcset($photoPath, [200, 400, 800]);
-                    $photoLoading = $photoIndex < 24 ? 'eager' : 'lazy';
-                    $photoFetchPriority = $photoIndex < 12 ? 'high' : 'low';
+                    $photoLoading = $photoIndex < 6 ? 'eager' : 'lazy';
+                    $photoFetchPriority = $photoIndex < 3 ? 'high' : 'low';
                     $date = (string) ($photo['log_date'] ?? '');
                     $dateLabel = format_date_eu($date);
                     $monthKey = substr($date, 0, 7);
@@ -247,15 +253,20 @@ $topbarControls = ob_get_clean();
                         $currentMonth = $monthKey;
                     }
                     ?>
-                    <a class="photos-gallery-tile" href="/?page=photo&photo_id=<?= $photoId ?>" aria-label="<?= e(t('common.photo')) ?> <?= e($dateLabel) ?>" data-month-label="<?= e($monthLabel) ?>"<?= $isFirstInMonth ? ' data-month-start="1"' : '' ?>>
+                    <a class="photos-gallery-tile<?= $photoUrl !== '' ? ' is-image-loading' : '' ?>" href="/?page=photo&photo_id=<?= $photoId ?>" aria-label="<?= e(t('common.photo')) ?> <?= e($dateLabel) ?>" data-month-label="<?= e($monthLabel) ?>"<?= $isFirstInMonth ? ' data-month-start="1"' : '' ?>>
                         <?php if ($photoUrl !== ''): ?>
-                            <img src="<?= e($photoUrl) ?>" srcset="<?= e($photoSrcset) ?>" sizes="(max-width: 700px) 33vw, (max-width: 1100px) 20vw, 170px" width="400" height="400" alt="<?= e(t('common.photo')) ?>" loading="<?= e($photoLoading) ?>" fetchpriority="<?= e($photoFetchPriority) ?>" decoding="async">
+                            <img src="<?= e($photoUrl) ?>" srcset="<?= e($photoSrcset) ?>" sizes="(max-width: 700px) 33vw, (max-width: 1100px) 20vw, 170px" width="400" height="400" alt="<?= e(t('common.photo')) ?>" loading="<?= e($photoLoading) ?>" fetchpriority="<?= e($photoFetchPriority) ?>" decoding="async" data-gallery-image>
                         <?php else: ?>
                             <span class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></span>
                         <?php endif; ?>
                         <span class="photos-gallery-date"><?= e($dateLabel) ?></span>
                     </a>
                 <?php endforeach; ?>
+            </div>
+            <div class="gallery-load-error compact-list-item" data-gallery-load-error role="status" hidden>
+                <span aria-hidden="true">!</span>
+                <p><?= e(t('gallery.load_error')) ?></p>
+                <button class="btn btn-ghost small" type="button" data-gallery-load-retry><?= e(t('common.retry')) ?></button>
             </div>
             <button class="btn btn-ghost gallery-load-more" type="button" data-gallery-recent-load-more<?= $galleryHasMore ? '' : ' hidden' ?>><?= e(t('gallery.load_more')) ?></button>
             <div class="gallery-recent-sentinel" data-gallery-recent-sentinel aria-hidden="true"></div>
