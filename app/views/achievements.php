@@ -62,20 +62,15 @@ $renderAchievementCard = static function (array $achievement): void {
 };
 ?>
 
+<section class="achievements-page-screen">
 <header class="hierarchy-page-header achievements-page-header<?= $achievementScope === 'team' ? ' achievements-page-header-team' : '' ?>">
-    <a class="hierarchy-back" href="<?= e($backHref) ?>" aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+    <a class="hierarchy-back" href="<?= e($backHref) ?>" data-hierarchy-back data-fallback="<?= e($backHref) ?>" aria-label="<?= e(t('common.back')) ?>">&larr;</a>
     <div>
         <p class="eyebrow"><?= e($ownerName) ?></p>
         <h1 data-navigation-focus tabindex="-1"><?= e(t('achievements.all_title')) ?></h1>
         <p><?= e(t('achievements.completion')) ?> · <?= e($achievementCompletionText) ?>%</p>
     </div>
 </header>
-
-<section class="achievement-summary-strip">
-    <span class="achievement-summary-card"><strong><?= $achievementUnlockedCount ?></strong><small><?= e(t('achievements.unlocked')) ?></small></span>
-    <span class="achievement-summary-card"><strong><?= $achievementLockedCount ?></strong><small><?= e(t('achievements.locked')) ?></small></span>
-    <span class="achievement-summary-card"><strong><?= e($achievementCompletionText) ?>%</strong><small><?= e(t('achievements.completion')) ?></small></span>
-</section>
 
 <nav class="achievement-filter-tabs" aria-label="<?= e(t('achievements.title')) ?>">
     <a href="<?= e($achievementFilterHref('all')) ?>"<?= $achievementFilter === 'all' ? ' aria-current="page"' : '' ?>><span><?= e(t('notifications.filter_all')) ?></span><strong><?= $achievementTotalCount ?></strong></a>
@@ -122,3 +117,4 @@ $renderAchievementCard = static function (array $achievement): void {
     </div>
 </article>
 <?php endif; ?>
+</section>

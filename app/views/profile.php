@@ -25,6 +25,7 @@ $profileTrainingRecentSessions = is_array($profileTrainingRecentSessions ?? null
 $profileTrainingRecords = is_array($profileTrainingRecords ?? null) ? array_values((array) $profileTrainingRecords) : [];
 $profileTrainingMuscles = is_array($profileTrainingMuscles ?? null) ? array_values((array) $profileTrainingMuscles) : [];
 $profileTeamsList = is_array($profileTeams ?? null) ? array_values((array) $profileTeams) : [];
+$profileGoalTeamsList = is_array($profileGoalTeams ?? null) ? array_values((array) $profileGoalTeams) : [];
 
 $activeSection = (string) ($_GET['section'] ?? '');
 $allowedSections = $isOwnProfile
@@ -1118,7 +1119,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         <article class="panel profile-home-card profile-teams-card compact-panel glass-panel" data-profile-block="teams" style="<?= e($profileBlockStyle('teams')) ?>">
             <div class="profile-home-card-head">
                 <div><p class="eyebrow"><?= count($profileTeamsList) ?></p><h2><?= e(t('social_hub.teams')) ?></h2></div>
-                <?php if ($isOwnProfile): ?><a class="btn btn-ghost small" href="/?page=competitions"><?= e(t('common.view_all')) ?></a><?php endif; ?>
+                <?php if ($isOwnProfile): ?><a class="btn btn-ghost small" href="/?page=social&amp;section=team"><?= e(t('common.view_all')) ?></a><?php endif; ?>
             </div>
             <?php if ($profileTeamsList === []): ?>
                 <p class="muted small"><?= e(t('social_hub.team_empty')) ?></p>
@@ -1400,6 +1401,17 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="create_goal">
                     <input type="hidden" name="profile_user_id" value="<?= (int) $profileUser['id'] ?>">
+                    <?php if ($profileGoalTeamsList !== []): ?>
+                        <label>
+                            <?= e(t('goals.scope')) ?>
+                            <select name="goal_team_id">
+                                <option value="0"><?= e(t('goals.personal')) ?></option>
+                                <?php foreach ($profileGoalTeamsList as $profileGoalTeam): ?>
+                                    <option value="<?= (int) ($profileGoalTeam['id'] ?? 0) ?>"><?= e(t('goals.team')) ?> · <?= e((string) ($profileGoalTeam['name'] ?? '')) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                    <?php endif; ?>
                     <label><?= e(t('goals.goal_name')) ?><input type="text" name="title" placeholder="<?= e(t('goals.placeholder')) ?>" required></label>
                     <div class="grid-inline two">
                         <label>

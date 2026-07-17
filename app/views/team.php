@@ -50,6 +50,33 @@ $formatPercent = static function (float|int $value): string {
 
     return number_format($rounded, 1, '.', '');
 };
+$teamChartHasData = static function (array $seriesList): bool {
+    foreach ($seriesList as $series) {
+        foreach ((array) $series as $value) {
+            if (is_numeric($value) && abs((float) $value) > 0.000001) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+};
+$teamCumulativeStepSeries = [(array) ($teamCumulativeSteps ?? [])];
+$teamCumulativeDistanceSeries = [(array) ($teamCumulativeDistance ?? [])];
+foreach ((array) ($teamCumulativeByUser ?? []) as $teamCumulativeUser) {
+    $teamCumulativeStepSeries[] = (array) ($teamCumulativeUser['steps'] ?? []);
+    $teamCumulativeDistanceSeries[] = (array) ($teamCumulativeUser['distance'] ?? []);
+}
+$teamHasDailyStepsData = $teamChartHasData([(array) ($teamDailySteps ?? [])]);
+$teamHasDailyDistanceData = $teamChartHasData([(array) ($teamDailyDistance ?? [])]);
+$teamHasCumulativeStepsData = $teamChartHasData($teamCumulativeStepSeries);
+$teamHasCumulativeDistanceData = $teamChartHasData($teamCumulativeDistanceSeries);
+$teamHasDailyWorkoutsData = $teamChartHasData([(array) ($teamDailyWorkouts ?? [])]);
+$teamHasWeeklyData = $teamChartHasData([
+    (array) ($teamWeeklyScore ?? []),
+    (array) ($teamWeeklyStrikes ?? []),
+    (array) ($teamWeeklyPenalties ?? []),
+]);
 $goalStatusLabel = static function (string $status): string {
     return match ($status) {
         'complete' => t('common.complete'),
@@ -188,7 +215,20 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
     <?php if ($teamSection === ''): ?>
         <div class="team-mobile-root">
             <header class="mobile-home-greeting"><p><?= e(t('nav.team')) ?></p><h1><?= e((string) ($team['name'] ?? t('nav.team'))) ?></h1><small><?= e((string) (($team['description'] ?? '') !== '' ? $team['description'] : t('team.subtitle'))) ?></small></header>
-            <div class="hierarchy-status-strip"><span><strong><?= count((array) ($members ?? [])) ?></strong><small><?= e(t('team.members')) ?></small></span><span><strong><?= e(number_format((float) ($summary['score_avg'] ?? 0), 1, '.', '')) ?></strong><small><?= e(t('metric.score')) ?></small></span><span><strong><?= count($goals) ?></strong><small><?= e(t('team.challenges')) ?></small></span></div>
+            <?php if (count((array) ($userTeams ?? [])) > 1): ?>
+                <form method="get" class="team-mobile-team-selector">
+                    <input type="hidden" name="page" value="team">
+                    <input type="hidden" name="view" value="<?= e($teamView) ?>">
+                    <label>
+                        <span><?= e(t('team.your_teams')) ?></span>
+                        <select name="team_id" onchange="this.form.submit()">
+                            <?php foreach ((array) $userTeams as $userTeamOption): ?>
+                                <option value="<?= (int) ($userTeamOption['id'] ?? 0) ?>" <?= (int) ($userTeamOption['id'] ?? 0) === (int) ($team['id'] ?? 0) ? 'selected' : '' ?>><?= e((string) ($userTeamOption['name'] ?? '')) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                </form>
+            <?php endif; ?>
             <nav class="hierarchy-nav-list mobile-hub-section-grid" aria-label="<?= e(t('nav.team')) ?>">
                 <?php foreach ([
                     'challenge' => ['target', t('team.mobile_challenge'), t('team.mobile_challenge_hint'), count($goals), 'orange'],
@@ -200,7 +240,6 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                     <a class="hierarchy-nav-row" data-tone="<?= e((string) $sectionItem[4]) ?>" href="/?<?= e(http_build_query($teamBaseParams + ['section' => $sectionKey])) ?>"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg((string) $sectionItem[0]) ?></span><span class="hierarchy-nav-copy"><strong><?= e((string) $sectionItem[1]) ?></strong><small><?= e((string) $sectionItem[2]) ?></small></span><?php if ((string) $sectionItem[3] !== ''): ?><span class="hierarchy-nav-meta"><?= e((string) $sectionItem[3]) ?></span><?php endif; ?><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
                 <?php endforeach; ?>
             </nav>
-            <?php if (!empty($canManageTeam)): ?><a class="native-secondary-link" href="/?page=team_settings&team_id=<?= (int) ($team['id'] ?? 0) ?>"><?= e(t('team.settings')) ?></a><?php endif; ?>
         </div>
     <?php else: ?>
         <header class="hierarchy-page-header team-section-header"><button class="hierarchy-back" type="button" data-hierarchy-back data-fallback="/?page=team&team_id=<?= (int) ($team['id'] ?? 0) ?>" aria-label="<?= e(t('common.back')) ?>">&larr;</button><div><p class="eyebrow"><?= e((string) ($team['name'] ?? t('nav.team'))) ?></p><h1><?= e(t('team.mobile_' . $teamSection)) ?></h1></div></header>
@@ -963,34 +1002,34 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
             </article>
 
         <div class="grid-two team-layout-item team-widget-daily-charts" data-team-widget="daily_charts" style="<?= e($teamWidgetStyle('daily_charts', 60)) ?>">
-            <article class="panel chart-card">
+            <article class="panel chart-card<?= !$teamHasDailyStepsData ? ' team-chart-card-empty' : '' ?>">
                 <h2><?= e(t('team.steps_over_time')) ?></h2>
-                <canvas id="teamStepsChart" height="170"></canvas>
+                <?php if ($teamHasDailyStepsData): ?><canvas id="teamStepsChart" height="170"></canvas><?php else: ?><p class="team-chart-empty"><?= e(t('team.chart_no_data')) ?></p><?php endif; ?>
             </article>
-            <article class="panel chart-card">
+            <article class="panel chart-card<?= !$teamHasDailyDistanceData ? ' team-chart-card-empty' : '' ?>">
                 <h2><?= e(t('team.distance_over_time')) ?></h2>
-                <canvas id="teamDistanceChart" height="170"></canvas>
+                <?php if ($teamHasDailyDistanceData): ?><canvas id="teamDistanceChart" height="170"></canvas><?php else: ?><p class="team-chart-empty"><?= e(t('team.chart_no_data')) ?></p><?php endif; ?>
             </article>
         </div>
 
-        <article class="panel chart-card team-layout-item team-widget-cumulative-steps team-cumulative-chart-card" data-team-widget="cumulative_steps" style="<?= e($teamWidgetStyle('cumulative_steps', 70)) ?>">
+        <article class="panel chart-card team-layout-item team-widget-cumulative-steps team-cumulative-chart-card<?= !$teamHasCumulativeStepsData ? ' team-chart-card-empty' : '' ?>" data-team-widget="cumulative_steps" style="<?= e($teamWidgetStyle('cumulative_steps', 70)) ?>">
             <h2><?= e(t('team.cumulative_steps')) ?></h2>
-            <canvas id="teamCumulativeStepsChart" height="170"></canvas>
+            <?php if ($teamHasCumulativeStepsData): ?><canvas id="teamCumulativeStepsChart" height="170"></canvas><?php else: ?><p class="team-chart-empty"><?= e(t('team.chart_no_data')) ?></p><?php endif; ?>
         </article>
-        <article class="panel chart-card team-layout-item team-widget-cumulative-distance team-cumulative-chart-card" data-team-widget="cumulative_distance" style="<?= e($teamWidgetStyle('cumulative_distance', 80)) ?>">
+        <article class="panel chart-card team-layout-item team-widget-cumulative-distance team-cumulative-chart-card<?= !$teamHasCumulativeDistanceData ? ' team-chart-card-empty' : '' ?>" data-team-widget="cumulative_distance" style="<?= e($teamWidgetStyle('cumulative_distance', 80)) ?>">
             <h2><?= e(t('team.cumulative_distance')) ?></h2>
-            <canvas id="teamCumulativeDistanceChart" height="170"></canvas>
+            <?php if ($teamHasCumulativeDistanceData): ?><canvas id="teamCumulativeDistanceChart" height="170"></canvas><?php else: ?><p class="team-chart-empty"><?= e(t('team.chart_no_data')) ?></p><?php endif; ?>
         </article>
 
         <div class="grid-two team-layout-item team-widget-weekly-charts" data-team-widget="weekly_charts" style="<?= e($teamWidgetStyle('weekly_charts', 90)) ?>">
-            <article class="panel chart-card">
+            <article class="panel chart-card<?= !$teamHasDailyWorkoutsData ? ' team-chart-card-empty' : '' ?>">
                 <h2><?= e(t('team.workouts_over_time')) ?></h2>
-                <canvas id="teamWorkoutsChart" height="170"></canvas>
+                <?php if ($teamHasDailyWorkoutsData): ?><canvas id="teamWorkoutsChart" height="170"></canvas><?php else: ?><p class="team-chart-empty"><?= e(t('team.chart_no_data')) ?></p><?php endif; ?>
             </article>
             <?php if ($penaltiesEnabled): ?>
-            <article class="panel chart-card">
+            <article class="panel chart-card<?= !$teamHasWeeklyData ? ' team-chart-card-empty' : '' ?>">
                 <h2><?= e(t('team.score_strikes_penalties')) ?></h2>
-                <canvas id="teamWeeklyChart" height="170"></canvas>
+                <?php if ($teamHasWeeklyData): ?><canvas id="teamWeeklyChart" height="170"></canvas><?php else: ?><p class="team-chart-empty"><?= e(t('team.chart_no_data')) ?></p><?php endif; ?>
             </article>
             <?php endif; ?>
         </div>
@@ -1001,7 +1040,10 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                     <p class="eyebrow"><?= e(t('achievements.title')) ?></p>
                     <h2><?= e(t('team.achievements')) ?> <span class="badge team-mobile-title-badge"><?= count($teamAchievements ?? []) ?></span></h2>
                 </div>
-                <span class="badge team-panel-count-badge"><?= count($teamAchievements ?? []) ?></span>
+                <div class="team-achievements-head-actions">
+                    <span class="badge team-panel-count-badge"><?= count($teamAchievements ?? []) ?></span>
+                    <a class="btn btn-ghost small" href="<?= e($teamAchievementsUrl) ?>"><?= e(t('common.view_all')) ?></a>
+                </div>
             </div>
             <div class="achievement-grid achievement-grid-collapsible" data-achievement-grid>
                 <?php if (($teamAchievements ?? []) === []): ?>
@@ -1022,15 +1064,13 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                     <?php endforeach; ?>
                 <?php endif; ?>
             </div>
-            <div class="achievement-toggle-wrap">
-                <a class="btn btn-ghost small achievement-toggle-btn" href="<?= e($teamAchievementsUrl) ?>"><?= e(t('common.view_all')) ?></a>
-            </div>
         </article>
         </div>
 
         <div class="confirm-modal" hidden aria-hidden="true" data-team-goal-modal>
             <div class="confirm-modal-backdrop" data-team-goal-close></div>
             <div class="confirm-modal-card team-goal-modal-card" role="dialog" aria-modal="true" aria-labelledby="team-goal-title">
+                <button class="achievement-info-close team-goal-modal-close" type="button" aria-label="<?= e(t('common.close_action')) ?>" data-team-goal-close>&times;</button>
                 <h3 id="team-goal-title" data-team-goal-modal-title data-title-create="<?= e(t('goals.create_team_challenge')) ?>" data-title-edit="<?= e(t('goals.edit_team_challenge')) ?>"><?= e(t('goals.create_team_challenge')) ?></h3>
                 <form method="post" action="/?page=team" class="stack compact-form team-goal-form" data-team-goal-form>
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -1148,7 +1188,9 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
     </div>
 </section>
 
+<?php if ($teamMetricDetail !== null || $teamHasDailyStepsData || $teamHasDailyDistanceData || $teamHasCumulativeStepsData || $teamHasCumulativeDistanceData || $teamHasDailyWorkoutsData || ($penaltiesEnabled && $teamHasWeeklyData)): ?>
 <script src="/assets/vendor/chart.umd.min.js?v=4.4.3"></script>
+<?php endif; ?>
 <script>
 (function () {
     const lineOpts = {

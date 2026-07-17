@@ -3,11 +3,10 @@
 declare(strict_types=1);
 
 /**
- * User-created teams (squads) and team-vs-team competitions. Separate from the
- * single challenge-wide team: any user can create a squad, add friends to it,
- * and challenge another squad to a competition over a chosen metric. The winner
- * is the squad with the higher aggregate metric across its members. Self-
- * contained (own tables); reuses the duel metric helpers.
+ * User-created teams (squads) and team-vs-team competitions. Every squad is
+ * linked to a regular app team so Social, Profile, shared goals and the Team
+ * dashboard all expose the same membership instead of two incompatible ideas
+ * both labelled "team".
  */
 
 function squads_ensure_schema(PDO $pdo): void
@@ -21,6 +20,7 @@ function squads_ensure_schema(PDO $pdo): void
             updated_at TEXT NOT NULL
         )'
     );
+    ensure_column($pdo, 'squads', 'team_id', 'INTEGER');
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS squad_members (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,6 +45,10 @@ function squads_ensure_schema(PDO $pdo): void
             updated_at TEXT NOT NULL
         )'
     );
+
+    foreach (db_fetch_all($pdo, 'SELECT * FROM squads WHERE team_id IS NULL OR team_id <= 0') as $legacySquad) {
+        squad_link_core_team($pdo, $legacySquad);
+    }
 }
 
 /* ---- Squads (teams) ---- */
@@ -67,6 +71,77 @@ function squad_badge(string $name): string
     return function_exists('mb_strtoupper') ? mb_strtoupper($two) : strtoupper($two);
 }
 
+/** Ensure a competition squad also exists as a regular app team. */
+function squad_link_core_team(PDO $pdo, array $squad): int
+{
+    $squadId = (int) ($squad['id'] ?? 0);
+    $ownerId = (int) ($squad['owner_id'] ?? 0);
+    $name = trim((string) ($squad['name'] ?? ''));
+    if ($squadId <= 0 || $ownerId <= 0 || $name === '') {
+        return 0;
+    }
+
+    $teamId = (int) ($squad['team_id'] ?? 0);
+    $team = $teamId > 0 ? db_fetch_one($pdo, 'SELECT * FROM teams WHERE id = :id', [':id' => $teamId]) : null;
+    $slug = 'squad-' . $squadId;
+    if ($team === null) {
+        $team = db_fetch_one($pdo, 'SELECT * FROM teams WHERE slug = :slug', [':slug' => $slug]);
+    }
+    $now = now_iso();
+    if ($team === null) {
+        db_execute(
+            $pdo,
+            'INSERT INTO teams (name, description, slug, join_mode, visibility, active, created_at, updated_at)
+             VALUES (:name, "", :slug, "closed", "private", 1, :created_at, :updated_at)',
+            [':name' => squad_clip($name, 60), ':slug' => $slug, ':created_at' => $now, ':updated_at' => $now]
+        );
+        $teamId = (int) $pdo->lastInsertId();
+    } else {
+        $teamId = (int) ($team['id'] ?? 0);
+        db_execute(
+            $pdo,
+            'UPDATE teams SET name = :name, active = 1, updated_at = :updated_at WHERE id = :id',
+            [':name' => squad_clip($name, 60), ':updated_at' => $now, ':id' => $teamId]
+        );
+    }
+    if ($teamId <= 0) {
+        return 0;
+    }
+
+    db_execute($pdo, 'UPDATE squads SET team_id = :team_id WHERE id = :id', [':team_id' => $teamId, ':id' => $squadId]);
+    $memberRows = db_fetch_all($pdo, 'SELECT user_id FROM squad_members WHERE squad_id = :id', [':id' => $squadId]);
+    $memberIds = array_values(array_unique(array_merge(
+        [$ownerId],
+        array_map(static fn(array $row): int => (int) ($row['user_id'] ?? 0), $memberRows)
+    )));
+    foreach ($memberIds as $memberId) {
+        if ($memberId <= 0) {
+            continue;
+        }
+        $role = $memberId === $ownerId ? 'owner' : 'member';
+        db_execute(
+            $pdo,
+            'INSERT INTO team_memberships (team_id, user_id, role, active, joined_at, removed_at, created_at, updated_at)
+             VALUES (:team_id, :user_id, :role, 1, :joined_at, NULL, :created_at, :updated_at)
+             ON CONFLICT(team_id, user_id) DO UPDATE SET
+                role = CASE WHEN excluded.role = "owner" THEN "owner" ELSE team_memberships.role END,
+                active = 1,
+                removed_at = NULL,
+                updated_at = excluded.updated_at',
+            [
+                ':team_id' => $teamId,
+                ':user_id' => $memberId,
+                ':role' => $role,
+                ':joined_at' => $now,
+                ':created_at' => $now,
+                ':updated_at' => $now,
+            ]
+        );
+    }
+
+    return $teamId;
+}
+
 function squad_create(PDO $pdo, int $ownerId, string $name): int
 {
     $name = trim($name);
@@ -76,7 +151,7 @@ function squad_create(PDO $pdo, int $ownerId, string $name): int
     $now = now_iso();
     db_execute(
         $pdo,
-        'INSERT INTO squads (name, owner_id, created_at, updated_at) VALUES (:n, :o, :now, :now)',
+        'INSERT INTO squads (name, owner_id, team_id, created_at, updated_at) VALUES (:n, :o, NULL, :now, :now)',
         [':n' => squad_clip($name, 60), ':o' => $ownerId, ':now' => $now]
     );
     $squadId = (int) $pdo->lastInsertId();
@@ -85,6 +160,10 @@ function squad_create(PDO $pdo, int $ownerId, string $name): int
         'INSERT OR IGNORE INTO squad_members (squad_id, user_id, created_at) VALUES (:s, :u, :now)',
         [':s' => $squadId, ':u' => $ownerId, ':now' => $now]
     );
+    $createdSquad = squad_get($pdo, $squadId);
+    if ($createdSquad !== null) {
+        squad_link_core_team($pdo, $createdSquad);
+    }
 
     return $squadId;
 }
@@ -108,6 +187,11 @@ function squad_rename(PDO $pdo, int $squadId, int $ownerId, string $name): bool
         return false;
     }
     db_execute($pdo, 'UPDATE squads SET name = :n, updated_at = :now WHERE id = :id', [':n' => squad_clip($name, 60), ':now' => now_iso(), ':id' => $squadId]);
+    $squad = squad_get($pdo, $squadId);
+    $teamId = (int) ($squad['team_id'] ?? 0);
+    if ($teamId > 0) {
+        db_execute($pdo, 'UPDATE teams SET name = :name, updated_at = :now WHERE id = :id', [':name' => squad_clip($name, 60), ':now' => now_iso(), ':id' => $teamId]);
+    }
 
     return true;
 }
@@ -117,6 +201,8 @@ function squad_delete(PDO $pdo, int $squadId, int $ownerId): bool
     if (!squad_is_owner($pdo, $squadId, $ownerId)) {
         return false;
     }
+    $squad = squad_get($pdo, $squadId);
+    $linkedTeamId = (int) ($squad['team_id'] ?? 0);
     db_execute($pdo, 'DELETE FROM squad_members WHERE squad_id = :id', [':id' => $squadId]);
     db_execute(
         $pdo,
@@ -125,6 +211,9 @@ function squad_delete(PDO $pdo, int $squadId, int $ownerId): bool
         [':now' => now_iso(), ':id' => $squadId]
     );
     db_execute($pdo, 'DELETE FROM squads WHERE id = :id', [':id' => $squadId]);
+    if ($linkedTeamId > 0) {
+        delete_team($pdo, $linkedTeamId, $ownerId);
+    }
 
     return true;
 }
@@ -143,6 +232,11 @@ function squad_add_member(PDO $pdo, int $squadId, int $ownerId, int $userId): bo
         'INSERT OR IGNORE INTO squad_members (squad_id, user_id, created_at) VALUES (:s, :u, :now)',
         [':s' => $squadId, ':u' => $userId, ':now' => now_iso()]
     );
+    $squad = squad_get($pdo, $squadId);
+    $linkedTeamId = $squad !== null ? squad_link_core_team($pdo, $squad) : 0;
+    if ($linkedTeamId > 0) {
+        set_team_membership($pdo, $linkedTeamId, $userId, true, $ownerId);
+    }
 
     if (function_exists('social_notify')) {
         $squad = squad_get($pdo, $squadId);
@@ -163,7 +257,12 @@ function squad_remove_member(PDO $pdo, int $squadId, int $ownerId, int $userId):
     if (!squad_is_owner($pdo, $squadId, $ownerId) || $userId === $ownerId) {
         return false;
     }
+    $squad = squad_get($pdo, $squadId);
     db_execute($pdo, 'DELETE FROM squad_members WHERE squad_id = :s AND user_id = :u', [':s' => $squadId, ':u' => $userId]);
+    $linkedTeamId = (int) ($squad['team_id'] ?? 0);
+    if ($linkedTeamId > 0) {
+        set_team_membership($pdo, $linkedTeamId, $userId, false, $ownerId);
+    }
 
     return true;
 }

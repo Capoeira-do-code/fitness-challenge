@@ -27,6 +27,7 @@ $teamPreview = $compactNames($teams, 'name');
 $friendPreview = $compactNames($friends, 'display_name');
 $competitionActive = (int) ($duels['active'] ?? 0) + (int) ($competitions['active'] ?? 0);
 $competitionPending = (int) ($duels['pending'] ?? 0) + (int) ($competitions['pending'] ?? 0);
+$teamCount = count($teams);
 $competitionPreview = $competitionActive . ' ' . t('social_hub.active') . ' · '
     . $competitionPending . ' ' . t('common.pending');
 $avatar = static function (array $person, string $class = ''): void {
@@ -71,7 +72,7 @@ $row = static function (string $href, string $icon, string $title, string $descr
             <a href="/?page=challenges" data-tone="orange"><span aria-hidden="true"><?= activity_icon_svg('target') ?></span><strong><?= e(t('social_hub.quick_challenge')) ?></strong></a>
         </nav>
         <nav class="social-section-grid hierarchy-nav-list mobile-hub-section-grid" aria-label="<?= e(t('social_hub.title')) ?>">
-            <?php $row('/?page=social&section=team', 'users', t('social_hub.section_team'), $teamPreview !== '' ? $teamPreview : t('social_hub.section_team_hint'), count($teams) > 0 ? (string) count($teams) : '', 'blue'); ?>
+            <?php $row('/?page=social&section=team', 'users', t('social_hub.section_team'), $teamPreview !== '' ? $teamPreview : t('social_hub.section_team_hint'), $teamCount > 0 ? (string) $teamCount : '', 'blue'); ?>
             <?php $row('/?page=social&section=community', 'image', t('social_hub.section_community'), $friendPreview !== '' ? $friendPreview : t('social_hub.section_community_hint'), count($friends) > 0 ? (string) count($friends) : '', 'green'); ?>
             <?php $row('/?page=social&section=competition', 'trophy', t('social_hub.section_competition'), $competitionPreview, (string) $competitionActive, 'violet'); ?>
         </nav>
@@ -80,10 +81,20 @@ $row = static function (string $href, string $icon, string $title, string $descr
             <?php $primaryTeam = $teams[0] ?? null; ?>
             <article class="social-overview-card compact-panel glass-panel social-team-overview">
                 <div class="social-card-head"><div><p class="eyebrow"><?= e(t('social_hub.your_team')) ?></p><h2><?= e(is_array($primaryTeam) ? (string) ($primaryTeam['name'] ?? t('social_hub.teams')) : t('social_hub.teams')) ?></h2></div><a href="/?page=social&amp;section=team"><?= e(t('common.view_all')) ?></a></div>
-                <?php if (is_array($primaryTeam)): ?>
+                <?php if ($teamCount > 1): ?>
+                    <div class="social-team-list">
+                        <?php foreach ($teams as $socialTeam): ?>
+                            <a href="/?page=team&amp;team_id=<?= (int) ($socialTeam['id'] ?? 0) ?>">
+                                <span class="social-team-list-mark" aria-hidden="true"><?= e(initials_for((string) ($socialTeam['name'] ?? t('nav.team')))) ?></span>
+                                <span><strong><?= e((string) ($socialTeam['name'] ?? '')) ?></strong><small><?= e(t('social_hub.members_count', ['count' => (string) ((int) ($socialTeam['member_count'] ?? 0))])) ?></small></span>
+                                <span aria-hidden="true">&rsaquo;</span>
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+                <?php elseif (is_array($primaryTeam)): ?>
                     <a class="social-featured-row" href="/?page=team&amp;team_id=<?= (int) ($primaryTeam['id'] ?? 0) ?>">
                         <span class="social-featured-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span>
-                        <span><strong><?= e(t('social_hub.members_count', ['count' => (string) count($teamMembers)])) ?></strong><small><?= e(t('social_hub.team_hint')) ?></small></span>
+                        <span><strong><?= e(t('social_hub.members_count', ['count' => (string) ((int) ($primaryTeam['member_count'] ?? count($teamMembers)))])) ?></strong><small><?= e(t('social_hub.team_hint')) ?></small></span>
                         <span aria-hidden="true">&rsaquo;</span>
                     </a>
                     <?php if ($teamMembers !== []): ?>
@@ -154,10 +165,16 @@ $row = static function (string $href, string $icon, string $title, string $descr
         </div>
     <?php elseif ($section === 'team'): ?>
         <nav class="hierarchy-nav-list" aria-label="<?= e(t('social_hub.section_team')) ?>">
-            <?php $row('/?page=team', 'users', t('nav.team'), t('social_hub.team_hint'), count($teams) > 0 ? (string) count($teams) : ''); ?>
-            <?php $row('/?page=challenges', 'target', t('nav.challenges'), t('social_hub.challenges_hint')); ?>
+            <?php foreach ($teams as $socialTeam): ?>
+                <?php $row('/?page=team&team_id=' . (int) ($socialTeam['id'] ?? 0), 'users', (string) ($socialTeam['name'] ?? t('nav.team')), t('social_hub.members_count', ['count' => (string) ((int) ($socialTeam['member_count'] ?? 0))]), '', 'blue'); ?>
+            <?php endforeach; ?>
+            <?php if ($teams === []): ?>
+                <?php $row('/?page=team', 'users', t('nav.team'), t('social_hub.team_empty')); ?>
+            <?php endif; ?>
+            <?php $challengeTeamId = (int) (($teams[0] ?? [])['id'] ?? 0); ?>
+            <?php $row($challengeTeamId > 0 ? '/?page=team&team_id=' . $challengeTeamId . '&section=challenge' : '/?page=challenges', 'target', t('team.mobile_challenge'), t('social_hub.challenges_hint'), '', 'orange'); ?>
             <?php if (!empty($socialCanManageTeam)): ?>
-                <?php $row('/?page=team_settings', 'sliders', t('team.settings'), t('social_hub.team_settings_hint')); ?>
+                <?php $row('/?page=team_settings&team_id=' . (int) ($socialManageableTeamId ?? 0), 'sliders', t('team.settings'), t('social_hub.team_settings_hint')); ?>
             <?php endif; ?>
         </nav>
     <?php elseif ($section === 'community'): ?>
@@ -177,7 +194,7 @@ $row = static function (string $href, string $icon, string $title, string $descr
         <nav class="hierarchy-nav-list" aria-label="<?= e(t('social_hub.section_competition')) ?>">
             <?php $row('/?page=duels', 'sword', t('nav.duels'), t('social_hub.duels_hint'), (string) ((int) ($duels['active'] ?? 0))); ?>
             <?php $row('/?page=competitions', 'trophy', t('nav.competitions'), t('social_hub.competitions_hint'), (string) ((int) ($competitions['active'] ?? 0))); ?>
-            <?php $row('/?page=challenges', 'target', t('nav.challenges'), t('social_hub.explore_challenges_hint')); ?>
+            <?php $row('/?page=challenges', 'target', t('team.mobile_challenge'), t('social_hub.explore_challenges_hint')); ?>
         </nav>
     <?php endif; ?>
 </section>

@@ -5265,15 +5265,7 @@
         if (!(container instanceof HTMLElement)) {
             return;
         }
-        const depth = Number(window.history.state?.__fcPjaxDepth || 0);
-        let sameOriginReferrer = false;
-        try {
-            sameOriginReferrer = document.referrer !== ''
-                && new URL(document.referrer).origin === window.location.origin;
-        } catch (_) {
-            sameOriginReferrer = false;
-        }
-        container.hidden = !(Number.isFinite(depth) && depth > 0) && !sameOriginReferrer;
+        container.hidden = false;
     };
 
     const initCollapsibleLists = () => {

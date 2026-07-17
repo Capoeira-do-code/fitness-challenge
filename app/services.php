@@ -3306,6 +3306,28 @@ function set_team_membership(PDO $pdo, int $teamId, int $userId, bool $active, i
         'SELECT * FROM team_memberships WHERE team_id = :team_id AND user_id = :user_id',
         [':team_id' => $teamId, ':user_id' => $userId]
     );
+    $hasSquadsTable = db_fetch_one(
+        $pdo,
+        'SELECT name FROM sqlite_master WHERE type = "table" AND name = "squads"'
+    ) !== null;
+    if ($hasSquadsTable) {
+        $linkedSquad = db_fetch_one($pdo, 'SELECT id, owner_id FROM squads WHERE team_id = :team_id', [':team_id' => $teamId]);
+        if ($linkedSquad !== null) {
+            if ($active) {
+                db_execute(
+                    $pdo,
+                    'INSERT OR IGNORE INTO squad_members (squad_id, user_id, created_at) VALUES (:squad_id, :user_id, :created_at)',
+                    [':squad_id' => (int) $linkedSquad['id'], ':user_id' => $userId, ':created_at' => $now]
+                );
+            } elseif ((int) ($linkedSquad['owner_id'] ?? 0) !== $userId) {
+                db_execute(
+                    $pdo,
+                    'DELETE FROM squad_members WHERE squad_id = :squad_id AND user_id = :user_id',
+                    [':squad_id' => (int) $linkedSquad['id'], ':user_id' => $userId]
+                );
+            }
+        }
+    }
     audit_log(
         $pdo,
         $actorUserId,
@@ -3442,6 +3464,24 @@ function delete_team(PDO $pdo, int $teamId, int $actorUserId): bool
         return false;
     }
     $now = now_iso();
+    $hasSquadsTable = db_fetch_one(
+        $pdo,
+        'SELECT name FROM sqlite_master WHERE type = "table" AND name = "squads"'
+    ) !== null;
+    if ($hasSquadsTable) {
+        $linkedSquad = db_fetch_one($pdo, 'SELECT id FROM squads WHERE team_id = :team_id', [':team_id' => $teamId]);
+        if ($linkedSquad !== null) {
+            $linkedSquadId = (int) ($linkedSquad['id'] ?? 0);
+            db_execute($pdo, 'DELETE FROM squad_members WHERE squad_id = :id', [':id' => $linkedSquadId]);
+            db_execute(
+                $pdo,
+                'UPDATE squad_competitions SET status = "cancelled", updated_at = :now
+                 WHERE (challenger_squad_id = :id OR opponent_squad_id = :id) AND status IN ("pending", "active")',
+                [':now' => $now, ':id' => $linkedSquadId]
+            );
+            db_execute($pdo, 'DELETE FROM squads WHERE id = :id', [':id' => $linkedSquadId]);
+        }
+    }
     db_execute($pdo, 'UPDATE team_memberships SET active = 0, removed_at = :now, updated_at = :now WHERE team_id = :id AND active = 1', [':now' => $now, ':id' => $teamId]);
     db_execute($pdo, 'UPDATE teams SET active = 0, updated_at = :now WHERE id = :id', [':now' => $now, ':id' => $teamId]);
     audit_log($pdo, $actorUserId, 'team_deleted', 'team', (string) $teamId, 'Team deleted.', audit_snapshot($team), null);
@@ -3453,7 +3493,11 @@ function list_user_teams(PDO $pdo, int $userId): array
 {
     return db_fetch_all(
         $pdo,
-        'SELECT t.*, tm.role AS membership_role, tm.active AS membership_active
+        'SELECT t.*, tm.role AS membership_role, tm.active AS membership_active,
+                (SELECT COUNT(*)
+                 FROM team_memberships members
+                 JOIN users member_users ON member_users.id = members.user_id
+                 WHERE members.team_id = t.id AND members.active = 1 AND member_users.active = 1) AS member_count
          FROM team_memberships tm
          JOIN teams t ON t.id = tm.team_id
          WHERE tm.user_id = :user_id AND tm.active = 1 AND t.active = 1
@@ -3556,6 +3600,17 @@ function update_team_settings(PDO $pdo, int $teamId, string $name, string $descr
             ':id' => $teamId,
         ]
     );
+    $hasSquadsTable = db_fetch_one(
+        $pdo,
+        'SELECT name FROM sqlite_master WHERE type = "table" AND name = "squads"'
+    ) !== null;
+    if ($hasSquadsTable) {
+        db_execute(
+            $pdo,
+            'UPDATE squads SET name = :name, updated_at = :updated_at WHERE team_id = :team_id',
+            [':name' => trim($name), ':updated_at' => now_iso(), ':team_id' => $teamId]
+        );
+    }
     $after = db_fetch_one($pdo, 'SELECT * FROM teams WHERE id = :id', [':id' => $teamId]);
     audit_log($pdo, $actorUserId, 'team_settings_updated', 'team', (string) $teamId, 'Team settings updated.', audit_snapshot($before), audit_snapshot($after));
 }

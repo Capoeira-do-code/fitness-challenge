@@ -2075,6 +2075,7 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'goals.title' => 'Goals',
         'goals.personal' => 'Personal goals',
         'goals.team' => 'Team goals',
+        'goals.scope' => 'Create for',
         'goals.goal_name' => 'Goal name',
         'goals.placeholder' => 'Reach 75 kg, hit 10 workouts...',
         'goals.team_placeholder' => 'Both finish a clean week...',
@@ -2139,6 +2140,7 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'goals.title' => 'Objetivos',
         'goals.personal' => 'Objetivos personales',
         'goals.team' => 'Objetivos de equipo',
+        'goals.scope' => 'Crear para',
         'goals.goal_name' => 'Nombre del objetivo',
         'goals.placeholder' => 'Llegar a 75 kg, hacer 10 entrenos...',
         'goals.team_placeholder' => 'Ambos cerrar una semana limpia...',
@@ -2203,6 +2205,7 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'goals.title' => 'Obiettivi',
         'goals.personal' => 'Obiettivi personali',
         'goals.team' => 'Obiettivi team',
+        'goals.scope' => 'Crea per',
         'goals.goal_name' => 'Nome obiettivo',
         'goals.placeholder' => 'Arrivare a 75 kg, fare 10 workout...',
         'goals.team_placeholder' => 'Chiudere una settimana pulita insieme...',
@@ -3861,6 +3864,7 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'team.widget_cumulative_distance' => 'Cumulative distance',
         'team.widget_weekly_charts' => 'Weekly charts',
         'team.widget_achievements' => 'Achievements',
+        'team.chart_no_data' => 'No data',
     ],
     'es' => [
         'team.edit_layout' => 'Editar layout',
@@ -3877,6 +3881,7 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'team.widget_cumulative_distance' => 'Distancia acumulada',
         'team.widget_weekly_charts' => 'Graficas semanales',
         'team.widget_achievements' => 'Achievements',
+        'team.chart_no_data' => 'Sin datos',
     ],
     'it' => [
         'team.edit_layout' => 'Modifica layout',
@@ -3893,6 +3898,7 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'team.widget_cumulative_distance' => 'Distanza cumulativa',
         'team.widget_weekly_charts' => 'Grafici settimanali',
         'team.widget_achievements' => 'Achievement',
+        'team.chart_no_data' => 'Nessun dato',
     ],
 ]);
 

@@ -1432,13 +1432,26 @@ if ($page === 'social') {
     $socialDuelsSummary = ['active' => 0, 'pending' => 0, 'total' => 0];
     $socialCompetitionsSummary = ['active' => 0, 'pending' => 0, 'total' => 0];
     $socialCanManageTeam = false;
+    $socialManageableTeamId = 0;
 
     if ($socialSection === '' || $socialSection === 'team') {
+        squads_ensure_schema($pdo);
         $socialTeams = list_user_teams($pdo, (int) $currentUser['id']);
+        $socialActiveTeamId = (int) ($currentUser['active_team_id'] ?? 0);
+        usort($socialTeams, static function (array $left, array $right) use ($socialActiveTeamId): int {
+            $leftActive = (int) ($left['id'] ?? 0) === $socialActiveTeamId;
+            $rightActive = (int) ($right['id'] ?? 0) === $socialActiveTeamId;
+            if ($leftActive !== $rightActive) {
+                return $leftActive ? -1 : 1;
+            }
+            return strcasecmp((string) ($left['name'] ?? ''), (string) ($right['name'] ?? ''));
+        });
         foreach ($socialTeams as $socialTeam) {
             if (can_manage_team($pdo, $currentUser, (int) ($socialTeam['id'] ?? 0))) {
                 $socialCanManageTeam = true;
-                break;
+                if ($socialManageableTeamId <= 0) {
+                    $socialManageableTeamId = (int) ($socialTeam['id'] ?? 0);
+                }
             }
         }
         if ($socialSection === '' && $socialTeams !== []) {
@@ -1498,6 +1511,7 @@ if ($page === 'social') {
         'socialDuelsSummary' => $socialDuelsSummary,
         'socialCompetitionsSummary' => $socialCompetitionsSummary,
         'socialCanManageTeam' => $socialCanManageTeam,
+        'socialManageableTeamId' => $socialManageableTeamId,
         'config' => $config,
     ]);
 }
@@ -1994,7 +2008,7 @@ if ($page === 'competitions') {
 
     render_view('competitions', [
         'title' => t('competitions.title'),
-        'currentPage' => 'friends',
+        'currentPage' => 'competitions',
         'currentUser' => $currentUser,
         'mySquads' => $mySquadViews,
         'competitions' => $compViews,
@@ -3373,6 +3387,14 @@ if ($page === 'profile') {
         }
         return '/?' . http_build_query($query);
     };
+    squads_ensure_schema($pdo);
+    $profileTeams = list_user_teams($pdo, (int) $profileUser['id']);
+    $profileGoalTeams = $isOwnProfile
+        ? array_values(array_filter(
+            $profileTeams,
+            static fn(array $profileTeam): bool => can_manage_team($pdo, $currentUser, (int) ($profileTeam['id'] ?? 0))
+        ))
+        : [];
 
     if (is_post()) {
         if (!csrf_verify()) {
@@ -3554,15 +3576,79 @@ if ($page === 'profile') {
             }
             $title = trim((string) ($_POST['title'] ?? ''));
             if ($title !== '') {
+                $goalTeamId = max(0, (int) ($_POST['goal_team_id'] ?? 0));
+                $goalTeam = null;
+                if ($goalTeamId > 0) {
+                    foreach ($profileGoalTeams as $profileGoalTeam) {
+                        if ((int) ($profileGoalTeam['id'] ?? 0) === $goalTeamId) {
+                            $goalTeam = $profileGoalTeam;
+                            break;
+                        }
+                    }
+                    if ($goalTeam === null) {
+                        flash_set('error', t('flash.no_permission'));
+                        redirect($profileUrl('goals', ['goal_new' => 1]));
+                    }
+                }
+                $goalType = normalize_goal_target_type((string) ($_POST['target_type'] ?? 'custom'));
+                $targetValue = ($_POST['target_value'] ?? '') !== '' ? (float) $_POST['target_value'] : null;
+                $dueDate = ($_POST['due_date'] ?? '') !== '' ? to_date((string) $_POST['due_date']) : null;
+                if ($goalTeam !== null) {
+                    $nowDateTime = new DateTimeImmutable('now');
+                    $settingsForProfileGoal = challenge_settings($pdo, $config);
+                    $teamUsersForProfileGoal = list_active_team_users($pdo, $goalTeamId);
+                    $teamMetricsForProfileGoal = compute_challenge_metrics(
+                        $pdo,
+                        $teamUsersForProfileGoal,
+                        (string) $settingsForProfileGoal['challenge_start'],
+                        (string) $settingsForProfileGoal['challenge_end']
+                    );
+                    $teamMetricsForProfileGoal = apply_strike_review_overrides_to_metrics($pdo, $teamMetricsForProfileGoal);
+                    $teamSummaryForProfileGoal = team_summary_from_rows(team_rows_for_view(array_values($teamMetricsForProfileGoal), 'total'));
+                    $teamCaloriesForProfileGoal = resolve_team_calories_summary(
+                        $pdo,
+                        $goalTeamId,
+                        (string) $settingsForProfileGoal['challenge_start'],
+                        (string) $settingsForProfileGoal['challenge_end']
+                    );
+                    $teamSummaryForProfileGoal['calories_burned'] = (float) ($teamCaloriesForProfileGoal['burned'] ?? 0);
+                    $teamSummaryForProfileGoal['calories_consumed'] = (float) ($teamCaloriesForProfileGoal['consumed'] ?? 0);
+                    $baselineValue = goal_team_metric_value_for_type($goalType, $teamSummaryForProfileGoal, 0);
+                    $dueTime = normalize_goal_due_time($dueDate, '');
+                    create_goal($pdo, [
+                        'scope' => 'team',
+                        'team_id' => $goalTeamId,
+                        'user_id' => null,
+                        'title' => $title,
+                        'target_type' => $goalType,
+                        'target_value' => $targetValue,
+                        'baseline_value' => $baselineValue,
+                        'current_value' => 0,
+                        'unit_label' => goal_target_default_unit($goalType),
+                        'start_date' => $nowDateTime->format('Y-m-d'),
+                        'start_time' => $nowDateTime->format('H:i'),
+                        'due_date' => $dueDate,
+                        'due_time' => $dueTime,
+                    ], (int) $currentUser['id']);
+                    auto_complete_team_goals_for_team(
+                        $pdo,
+                        $goalTeamId,
+                        (string) $settingsForProfileGoal['challenge_start'],
+                        (string) $settingsForProfileGoal['challenge_end'],
+                        (int) $currentUser['id']
+                    );
+                    flash_set('success', t('flash.goal_created'));
+                    redirect('/?' . http_build_query(['page' => 'team', 'team_id' => $goalTeamId, 'section' => 'challenge']));
+                }
                 create_goal($pdo, [
                     'scope' => 'user',
                     'team_id' => null,
                     'user_id' => (int) $profileUser['id'],
                     'title' => $title,
-                    'target_type' => normalize_goal_target_type((string) ($_POST['target_type'] ?? 'custom')),
-                    'target_value' => ($_POST['target_value'] ?? '') !== '' ? (float) $_POST['target_value'] : null,
+                    'target_type' => $goalType,
+                    'target_value' => $targetValue,
                     'current_value' => 0,
-                    'due_date' => ($_POST['due_date'] ?? '') !== '' ? to_date((string) $_POST['due_date']) : null,
+                    'due_date' => $dueDate,
                 ], (int) $currentUser['id']);
                 flash_set('success', t('flash.goal_created'));
             }
@@ -4323,10 +4409,8 @@ if ($page === 'profile') {
 
     $profileGoalCards = build_user_goal_view_models($personalGoals, is_array($profileMetric) ? $profileMetric : [], $habitDefinitions);
     duels_ensure_schema($pdo);
-    squads_ensure_schema($pdo);
     $profileDuelsSummary = duels_summary_for_user($pdo, (int) $profileUser['id']);
     $profileCompetitionsSummary = comp_summary_for_user($pdo, (int) $profileUser['id']);
-    $profileTeams = list_user_teams($pdo, (int) $profileUser['id']);
     $profileFriends = friends_list($pdo, (int) $profileUser['id']);
     $profileFriendStatus = $isOwnProfile ? 'self' : friends_status($pdo, (int) $currentUser['id'], (int) $profileUser['id']);
     $profileFriendIncoming = $isOwnProfile ? friends_incoming($pdo, (int) $currentUser['id']) : [];
@@ -4376,6 +4460,7 @@ if ($page === 'profile') {
         'profileDuelsSummary' => $profileDuelsSummary,
         'profileCompetitionsSummary' => $profileCompetitionsSummary,
         'profileTeams' => $profileTeams,
+        'profileGoalTeams' => $profileGoalTeams,
         'profileTrainingRank' => $profileTrainingRank,
         'profileTrainingPosition' => $profileTrainingPosition,
         'profileTrainingMonth' => $profileTrainingMonth,
@@ -6921,7 +7006,19 @@ if ($page === 'team') {
         <div class="topbar-context-panel">
             <form method="get" class="stack">
                 <input type="hidden" name="page" value="team">
-                <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
+                <?php if (count($userTeams) > 1): ?>
+                    <label>
+                        <?= e(t('team.your_teams')) ?>
+                        <select name="team_id" onchange="this.form.submit()">
+                            <?php foreach ($userTeams as $userTeamOption): ?>
+                                <option value="<?= (int) ($userTeamOption['id'] ?? 0) ?>" <?= (int) ($userTeamOption['id'] ?? 0) === (int) ($team['id'] ?? 0) ? 'selected' : '' ?>><?= e((string) ($userTeamOption['name'] ?? '')) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                <?php else: ?>
+                    <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
+                <?php endif; ?>
+                <?php if ($teamSection !== ''): ?><input type="hidden" name="section" value="<?= e($teamSection) ?>"><?php endif; ?>
                 <?php if ($teamGoalDebugEnabled): ?>
                     <input type="hidden" name="debug_goal" value="1">
                 <?php endif; ?>

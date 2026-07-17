@@ -95,7 +95,7 @@ $renderCompetitionDetails = static function (array $competition): void {
     <?php
 };
 ?>
-<section class="screen stack-lg">
+<section class="screen stack-lg competitions-screen">
     <div class="hero-panel app-page-hero">
         <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('friends.eyebrow')) ?></p>

@@ -346,7 +346,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     <?php endif; ?>
 
     <?php if ($loggedIn && $contextualBackFallback !== ''): ?>
-        <nav class="contextual-route-back" data-contextual-back-container hidden aria-label="<?= e(t('common.back')) ?>">
+        <nav class="contextual-route-back" data-contextual-back-container aria-label="<?= e(t('common.back')) ?>">
             <button class="hierarchy-back" type="button" data-hierarchy-back data-fallback="<?= e($contextualBackFallback) ?>" aria-label="<?= e(t('common.back')) ?>">&larr;</button>
         </nav>
     <?php endif; ?>
