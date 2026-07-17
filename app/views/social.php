@@ -77,13 +77,13 @@ $row = static function (string $href, string $icon, string $title, string $descr
         </nav>
 
         <div class="social-dashboard-grid">
+            <?php $primaryTeam = $teams[0] ?? null; ?>
             <article class="social-overview-card compact-panel glass-panel social-team-overview">
-                <div class="social-card-head"><div><p class="eyebrow"><?= e(t('social_hub.your_team')) ?></p><h2><?= e(t('social_hub.teams')) ?></h2></div><a href="/?page=social&amp;section=team"><?= e(t('common.view_all')) ?></a></div>
-                <?php if ($teams !== []): ?>
-                    <?php $primaryTeam = $teams[0]; ?>
+                <div class="social-card-head"><div><p class="eyebrow"><?= e(t('social_hub.your_team')) ?></p><h2><?= e(is_array($primaryTeam) ? (string) ($primaryTeam['name'] ?? t('social_hub.teams')) : t('social_hub.teams')) ?></h2></div><a href="/?page=social&amp;section=team"><?= e(t('common.view_all')) ?></a></div>
+                <?php if (is_array($primaryTeam)): ?>
                     <a class="social-featured-row" href="/?page=team&amp;team_id=<?= (int) ($primaryTeam['id'] ?? 0) ?>">
                         <span class="social-featured-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span>
-                        <span><strong><?= e((string) ($primaryTeam['name'] ?? '')) ?></strong><small><?= e(t('social_hub.members_count', ['count' => (string) count($teamMembers)])) ?></small></span>
+                        <span><strong><?= e(t('social_hub.members_count', ['count' => (string) count($teamMembers)])) ?></strong><small><?= e(t('social_hub.team_hint')) ?></small></span>
                         <span aria-hidden="true">&rsaquo;</span>
                     </a>
                     <?php if ($teamMembers !== []): ?>

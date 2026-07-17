@@ -925,6 +925,22 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                     </div>
                     <span class="badge team-panel-count-badge"><?= count($members ?? []) ?></span>
                 </div>
+                <?php $teamMemberList = array_values((array) ($members ?? [])); $teamStackMax = 10; ?>
+                <?php if (count($teamMemberList) > 1): ?>
+                    <div class="team-avatar-stack" aria-hidden="true">
+                        <?php foreach (array_slice($teamMemberList, 0, $teamStackMax) as $stackMember): ?>
+                            <?php $stackAvatarUrl = avatar_url($stackMember); ?>
+                            <?php if ($stackAvatarUrl !== ''): ?>
+                                <img class="member-avatar team-avatar-stack-item" src="<?= e($stackAvatarUrl) ?>" alt="">
+                            <?php else: ?>
+                                <span class="member-avatar member-avatar-initials team-avatar-stack-item"><?= e(initials_for((string) ($stackMember['display_name'] ?? ''))) ?></span>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                        <?php if (count($teamMemberList) > $teamStackMax): ?>
+                            <span class="team-avatar-stack-more">+<?= count($teamMemberList) - $teamStackMax ?></span>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
                 <div class="card-list">
                     <?php foreach (($members ?? []) as $member): ?>
                         <a class="mini-card member-card member-card-link" href="<?= e($teamMemberUrl((int) $member['user_id'])) ?>" aria-label="<?= e(t('team.view_profile_of', ['name' => (string) $member['display_name']])) ?>">

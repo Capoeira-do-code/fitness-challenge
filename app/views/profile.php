@@ -5,6 +5,7 @@ declare(strict_types=1);
 $profileUser = $profileUser ?? $currentUser;
 $isOwnProfile = (bool) ($isOwnProfile ?? ((int) ($profileUser['id'] ?? 0) === (int) ($currentUser['id'] ?? 0)));
 $canEditProfile = (bool) ($canEditProfile ?? $isOwnProfile);
+$canExportProfilePdf = is_admin($currentUser);
 $profileBaseUrl = (string) ($profileBaseUrl ?? '/?page=profile');
 $profileBackUrl = (string) ($profileBackUrl ?? '');
 $profileBackParams = is_array($profileBackParams ?? null) ? (array) $profileBackParams : [];
@@ -699,7 +700,7 @@ $profileSetupRows = [
 $profileSetupVisibleRows = array_slice($profileSetupRows, 0, 4);
 $profileSetupMoreRows = array_slice($profileSetupRows, 4);
 ?>
-<section class="screen stack-lg spa-shell profile-hierarchy-screen" data-spa-page="profile" data-profile-section="<?= e($activeSection) ?>">
+<section class="screen stack-lg spa-shell profile-hierarchy-screen<?= !$isOwnProfile ? ' profile-external-view' : '' ?>" data-spa-page="profile" data-profile-section="<?= e($activeSection) ?>">
     <?php if (!$isOwnProfile && $profileBackUrl !== ''): ?>
         <nav class="context-back-nav" aria-label="<?= e(t('common.back')) ?>">
             <a class="btn btn-ghost context-back-btn" href="<?= e($profileBackUrl) ?>">← <?= e(t('profile.back_to_team')) ?></a>
@@ -754,18 +755,24 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
             ?>
             <div class="<?= e(implode(' ', $profileHeroActionClasses)) ?>">
                 <?php if ($showProfileFriendActions): ?>
-                    <div class="profile-friend-actions profile-friend-actions-hero" aria-label="<?= e(t('profile.friendship')) ?>">
-                        <span class="profile-friend-status"><?= e($profileFriendStatusText) ?></span>
-                        <?php
-                        $profileFriendHeroMenuItems = [];
-                        if (!empty($canExportProfilePdf)) {
-                            $profileFriendHeroMenuItems[] = [
-                                'label' => t('profile.export_data'),
-                                'attrs' => ['data-profile-pdf-export' => ''],
-                            ];
-                        }
-                        $renderProfileFriendActions($profileFriendStatus, (int) $profileUser['id'], 'profile-friend-hero-action', $profileFriendHeroMenuItems);
-                        ?>
+                    <div class="profile-friend-actions profile-friend-actions-hero" data-friend-status="<?= e($profileFriendStatus) ?>" aria-label="<?= e(t('profile.friendship')) ?>">
+                        <span class="profile-friend-status-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span>
+                        <span class="profile-friend-status">
+                            <strong><?= e($profileFriendStatusText) ?></strong>
+                            <small><?= e($profileFriendStatus === 'none' ? t('profile.friend_add_hint') : '@' . (string) $profileUser['username']) ?></small>
+                        </span>
+                        <div class="profile-friend-action-controls">
+                            <?php
+                            $profileFriendHeroMenuItems = [];
+                            if (!empty($canExportProfilePdf)) {
+                                $profileFriendHeroMenuItems[] = [
+                                    'label' => t('profile.export_data'),
+                                    'attrs' => ['data-profile-pdf-export' => ''],
+                                ];
+                            }
+                            $renderProfileFriendActions($profileFriendStatus, (int) $profileUser['id'], 'profile-friend-hero-action', $profileFriendHeroMenuItems);
+                            ?>
+                        </div>
                     </div>
                 <?php endif; ?>
                 <?php if ($isOwnProfile): ?>

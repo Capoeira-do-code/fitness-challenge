@@ -4343,7 +4343,7 @@ if ($page === 'profile') {
         'profileCosmetics' => $isOwnProfile ? cosmetics_for_user($pdo, $currentUser) : [],
         'isOwnProfile' => $isOwnProfile,
         'canEditProfile' => $canEditProfile,
-        'canExportProfilePdf' => $isOwnProfile || is_admin($currentUser),
+        'canExportProfilePdf' => is_admin($currentUser),
         'profileDistanceWeekly' => $profileDistanceWeekly,
         'profileWorkoutWeekly' => $profileWorkoutWeekly,
         'profileScoreWeekly' => $profileScoreWeekly,

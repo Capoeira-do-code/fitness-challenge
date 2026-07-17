@@ -1,0 +1,18 @@
+# Local development override — mounts the source into the app container so
+# edits to PHP / CSS / JS appear immediately, without rebuilding the image.
+#
+# Docker Compose loads this file automatically on top of docker-compose.yml.
+# After creating/changing it, run:  docker compose up -d   (recreates the app
+# container with the new volumes). No --build needed for source edits after that.
+#
+# Notes:
+# - ./public is mounted read-write so PHP's cache-buster reads the *live* file
+#   mtime, so CSS/JS changes bust the browser cache on a normal refresh.
+# - The base file still mounts ./public/uploads read-only and ./storage; those
+#   stay as-is (nested mounts keep working).
+services:
+  app:
+    volumes:
+      - ./app:/var/www/app
+      - ./public:/var/www/public
+      - ./bin:/var/www/bin

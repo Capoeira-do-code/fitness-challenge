@@ -514,7 +514,7 @@ if ($entryMode === 'calendar') {
         <p class="muted small proof-photo-server-hint"><?= e(t('entries.server_hint')) ?></p>
     </article>
 
-    <article class="panel">
+    <article class="panel entry-recent-photos-panel">
         <div class="panel-head">
             <div>
                 <p class="eyebrow"><?= e(t('common.photo')) ?></p>
@@ -556,7 +556,7 @@ if ($entryMode === 'calendar') {
             </div>
         <?php endif; ?>
     </article>
-    <div class="panel panel-inline-empty">
+    <div class="panel panel-inline-empty entry-calendar-link-panel">
         <a class="btn btn-ghost" href="/?page=entries&mode=calendar&calendar_view=month&date=<?= e($selectedDate) ?>"><?= e(t('entries.view_calendar')) ?></a>
     </div>
     <?php endif; ?>
