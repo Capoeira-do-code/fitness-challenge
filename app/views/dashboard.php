@@ -656,7 +656,8 @@ $topbarControls = ob_get_clean();
                     <?php $progressPct = max(0.0, min(100.0, (float) ($achievement['progress_pct'] ?? 0))); ?>
                     <button class="dashboard-achievement-progress-row compact-list-item<?= $progressPct >= 75 ? ' is-nearly-complete' : ' is-locked' ?>" type="button" data-state="<?= $progressPct >= 75 ? 'nearly-complete' : 'locked' ?>" <?= achievement_modal_attrs($achievement) ?>>
                         <?= achievement_visual_html($achievement, 'achievement-visual') ?>
-                        <span class="dashboard-achievement-progress-copy"><strong><?= e((string) ($achievement['name'] ?? '')) ?></strong><span class="goal-progress"><span style="width: <?= e((string) $progressPct) ?>%"></span></span><small><?= e((string) ($achievement['progress_text'] ?? round($progressPct) . '%')) ?></small></span>
+                        <span class="dashboard-achievement-progress-copy"><strong><?= e((string) ($achievement['name'] ?? '')) ?></strong><span class="ap-track"><span class="goal-progress"><span style="width: <?= e((string) $progressPct) ?>%"></span></span><small><?= e((string) ($achievement['progress_text'] ?? round($progressPct) . '%')) ?></small></span></span>
+                        <span class="ap-chevron" aria-hidden="true">&rsaquo;</span>
                     </button>
                 <?php endforeach; ?>
                 <?php if ($dashboardAchievementProgressPreview === []): ?><p class="muted panel-inline-empty"><?= e(t('achievements.empty')) ?></p><?php endif; ?>
@@ -686,24 +687,21 @@ $topbarControls = ob_get_clean();
                 ?>
                 <?php foreach ($questGroups as $groupKey => $groupQuests): ?>
                     <?php if ($groupQuests === []) { continue; } ?>
-                    <p class="quests-group-label"><?= e(t('quests.' . $groupKey)) ?></p>
+                    <p class="quests-group-label"><?= e(t('quests.' . $groupKey)) ?><span class="quests-group-count"><?= count($groupQuests) ?></span></p>
                     <ul class="quests-list">
                         <?php foreach ($groupQuests as $q): ?>
                             <li class="quest-item compact-list-item<?= !empty($q['completed']) ? ' is-done' : ' is-available' ?>" data-state="<?= !empty($q['completed']) ? 'completed' : 'available' ?>" data-collapsible-item>
                                 <button class="quest-summary" type="button" data-quest-detail-toggle aria-expanded="false">
-                                    <span class="quest-icon"><?= activity_icon_svg((string) $q['icon']) ?></span>
+                                    <span class="quest-icon"><?= activity_icon_svg((string) $q['icon']) ?><?php if (!empty($q['completed'])): ?><span class="quest-check" aria-label="<?= e(t('workouts.done')) ?>">&#10003;</span><?php endif; ?></span>
                                     <span class="quest-body">
-                                        <span class="quest-top">
-                                            <strong><?= e((string) $q['label']) ?></strong>
+                                        <span class="quest-title"><?= e((string) $q['label']) ?></span>
+                                        <span class="quest-track">
+                                            <span class="quest-bar"><span style="width: <?= (int) $q['pct'] ?>%"></span></span>
+                                            <small class="quest-meta"><?= e(number_format((float) $q['progress'], 0, '.', ' ')) ?> / <?= e(number_format((float) $q['target'], 0, '.', ' ')) ?></small>
                                             <span class="quest-xp">+<?= (int) $q['xp'] ?> XP</span>
                                         </span>
-                                        <span class="quest-bar"><span style="width: <?= (int) $q['pct'] ?>%"></span></span>
-                                        <small class="quest-meta">
-                                            <?= e(number_format((float) $q['progress'], 0, '.', ' ')) ?> / <?= e(number_format((float) $q['target'], 0, '.', ' ')) ?>
-                                        </small>
                                     </span>
                                     <span class="quest-item-actions">
-                                        <?php if (!empty($q['completed'])): ?><span class="quest-done" aria-label="<?= e(t('workouts.done')) ?>">&#10003;</span><?php endif; ?>
                                         <span class="quest-chevron" aria-hidden="true">&rsaquo;</span>
                                     </span>
                                 </button>
@@ -776,6 +774,7 @@ $topbarControls = ob_get_clean();
                     <span><small><?= e(t('season.next_milestone')) ?></small><strong><?= e($seasonPosition === 1 ? t('season.leader') : t('season.xp_to_leader', ['xp' => number_format($seasonGap, 0, '.', ' ')])) ?></strong></span>
                 </div>
                 <div class="season-user-progress">
+                    <div class="season-progress-head"><small><?= e($seasonPosition === 1 ? t('season.leader') : t('season.progress_to_leader')) ?></small><small><?= $seasonProgress ?>%</small></div>
                     <span class="goal-progress" role="progressbar" aria-label="<?= e(t('season.progress_to_leader')) ?>" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= $seasonProgress ?>"><span style="width: <?= $seasonProgress ?>%"></span></span>
                 </div>
 
@@ -925,16 +924,18 @@ $topbarControls = ob_get_clean();
                     <a class="dashboard-week-row" data-collapsible-item href="<?= e($weekEditorHref) ?>">
                         <span class="dashboard-week-row-main">
                             <strong><?= e(format_date_eu((string) $week['week_start'])) ?></strong>
-                            <small><?= e(label_for_status((string) $week['status'])) ?></small>
+                            <span class="dashboard-week-status is-<?= e((string) $week['status']) ?>"><?= e(label_for_status((string) $week['status'])) ?></span>
                         </span>
                         <span class="dashboard-week-row-meta">
                             <?php if ($penaltiesEnabled): ?>
-                            <span><?= e(t('metric.warnings')) ?> <?= e((string) ($week['skip_warnings'] ?? 0)) ?></span>
-                            <?php endif; ?>
-                            <?php if ($penaltiesEnabled): ?>
-                            <span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) $weeklyPenalty)) ?>">&euro;<?= e(number_format($weeklyPenalty, 2, '.', '')) ?></span>
-                            <?php else: ?>
-                            <span><?= e(t('metric.step_failures')) ?> <?= e((string) ($week['step_failures'] ?? 0)) ?></span>
+                                <?php if ((int) ($week['skip_warnings'] ?? 0) > 0): ?>
+                                <span class="dashboard-week-warn"><?= e(t('metric.warnings')) ?> <?= e((string) ($week['skip_warnings'] ?? 0)) ?></span>
+                                <?php endif; ?>
+                                <?php if ($weeklyPenalty > 0): ?>
+                                <span class="penalty-chip penalty-chip-<?= e($penaltySeverityClass((int) $weeklyPenalty)) ?>">&euro;<?= e(number_format($weeklyPenalty, 2, '.', '')) ?></span>
+                                <?php endif; ?>
+                            <?php elseif ((int) ($week['step_failures'] ?? 0) > 0): ?>
+                            <span class="dashboard-week-warn"><?= e(t('metric.step_failures')) ?> <?= e((string) ($week['step_failures'] ?? 0)) ?></span>
                             <?php endif; ?>
                         </span>
                         <span class="settings-chevron" aria-hidden="true">&gt;</span>
@@ -1017,16 +1018,15 @@ $topbarControls = ob_get_clean();
                             <?php endif; ?>
                             <span class="leaderboard-name-text">
                                 <strong><?= e($leaderboardName) ?></strong>
-                                <?php if ($penaltiesEnabled): ?>
+                                <?php if ($penaltiesEnabled && (int) ($metric['skip_warning_events'] ?? 0) > 0): ?>
                                     <span><?= e(t('metric.warnings')) ?>: <?= e((string) ($metric['skip_warning_events'] ?? 0)) ?></span>
                                 <?php endif; ?>
                             </span>
                         </a>
-                        <div class="leaderboard-stats">
-                            <span class="badge"><?= e(t('metric.score')) ?> <?= e((string) $metric['score']) ?></span>
-                            <span class="badge"><?= e(t('metric.steps')) ?> <?= e((string) ($metric['total_steps'] ?? 0)) ?></span>
+                        <div class="leaderboard-end">
+                            <strong class="leaderboard-score"><?= e((string) $metric['score']) ?></strong>
+                            <small class="leaderboard-steps"><?= e(number_format((int) ($metric['total_steps'] ?? 0), 0, '.', ' ')) ?> <?= e(t('metric.steps')) ?></small>
                         </div>
-                        <span class="leaderboard-delta" aria-label="<?= e(t('dashboard.ranking_gap')) ?>"><?= $leaderboardDifference > 0 ? '&minus;' . e(number_format($leaderboardDifference, 1, current_locale() === 'en' ? '.' : ',', '')) : '&mdash;' ?></span>
                     </article>
                 <?php endforeach; ?>
             </div>

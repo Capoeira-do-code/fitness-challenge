@@ -357,6 +357,7 @@ if ($entryMode === 'calendar') {
                     </template>
                 </div>
 
+                <p class="entry-section-title"><?= e(t('table.habits_section')) ?></p>
                 <div class="toggle-row pill-toggles entries-toggles">
                     <label class="check">
                         <input type="checkbox" name="junk_food" value="1" <?= !empty($log) && (int) $log['junk_food'] === 1 ? 'checked' : '' ?> data-testid="entry-junk-food">
@@ -374,7 +375,7 @@ if ($entryMode === 'calendar') {
                     <?php endforeach; ?>
                 </div>
 
-                <div class="grid-inline entries-two-col">
+                <div class="grid-inline entries-two-col entry-reason-section">
                     <label class="conditional-reason" data-reason="missing" hidden>
                         <span data-missing-reason-label><?= e(t('entries.missing_reason')) ?></span>
                         <small class="muted" data-missing-reason-items></small>
@@ -382,15 +383,17 @@ if ($entryMode === 'calendar') {
                     </label>
                 </div>
 
-                <label>
+                <label class="entry-notes-field">
                     <?= e(t('common.notes')) ?>
                     <textarea name="notes" rows="3" placeholder="<?= e(t('entries.notes_placeholder')) ?>"><?= e((string) ($log['notes'] ?? '')) ?></textarea>
                 </label>
 
-                <button type="submit" class="btn btn-primary btn-block" data-testid="entry-save"><?= e(t('entries.save_data')) ?></button>
+                <div class="entry-form-actions">
+                    <button type="submit" class="btn btn-primary btn-block" data-testid="entry-save"><?= e(t('entries.save_data')) ?></button>
+                </div>
             </form>
 
-            <p class="muted small"><?= e(t('entries.pending_hint')) ?></p>
+            <p class="muted small entry-pending-hint"><?= e(t('entries.pending_hint')) ?></p>
         </article>
     <?php endif; ?>
 
