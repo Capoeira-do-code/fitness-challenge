@@ -50,10 +50,11 @@ $friendSecondaryMenu = static function (string $action, int $userId, string $lab
 
 $friendAvatar = static function (array $user): void {
     $url = avatar_url($user);
+    $classes = trim('member-avatar ' . cosmetic_frame_class($user));
     if ($url !== '') {
-        echo '<img class="member-avatar" src="' . e($url) . '" alt="' . e((string) ($user['display_name'] ?? '')) . '">';
+        echo '<img class="' . e($classes) . '" src="' . e($url) . '" alt="' . e((string) ($user['display_name'] ?? '')) . '">';
     } else {
-        echo '<span class="member-avatar member-avatar-initials">' . e(initials_for((string) ($user['display_name'] ?? '?'))) . '</span>';
+        echo '<span class="' . e($classes . ' member-avatar-initials') . '">' . e(initials_for((string) ($user['display_name'] ?? '?'))) . '</span>';
     }
 };
 
@@ -83,6 +84,44 @@ $fmtVal = static function (string $fmt, $v): string {
         </div>
         <span class="badge"><?= count($friendsList) ?> <?= e(t('friends.count_label')) ?></span>
     </div>
+
+    <article class="panel friends-panel friend-discovery-panel" data-friend-discovery>
+        <div class="friend-discovery-head">
+            <div><p class="eyebrow"><?= e(t('friends.discover')) ?></p><h2><?= e(t('friends.add_title')) ?></h2><p><?= e(t('friends.search_hint')) ?></p></div>
+            <span class="badge"><?= count($friendsAddable) ?></span>
+        </div>
+        <?php if ($friendsAddable === []): ?>
+            <p class="muted friend-discovery-empty"><?= e(t('friends.add_none')) ?></p>
+        <?php else: ?>
+            <label class="friend-search-box">
+                <span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg></span>
+                <span class="sr-only"><?= e(t('friends.search_placeholder')) ?></span>
+                <input type="search" autocomplete="off" inputmode="search" placeholder="<?= e(t('friends.search_placeholder')) ?>" data-friend-search>
+            </label>
+            <div class="friend-suggestions-head"><strong><?= e(t('friends.suggestions')) ?></strong><small><?= e(t('friends.search_tip')) ?></small></div>
+            <div class="friend-suggestion-list" data-friend-suggestion-list>
+                <?php foreach ($friendsAddable as $candidate): ?>
+                    <?php
+                    $candidateName = (string) ($candidate['display_name'] ?? $candidate['username'] ?? '');
+                    $candidateUsername = (string) ($candidate['username'] ?? '');
+                    ?>
+                    <div class="friend-suggestion-row" data-friend-candidate data-friend-search-value="<?= e($candidateName . ' @' . $candidateUsername) ?>">
+                        <a class="friend-suggestion-profile" href="<?= e($friendProfileUrl($candidate)) ?>" data-spa-link>
+                            <?php $friendAvatar($candidate); ?>
+                            <span><strong><?= e($candidateName) ?></strong><small>@<?= e($candidateUsername) ?></small></span>
+                        </a>
+                        <form method="post" action="/?page=friends" class="inline-form">
+                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                            <input type="hidden" name="action" value="friend_request">
+                            <input type="hidden" name="user_id" value="<?= (int) ($candidate['id'] ?? 0) ?>">
+                            <button class="btn btn-primary small" type="submit"><?= e(t('friends.add')) ?></button>
+                        </form>
+                    </div>
+                <?php endforeach; ?>
+                <p class="friend-search-empty" data-friend-search-empty hidden><?= e(t('friends.no_search_results')) ?></p>
+            </div>
+        <?php endif; ?>
+    </article>
 
     <?php if ($friendCompare !== null): ?>
         <?php
@@ -252,25 +291,4 @@ $fmtVal = static function (string $fmt, $v): string {
         </article>
     <?php endif; ?>
 
-    <article class="panel friends-panel">
-        <div class="panel-head"><h2><?= e(t('friends.add_title')) ?></h2></div>
-        <?php if ($friendsAddable === []): ?>
-            <p class="muted"><?= e(t('friends.add_none')) ?></p>
-        <?php else: ?>
-            <form method="post" action="/?page=friends" class="control-strip wrap friends-add-form">
-                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="friend_request">
-                <label class="friends-add-select">
-                    <span class="sr-only"><?= e(t('friends.add_title')) ?></span>
-                    <select name="user_id" required>
-                        <option value=""><?= e(t('friends.add_placeholder')) ?></option>
-                        <?php foreach ($friendsAddable as $candidate): ?>
-                            <option value="<?= (int) $candidate['id'] ?>"><?= e((string) ($candidate['display_name'] ?? $candidate['username'] ?? '')) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </label>
-                <button class="btn btn-primary" type="submit"><?= e(t('friends.send_request')) ?></button>
-            </form>
-        <?php endif; ?>
-    </article>
 </section>

@@ -126,9 +126,16 @@ $renderMobileIcon = static function (string $icon): string {
     };
 };
 $renderQuickActionIcon = static function (string $mode): string {
-    return $mode === 'meal'
-        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v7M3.5 3v5a2.5 2.5 0 0 0 5 0V3M6 10v11M15 3v18M15 3c3 1.5 4 4.5 4 8h-4"/></svg>'
-        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8v8M3 10v4M18 8v8M21 10v4M6 12h12"/></svg>';
+    return match ($mode) {
+        'data' => '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 3v4M16 3v4M4 10h16M8 15l2 2 5-5"/></svg>',
+        'meal' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v7M3.5 3v5a2.5 2.5 0 0 0 5 0V3M6 10v11M15 3v18M15 3c3 1.5 4 4.5 4 8h-4"/></svg>',
+        'goal' => '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="m14 10 6-6M16 4h4v4"/></svg>',
+        'challenge' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4M5 5h11l-2 4 2 4H5"/></svg>',
+        'competition' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4ZM8 6H4v2a4 4 0 0 0 4 4M16 6h4v2a4 4 0 0 1-4 4M12 12v5M8 21h8M9 17h6"/></svg>',
+        'register' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14M5 12h9M5 19h6"/><path d="m16 17 2 2 4-5"/></svg>',
+        'create' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/><path d="M18 3v3M16.5 4.5h3M5 17v2M4 18h2"/></svg>',
+        default => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8v8M3 10v4M18 8v8M21 10v4M6 12h12"/></svg>',
+    };
 };
 ?>
 <!doctype html>
@@ -378,27 +385,27 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                                     <div><strong><?= e(t('quick_actions.title')) ?></strong><small><?= e(t('quick_actions.subtitle')) ?></small></div>
                                     <button type="button" data-menu-close aria-label="<?= e(t('menu.close')) ?>">&times;</button>
                                 </div>
-                                <button type="button" class="mobile-quick-nav" data-menu-open="quick-register">
-                                    <span><strong><?= e(t('quick_actions.register')) ?></strong><small><?= e(t('quick_actions.register_hint')) ?></small></span><span aria-hidden="true">&rsaquo;</span>
+                                <button type="button" class="mobile-quick-nav" data-tone="blue" data-menu-open="quick-register">
+                                    <span class="mobile-quick-nav-icon" aria-hidden="true"><?= $renderQuickActionIcon('register') ?></span><span class="mobile-quick-nav-copy"><strong><?= e(t('quick_actions.register')) ?></strong><small><?= e(t('quick_actions.register_hint')) ?></small></span><span class="mobile-quick-chevron" aria-hidden="true">&rsaquo;</span>
                                 </button>
-                                <button type="button" class="mobile-quick-nav" data-menu-open="quick-create">
-                                    <span><strong><?= e(t('quick_actions.create')) ?></strong><small><?= e(t('quick_actions.create_hint')) ?></small></span><span aria-hidden="true">&rsaquo;</span>
+                                <button type="button" class="mobile-quick-nav" data-tone="violet" data-menu-open="quick-create">
+                                    <span class="mobile-quick-nav-icon" aria-hidden="true"><?= $renderQuickActionIcon('create') ?></span><span class="mobile-quick-nav-copy"><strong><?= e(t('quick_actions.create')) ?></strong><small><?= e(t('quick_actions.create_hint')) ?></small></span><span class="mobile-quick-chevron" aria-hidden="true">&rsaquo;</span>
                                 </button>
                             </div>
                             <div class="mobile-quick-view" data-menu-view="quick-register" hidden>
                                 <div class="mobile-quick-head"><button type="button" data-menu-back aria-label="<?= e(t('common.back')) ?>">&larr;</button><strong><?= e(t('quick_actions.register')) ?></strong><button type="button" data-menu-close aria-label="<?= e(t('menu.close')) ?>">&times;</button></div>
-                                <a class="mobile-quick-action" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><strong><?= e(t('entries.quick_data')) ?></strong><small><?= e(t('quick_actions.daily_hint')) ?></small></span></a>
-                                <a class="mobile-quick-action" href="/?page=entries&mode=meal"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><strong><?= e(t('entries.quick_meal')) ?></strong><small><?= e(t('quick_actions.meal_hint')) ?></small></span></a>
-                                <a class="mobile-quick-action" href="/?page=workouts"><span class="quick-entry-icon"><?= $renderQuickActionIcon('workout') ?></span><span><strong><?= e(t('quick_actions.workout')) ?></strong><small><?= e(t('quick_actions.workout_hint')) ?></small></span></a>
+                                <a class="mobile-quick-action" data-tone="blue" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><strong><?= e(t('entries.quick_data')) ?></strong><small><?= e(t('quick_actions.daily_hint')) ?></small></span></a>
+                                <a class="mobile-quick-action" data-tone="orange" href="/?page=entries&mode=meal"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><strong><?= e(t('entries.quick_meal')) ?></strong><small><?= e(t('quick_actions.meal_hint')) ?></small></span></a>
+                                <a class="mobile-quick-action" data-tone="green" href="/?page=workouts"><span class="quick-entry-icon"><?= $renderQuickActionIcon('workout') ?></span><span><strong><?= e(t('quick_actions.workout')) ?></strong><small><?= e(t('quick_actions.workout_hint')) ?></small></span></a>
                             </div>
                             <div class="mobile-quick-view" data-menu-view="quick-create" hidden>
                                 <div class="mobile-quick-head"><button type="button" data-menu-back aria-label="<?= e(t('common.back')) ?>">&larr;</button><strong><?= e(t('quick_actions.create')) ?></strong><button type="button" data-menu-close aria-label="<?= e(t('menu.close')) ?>">&times;</button></div>
-                                <a class="mobile-quick-action" href="/?page=profile&section=goals&goal_new=1"><span class="mobile-quick-glyph" aria-hidden="true">&#9678;</span><span><strong><?= e(t('quick_actions.goal')) ?></strong><small><?= e(t('quick_actions.goal_hint')) ?></small></span></a>
+                                <a class="mobile-quick-action" data-tone="violet" href="/?page=profile&section=goals&goal_new=1"><span class="quick-entry-icon"><?= $renderQuickActionIcon('goal') ?></span><span><strong><?= e(t('quick_actions.goal')) ?></strong><small><?= e(t('quick_actions.goal_hint')) ?></small></span></a>
                                 <?php if ($mobileChallengeTeamId > 0): ?>
-                                    <a class="mobile-quick-action" href="/?page=team&team_id=<?= $mobileChallengeTeamId ?>&section=challenge&create=1"><span class="mobile-quick-glyph" aria-hidden="true">&#9873;</span><span><strong><?= e(t('quick_actions.challenge')) ?></strong><small><?= e(t('quick_actions.challenge_hint')) ?></small></span></a>
+                                    <a class="mobile-quick-action" data-tone="orange" href="/?page=team&team_id=<?= $mobileChallengeTeamId ?>&section=challenge&create=1"><span class="quick-entry-icon"><?= $renderQuickActionIcon('challenge') ?></span><span><strong><?= e(t('quick_actions.challenge')) ?></strong><small><?= e(t('quick_actions.challenge_hint')) ?></small></span></a>
                                 <?php endif; ?>
                                 <?php if ($mobileCanCreateCompetition): ?>
-                                    <a class="mobile-quick-action" href="/?page=competitions#competition-teams"><span class="mobile-quick-glyph" aria-hidden="true">&#9733;</span><span><strong><?= e(t('quick_actions.competition')) ?></strong><small><?= e(t('quick_actions.competition_hint')) ?></small></span></a>
+                                    <a class="mobile-quick-action" data-tone="amber" href="/?page=competitions#competition-teams"><span class="quick-entry-icon"><?= $renderQuickActionIcon('competition') ?></span><span><strong><?= e(t('quick_actions.competition')) ?></strong><small><?= e(t('quick_actions.competition_hint')) ?></small></span></a>
                                 <?php endif; ?>
                             </div>
                         </div>

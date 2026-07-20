@@ -5364,6 +5364,106 @@
     }
 })();
 
+/* Friend discovery: instant Instagram-style filtering over server-approved users. */
+(function () {
+    'use strict';
+
+    function normalized(value) {
+        var text = String(value || '').toLocaleLowerCase();
+        return typeof text.normalize === 'function'
+            ? text.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            : text;
+    }
+
+    function initFriendDiscovery() {
+        document.querySelectorAll('[data-friend-discovery]').forEach(function (panel) {
+            if (panel.dataset.friendDiscoveryReady === '1') return;
+            var input = panel.querySelector('[data-friend-search]');
+            if (!(input instanceof HTMLInputElement)) return;
+            var candidates = Array.prototype.slice.call(panel.querySelectorAll('[data-friend-candidate]'));
+            var empty = panel.querySelector('[data-friend-search-empty]');
+            panel.dataset.friendDiscoveryReady = '1';
+
+            function filterCandidates() {
+                var query = normalized(input.value.trim());
+                var visible = 0;
+                candidates.forEach(function (candidate, index) {
+                    var matches = query === ''
+                        ? index < 8
+                        : normalized(candidate.dataset.friendSearchValue).includes(query);
+                    candidate.hidden = !matches;
+                    if (matches) visible++;
+                });
+                if (empty) empty.hidden = visible !== 0;
+            }
+
+            input.addEventListener('input', filterCandidates);
+            input.addEventListener('search', filterCandidates);
+            filterCandidates();
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initFriendDiscovery);
+    } else {
+        initFriendDiscovery();
+    }
+    document.addEventListener('fc:afterPageSwap', initFriendDiscovery);
+})();
+
+/* Competition challenge preview.
+
+   The two selects are the source of truth. Mirroring their current options in a
+   compact versus card makes it obvious which owned team is about to challenge
+   which rival, especially after changing either select on a phone. */
+(function () {
+    'use strict';
+
+    function updateSide(form, side) {
+        var select = form.querySelector('[data-competition-team-select="' + side + '"]');
+        if (!(select instanceof HTMLSelectElement)) {
+            return;
+        }
+        var option = select.options[select.selectedIndex];
+        if (!(option instanceof HTMLOptionElement)) {
+            return;
+        }
+        var name = form.querySelector('[data-competition-preview-name="' + side + '"]');
+        var badge = form.querySelector('[data-competition-preview-badge="' + side + '"]');
+        var members = form.querySelector('[data-competition-preview-members="' + side + '"]');
+        if (name) name.textContent = option.dataset.name || option.textContent || '';
+        if (badge) badge.textContent = option.dataset.badge || '';
+        if (members) members.textContent = option.dataset.membersLabel || '';
+
+        if (side === 'own') {
+            form.closest('.competition-command-center')?.querySelectorAll('[data-competition-squad-id]').forEach(function (card) {
+                card.classList.toggle('is-preview-selected', card.dataset.competitionSquadId === option.value);
+            });
+        }
+    }
+
+    function init() {
+        document.querySelectorAll('[data-competition-builder]').forEach(function (form) {
+            if (form.dataset.competitionBuilderReady === '1') {
+                return;
+            }
+            form.dataset.competitionBuilderReady = '1';
+            ['own', 'rival'].forEach(function (side) {
+                var select = form.querySelector('[data-competition-team-select="' + side + '"]');
+                if (select) select.addEventListener('change', function () { updateSide(form, side); });
+                updateSide(form, side);
+            });
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+    document.addEventListener('fc:afterPageSwap', init);
+})();
+
 /* ==========================================================================
    Reusable UI controllers: kebab menu + app modal/drawer (#components)
    ========================================================================== */

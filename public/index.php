@@ -1948,11 +1948,6 @@ if ($page === 'competitions') {
             flash_set($newSquadId > 0 ? 'success' : 'error', $newSquadId > 0 ? t('flash.squad_created') : t('flash.squad_failed'));
             redirect('/?page=competitions');
         }
-        if ($compAction === 'squad_delete') {
-            squad_delete($pdo, (int) ($_POST['squad_id'] ?? 0), $meId);
-            flash_set('success', t('flash.squad_deleted'));
-            redirect('/?page=competitions');
-        }
         if ($compAction === 'squad_add_member') {
             $ok = squad_add_member($pdo, (int) ($_POST['squad_id'] ?? 0), $meId, (int) ($_POST['user_id'] ?? 0));
             flash_set($ok ? 'success' : 'error', $ok ? t('flash.squad_member_added') : t('flash.squad_failed'));
@@ -1999,6 +1994,11 @@ if ($page === 'competitions') {
             'member_ids' => squad_member_ids($pdo, (int) $squad['id']),
         ];
     }
+    $selectedSquadId = (int) ($_GET['squad_id'] ?? 0);
+    $ownedSquadIds = array_map(static fn(array $squad): int => (int) ($squad['id'] ?? 0), $mySquads);
+    if (!in_array($selectedSquadId, $ownedSquadIds, true)) {
+        $selectedSquadId = count($ownedSquadIds) === 1 ? (int) $ownedSquadIds[0] : 0;
+    }
 
     $compRows = comp_for_user($pdo, $meId);
     $compViews = [];
@@ -2015,6 +2015,8 @@ if ($page === 'competitions') {
         'compFriends' => friends_list($pdo, $meId),
         'challengeableSquads' => squads_challengeable($pdo, $meId),
         'compMetrics' => duels_metrics(),
+        'selectedSquadId' => $selectedSquadId,
+        'participatingSquadIds' => squad_ids_for_user($pdo, $meId),
         'config' => $config,
     ]);
 }

@@ -291,12 +291,29 @@ function squad_member_ids(PDO $pdo, int $squadId): array
     return array_map(static fn(array $r): int => (int) $r['user_id'], $rows);
 }
 
+/** IDs of every squad the user owns or belongs to. */
+function squad_ids_for_user(PDO $pdo, int $userId): array
+{
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT DISTINCT s.id
+         FROM squads s
+         LEFT JOIN squad_members sm ON sm.squad_id = s.id AND sm.user_id = :member_user
+         WHERE s.owner_id = :owner_user OR sm.user_id IS NOT NULL',
+        [':member_user' => $userId, ':owner_user' => $userId]
+    );
+
+    return array_map(static fn(array $row): int => (int) ($row['id'] ?? 0), $rows);
+}
+
 /** Other squads (not owned by the user) that can be challenged. */
 function squads_challengeable(PDO $pdo, int $ownerId): array
 {
     return db_fetch_all(
         $pdo,
-        'SELECT s.*, u.display_name AS owner_name FROM squads s
+        'SELECT s.*, u.display_name AS owner_name,
+                (SELECT COUNT(1) FROM squad_members sm WHERE sm.squad_id = s.id) AS member_count
+         FROM squads s
          LEFT JOIN users u ON u.id = s.owner_id
          WHERE s.owner_id <> :o ORDER BY s.name COLLATE NOCASE ASC',
         [':o' => $ownerId]
@@ -432,6 +449,55 @@ function comp_squad_value(PDO $pdo, array $config, int $squadId, string $metric,
     return round($total, 2);
 }
 
+/**
+ * Per-member contribution for a squad competition.
+ *
+ * @return array<int,array{user:array,value:float}>
+ */
+function comp_squad_member_values(PDO $pdo, int $squadId, string $metric, string $rangeStart, string $rangeEnd): array
+{
+    $members = squad_member_users($pdo, $squadId);
+    if ($members === []) {
+        return [];
+    }
+
+    $valuesByUser = [];
+    if (function_exists('duels_metric_is_workout') && duels_metric_is_workout($metric) && function_exists('wk_metric_over_range')) {
+        foreach ($members as $member) {
+            $memberId = (int) ($member['id'] ?? 0);
+            $valuesByUser[$memberId] = wk_metric_over_range($pdo, $memberId, $metric, $rangeStart, $rangeEnd);
+        }
+    } else {
+        $metrics = compute_challenge_metrics($pdo, $members, $rangeStart, $rangeEnd);
+        if (function_exists('apply_strike_review_overrides_to_metrics')) {
+            $metrics = apply_strike_review_overrides_to_metrics($pdo, $metrics);
+        }
+        foreach ($metrics as $memberMetrics) {
+            $memberId = (int) (($memberMetrics['user'] ?? [])['id'] ?? 0);
+            $valuesByUser[$memberId] = duels_metric_value($memberMetrics, $metric);
+        }
+    }
+
+    $rows = [];
+    foreach ($members as $member) {
+        $memberId = (int) ($member['id'] ?? 0);
+        $rows[] = ['user' => $member, 'value' => round((float) ($valuesByUser[$memberId] ?? 0), 2)];
+    }
+    usort($rows, static function (array $left, array $right): int {
+        $valueOrder = ((float) ($right['value'] ?? 0)) <=> ((float) ($left['value'] ?? 0));
+        if ($valueOrder !== 0) {
+            return $valueOrder;
+        }
+
+        return strcasecmp(
+            (string) (($left['user'] ?? [])['display_name'] ?? ''),
+            (string) (($right['user'] ?? [])['display_name'] ?? '')
+        );
+    });
+
+    return $rows;
+}
+
 /** Competition view model: names, aggregate values, leader. */
 function comp_standing(PDO $pdo, array $config, array $comp): array
 {
@@ -444,9 +510,19 @@ function comp_standing(PDO $pdo, array $config, array $comp): array
 
     $cVal = 0.0;
     $oVal = 0.0;
+    $challengerMembers = array_map(
+        static fn(array $user): array => ['user' => $user, 'value' => null],
+        squad_member_users($pdo, (int) $comp['challenger_squad_id'])
+    );
+    $opponentMembers = array_map(
+        static fn(array $user): array => ['user' => $user, 'value' => null],
+        squad_member_users($pdo, (int) $comp['opponent_squad_id'])
+    );
     if ($status === 'active' || $status === 'completed') {
-        $cVal = comp_squad_value($pdo, $config, (int) $comp['challenger_squad_id'], $metric, $rangeStart, $rangeEnd);
-        $oVal = comp_squad_value($pdo, $config, (int) $comp['opponent_squad_id'], $metric, $rangeStart, $rangeEnd);
+        $challengerMembers = comp_squad_member_values($pdo, (int) $comp['challenger_squad_id'], $metric, $rangeStart, $rangeEnd);
+        $opponentMembers = comp_squad_member_values($pdo, (int) $comp['opponent_squad_id'], $metric, $rangeStart, $rangeEnd);
+        $cVal = round(array_sum(array_map(static fn(array $row): float => (float) ($row['value'] ?? 0), $challengerMembers)), 2);
+        $oVal = round(array_sum(array_map(static fn(array $row): float => (float) ($row['value'] ?? 0), $opponentMembers)), 2);
     }
 
     return [
@@ -454,6 +530,8 @@ function comp_standing(PDO $pdo, array $config, array $comp): array
         'opponent_squad' => $opponent,
         'challenger_value' => $cVal,
         'opponent_value' => $oVal,
+        'challenger_members' => $challengerMembers,
+        'opponent_members' => $opponentMembers,
     ];
 }
 
@@ -497,16 +575,21 @@ function comp_finalize_due(PDO $pdo, array $config): void
     }
 }
 
-/** Competitions involving any squad the user owns. */
+/** Competitions involving any squad the user owns or belongs to. */
 function comp_for_user(PDO $pdo, int $userId): array
 {
     return db_fetch_all(
         $pdo,
         'SELECT c.* FROM squad_competitions c
-         WHERE c.challenger_squad_id IN (SELECT id FROM squads WHERE owner_id = :u)
-            OR c.opponent_squad_id IN (SELECT id FROM squads WHERE owner_id = :u)
+         WHERE EXISTS (
+             SELECT 1
+             FROM squads s
+             LEFT JOIN squad_members sm ON sm.squad_id = s.id AND sm.user_id = :member_user
+             WHERE s.id IN (c.challenger_squad_id, c.opponent_squad_id)
+               AND (s.owner_id = :owner_user OR sm.user_id IS NOT NULL)
+         )
          ORDER BY (c.status = "active") DESC, (c.status = "pending") DESC, c.updated_at DESC',
-        [':u' => $userId]
+        [':member_user' => $userId, ':owner_user' => $userId]
     );
 }
 
@@ -518,10 +601,7 @@ function comp_for_user(PDO $pdo, int $userId): array
 function comp_summary_for_user(PDO $pdo, int $userId): array
 {
     $summary = ['active' => 0, 'pending' => 0, 'won' => 0, 'total' => 0];
-    $ownedSquadIds = [];
-    foreach (squads_owned($pdo, $userId) as $ownedSquad) {
-        $ownedSquadIds[(int) ($ownedSquad['id'] ?? 0)] = true;
-    }
+    $participatingSquadIds = array_fill_keys(squad_ids_for_user($pdo, $userId), true);
     foreach (comp_for_user($pdo, $userId) as $comp) {
         $status = (string) ($comp['status'] ?? '');
         $summary['total']++;
@@ -529,7 +609,7 @@ function comp_summary_for_user(PDO $pdo, int $userId): array
             $summary['active']++;
         } elseif ($status === 'pending') {
             $summary['pending']++;
-        } elseif ($status === 'completed' && isset($ownedSquadIds[(int) ($comp['winner_squad_id'] ?? 0)])) {
+        } elseif ($status === 'completed' && isset($participatingSquadIds[(int) ($comp['winner_squad_id'] ?? 0)])) {
             $summary['won']++;
         }
     }
