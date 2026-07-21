@@ -1,0 +1,367 @@
+/*
+ * Canonical pure-black theme. This file is intentionally loaded after both the
+ * legacy bundle and every page stylesheet so old glass highlights cannot leak
+ * back into dark mode.
+ */
+body:is([data-theme="dark"], .theme-active-dark) {
+    color-scheme: dark;
+    --bg: #000;
+    --surface: #050505;
+    --surface-2: #0b0b0b;
+    --ink: #f4f4f5;
+    --muted: #a1a1aa;
+    --line: rgba(255, 255, 255, 0.13);
+    --border: rgba(255, 255, 255, 0.13);
+    --shadow: none;
+    --glass: #050505;
+    --glass-strong: #080808;
+    --glass-border: rgba(255, 255, 255, 0.13);
+    --glass-shadow: none;
+    --glass-bg: #050505;
+    --glass-bg-strong: #080808;
+    --glass-bg-soft: #030303;
+    --glass-border-bright: rgba(255, 255, 255, 0.13);
+    --glass-highlight: transparent;
+    --glass-shadow-soft: none;
+    --glass-shadow-deep: none;
+    --ui-glass-panel: #050505;
+    --ui-soft-border: rgba(255, 255, 255, 0.13);
+    --ui-soft-shadow: none;
+    --dark-ui-bg: #000;
+    --dark-ui-surface: #050505;
+    --dark-ui-surface-strong: #080808;
+    --dark-ui-surface-soft: #0b0b0b;
+    --dark-ui-row: #080808;
+    --dark-ui-row-hover: #101010;
+    --dark-ui-border: rgba(255, 255, 255, 0.13);
+    --dark-ui-border-strong: rgba(255, 255, 255, 0.20);
+    --dark-ui-text: #f4f4f5;
+    --dark-ui-muted: #a1a1aa;
+    --liquid-glass-bg: #050505;
+    --liquid-glass-bg-strong: #080808;
+    --liquid-glass-clear: #050505;
+    --liquid-glass-border: rgba(255, 255, 255, 0.13);
+    --liquid-glass-shadow: none;
+    --ios-glass-bg: #050505;
+    --ios-glass-border: rgba(255, 255, 255, 0.13);
+    --ios-active-bg: #101010;
+    --ios-shadow: none;
+    color: var(--ink);
+    background: #000 !important;
+    background-image: none !important;
+}
+
+body.login-body.login-body-has-bg:is([data-theme="dark"], .theme-active-dark) {
+    background:
+        linear-gradient(135deg, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.68)),
+        var(--login-bg-image, none) center / cover no-repeat fixed !important;
+}
+
+/* No raised or milky highlights in the black theme. Borders and focus rings
+   carry hierarchy instead of light inset shadows. */
+body:is([data-theme="dark"], .theme-active-dark) *,
+body:is([data-theme="dark"], .theme-active-dark) *::before,
+body:is([data-theme="dark"], .theme-active-dark) *::after {
+    text-shadow: none !important;
+    box-shadow: none !important;
+}
+
+body:is([data-theme="dark"], .theme-active-dark) :is(a, button, input, select, textarea, summary):focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--primary) 78%, #fff) !important;
+    outline-offset: 2px !important;
+}
+
+body:is([data-theme="dark"], .theme-active-dark) :where(
+    .topbar,
+    .bottom-nav,
+    .mobile-liquid-nav,
+    .floating-log > summary,
+    .panel,
+    .hero-panel,
+    .metric-card,
+    .chart-card,
+    .pending-card,
+    .mini-card,
+    .compact-panel,
+    .glass-panel,
+    .motivation-band,
+    .user-edit-card,
+    .settings-nav-item,
+    .settings-preference-group,
+    .app-page-hero,
+    .app-modal-card,
+    .confirm-modal-card,
+    .topbar-context-panel,
+    .add-menu-panel,
+    .user-menu-panel,
+    .kebab-menu-panel,
+    .calendar-view-panel,
+    .modal-card,
+    .drawer-card,
+    .sheet-card,
+    .entry-mode-tabs,
+    .table-wrap,
+    .calendar-empty-state,
+    .gallery-empty,
+    [class$="-card"],
+    [class*="-card "],
+    [class$="-panel"],
+    [class*="-panel "]
+) {
+    color: var(--ink) !important;
+    border-color: var(--line) !important;
+    background-color: var(--surface) !important;
+    background-image: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+body:is([data-theme="dark"], .theme-active-dark) :where(
+    .panel,
+    .hero-panel,
+    .metric-card,
+    .chart-card,
+    .glass-panel,
+    .app-page-hero,
+    .app-modal-card,
+    .confirm-modal-card,
+    .topbar-context-panel,
+    .add-menu-panel,
+    .user-menu-panel,
+    .kebab-menu-panel
+)::before {
+    background-image: none !important;
+}
+
+body:is([data-theme="dark"], .theme-active-dark) :where(
+    .leaderboard-row,
+    .dashboard-week-row,
+    .settings-row,
+    .compact-list-item,
+    .notification-card,
+    .member-row,
+    .goal-row,
+    .history-row,
+    [class$="-row"],
+    [class*="-row "]
+) {
+    color: var(--ink) !important;
+    border-color: var(--line) !important;
+    background-color: #080808 !important;
+    background-image: none !important;
+}
+
+body:is([data-theme="dark"], .theme-active-dark) :where(input, select, textarea) {
+    color: var(--ink) !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+    background: #0a0a0a !important;
+    background-image: none !important;
+}
+
+body:is([data-theme="dark"], .theme-active-dark) :where(input, textarea)::placeholder {
+    color: #71717a !important;
+    opacity: 1;
+}
+
+body:is([data-theme="dark"], .theme-active-dark) option {
+    color: var(--ink);
+    background: #080808;
+}
+
+body:is([data-theme="dark"], .theme-active-dark) :where(.btn-ghost, .btn-secondary:not(.proof-photo-submit), .icon-btn) {
+    color: var(--ink) !important;
+    border-color: var(--line) !important;
+    background-color: #0a0a0a !important;
+    background-image: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+body:is([data-theme="dark"], .theme-active-dark) :where(.btn-primary, .proof-photo-submit, [aria-current="page"].active) {
+    color: #fff !important;
+    background-color: var(--primary) !important;
+    background-image: none !important;
+}
+
+body:is([data-theme="dark"], .theme-active-dark) :where(.badge, .chip, .pill) {
+    border-color: var(--line) !important;
+    background-color: #101010 !important;
+    background-image: none !important;
+}
+
+body:is([data-theme="dark"], .theme-active-dark) :where(table, thead, tbody, tr, th, td) {
+    border-color: var(--line) !important;
+}
+
+body:is([data-theme="dark"], .theme-active-dark) :where(table, tbody, td) {
+    color: var(--ink) !important;
+    background-color: var(--surface) !important;
+    background-image: none !important;
+}
+
+body:is([data-theme="dark"], .theme-active-dark) :where(thead, th) {
+    color: var(--muted) !important;
+    background-color: #0b0b0b !important;
+    background-image: none !important;
+}
+
+body:is([data-theme="dark"], .theme-active-dark) :where(tbody tr:nth-child(even), tbody tr:nth-child(even) td) {
+    background-color: #080808 !important;
+}
+
+body:is([data-theme="dark"], .theme-active-dark) :where(
+    .confirm-modal,
+    .app-modal,
+    .modal-backdrop,
+    .sheet-backdrop,
+    .workouts-filter-backdrop
+) {
+    background-color: rgba(0, 0, 0, 0.82) !important;
+    background-image: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Daily training data: force every nested section onto the same black scale. */
+body[data-page="entries"]:is([data-theme="dark"], .theme-active-dark) {
+    --entry-border: rgba(255, 255, 255, 0.13);
+    --entry-soft: #080808;
+    --entry-field: #0d0d0d;
+    --entry-shadow: none;
+    --meal-page-border: rgba(255, 255, 255, 0.13);
+    --meal-page-soft: #080808;
+    --meal-page-field: #0d0d0d;
+    --meal-pitch-panel: #050505;
+    --meal-pitch-card: #080808;
+    --meal-pitch-field: #0d0d0d;
+    --meal-pitch-raised: #101010;
+    --meal-pitch-border: rgba(255, 255, 255, 0.13);
+}
+
+body[data-page="entries"]:is([data-theme="dark"], .theme-active-dark) :where(
+    .entry-data-panel,
+    .entry-data-toolbar,
+    .entry-form-section,
+    .entry-metric-field,
+    .entry-weight-control,
+    .workout-repeater,
+    .entry-workout-toggle,
+    .workout-row,
+    .entry-habits-disclosure,
+    .entries-toggles .check,
+    .entry-notes-field,
+    .entry-reason-section .conditional-reason,
+    .entry-form-actions,
+    .proof-photo-panel,
+    .proof-photo-main-card,
+    .proof-photo-side-card,
+    .proof-photo-upload-label,
+    .photo-nutrition-panel,
+    .proof-photo-form-actions
+) {
+    color: var(--ink) !important;
+    border-color: var(--line) !important;
+    background-color: var(--surface) !important;
+    background-image: none !important;
+}
+
+body[data-page="entries"]:is([data-theme="dark"], .theme-active-dark) :where(
+    .entry-data-toolbar,
+    .entry-form-section,
+    .entry-metric-field,
+    .entry-weight-control,
+    .workout-repeater,
+    .entry-habits-disclosure,
+    .entry-notes-field,
+    .entry-reason-section .conditional-reason,
+    .proof-photo-main-card,
+    .proof-photo-side-card,
+    .photo-nutrition-panel
+) {
+    background-color: #080808 !important;
+}
+
+body[data-page="entries"]:is([data-theme="dark"], .theme-active-dark) :where(
+    .entry-date-nav input,
+    .entry-date-time-row input,
+    .entry-data-form input:not([type="checkbox"]):not([type="radio"]),
+    .entry-data-form select,
+    .entry-data-form textarea,
+    .proof-photo-form input:not([type="file"]),
+    .proof-photo-form select,
+    .photo-placeholder
+) {
+    color: var(--ink) !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+    background: #0d0d0d !important;
+}
+
+/* Workouts had its own glass cards; keep them black without touching media. */
+body[data-page="workouts"]:is([data-theme="dark"], .theme-active-dark) :where(
+    .workouts-screen,
+    .workouts-panel,
+    .workouts-routine-card,
+    .workouts-library-card,
+    .workouts-session-exercise,
+    .workouts-stat-card,
+    .workouts-rest-timer,
+    .workouts-week-agenda,
+    .workouts-filter-sheet,
+    .workouts-add-routine-dialog
+) {
+    color: var(--ink) !important;
+    border-color: var(--line) !important;
+    background-color: var(--surface) !important;
+    background-image: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Preserve real user media even though its containing card is flattened. */
+body:is([data-theme="dark"], .theme-active-dark) :where(
+    img,
+    video,
+    canvas,
+    .profile-cover-media,
+    .login-background-media,
+    .workouts-exercise-media,
+    .photo-card-media
+) {
+    background-image: initial;
+}
+
+@media (prefers-color-scheme: dark) {
+    body[data-theme="auto"] {
+        color-scheme: dark;
+        --bg: #000;
+        --surface: #050505;
+        --surface-2: #0b0b0b;
+        --ink: #f4f4f5;
+        --muted: #a1a1aa;
+        --line: rgba(255, 255, 255, 0.13);
+        --border: rgba(255, 255, 255, 0.13);
+        --shadow: none;
+        --glass: #050505;
+        --glass-strong: #080808;
+        --glass-border: rgba(255, 255, 255, 0.13);
+        --glass-shadow: none;
+        --dark-ui-bg: #000;
+        --dark-ui-surface: #050505;
+        --dark-ui-surface-strong: #080808;
+        --dark-ui-row: #080808;
+        --dark-ui-row-hover: #101010;
+        --dark-ui-border: rgba(255, 255, 255, 0.13);
+        --dark-ui-text: #f4f4f5;
+        --dark-ui-muted: #a1a1aa;
+        color: var(--ink);
+        background: #000 !important;
+        background-image: none !important;
+    }
+
+    body[data-theme="auto"] *,
+    body[data-theme="auto"] *::before,
+    body[data-theme="auto"] *::after {
+        text-shadow: none !important;
+        box-shadow: none !important;
+    }
+}

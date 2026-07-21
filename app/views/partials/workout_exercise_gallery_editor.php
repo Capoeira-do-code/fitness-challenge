@@ -48,6 +48,14 @@ foreach ($galleryItems as $galleryIndex => $galleryItem) {
             <input id="<?= e($galleryId) ?>-input" type="file" name="exercise_images[]" accept="image/jpeg,image/png,image/webp" multiple data-workout-gallery-input>
         </div>
 
+        <?php if (!empty($workoutGalleryMediaSearch)): ?>
+            <?php
+            $workoutMediaSearchType = 'image';
+            $workoutMediaSearchId = $galleryId;
+            require __DIR__ . '/workout_media_search.php';
+            ?>
+        <?php endif; ?>
+
         <div class="workouts-gallery-list" data-workout-gallery-list>
             <?php foreach ($galleryItems as $index => $galleryItem): ?>
                 <?php

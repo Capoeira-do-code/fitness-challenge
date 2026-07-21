@@ -44,6 +44,7 @@ require_once __DIR__ . '/i18n.php';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/services.php';
+require_once __DIR__ . '/media_search.php';
 require_once __DIR__ . '/challenge.php';
 require_once __DIR__ . '/notion.php';
 require_once __DIR__ . '/telegram.php';

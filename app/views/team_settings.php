@@ -50,7 +50,7 @@ $activeSettingsMeta = $teamSettingsSections[$teamSettingsSection] ?? null;
 <section class="screen stack-lg settings-page team-settings-screen" data-team-settings-section="<?= e($teamSettingsSection) ?>">
     <header class="hierarchy-page-header<?= $teamSettingsSection === '' ? ' hierarchy-page-header-root settings-compact-header' : ' settings-focused-head settings-section-head' ?>">
         <?php if ($teamSettingsSection !== ''): ?>
-            <a class="hierarchy-back" href="<?= e($teamSettingsBaseUrl) ?>" aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+            <a class="hierarchy-back destination-back" href="<?= e($teamSettingsBaseUrl) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e(t('team.settings')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('team.settings')) ?></strong></a>
         <?php endif; ?>
         <div>
             <p class="eyebrow"><?= e((string) $team['name']) ?></p>

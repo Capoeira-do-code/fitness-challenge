@@ -55,7 +55,7 @@ $displayValue = is_float($currentValue) ? rtrim(rtrim(number_format($currentValu
 </section>
 
 <?php if (($seriesValues ?? []) !== []): ?>
-<script src="/assets/vendor/chart.umd.min.js?v=4.4.3"></script>
+<script src="/asset.php?file=vendor%2Fchart.umd.min.js&amp;v=4.4.3"></script>
 <script>
 (function () {
     const ctx = document.getElementById('metricDetailChart');

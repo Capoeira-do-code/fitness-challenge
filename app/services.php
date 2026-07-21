@@ -1468,15 +1468,22 @@ function fetch_gallery_photos(PDO $pdo, int $limit = 60, int $offset = 0, ?int $
     }
     $where = $conditions !== [] ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
-    return db_fetch_all(
+    $rows = db_fetch_all(
         $pdo,
-        'SELECT p.*, u.display_name FROM photo_entries p
+        'SELECT p.*, u.display_name, u.profile_visibility, u.data_visibility_json FROM photo_entries p
          JOIN users u ON u.id = p.user_id
          ' . $where . '
          ORDER BY p.log_date DESC, p.created_at DESC, p.id DESC
          LIMIT ' . $limit . ' OFFSET ' . $offset,
         $params
     );
+    if ($viewerId === null || $viewerIsAdmin || !function_exists('can_view_user_data')) {
+        return $rows;
+    }
+
+    return array_values(array_filter($rows, static function (array $row) use ($pdo, $viewerId): bool {
+        return can_view_user_data($pdo, $viewerId, (int) ($row['user_id'] ?? 0), 'nutrition', false, $row);
+    }));
 }
 
 function fetch_latest_meal_photo(PDO $pdo, ?int $userId = null): ?array
@@ -1787,7 +1794,7 @@ function fetch_photo_by_id(PDO $pdo, int $photoId): ?array
 
     return db_fetch_one(
         $pdo,
-        'SELECT p.*, u.display_name, u.username, u.avatar_path, u.updated_at AS user_updated_at
+        'SELECT p.*, u.display_name, u.username, u.avatar_path, u.profile_visibility, u.data_visibility_json, u.updated_at AS user_updated_at
          FROM photo_entries p
          JOIN users u ON u.id = p.user_id
          WHERE p.id = :id
@@ -2297,6 +2304,12 @@ function save_uploaded_image_from_data_url(array $config, string $dataUrl, strin
         throw new RuntimeException(t('upload.invalid_image'));
     }
 
+    $basePolicy = image_upload_policy($config, 'default');
+    $maxBytes = max(0, (int) ($basePolicy['max_bytes'] ?? 0));
+    if ($maxBytes > 0 && strlen($binary) > $maxBytes) {
+        throw new RuntimeException(t('upload.file_too_large', ['max' => format_upload_size($maxBytes)]));
+    }
+
     $mime = '';
     if (function_exists('finfo_open')) {
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
@@ -2322,7 +2335,6 @@ function save_uploaded_image_from_data_url(array $config, string $dataUrl, strin
         throw new RuntimeException(t('upload.invalid_image'));
     }
 
-    $basePolicy = image_upload_policy($config, 'default');
     $allowed = is_array($basePolicy['allowed_mimes'] ?? null) ? $basePolicy['allowed_mimes'] : [];
     if (!isset($allowed[$mime])) {
         throw new RuntimeException(t('upload.invalid_format'));
@@ -2585,6 +2597,9 @@ function user_primary_goals(array $user): array
     }
 
     $legacyType = strtolower(trim((string) ($user['primary_goal_type'] ?? 'steps')));
+    if ($legacyType === 'none') {
+        return [];
+    }
     if (!in_array($legacyType, allowed_primary_goal_types(), true)) {
         $legacyType = 'steps';
     }
@@ -2791,6 +2806,10 @@ function regenerate_photo_thumbnails(PDO $pdo, array $config, array $widths = [2
 
 function create_user(PDO $pdo, array $payload): void
 {
+    $password = (string) ($payload['password'] ?? '');
+    if ($password === '') {
+        throw new InvalidArgumentException(t('flash.password_required'));
+    }
     $now = now_iso();
 
     db_execute(
@@ -2799,16 +2818,18 @@ function create_user(PDO $pdo, array $payload): void
             username, password_hash, display_name, role,
             step_goal, step_days_mask, workout_target,
             workout_days_mask, workout_strict, ideal_weight,
-            primary_goal_type, primary_goal_value, active, created_at, updated_at
+            primary_goal_type, primary_goal_value, onboarding_status, onboarding_step,
+            onboarding_completed_at, active, created_at, updated_at
         ) VALUES (
             :username, :password_hash, :display_name, :role,
             :step_goal, :step_days_mask, :workout_target,
             :workout_days_mask, :workout_strict, :ideal_weight,
-            :primary_goal_type, :primary_goal_value, :active, :created_at, :updated_at
+            :primary_goal_type, :primary_goal_value, :onboarding_status, :onboarding_step,
+            :onboarding_completed_at, :active, :created_at, :updated_at
         )',
         [
             ':username' => $payload['username'],
-            ':password_hash' => password_hash($payload['password'], PASSWORD_DEFAULT),
+            ':password_hash' => password_hash($password, PASSWORD_DEFAULT),
             ':display_name' => $payload['display_name'],
             ':role' => $payload['role'],
             ':step_goal' => $payload['step_goal'],
@@ -2819,11 +2840,328 @@ function create_user(PDO $pdo, array $payload): void
             ':ideal_weight' => $payload['ideal_weight'],
             ':primary_goal_type' => $payload['primary_goal_type'] ?? 'steps',
             ':primary_goal_value' => $payload['primary_goal_value'] ?? null,
+            ':onboarding_status' => ($payload['onboarding_status'] ?? 'complete') === 'pending' ? 'pending' : 'complete',
+            ':onboarding_step' => in_array((string) ($payload['onboarding_step'] ?? 'goals'), ['goals', 'profile', 'privacy', 'telegram', 'challenge', 'teams'], true)
+                ? (string) ($payload['onboarding_step'] ?? 'goals')
+                : 'goals',
+            ':onboarding_completed_at' => ($payload['onboarding_status'] ?? 'complete') === 'pending' ? null : $now,
             ':active' => $payload['active'],
             ':created_at' => $now,
             ':updated_at' => $now,
         ]
     );
+}
+
+function registration_invite_status(array $invite, ?DateTimeImmutable $now = null): string
+{
+    if (trim((string) ($invite['revoked_at'] ?? '')) !== '') {
+        return 'revoked';
+    }
+    if ((int) ($invite['used_count'] ?? 0) >= max(1, (int) ($invite['max_uses'] ?? 1))) {
+        return 'exhausted';
+    }
+    if ((int) ($invite['active'] ?? 0) !== 1) {
+        return 'revoked';
+    }
+    $expiresAt = trim((string) ($invite['expires_at'] ?? ''));
+    if ($expiresAt !== '') {
+        try {
+            if (new DateTimeImmutable($expiresAt) < ($now ?? new DateTimeImmutable('now'))) {
+                return 'expired';
+            }
+        } catch (Throwable) {
+            return 'expired';
+        }
+    }
+
+    return 'active';
+}
+
+function configured_app_base_url(PDO $pdo): string
+{
+    return normalize_app_base_url(app_setting($pdo, 'app_base_url', ''));
+}
+
+function detected_app_base_url(PDO $pdo): string
+{
+    return normalize_app_base_url(app_setting($pdo, 'app_detected_base_url', ''));
+}
+
+function app_base_url_is_ephemeral(?string $url): bool
+{
+    $normalized = normalize_app_base_url($url);
+    $host = strtolower((string) (parse_url($normalized, PHP_URL_HOST) ?? ''));
+
+    return app_base_url_is_loopback($normalized)
+        || $host === 'devtunnels.ms'
+        || str_ends_with($host, '.devtunnels.ms');
+}
+
+/**
+ * Persist the last public origin observed by an authenticated administrator so
+ * CLI integration workers can generate links after the web request has ended.
+ */
+function remember_detected_app_base_url(PDO $pdo, int $actorUserId): string
+{
+    $requestBaseUrl = request_app_base_url();
+    if ($requestBaseUrl === '' || app_base_url_is_loopback($requestBaseUrl)) {
+        return detected_app_base_url($pdo);
+    }
+    $current = detected_app_base_url($pdo);
+    if ($current !== $requestBaseUrl) {
+        set_app_setting_silent($pdo, 'app_detected_base_url', $requestBaseUrl, $actorUserId > 0 ? $actorUserId : null);
+    }
+
+    return $requestBaseUrl;
+}
+
+/** Base URL for background workers; stable custom domains override tunnels. */
+function integration_app_base_url(PDO $pdo): string
+{
+    $configured = configured_app_base_url($pdo);
+    $detected = detected_app_base_url($pdo);
+    if ($configured !== '' && !app_base_url_is_ephemeral($configured)) {
+        return $configured;
+    }
+    if ($detected !== '' && !app_base_url_is_loopback($detected)) {
+        return $detected;
+    }
+    if ($configured !== '') {
+        return $configured;
+    }
+
+    return request_app_base_url() ?: 'http://localhost:8080';
+}
+
+/** Registration links always follow the public origin used for this request. */
+function registration_app_base_url(PDO $pdo): string
+{
+    $requestBaseUrl = request_app_base_url();
+    if ($requestBaseUrl !== '' && !app_base_url_is_loopback($requestBaseUrl)) {
+        return $requestBaseUrl;
+    }
+
+    return integration_app_base_url($pdo);
+}
+
+function create_registration_invite(PDO $pdo, int $actorUserId, string $label = '', int $expiresInDays = 7, int $maxUses = 1): array
+{
+    $token = bin2hex(random_bytes(32));
+    $now = new DateTimeImmutable('now');
+    $expiresInDays = max(1, min(365, $expiresInDays));
+    $maxUses = max(1, min(100, $maxUses));
+    $label = trim($label);
+    if (function_exists('mb_substr')) {
+        $label = mb_substr($label, 0, 80);
+    } else {
+        $label = substr($label, 0, 80);
+    }
+
+    db_execute(
+        $pdo,
+        'INSERT INTO registration_invites
+            (token_hash, token_hint, label, max_uses, used_count, expires_at, active, created_by, created_at)
+         VALUES
+            (:token_hash, :token_hint, :label, :max_uses, 0, :expires_at, 1, :created_by, :created_at)',
+        [
+            ':token_hash' => hash('sha256', $token),
+            ':token_hint' => substr($token, 0, 8),
+            ':label' => $label,
+            ':max_uses' => $maxUses,
+            ':expires_at' => $now->modify('+' . $expiresInDays . ' days')->format('Y-m-d H:i:s'),
+            ':created_by' => $actorUserId,
+            ':created_at' => $now->format('Y-m-d H:i:s'),
+        ]
+    );
+    $invite = db_fetch_one($pdo, 'SELECT * FROM registration_invites WHERE id = last_insert_rowid()') ?? [];
+    audit_log($pdo, $actorUserId, 'registration_invite_created', 'registration_invite', (string) ($invite['id'] ?? ''), 'Registration invite created.', null, audit_snapshot($invite, ['token_hash']));
+
+    return ['token' => $token, 'invite' => $invite];
+}
+
+function list_registration_invites(PDO $pdo, int $limit = 40): array
+{
+    $limit = max(1, min(200, $limit));
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT ri.*, u.display_name AS created_by_name
+         FROM registration_invites ri
+         LEFT JOIN users u ON u.id = ri.created_by
+         ORDER BY ri.created_at DESC, ri.id DESC
+         LIMIT ' . $limit
+    );
+    foreach ($rows as &$row) {
+        $row['status'] = registration_invite_status($row);
+    }
+    unset($row);
+
+    return $rows;
+}
+
+function registration_invite_from_token(PDO $pdo, string $token): ?array
+{
+    $token = strtolower(trim($token));
+    if (!preg_match('/^[a-f0-9]{64}$/', $token)) {
+        return null;
+    }
+
+    return db_fetch_one(
+        $pdo,
+        'SELECT * FROM registration_invites WHERE token_hash = :token_hash LIMIT 1',
+        [':token_hash' => hash('sha256', $token)]
+    );
+}
+
+function revoke_registration_invite(PDO $pdo, int $inviteId, int $actorUserId): bool
+{
+    $invite = db_fetch_one($pdo, 'SELECT * FROM registration_invites WHERE id = :id', [':id' => $inviteId]);
+    if ($invite === null || (int) ($invite['active'] ?? 0) !== 1) {
+        return false;
+    }
+    db_execute(
+        $pdo,
+        'UPDATE registration_invites SET active = 0, revoked_at = :revoked_at WHERE id = :id',
+        [':revoked_at' => now_iso(), ':id' => $inviteId]
+    );
+    $after = db_fetch_one($pdo, 'SELECT * FROM registration_invites WHERE id = :id', [':id' => $inviteId]);
+    audit_log($pdo, $actorUserId, 'registration_invite_revoked', 'registration_invite', (string) $inviteId, 'Registration invite revoked.', audit_snapshot($invite, ['token_hash']), audit_snapshot($after, ['token_hash']));
+
+    return true;
+}
+
+function register_user_with_invite(PDO $pdo, string $token, array $payload): array
+{
+    $username = strtolower(trim((string) ($payload['username'] ?? '')));
+    $displayName = trim((string) ($payload['display_name'] ?? ''));
+    $password = (string) ($payload['password'] ?? '');
+    if (!preg_match('/^[a-z0-9._-]{3,32}$/', $username)) {
+        throw new InvalidArgumentException(t('register.username_invalid'));
+    }
+    if ($displayName === '' || (function_exists('mb_strlen') ? mb_strlen($displayName) : strlen($displayName)) > 80) {
+        throw new InvalidArgumentException(t('register.name_invalid'));
+    }
+    if ($password === '') {
+        throw new InvalidArgumentException(t('flash.password_required'));
+    }
+
+    $pdo->exec('BEGIN IMMEDIATE');
+    try {
+        $invite = registration_invite_from_token($pdo, $token);
+        if ($invite === null || registration_invite_status($invite) !== 'active') {
+            throw new InvalidArgumentException(t('register.invite_invalid'));
+        }
+        $existing = db_fetch_one($pdo, 'SELECT id FROM users WHERE LOWER(username) = LOWER(:username)', [':username' => $username]);
+        if ($existing !== null) {
+            throw new InvalidArgumentException(t('register.username_taken'));
+        }
+
+        create_user($pdo, [
+            'username' => $username,
+            'display_name' => $displayName,
+            'password' => $password,
+            'role' => 'user',
+            'step_goal' => 0,
+            'step_days_mask' => '1111111',
+            'workout_target' => 0,
+            'workout_days_mask' => '0000000',
+            'workout_strict' => 0,
+            'ideal_weight' => null,
+            'primary_goal_type' => 'none',
+            'primary_goal_value' => null,
+            'onboarding_status' => 'pending',
+            'active' => 1,
+        ]);
+        $user = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = last_insert_rowid()');
+        if ($user === null) {
+            throw new RuntimeException(t('register.failed'));
+        }
+        $locale = normalize_locale((string) ($payload['locale'] ?? 'en'), 'en');
+        db_execute($pdo, 'UPDATE users SET locale = :locale WHERE id = :id', [':locale' => $locale, ':id' => (int) $user['id']]);
+        db_execute(
+            $pdo,
+            'UPDATE registration_invites
+             SET used_count = used_count + 1, last_used_at = :last_used_at,
+                 active = CASE WHEN used_count + 1 >= max_uses THEN 0 ELSE active END
+             WHERE id = :id',
+            [':last_used_at' => now_iso(), ':id' => (int) $invite['id']]
+        );
+        $user = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $user['id']]) ?? $user;
+        audit_log($pdo, (int) $user['id'], 'user_registered', 'user', (string) $user['id'], 'User registered from invite.', null, audit_snapshot($user, ['password_hash']));
+        $pdo->commit();
+
+        return $user;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
+function onboarding_is_pending(array $user): bool
+{
+    return (string) ($user['onboarding_status'] ?? 'complete') === 'pending';
+}
+
+function set_user_onboarding_step(PDO $pdo, int $userId, string $step): void
+{
+    if (!in_array($step, ['goals', 'profile', 'privacy', 'telegram', 'challenge', 'teams'], true)) {
+        return;
+    }
+    db_execute(
+        $pdo,
+        'UPDATE users SET onboarding_step = :step, updated_at = :updated_at WHERE id = :id AND onboarding_status = "pending"',
+        [':step' => $step, ':updated_at' => now_iso(), ':id' => $userId]
+    );
+}
+
+function mark_user_onboarding_skipped(PDO $pdo, int $userId): void
+{
+    db_execute(
+        $pdo,
+        'UPDATE users SET onboarding_skipped = 1, onboarding_prompt_dismissed = 0, updated_at = :updated_at WHERE id = :id',
+        [':updated_at' => now_iso(), ':id' => $userId]
+    );
+}
+
+function restart_user_onboarding(PDO $pdo, int $userId): void
+{
+    db_execute(
+        $pdo,
+        'UPDATE users
+         SET onboarding_status = "pending", onboarding_step = "goals", onboarding_completed_at = NULL,
+             onboarding_skipped = 0, onboarding_prompt_dismissed = 0, onboarding_goal_id = NULL, updated_at = :updated_at
+         WHERE id = :id',
+        [':updated_at' => now_iso(), ':id' => $userId]
+    );
+    audit_log($pdo, $userId, 'onboarding_restarted', 'user', (string) $userId, 'Initial setup restarted.', null, ['onboarding_status' => 'pending']);
+}
+
+function dismiss_user_onboarding_prompt(PDO $pdo, int $userId): void
+{
+    db_execute(
+        $pdo,
+        'UPDATE users SET onboarding_prompt_dismissed = 1, updated_at = :updated_at WHERE id = :id',
+        [':updated_at' => now_iso(), ':id' => $userId]
+    );
+    audit_log($pdo, $userId, 'onboarding_prompt_dismissed', 'user', (string) $userId, 'Initial setup reminder dismissed.', null, ['onboarding_prompt_dismissed' => 1]);
+}
+
+function user_should_show_onboarding_prompt(array $user): bool
+{
+    return !onboarding_is_pending($user)
+        && (int) ($user['onboarding_skipped'] ?? 0) === 1
+        && (int) ($user['onboarding_prompt_dismissed'] ?? 0) !== 1;
+}
+
+function complete_user_onboarding(PDO $pdo, int $userId): void
+{
+    db_execute(
+        $pdo,
+        'UPDATE users SET onboarding_status = "complete", onboarding_step = "teams", onboarding_completed_at = :completed_at, updated_at = :updated_at WHERE id = :id',
+        [':completed_at' => now_iso(), ':updated_at' => now_iso(), ':id' => $userId]
+    );
+    audit_log($pdo, $userId, 'onboarding_completed', 'user', (string) $userId, 'Initial setup completed.', null, ['onboarding_status' => 'complete']);
 }
 
 function update_user(PDO $pdo, int $userId, array $payload): void
@@ -3704,6 +4042,26 @@ function resolve_goal_start_datetime(mixed $startDateRaw, mixed $startTimeRaw, ?
     ];
 }
 
+function goal_schedule_error_key(
+    ?DateTimeImmutable $startAt,
+    ?DateTimeImmutable $dueAt,
+    bool $rejectPastDue = false,
+    ?DateTimeImmutable $now = null
+): ?string {
+    if ($startAt instanceof DateTimeImmutable && $dueAt instanceof DateTimeImmutable && $startAt > $dueAt) {
+        return 'goals.start_after_due';
+    }
+
+    if ($rejectPastDue && $dueAt instanceof DateTimeImmutable) {
+        $nowDateTime = $now ?? new DateTimeImmutable('now');
+        if ($dueAt < $nowDateTime) {
+            return 'goals.due_in_past';
+        }
+    }
+
+    return null;
+}
+
 function goal_start_datetime(array $goal): ?DateTimeImmutable
 {
     $startDate = trim((string) ($goal['start_date'] ?? ''));
@@ -3751,7 +4109,7 @@ function list_goals(PDO $pdo, string $scope, ?int $userId = null, ?int $teamId =
     );
 }
 
-function create_goal(PDO $pdo, array $payload, int $actorUserId): void
+function create_goal(PDO $pdo, array $payload, int $actorUserId): int
 {
     $now = now_iso();
     db_execute(
@@ -3798,6 +4156,8 @@ function create_goal(PDO $pdo, array $payload, int $actorUserId): void
     );
     $goal = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = last_insert_rowid()');
     audit_log($pdo, $actorUserId, 'goal_created', 'goal', (string) ($goal['id'] ?? ''), 'Goal created.', null, audit_snapshot($goal));
+
+    return (int) ($goal['id'] ?? 0);
 }
 
 function update_goal_status(PDO $pdo, int $goalId, string $status, int $actorUserId): void
@@ -9270,7 +9630,14 @@ function integration_runtime_statuses(PDO $pdo): array
         if ($service !== '') {
             $lastError = trim(integration_runtime_redact_error($pdo, (string) ($row['last_error'] ?? '')));
             $row['last_error'] = $lastError;
-            $heartbeatAt = strtotime((string) ($row['heartbeat_at'] ?? ''));
+            $heartbeatRaw = trim((string) ($row['heartbeat_at'] ?? ''));
+            try {
+                $heartbeatAt = $heartbeatRaw !== ''
+                    ? (new DateTimeImmutable($heartbeatRaw, new DateTimeZone('UTC')))->getTimestamp()
+                    : false;
+            } catch (Throwable) {
+                $heartbeatAt = false;
+            }
             $isActive = (int) ($row['active'] ?? 0) === 1;
             $row['state'] = $lastError !== ''
                 ? 'error'

@@ -38,7 +38,7 @@ for ($i = 0; $i < 7; $i++) {
                 </label>
                 <label>
                     <?= e(t('users.initial_password')) ?>
-                    <input type="password" name="password" minlength="8" required>
+                    <input type="password" name="password" required>
                 </label>
                 <label>
                     <?= e(t('common.role')) ?>

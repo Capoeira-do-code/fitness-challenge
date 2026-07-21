@@ -22,6 +22,22 @@ $settingsLatestWeight = $settingsWeightSeries !== [] ? (float) ($settingsWeightS
 $settingsFirstWeight = $settingsWeightSeries !== [] ? (float) ($settingsWeightSeries[0]['weight'] ?? 0) : null;
 $settingsWeightChange = $settingsLatestWeight !== null && $settingsFirstWeight !== null ? round($settingsLatestWeight - $settingsFirstWeight, 1) : null;
 $settingsRecentWeights = $settingsWeightHistory !== [] ? array_slice($settingsWeightHistory, 0, 8) : array_slice(array_reverse($settingsWeightSeries), 0, 8);
+$settingsWeightTrendRows = array_slice($settingsWeightSeries, -12);
+$settingsWeightTrendPoints = '';
+if (count($settingsWeightTrendRows) >= 2) {
+    $trendValues = array_map(static fn(array $row): float => (float) ($row['weight'] ?? 0), $settingsWeightTrendRows);
+    $trendMin = min($trendValues);
+    $trendMax = max($trendValues);
+    $trendRange = max(0.5, $trendMax - $trendMin);
+    $trendLastIndex = count($trendValues) - 1;
+    $trendPoints = [];
+    foreach ($trendValues as $trendIndex => $trendValue) {
+        $trendX = 6 + (($trendIndex / $trendLastIndex) * 228);
+        $trendY = 62 - ((($trendValue - $trendMin) / $trendRange) * 50);
+        $trendPoints[] = number_format($trendX, 1, '.', '') . ',' . number_format($trendY, 1, '.', '');
+    }
+    $settingsWeightTrendPoints = implode(' ', $trendPoints);
+}
 $renderAvatarEditor = static function (array $currentUser, string $settingsView, string $settingsAvatarUrl, bool $focused = false): void {
     ?>
     <article class="panel settings-avatar-card<?= $focused ? ' settings-avatar-card-focused' : '' ?>" id="avatar">
@@ -131,7 +147,7 @@ if ($settingsView === 'avatar') {
     ?>
     <section class="screen stack-lg settings-page settings-avatar-focused-screen" data-settings-avatar-focused>
         <header class="hierarchy-page-header settings-focused-head settings-section-head">
-            <a class="hierarchy-back" href="/?page=settings" aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+            <a class="hierarchy-back destination-back" href="/?page=settings" aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.settings')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.settings')) ?></strong></a>
             <div>
                 <p class="eyebrow"><?= e(t('nav.settings')) ?></p>
                 <h1><?= e(t('settings.avatar_focus_title')) ?></h1>
@@ -146,7 +162,7 @@ if ($settingsView === 'avatar') {
 ?>
 <section class="screen stack-lg settings-page" data-settings-section data-unsaved-message="<?= e(t('settings.unsaved_confirm')) ?>">
     <header class="hierarchy-page-header settings-focused-head settings-section-head">
-        <a class="hierarchy-back" href="/?page=settings" aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+        <a class="hierarchy-back destination-back" href="/?page=settings" aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.settings')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.settings')) ?></strong></a>
         <div>
             <p class="eyebrow"><?= e(t('nav.settings')) ?></p>
             <h1><?= e((string) ($settingsSections[$settingsView]['title'] ?? t('settings.title'))) ?></h1>
@@ -157,9 +173,9 @@ if ($settingsView === 'avatar') {
     <?php if ($settingsView === 'body'): ?>
         <article class="settings-body-card">
             <div class="settings-weight-summary" aria-label="<?= e(t('settings.body_title')) ?>">
-                <span><small><?= e(t('settings.weight_latest')) ?></small><strong><?= $settingsLatestWeight !== null ? e(number_format($settingsLatestWeight, 1, '.', '')) . ' kg' : '—' ?></strong></span>
-                <span><small><?= e(t('metric.ideal_weight')) ?></small><strong><?= ($currentUser['ideal_weight'] ?? null) !== null ? e(number_format((float) $currentUser['ideal_weight'], 1, '.', '')) . ' kg' : '—' ?></strong></span>
-                <span><small><?= e(t('settings.weight_change')) ?></small><strong><?= $settingsWeightChange !== null ? e(($settingsWeightChange > 0 ? '+' : '') . number_format($settingsWeightChange, 1, '.', '')) . ' kg' : '—' ?></strong></span>
+                <span class="settings-weight-stat" data-tone="green"><span class="settings-weight-stat-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span><span><small><?= e(t('settings.weight_latest')) ?></small><strong><?= $settingsLatestWeight !== null ? e(number_format($settingsLatestWeight, 1, '.', '')) . ' kg' : '—' ?></strong></span></span>
+                <span class="settings-weight-stat" data-tone="blue"><span class="settings-weight-stat-icon" aria-hidden="true"><?= activity_icon_svg('check') ?></span><span><small><?= e(t('metric.ideal_weight')) ?></small><strong><?= ($currentUser['ideal_weight'] ?? null) !== null ? e(number_format((float) $currentUser['ideal_weight'], 1, '.', '')) . ' kg' : '—' ?></strong></span></span>
+                <span class="settings-weight-stat" data-tone="violet"><span class="settings-weight-stat-icon" aria-hidden="true"><?= activity_icon_svg('bolt') ?></span><span><small><?= e(t('settings.weight_change')) ?></small><strong><?= $settingsWeightChange !== null ? e(($settingsWeightChange > 0 ? '+' : '') . number_format($settingsWeightChange, 1, '.', '')) . ' kg' : '—' ?></strong></span></span>
             </div>
 
             <section class="settings-preference-group settings-weight-log-group">
@@ -168,8 +184,8 @@ if ($settingsView === 'avatar') {
                     <div><h2><?= e(t('settings.weight_log_title')) ?></h2><p class="muted small"><?= e(t('settings.weight_log_hint')) ?></p></div>
                 </div>
                 <div class="settings-weight-actions">
-                    <a class="btn btn-primary" href="/?page=entries&amp;mode=data#entry-weight"><?= e(t('settings.weight_log_action')) ?></a>
-                    <a class="btn btn-ghost" href="/?page=analytics&amp;section=body"><?= e(t('settings.weight_open_analytics')) ?></a>
+                    <a class="btn btn-primary" href="/?page=entries&amp;mode=data#entry-weight"><span aria-hidden="true"><?= activity_icon_svg('plus') ?></span><strong><?= e(t('settings.weight_log_action')) ?></strong></a>
+                    <a class="btn btn-ghost" href="/?page=analytics&amp;section=body"><span aria-hidden="true"><?= activity_icon_svg('sliders') ?></span><strong><?= e(t('settings.weight_open_analytics')) ?></strong></a>
                 </div>
             </section>
 
@@ -180,21 +196,34 @@ if ($settingsView === 'avatar') {
                     <span class="settings-group-icon" aria-hidden="true"><?= activity_icon_svg('sliders') ?></span>
                     <div><h2><?= e(t('settings.weight_goal_title')) ?></h2><p class="muted small"><?= e(t('settings.weight_goal_hint')) ?></p></div>
                 </div>
-                <label><?= e(t('metric.ideal_weight')) ?> (kg)<input type="number" name="ideal_weight" min="25" max="400" step="0.1" inputmode="decimal" value="<?= e((string) ($currentUser['ideal_weight'] ?? '')) ?>"></label>
-                <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+                <div class="settings-weight-goal-editor">
+                    <label><span><?= e(t('metric.ideal_weight')) ?></span><span class="settings-weight-goal-input"><input type="number" name="ideal_weight" min="25" max="400" step="0.1" inputmode="decimal" value="<?= e((string) ($currentUser['ideal_weight'] ?? '')) ?>"><span aria-hidden="true">kg</span></span></label>
+                    <button class="btn btn-primary" type="submit"><span aria-hidden="true"><?= activity_icon_svg('check') ?></span><strong><?= e(t('common.save')) ?></strong></button>
+                </div>
             </form>
 
             <section class="settings-preference-group settings-weight-history">
                 <div class="settings-weight-history-head"><div><h2><?= e(t('settings.weight_history')) ?></h2><p class="muted small"><?= e(t('settings.weight_history_hint')) ?></p></div><span class="badge"><?= count($settingsWeightSeries) ?></span></div>
+                <?php if ($settingsWeightTrendPoints !== ''): ?>
+                    <div class="settings-weight-trend" aria-hidden="true">
+                        <svg viewBox="0 0 240 70" preserveAspectRatio="none"><path d="M6 62H234"/><polyline points="<?= e($settingsWeightTrendPoints) ?>"/></svg>
+                    </div>
+                <?php endif; ?>
                 <?php if ($settingsRecentWeights === []): ?>
                     <div class="settings-weight-empty"><span aria-hidden="true"><?= activity_icon_svg('target') ?></span><p><?= e(t('settings.weight_empty')) ?></p><a href="/?page=entries&amp;mode=data#entry-weight"><?= e(t('settings.weight_log_action')) ?></a></div>
                 <?php else: ?>
                     <div class="settings-weight-list">
                         <?php foreach ($settingsRecentWeights as $index => $weightRow): ?>
-                            <?php $weightValue = (float) ($weightRow['weight'] ?? 0); $previousValue = isset($settingsRecentWeights[$index + 1]) ? (float) ($settingsRecentWeights[$index + 1]['weight'] ?? 0) : null; ?>
+                            <?php
+                            $weightValue = (float) ($weightRow['weight'] ?? 0);
+                            $previousValue = isset($settingsRecentWeights[$index + 1]) ? (float) ($settingsRecentWeights[$index + 1]['weight'] ?? 0) : null;
+                            $weightDelta = $previousValue !== null ? round($weightValue - $previousValue, 1) : null;
+                            $weightDeltaClass = $weightDelta === null || abs($weightDelta) < 0.05 ? 'is-steady' : ($weightDelta > 0 ? 'is-up' : 'is-down');
+                            ?>
                             <a href="/?page=entries&amp;mode=data&amp;date=<?= e((string) ($weightRow['date'] ?? '')) ?>#entry-weight">
-                                <span><strong><?= e(format_date_eu((string) ($weightRow['date'] ?? ''))) ?></strong><small><?= e(t('settings.weight_edit_entry')) ?></small></span>
-                                <span><strong><?= e(number_format($weightValue, 1, '.', '')) ?> kg</strong><?php if ($previousValue !== null): ?><small><?= e((($weightValue - $previousValue) > 0 ? '+' : '') . number_format($weightValue - $previousValue, 1, '.', '')) ?> kg</small><?php endif; ?></span>
+                                <span class="settings-weight-list-date"><span class="settings-weight-list-dot" aria-hidden="true"></span><span><strong><?= e(format_date_eu((string) ($weightRow['date'] ?? ''))) ?></strong><small><?= e(t('settings.weight_edit_entry')) ?></small></span></span>
+                                <span class="settings-weight-list-value"><strong><?= e(number_format($weightValue, 1, '.', '')) ?> <small>kg</small></strong><?php if ($weightDelta !== null): ?><small class="settings-weight-delta <?= e($weightDeltaClass) ?>"><?= e(($weightDelta > 0 ? '+' : '') . number_format($weightDelta, 1, '.', '')) ?> kg</small><?php endif; ?></span>
+                                <span class="settings-weight-list-arrow" aria-hidden="true">›</span>
                             </a>
                         <?php endforeach; ?>
                     </div>
@@ -204,6 +233,15 @@ if ($settingsView === 'avatar') {
     <?php endif; ?>
 
     <?php if ($settingsView === 'account'): ?>
+        <article class="panel settings-setup-card">
+            <span class="settings-setup-icon" aria-hidden="true"><?= activity_icon_svg('spark') ?></span>
+            <div><p class="eyebrow"><?= e(t('onboarding.title')) ?></p><h2><?= e(t('settings.setup_again_title')) ?></h2><p class="muted small"><?= e(t('settings.setup_again_hint')) ?></p></div>
+            <form method="post" action="/?page=settings&amp;view=account">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="restart_onboarding">
+                <button class="btn btn-primary" type="submit"><?= e(t('settings.setup_again_action')) ?></button>
+            </form>
+        </article>
         <article class="panel settings-security-card">
             <h2><?= e(t('profile.security')) ?></h2>
             <p class="muted small"><?= e(t('settings.account_security_hint')) ?></p>
@@ -220,19 +258,26 @@ if ($settingsView === 'avatar') {
 
     <?php if ($settingsView === 'privacy'): ?>
         <?php $settingsVisibility = privacy_normalize((string) ($currentUser['profile_visibility'] ?? 'public')); ?>
+        <?php $settingsDataVisibility = privacy_data_preferences($currentUser); ?>
         <article class="panel settings-privacy-card">
             <h2><?= e(t('privacy.title')) ?></h2>
             <p class="muted small"><?= e(t('privacy.subtitle')) ?></p>
-            <form method="post" action="/?page=settings&amp;view=privacy" class="stack settings-dirty-form" data-settings-dirty-form>
+            <form method="post" action="/?page=settings&amp;view=privacy" class="stack settings-dirty-form" data-settings-dirty-form data-privacy-controls>
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="update_settings_privacy">
                 <div class="privacy-options">
                     <?php foreach (['public' => 'privacy.public', 'friends' => 'privacy.friends', 'private' => 'privacy.private'] as $value => $labelKey): ?>
                         <label class="privacy-option<?= $settingsVisibility === $value ? ' is-selected' : '' ?>">
-                            <input type="radio" name="profile_visibility" value="<?= e($value) ?>" <?= $settingsVisibility === $value ? 'checked' : '' ?>>
+                            <input type="radio" name="profile_visibility" value="<?= e($value) ?>" <?= $settingsVisibility === $value ? 'checked' : '' ?> data-privacy-default>
                             <span class="privacy-option-label"><?= e(t($labelKey)) ?></span>
                             <span class="privacy-option-hint muted"><?= e(t($labelKey . '_hint')) ?></span>
                         </label>
+                    <?php endforeach; ?>
+                </div>
+                <div class="settings-data-privacy">
+                    <div class="settings-data-privacy-head"><strong><?= e(t('privacy.data_controls')) ?></strong><small class="muted"><?= e(t('privacy.data_controls_hint')) ?></small></div>
+                    <?php foreach (['weight', 'steps', 'distance', 'workouts', 'nutrition'] as $privacyKey): ?>
+                        <label class="settings-data-privacy-row"><span><strong><?= e(t('privacy.data_' . $privacyKey)) ?></strong><small class="muted"><?= e(t('privacy.data_' . $privacyKey . '_hint')) ?></small></span><select name="data_visibility[<?= e($privacyKey) ?>]" data-privacy-data><?php foreach (['public', 'friends', 'private'] as $privacyValue): ?><option value="<?= e($privacyValue) ?>" <?= ($settingsDataVisibility[$privacyKey] ?? $settingsVisibility) === $privacyValue ? 'selected' : '' ?>><?= e(t('privacy.' . $privacyValue)) ?></option><?php endforeach; ?></select></label>
                     <?php endforeach; ?>
                 </div>
                 <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
@@ -321,8 +366,10 @@ if ($settingsView === 'avatar') {
                 <legend><?= e(t('settings.preferences_goals_title')) ?></legend>
                 <p class="muted small"><?= e(t('settings.preferences_goals_hint')) ?></p>
                 <div class="grid-inline two settings-preference-fields">
-                    <label><?= e(t('settings.primary_goal')) ?><select name="primary_goal_type"><option value="steps" <?= ($currentUser['primary_goal_type'] ?? 'steps') === 'steps' ? 'selected' : '' ?>><?= e(t('metric.steps')) ?></option><option value="km" <?= ($currentUser['primary_goal_type'] ?? 'steps') === 'km' ? 'selected' : '' ?>><?= e(t('metric.distance_km')) ?></option></select></label>
-                    <label><?= e(t('settings.primary_goal_value')) ?><input type="number" step="0.01" name="primary_goal_value" value="<?= e((string) ($currentUser['primary_goal_value'] ?? '')) ?>"></label>
+                    <label><?= e(t('settings.primary_goal')) ?><select name="primary_goal_type" data-optional-primary-goal><option value="none" <?= ($currentUser['primary_goal_type'] ?? 'none') === 'none' ? 'selected' : '' ?>><?= e(t('onboarding.no_primary_goal')) ?></option><option value="steps" <?= ($currentUser['primary_goal_type'] ?? 'none') === 'steps' ? 'selected' : '' ?>><?= e(t('metric.steps')) ?></option><option value="km" <?= ($currentUser['primary_goal_type'] ?? 'none') === 'km' ? 'selected' : '' ?>><?= e(t('metric.distance_km')) ?></option><option value="workouts" <?= ($currentUser['primary_goal_type'] ?? 'none') === 'workouts' ? 'selected' : '' ?>><?= e(t('metric.workouts')) ?></option></select></label>
+                    <label data-optional-primary-value <?= ($currentUser['primary_goal_type'] ?? 'none') === 'none' ? 'hidden' : '' ?>><?= e(t('settings.primary_goal_value')) ?><input type="number" min="0.1" step="0.01" name="primary_goal_value" value="<?= e((string) ($currentUser['primary_goal_value'] ?? '')) ?>" <?= ($currentUser['primary_goal_type'] ?? 'none') === 'none' ? 'disabled' : '' ?>></label>
+                    <label><?= e(t('onboarding.daily_steps')) ?><input type="number" min="0" max="500000" step="500" name="step_goal" value="<?= (int) ($currentUser['step_goal'] ?? 0) ?>"><small><?= e(t('settings.zero_disables_goal')) ?></small></label>
+                    <label><?= e(t('onboarding.weekly_workouts')) ?><input type="number" min="0" max="14" name="workout_target" value="<?= (int) ($currentUser['workout_target'] ?? 0) ?>"><small><?= e(t('settings.zero_disables_goal')) ?></small></label>
                     <label><?= e(t('settings.calorie_burn_goal')) ?><input type="number" min="0" step="1" name="calorie_burn_goal" value="<?= e((string) ($currentUser['calorie_burn_goal'] ?? '')) ?>"></label>
                     <label><?= e(t('settings.calorie_consumed_max')) ?><input type="number" min="0" step="1" name="calorie_consumed_max" value="<?= e((string) ($currentUser['calorie_consumed_max'] ?? '')) ?>"></label>
                 </div>

@@ -53,10 +53,21 @@ En `docker-compose.yml`:
 - `SEED_PASSWORD`
 - `APP_TIMEZONE`
 - `APP_DEFAULT_LOCALE`
+- `MEDIA_SEARCH_GOOGLE_API_KEY`
+- `MEDIA_SEARCH_GOOGLE_CX`
+- `MEDIA_SEARCH_YOUTUBE_API_KEY`
 
 `DB_PATH` permite usar una base alterna (por ejemplo, para E2E local).
 `APP_DEFAULT_LOCALE` acepta `en`, `es` o `it` (por defecto `en`).
 `HTTP_PORT` y `HTTPS_PORT` controlan los puertos publicados por Docker.
+
+La búsqueda multimedia del creador de ejercicios es opcional. Para activarla,
+habilita **Custom Search JSON API** y **YouTube Data API v3** en Google Cloud,
+crea un Programmable Search Engine con búsqueda de imágenes y configura las
+tres variables `MEDIA_SEARCH_*` anteriores. Las claves solo se usan en PHP y
+nunca se envían al navegador. Si una misma API key tiene ambas APIs habilitadas,
+`MEDIA_SEARCH_YOUTUBE_API_KEY` puede dejarse vacía fuera de Docker; PHP reutiliza
+la clave de Google. En Docker se recomienda definir ambas explícitamente.
 
 ## Usuarios iniciales
 

@@ -36,8 +36,10 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
+from urllib.parse import quote
 
 from runtime_lease import RuntimeLease, maintenance_shared_lock, runtime_owner_id
+from tls_context import trusted_ssl_context
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = ROOT / "storage" / "fitness.sqlite"
@@ -46,6 +48,7 @@ NOTION_API_VERSION = "2022-06-28"
 SYNC_BATCH_LIMIT = 60
 PULL_MAX_PAGES = 25
 LOOP_CHECK_SECONDS = 60
+TLS_CONTEXT = trusted_ssl_context()
 
 # field key -> (default Notion property name, notion type). Mirrors app/notion.php.
 FIELD_DEFS = {
@@ -241,7 +244,7 @@ def api_call(token: str, method: str, path: str, body: Optional[dict] = None) ->
         status = 0
         payload = {}
         try:
-            with urllib.request.urlopen(request, timeout=25) as response:
+            with urllib.request.urlopen(request, timeout=25, context=TLS_CONTEXT) as response:
                 status = response.status
                 payload = json.loads(response.read().decode("utf-8") or "{}")
         except urllib.error.HTTPError as exc:
@@ -402,7 +405,7 @@ def fetch_schema(settings: dict) -> dict:
     database_id = settings["database_id"]
     if not database_id:
         return {"ok": False, "error": "missing_database", "title_prop": "", "present": {}}
-    data, status, error = api_call(settings["token"], "GET", "/databases/" + urllib.request.quote(database_id, safe=""))
+    data, status, error = api_call(settings["token"], "GET", "/databases/" + quote(database_id, safe=""))
     if error is not None:
         return {"ok": False, "error": error, "title_prop": "", "present": {}}
     properties = (data or {}).get("properties") or {}
@@ -454,7 +457,7 @@ def push(
                 result["skipped"] += 1
                 continue
             if page_id:
-                data, status, error = api_call(settings["token"], "PATCH", "/pages/" + urllib.request.quote(page_id, safe=""), {"properties": props})
+                data, status, error = api_call(settings["token"], "PATCH", "/pages/" + quote(page_id, safe=""), {"properties": props})
             else:
                 data, status, error = api_call(settings["token"], "POST", "/pages", {"parent": {"database_id": settings["database_id"]}, "properties": props})
             renew_lease(heartbeat)
@@ -499,7 +502,7 @@ def pull(
         body = {"page_size": 100}
         if cursor:
             body["start_cursor"] = cursor
-        data, status, error = api_call(settings["token"], "POST", "/databases/" + urllib.request.quote(settings["database_id"], safe="") + "/query", body)
+        data, status, error = api_call(settings["token"], "POST", "/databases/" + quote(settings["database_id"], safe="") + "/query", body)
         renew_lease(heartbeat)
         if error is not None:
             result["failed"] += 1

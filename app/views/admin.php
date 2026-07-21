@@ -28,6 +28,9 @@ foreach ((array) ($adminAchievements ?? []) as $adminAchievementCandidate) {
     }
 }
 $penaltiesEnabled = !empty($penaltiesEnabled);
+$mediaSearchEnabled = !empty($mediaSearchEnabled);
+$mediaSearchGoogleReady = !empty($mediaSearchGoogleReady);
+$mediaSearchYoutubeReady = !empty($mediaSearchYoutubeReady);
 $achievementLocales = locale_options();
 $achievementIconOptions = achievement_icon_options();
 $sectionRows = [];
@@ -59,6 +62,14 @@ $adminHeaderTitle = $activeSection !== ''
 $adminHeaderHint = $activeSection !== ''
     ? t('admin.subtitle')
     : ($adminGroup !== '' ? (string) $adminGroups[$adminGroup]['hint'] : t('admin.hub_hint'));
+$adminBackDestination = $activeSection !== '' && $activeSectionGroup !== ''
+    ? (string) ($adminGroups[$activeSectionGroup]['title'] ?? t('nav.admin'))
+    : t('nav.admin');
+$renderAdminBack = static function (string $href, string $destination): void {
+    ?>
+    <a class="hierarchy-back destination-back" href="<?= e($href) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>: <?= e($destination) ?>"><span aria-hidden="true">&larr;</span><strong><?= e($destination) ?></strong></a>
+    <?php
+};
 $visibleSectionRows = [];
 if ($adminGroup !== '') {
     foreach ((array) $adminGroups[$adminGroup]['sections'] as $sectionKey) {
@@ -152,7 +163,7 @@ try {
 <section class="screen stack-lg spa-shell admin-settings-screen" data-spa-page="admin" data-admin-group="<?= e($adminGroup) ?>">
     <header class="hierarchy-page-header<?= $activeSection === '' && $adminGroup === '' ? ' hierarchy-page-header-root settings-compact-header' : ' settings-focused-head settings-section-head' ?>">
         <?php if ($activeSection !== '' || $adminGroup !== ''): ?>
-            <a class="hierarchy-back" href="<?= $activeSection !== '' && $activeSectionGroup !== '' ? '/?page=admin&amp;group=' . e($activeSectionGroup) : '/?page=admin' ?>" aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+            <a class="hierarchy-back destination-back" href="<?= $activeSection !== '' && $activeSectionGroup !== '' ? '/?page=admin&amp;group=' . e($activeSectionGroup) : '/?page=admin' ?>" aria-label="<?= e(t('common.back')) ?>: <?= e($adminBackDestination) ?>"><span aria-hidden="true">&larr;</span><strong><?= e($adminBackDestination) ?></strong></a>
         <?php endif; ?>
         <div>
             <p class="eyebrow"><?= e(t('nav.admin')) ?></p>
@@ -194,11 +205,52 @@ try {
 
     <?php if ($activeSection === 'users'): ?>
     <article class="panel settings-panel active" data-spa-section="users">
+        <section class="admin-invite-panel admin-section-list" data-spa-show-when-no-param="create_user,user_id" <?= ($createUserMode || $selectedUserId > 0) ? 'hidden' : '' ?>>
+            <div class="admin-invite-head">
+                <span aria-hidden="true"><?= activity_icon_svg('link') ?></span>
+                <div><h2><?= e(t('admin.registration_links_title')) ?></h2><p><?= e(t('admin.registration_links_hint')) ?></p></div>
+            </div>
+            <?php if (trim((string) ($registrationInviteUrl ?? '')) !== ''): ?>
+                <div class="admin-invite-created" role="status">
+                    <strong><?= e(t('admin.invite_latest')) ?></strong>
+                    <div><input type="text" value="<?= e((string) $registrationInviteUrl) ?>" readonly data-registration-invite-url><button class="btn btn-primary" type="button" data-copy-registration-url data-copy-label="<?= e(t('admin.invite_copy')) ?>" data-copied-label="<?= e(t('admin.invite_copied')) ?>"><?= e(t('admin.invite_copy')) ?></button></div>
+                </div>
+            <?php endif; ?>
+            <form method="post" action="/?page=admin&amp;section=users" class="admin-invite-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="create_registration_invite">
+                <label><span><?= e(t('admin.invite_label')) ?></span><input type="text" name="invite_label" maxlength="80" placeholder="<?= e(t('admin.invite_label_placeholder')) ?>"></label>
+                <label><span><?= e(t('admin.invite_expiry')) ?></span><input type="number" name="expires_in_days" min="1" max="365" value="7" required></label>
+                <label><span><?= e(t('admin.invite_max_uses')) ?></span><input type="number" name="max_uses" min="1" max="100" value="1" required></label>
+                <button class="btn btn-primary" type="submit"><?= e(t('admin.invite_generate')) ?></button>
+            </form>
+            <div class="admin-invite-list">
+                <?php if ((array) ($registrationInvites ?? []) === []): ?>
+                    <p class="admin-invite-empty"><?= e(t('admin.invite_empty')) ?></p>
+                <?php else: ?>
+                    <?php foreach ((array) $registrationInvites as $invite): ?>
+                        <?php $inviteStatus = (string) ($invite['status'] ?? 'revoked'); ?>
+                        <article class="admin-invite-row" data-status="<?= e($inviteStatus) ?>">
+                            <span class="admin-invite-token">#<?= e((string) ($invite['token_hint'] ?? '')) ?></span>
+                            <span class="admin-invite-main"><strong><?= e(trim((string) ($invite['label'] ?? '')) !== '' ? (string) $invite['label'] : t('admin.registration_links_title')) ?></strong><small><?= e(t('admin.invite_uses', ['used' => (int) ($invite['used_count'] ?? 0), 'max' => (int) ($invite['max_uses'] ?? 1)])) ?> · <?= e(t('admin.invite_expires', ['date' => format_date_eu(substr((string) ($invite['expires_at'] ?? ''), 0, 10))])) ?></small></span>
+                            <span class="admin-invite-status"><?= e(t('admin.invite_status_' . $inviteStatus)) ?></span>
+                            <?php if ($inviteStatus === 'active'): ?>
+                                <form method="post" action="/?page=admin&amp;section=users" class="inline-form">
+                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="revoke_registration_invite"><input type="hidden" name="invite_id" value="<?= (int) $invite['id'] ?>">
+                                    <button class="btn btn-ghost small" type="submit"><?= e(t('admin.invite_revoke')) ?></button>
+                                </form>
+                            <?php endif; ?>
+                        </article>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </section>
+
         <div class="panel-head admin-section-list" data-spa-show-when-no-param="create_user,user_id" <?= ($createUserMode || $selectedUserId > 0) ? 'hidden' : '' ?>>
             <h2>Users</h2>
             <div class="inline-actions-mini">
                 <a class="btn btn-primary small" href="/?page=admin&section=users&create_user=1" data-spa-link><?= e(t('common.create')) ?></a>
-                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+                <?php $renderAdminBack('/?page=admin', t('nav.admin')); ?>
             </div>
         </div>
 
@@ -219,7 +271,10 @@ try {
                         <strong><?= e((string) $user['display_name']) ?></strong>
                         <small class="muted">@<?= e((string) $user['username']) ?> · <?= e((string) $user['role']) ?></small>
                     </span>
-                    <span class="badge <?= (int) ($user['active'] ?? 1) === 1 ? 'badge-ok' : 'badge-warn' ?>"><?= (int) ($user['active'] ?? 1) === 1 ? e(t('common.active')) : e(t('workout_types.inactive')) ?></span>
+                    <span class="admin-user-badges">
+                        <?php if (($user['onboarding_status'] ?? 'complete') === 'pending'): ?><span class="badge badge-warn"><?= e(t('onboarding.title')) ?></span><?php endif; ?>
+                        <span class="badge <?= (int) ($user['active'] ?? 1) === 1 ? 'badge-ok' : 'badge-warn' ?>"><?= (int) ($user['active'] ?? 1) === 1 ? e(t('common.active')) : e(t('workout_types.inactive')) ?></span>
+                    </span>
                     <span class="settings-chevron" aria-hidden="true">›</span>
                 </a>
             <?php endforeach; ?>
@@ -228,7 +283,7 @@ try {
         <div class="stack admin-create-view" data-spa-param-show="create_user" data-spa-value="1" <?= $createUserMode ? '' : 'hidden' ?>>
             <div class="panel-head">
                 <h3><?= e(t('users.create')) ?></h3>
-                <a class="btn btn-ghost" href="/?page=admin&section=users" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+                <?php $renderAdminBack('/?page=admin&section=users', t('admin.section_users')); ?>
             </div>
             <form method="post" action="/?page=admin" class="stack">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -236,7 +291,7 @@ try {
                 <div class="grid-inline">
                     <label><?= e(t('common.username')) ?><input type="text" name="username" required></label>
                     <label><?= e(t('common.display_name')) ?><input type="text" name="display_name" required></label>
-                    <label><?= e(t('users.initial_password')) ?><input type="password" name="password" minlength="8" required></label>
+                    <label><?= e(t('users.initial_password')) ?><input type="password" name="password" required></label>
                     <label><?= e(t('common.role')) ?><select name="role"><option value="user">User</option><option value="admin"><?= e(t('common.admin')) ?></option></select></label>
                 </div>
                 <div class="grid-inline">
@@ -260,6 +315,7 @@ try {
                     <?php endforeach; ?>
                 </div>
                 <label class="check standalone-check"><input type="checkbox" name="active" value="1" checked><?= e(t('users.active_user')) ?></label>
+                <label class="check standalone-check"><input type="checkbox" name="require_onboarding" value="1" checked><?= e(t('admin.require_onboarding')) ?></label>
                 <button type="submit" class="btn btn-primary"><?= e(t('users.create')) ?></button>
             </form>
         </div>
@@ -268,7 +324,7 @@ try {
             <div class="stack admin-detail-view" data-spa-param-show="user_id" data-spa-value="<?= (int) $user['id'] ?>" <?= $selectedUserId === (int) $user['id'] ? '' : 'hidden' ?>>
                 <div class="panel-head">
                     <h3><?= e((string) $user['display_name']) ?></h3>
-                    <a class="btn btn-ghost" href="/?page=admin&section=users" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+                    <?php $renderAdminBack('/?page=admin&section=users', t('admin.section_users')); ?>
                 </div>
                 <form method="post" action="/?page=admin" class="stack">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -316,7 +372,7 @@ try {
                 <h2><?= e(t('admin.challenge_settings')) ?></h2>
                 <p class="muted small"><?= e(t('admin.start_new_challenge_hint')) ?></p>
             </div>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+            <?php $renderAdminBack('/?page=admin', t('nav.admin')); ?>
         </div>
         <div class="admin-challenge-layout">
             <form method="post" action="/?page=admin" class="stack compact-form admin-challenge-card admin-challenge-current">
@@ -421,7 +477,7 @@ try {
                 <h2><?= e(t('admin.app_settings')) ?></h2>
                 <p class="muted admin-section-help"><?= e(t('admin.app_help')) ?></p>
             </div>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+            <?php $renderAdminBack('/?page=admin', t('nav.admin')); ?>
         </div>
 
         <section class="admin-subsection">
@@ -459,7 +515,7 @@ try {
     <article class="panel settings-panel active" data-spa-section="notion">
         <div class="panel-head">
             <h2>Notion</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+            <?php $renderAdminBack('/?page=admin', t('nav.admin')); ?>
         </div>
         <?php
         $notion = is_array($notionSettings ?? null) ? (array) $notionSettings : [];
@@ -710,11 +766,16 @@ try {
     <article class="panel settings-panel active" data-spa-section="telegram">
         <div class="panel-head">
             <h2>Telegram</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+            <?php $renderAdminBack('/?page=admin', t('nav.admin')); ?>
         </div>
         <?php
         $telegram = is_array($telegramSettings ?? null) ? (array) $telegramSettings : [];
         $telegramConfigured = ($telegram['token'] ?? '') !== '';
+        $telegramActiveBaseUrl = (string) ($telegram['base_url'] ?? '');
+        $telegramManualBaseUrl = (string) ($telegram['configured_base_url'] ?? '');
+        if (app_base_url_is_ephemeral($telegramManualBaseUrl)) {
+            $telegramManualBaseUrl = '';
+        }
         ?>
         <div class="admin-telegram-panel">
             <h3><?= e(t('admin.telegram_title')) ?></h3>
@@ -740,9 +801,10 @@ try {
                 </label>
                 <label>
                     <?= e(t('admin.telegram_base_url')) ?>
-                    <input type="text" name="app_base_url" value="<?= e((string) ($telegram['base_url'] ?? '')) ?>" placeholder="http://localhost:8080">
+                    <input type="url" name="app_base_url" value="<?= e($telegramManualBaseUrl) ?>" placeholder="<?= e(t('admin.telegram_base_url_auto')) ?>">
                     <span class="muted small"><?= e(t('admin.telegram_base_url_hint')) ?></span>
                 </label>
+                <?php if ($telegramActiveBaseUrl !== ''): ?><div class="integration-runtime-status is-active"><span aria-hidden="true"></span><div><strong><?= e(t('admin.telegram_base_url_active')) ?></strong><small><code><?= e($telegramActiveBaseUrl) ?></code></small></div></div><?php endif; ?>
                 <?php $telegramWorker = (array) ($integrationStatuses['telegram'] ?? []); ?>
                 <?php $telegramWorkerState = $integrationState($telegramWorker); ?>
                 <div class="integration-runtime-status is-<?= e($telegramWorkerState) ?>">
@@ -798,7 +860,7 @@ try {
                 <h2><?= e(t('admin.appearance_settings')) ?></h2>
                 <p class="muted admin-section-help"><?= e(t('admin.appearance_settings_hint')) ?></p>
             </div>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr; <?= e(t('common.back')) ?></a>
+            <?php $renderAdminBack('/?page=admin', t('nav.admin')); ?>
         </div>
         <section class="admin-subsection">
         <h3><?= e(t('admin.app_icon')) ?></h3>
@@ -930,7 +992,7 @@ try {
     <article class="panel settings-panel active" data-spa-section="backups">
         <div class="panel-head">
             <h2><?= e(t('admin.backups_title')) ?></h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+            <?php $renderAdminBack('/?page=admin', t('nav.admin')); ?>
         </div>
         <p class="muted"><?= e(t('admin.backups_subtitle')) ?></p>
 
@@ -1079,7 +1141,7 @@ try {
             </div>
             <div class="inline-actions-mini">
                 <a class="btn btn-primary small" href="/?page=admin&section=habits&habit_id=new" data-spa-link><?= e(t('common.create')) ?></a>
-                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+                <?php $renderAdminBack('/?page=admin', t('nav.admin')); ?>
             </div>
         </div>
 
@@ -1095,7 +1157,7 @@ try {
         <div class="stack admin-create-view" data-spa-param-show="habit_id" data-spa-value="new" <?= $selectedHabitId === 'new' ? '' : 'hidden' ?>>
             <div class="panel-head">
                 <h3><?= e(t('admin.create_habit')) ?></h3>
-                <a class="btn btn-ghost" href="/?page=admin&section=habits" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+                <?php $renderAdminBack('/?page=admin&section=habits', t('admin.section_habits')); ?>
             </div>
             <form method="post" action="/?page=admin" class="mini-card editable-card compact-form">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -1112,7 +1174,7 @@ try {
             <div class="stack admin-detail-view" data-spa-param-show="habit_id" data-spa-value="<?= (int) $habit['id'] ?>" <?= $selectedHabitId === (string) ((int) $habit['id']) ? '' : 'hidden' ?>>
                 <div class="panel-head">
                     <h3><?= e((string) $habit['label']) ?></h3>
-                    <a class="btn btn-ghost" href="/?page=admin&section=habits" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+                    <?php $renderAdminBack('/?page=admin&section=habits', t('admin.section_habits')); ?>
                 </div>
                 <form method="post" action="/?page=admin" class="mini-card editable-card">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -1144,7 +1206,7 @@ try {
             </div>
             <div class="inline-actions-mini">
                 <a class="btn btn-primary small" href="/?page=admin&section=workout_types&type_id=new" data-spa-link><?= e(t('common.create')) ?></a>
-                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+                <?php $renderAdminBack('/?page=admin', t('nav.admin')); ?>
             </div>
         </div>
 
@@ -1160,7 +1222,7 @@ try {
         <div class="stack admin-create-view" data-spa-param-show="type_id" data-spa-value="new" <?= $selectedTypeId === 'new' ? '' : 'hidden' ?>>
             <div class="panel-head">
                 <h3><?= e(t('admin.create_workout_type')) ?></h3>
-                <a class="btn btn-ghost" href="/?page=admin&section=workout_types" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+                <?php $renderAdminBack('/?page=admin&section=workout_types', t('admin.section_workout_types')); ?>
             </div>
             <form method="post" action="/?page=admin" class="mini-card editable-card">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -1174,7 +1236,7 @@ try {
             <div class="stack admin-detail-view" data-spa-param-show="type_id" data-spa-value="<?= (int) $type['id'] ?>" <?= $selectedTypeId === (string) ((int) $type['id']) ? '' : 'hidden' ?>>
                 <div class="panel-head">
                     <h3><?= e((string) $type['name']) ?></h3>
-                    <a class="btn btn-ghost" href="/?page=admin&section=workout_types" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+                    <?php $renderAdminBack('/?page=admin&section=workout_types', t('admin.section_workout_types')); ?>
                 </div>
                 <form method="post" action="/?page=admin" class="mini-card editable-card">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -1285,10 +1347,36 @@ try {
                 <h2><?= e(t('admin.section_training')) ?></h2>
                 <p class="muted admin-section-help"><?= e(t('admin.training_help')) ?></p>
             </div>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr; <?= e(t('common.back')) ?></a>
+            <?php $renderAdminBack('/?page=admin', t('nav.admin')); ?>
         </div>
 
         <div class="stack-lg admin-section-list admin-training-dashboard" data-spa-show-when-no-param="exercise_id" <?= $selectedTrainingExerciseId !== '' ? 'hidden' : '' ?>>
+            <section class="admin-training-block admin-training-feature" aria-labelledby="admin-media-search-title">
+                <div class="panel-head">
+                    <span>
+                        <strong id="admin-media-search-title"><?= e(t('admin.media_search_title')) ?></strong>
+                        <small><?= e(t('admin.media_search_hint')) ?></small>
+                    </span>
+                    <span class="badge"><?= e($mediaSearchEnabled ? t('common.active') : t('common.inactive')) ?></span>
+                </div>
+                <form method="post" action="/?page=admin&section=training" class="stack compact-form admin-media-search-form">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="save_media_search_settings">
+                    <input type="hidden" name="media_search_enabled" value="0">
+                    <div class="toggle-row">
+                        <label class="check standalone-check">
+                            <input type="checkbox" name="media_search_enabled" value="1" <?= $mediaSearchEnabled ? 'checked' : '' ?>>
+                            <span><strong><?= e(t('admin.media_search_enabled')) ?></strong><small><?= e(t('admin.media_search_enabled_hint')) ?></small></span>
+                        </label>
+                    </div>
+                    <div class="admin-media-search-providers" aria-label="<?= e(t('admin.media_search_providers')) ?>">
+                        <span class="<?= $mediaSearchGoogleReady ? 'is-ready' : 'is-missing' ?>"><b>G</b><?= e(t('workouts.media_search_google_provider')) ?><small><?= e($mediaSearchGoogleReady ? t('admin.media_search_configured') : t('admin.media_search_not_configured')) ?></small></span>
+                        <span class="<?= $mediaSearchYoutubeReady ? 'is-ready' : 'is-missing' ?>"><b aria-hidden="true">▶</b>YouTube<small><?= e($mediaSearchYoutubeReady ? t('admin.media_search_configured') : t('admin.media_search_not_configured')) ?></small></span>
+                    </div>
+                    <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+                </form>
+            </section>
+
             <details class="admin-training-block">
                 <summary>
                     <span><strong><?= e(t('admin.rank_tiers')) ?></strong><small><?= e(t('admin.rank_tiers_hint')) ?></small></span>
@@ -1401,7 +1489,7 @@ try {
         <div class="stack admin-create-view" data-spa-param-show="exercise_id" data-spa-value="new" <?= $selectedTrainingExerciseId === 'new' ? '' : 'hidden' ?>>
             <div class="panel-head">
                 <div><p class="eyebrow">Exercise library</p><h3>Create exercise</h3></div>
-                <a class="btn btn-ghost" href="/?page=admin&section=training" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr; <?= e(t('common.back')) ?></a>
+                <?php $renderAdminBack('/?page=admin&section=training', t('admin.section_training')); ?>
             </div>
             <?php
             $trainingExerciseFormItem = [];
@@ -1414,7 +1502,7 @@ try {
             <div class="stack admin-detail-view" data-spa-param-show="exercise_id" data-spa-value="<?= (int) ($exercise['id'] ?? 0) ?>" <?= $selectedTrainingExerciseId === (string) ((int) ($exercise['id'] ?? 0)) ? '' : 'hidden' ?>>
                 <div class="panel-head">
                     <div><p class="eyebrow">Exercise library</p><h3><?= e((string) ($exercise['name'] ?? '')) ?></h3></div>
-                    <a class="btn btn-ghost" href="/?page=admin&section=training" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr; <?= e(t('common.back')) ?></a>
+                    <?php $renderAdminBack('/?page=admin&section=training', t('admin.section_training')); ?>
                 </div>
                 <?php
                 $trainingExerciseFormItem = $exercise;
@@ -1435,7 +1523,7 @@ try {
             </div>
             <div class="inline-actions-mini">
                 <a class="btn btn-primary small" href="/?page=admin&section=achievements&achievement_id=new" data-spa-link><?= e(t('common.create')) ?></a>
-                <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+                <?php $renderAdminBack('/?page=admin', t('nav.admin')); ?>
             </div>
         </div>
 
@@ -1508,7 +1596,7 @@ try {
         <div class="stack admin-create-view" data-spa-param-show="achievement_id" data-spa-value="new" <?= $selectedAchievementId === 'new' ? '' : 'hidden' ?>>
             <div class="panel-head">
                 <h3><?= e(t('achievements.create')) ?></h3>
-                <a class="btn btn-ghost" href="/?page=admin&section=achievements" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+                <?php $renderAdminBack('/?page=admin&section=achievements', t('admin.section_achievements')); ?>
             </div>
             <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack compact-form" data-achievement-form>
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -1614,7 +1702,7 @@ try {
             <div class="stack admin-detail-view" data-spa-param-show="achievement_id" data-spa-value="<?= (int) $achievement['id'] ?>" <?= $selectedAchievementId === (string) ((int) $achievement['id']) ? '' : 'hidden' ?>>
                 <div class="panel-head">
                     <h3><?= e((string) $achievement['name']) ?></h3>
-                    <a class="btn btn-ghost" href="/?page=admin&section=achievements" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+                    <?php $renderAdminBack('/?page=admin&section=achievements', t('admin.section_achievements')); ?>
                 </div>
                 <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack compact-form" data-achievement-form>
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -1740,7 +1828,7 @@ try {
                 <h2><?= e(t('admin.motivational_quotes')) ?></h2>
                 <p class="muted admin-section-help"><?= e(t('admin.motivational_quotes_help')) ?></p>
             </div>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+            <?php $renderAdminBack('/?page=admin', t('nav.admin')); ?>
         </div>
 
         <?php
@@ -1818,7 +1906,7 @@ try {
                 <h2><?= e(t('admin.xp_title')) ?></h2>
                 <p class="muted admin-section-help"><?= e(t('admin.xp_help')) ?></p>
             </div>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+            <?php $renderAdminBack('/?page=admin', t('nav.admin')); ?>
         </div>
 
         <?php
@@ -1896,7 +1984,7 @@ try {
     <article class="panel settings-panel active" data-spa-section="audit">
         <div class="panel-head">
             <h2>Audit Log</h2>
-            <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
+            <?php $renderAdminBack('/?page=admin', t('nav.admin')); ?>
         </div>
 
         <form method="get" action="/" class="control-strip audit-filter">

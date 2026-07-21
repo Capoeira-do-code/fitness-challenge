@@ -72,7 +72,7 @@ foreach ($nutritionFields as $field => $meta) {
                 <h1 class="photo-post-title"><?= e(t('photo.title')) ?></h1>
             </div>
             <div class="photo-post-head-actions">
-                <a class="btn btn-ghost small photo-back-btn" href="<?= e($backUrl) ?>">&larr; <?= e(t('photo.back_to_entries')) ?></a>
+                <a class="hierarchy-back destination-back photo-back-btn" href="<?= e($backUrl) ?>" aria-label="<?= e(t('photo.back_to_entries')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.entries')) ?></strong></a>
                 <?php if ($photoCanDelete || $photoCanEdit): ?>
                     <?php
                     $photoDeleteFormId = 'photo-delete-form-page-' . $photoId;

@@ -283,7 +283,7 @@ $topbarControls = ob_get_clean();
                 <p class="eyebrow" data-day-sheet-count></p>
                 <h2 id="gallery-day-sheet-title" data-day-sheet-title></h2>
             </div>
-            <button type="button" class="app-drawer-close" data-app-modal-close aria-label="<?= e(t('common.back')) ?>">&times;</button>
+            <button type="button" class="app-drawer-close" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button>
         </div>
         <div class="gallery-day-sheet-grid" data-day-sheet-grid data-photos-label="<?= e(t('gallery.day_photos')) ?>"></div>
         <p class="muted gallery-day-sheet-empty" data-day-sheet-empty hidden><?= e(t('gallery.no_photos_day')) ?></p>

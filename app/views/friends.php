@@ -133,7 +133,7 @@ $fmtVal = static function (string $fmt, $v): string {
         <article class="panel friends-compare-panel">
             <div class="panel-head">
                 <h2><?= e(t('friends.compare_title')) ?></h2>
-                <a class="btn btn-ghost small" href="/?page=friends" data-spa-link><?= e(t('common.back')) ?></a>
+                <a class="hierarchy-back destination-back" href="/?page=friends" data-spa-link aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.friends')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.friends')) ?></strong></a>
             </div>
             <div class="friends-compare-head">
                 <a class="friends-compare-person user-profile-link" href="/?page=profile&amp;user_id=<?= (int) ($currentUser['id'] ?? 0) ?>">

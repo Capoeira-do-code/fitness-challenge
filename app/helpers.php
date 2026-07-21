@@ -10,6 +10,10 @@ function e(?string $value): string
 function redirect(string $url): never
 {
     header('Location: ' . $url);
+    header('Content-Length: 0');
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
     exit;
 }
 
@@ -21,6 +25,96 @@ function is_post(): bool
 function now_iso(): string
 {
     return (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+}
+
+/** Normalize an application origin/base URL and reject header-injection input. */
+function normalize_app_base_url(?string $url): string
+{
+    $value = rtrim(trim((string) $url), '/');
+    if ($value === '' || preg_match('/[\x00-\x20\x7f]/', $value) === 1) {
+        return '';
+    }
+    $parts = parse_url($value);
+    if (!is_array($parts) || !in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true)) {
+        return '';
+    }
+    if (isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) {
+        return '';
+    }
+    $scheme = strtolower((string) $parts['scheme']);
+    $host = strtolower(trim((string) ($parts['host'] ?? '')));
+    if ($host === '') {
+        return '';
+    }
+    $validHost = filter_var($host, FILTER_VALIDATE_IP) !== false
+        || preg_match('/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i', $host) === 1;
+    if (!$validHost) {
+        return '';
+    }
+    $port = isset($parts['port']) ? (int) $parts['port'] : null;
+    if ($port !== null && ($port < 1 || $port > 65535)) {
+        return '';
+    }
+    $hostForUrl = str_contains($host, ':') ? '[' . $host . ']' : $host;
+    $base = $scheme . '://' . $hostForUrl;
+    if ($port !== null && !(($scheme === 'https' && $port === 443) || ($scheme === 'http' && $port === 80))) {
+        $base .= ':' . $port;
+    }
+    $path = trim((string) ($parts['path'] ?? ''));
+    if ($path !== '' && $path !== '/') {
+        if (!str_starts_with($path, '/') || str_contains($path, '..')) {
+            return '';
+        }
+        $base .= rtrim($path, '/');
+    }
+
+    return $base;
+}
+
+/** Resolve the origin seen by the browser, including reverse-proxy/tunnel headers. */
+function request_app_base_url(): string
+{
+    $firstHeaderValue = static function (string $value): string {
+        return trim(explode(',', $value, 2)[0], " \t\n\r\0\x0B\"");
+    };
+
+    $forwardedHost = $firstHeaderValue((string) ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? ''));
+    $forwardedProto = strtolower($firstHeaderValue((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));
+    $forwardedPort = $firstHeaderValue((string) ($_SERVER['HTTP_X_FORWARDED_PORT'] ?? ''));
+
+    $forwarded = $firstHeaderValue((string) ($_SERVER['HTTP_FORWARDED'] ?? ''));
+    if ($forwarded !== '') {
+        if ($forwardedHost === '' && preg_match('/(?:^|;)\s*host=(?:"([^"]+)"|([^;]+))/i', $forwarded, $matches) === 1) {
+            $forwardedHost = trim((string) (($matches[1] ?? '') !== '' ? $matches[1] : ($matches[2] ?? '')));
+        }
+        if ($forwardedProto === '' && preg_match('/(?:^|;)\s*proto=(?:"([^"]+)"|([^;]+))/i', $forwarded, $matches) === 1) {
+            $forwardedProto = strtolower(trim((string) (($matches[1] ?? '') !== '' ? $matches[1] : ($matches[2] ?? ''))));
+        }
+    }
+
+    $host = $forwardedHost !== '' ? $forwardedHost : trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    $scheme = in_array($forwardedProto, ['http', 'https'], true)
+        ? $forwardedProto
+        : ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http');
+    if ($host === '') {
+        return '';
+    }
+    if ($forwardedHost !== '' && $forwardedPort !== '' && ctype_digit($forwardedPort) && !str_contains($host, ':')) {
+        $port = (int) $forwardedPort;
+        if (!(($scheme === 'https' && $port === 443) || ($scheme === 'http' && $port === 80))) {
+            $host .= ':' . $port;
+        }
+    }
+
+    return normalize_app_base_url($scheme . '://' . $host);
+}
+
+function app_base_url_is_loopback(?string $url): bool
+{
+    $normalized = normalize_app_base_url($url);
+    $host = strtolower((string) (parse_url($normalized, PHP_URL_HOST) ?? ''));
+
+    return $host === '' || $host === 'localhost' || $host === '::1' || $host === '0.0.0.0' || str_starts_with($host, '127.');
 }
 
 function to_date(?string $date, ?string $fallback = null): string
@@ -37,6 +131,24 @@ function to_date(?string $date, ?string $fallback = null): string
     }
 
     return (new DateTimeImmutable('now'))->format('Y-m-d');
+}
+
+/** Parse user-facing European dates while still accepting ISO values from older forms. */
+function date_input_to_iso(?string $date): ?string
+{
+    $value = trim((string) $date);
+    if ($value === '') {
+        return null;
+    }
+    foreach (['!d/m/Y', '!Y-m-d'] as $format) {
+        $parsed = DateTimeImmutable::createFromFormat($format, $value);
+        $errors = DateTimeImmutable::getLastErrors();
+        if ($parsed !== false && ($errors === false || ((int) ($errors['warning_count'] ?? 0) === 0 && (int) ($errors['error_count'] ?? 0) === 0))) {
+            return $parsed->format('Y-m-d');
+        }
+    }
+
+    return null;
 }
 
 function week_to_monday(?string $week, ?string $fallback = null): string
@@ -774,9 +886,30 @@ function csrf_verify(): bool
 
 function json_response(array $data, int $status = 200): never
 {
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if (!is_string($json)) {
+        $json = '{"ok":false,"error":"encoding_failed"}';
+        $status = 500;
+    }
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    header('Vary: Accept-Encoding');
+    $acceptEncoding = strtolower((string) ($_SERVER['HTTP_ACCEPT_ENCODING'] ?? ''));
+    $zlibOutputEnabled = filter_var(ini_get('zlib.output_compression'), FILTER_VALIDATE_BOOLEAN);
+    if (!$zlibOutputEnabled && function_exists('gzencode') && strlen($json) >= 1024 && str_contains($acceptEncoding, 'gzip')) {
+        $compressed = gzencode($json, 6);
+        if (is_string($compressed)) {
+            $json = $compressed;
+            header('Content-Encoding: gzip');
+        }
+    }
+    header('Content-Length: ' . strlen($json));
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+    if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'HEAD') {
+        echo $json;
+    }
     exit;
 }
 
@@ -843,9 +976,9 @@ function render_kebab_menu(array $items, array $opts = []): string
         return '<button class="' . e($itemClass) . '" role="menuitem" type="' . e($type) . '"' . $attrParts . '>' . $content . '</button>';
     };
 
-    $renderHeader = static function (string $title, bool $withBack) use ($backLabel, $closeLabel): string {
+    $renderHeader = static function (string $title, bool $withBack) use ($backLabel, $closeLabel, $panelTitle): string {
         $leading = $withBack
-            ? '<button class="kebab-menu-sheet-back" type="button" data-menu-back aria-label="' . e($backLabel) . '"><span aria-hidden="true">&larr;</span></button>'
+            ? '<button class="kebab-menu-sheet-back menu-destination-back" type="button" data-menu-back aria-label="' . e($backLabel . ': ' . $panelTitle) . '"><span aria-hidden="true">&larr;</span><strong>' . e($panelTitle) . '</strong></button>'
             : '<span class="kebab-menu-sheet-spacer" aria-hidden="true"></span>';
 
         return '<div class="kebab-menu-sheet-head" role="presentation">'
@@ -1036,10 +1169,12 @@ function activity_icon_svg(string $name): string
         'bolt' => '<path d="m13 2-9 12h7l-1 8 9-12h-7z"/>',
         'flame' => '<path d="M12 22c4 0 7-2.8 7-7 0-3-1.7-5.7-5-8.5.2 2-1 3.3-2 4.1C11.7 7.8 10 5 7.7 3 8 7 5 9.3 5 14.8 5 19 8 22 12 22Z"/><path d="M9.5 18.5c-1.2-2 .1-3.7 2.5-5.8-.1 1.8.8 2.7 1.5 3.5.7.8.5 1.8 0 2.5"/>',
         'run' => '<circle cx="15" cy="4" r="2"/><path d="m13 8-3 4 4 2 2 6M10 12l-4-2M14 14l4-4 3 2M9 20l3-4"/>',
+        'footsteps' => '<ellipse cx="8" cy="6.5" rx="2.8" ry="4.2" transform="rotate(-18 8 6.5)"/><circle cx="5.8" cy="13" r="1.7"/><ellipse cx="16" cy="17.5" rx="2.8" ry="4.2" transform="rotate(-18 16 17.5)"/><circle cx="18.2" cy="11" r="1.7"/>',
         'cycle' => '<circle cx="6" cy="17" r="4"/><circle cx="18" cy="17" r="4"/><path d="m6 17 4-8h4l4 8M9 12h7M10 9 8 6h3"/>',
         'shield' => '<path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6z"/><path d="m9 12 2 2 4-5"/>',
         'sliders' => '<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="18" r="2"/>',
         'search' => '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
+        'star' => '<path d="m12 2.8 2.85 5.78 6.38.93-4.62 4.5 1.09 6.36L12 17.37l-5.7 3 1.09-6.36-4.62-4.5 6.38-.93Z"/>',
         'plus' => '<path d="M12 5v14M5 12h14"/>',
         'grid' => '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
         'list' => '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="5" cy="6" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="5" cy="18" r="1"/>',

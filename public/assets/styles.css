@@ -902,7 +902,8 @@ img.settings-avatar-preview {
     top: calc(100% + 0.5rem);
     z-index: 190;
     display: grid;
-    min-width: 210px;
+    width: min(256px, calc(100vw - 20px));
+    min-width: 0;
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: #fff;
@@ -945,18 +946,19 @@ img.settings-avatar-preview {
     background: var(--surface-2);
 }
 
-.user-menu-view { display: grid; min-width: 0; }
+.user-menu-view { display: grid; min-width: 0; gap: 2px; }
 .user-menu-view[hidden] { display: none !important; }
+.user-menu-panel .user-menu-link,
 .user-menu-nav-button {
-    display: flex;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.6rem;
+    gap: 0.52rem;
     width: 100%;
-    min-height: 44px;
-    padding: 0.7rem 0.8rem;
+    min-height: 40px;
+    padding: 0.48rem 0.56rem;
     border: 0;
-    border-radius: 14px;
+    border-radius: 11px;
     color: inherit;
     background: transparent;
     font: inherit;
@@ -964,6 +966,20 @@ img.settings-avatar-preview {
     text-align: left;
     cursor: pointer;
 }
+.user-menu-item-icon {
+    display: grid;
+    width: 28px;
+    height: 28px;
+    place-items: center;
+    border-radius: 9px;
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.user-menu-item-icon svg { width: 16px; height: 16px; }
+.user-menu-panel .user-menu-link > span:nth-child(2),
+.user-menu-nav-button > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-menu-panel .user-menu-logout { margin-top: 3px; color: #b42318; border-top: 1px solid var(--line); }
+.user-menu-panel .user-menu-logout .user-menu-item-icon { color: #b42318; background: color-mix(in srgb, #ef4444 10%, transparent); }
 .user-menu-nav-button:hover,
 .user-menu-nav-button:focus-visible { background: var(--surface-2); }
 .user-menu-nav-button > span:last-child { color: var(--muted); font-size: 1.25rem; line-height: 1; }
@@ -993,6 +1009,25 @@ img.settings-avatar-preview {
 }
 .user-menu-subhead button:hover,
 .user-menu-subhead button:focus-visible { color: var(--ink); background: var(--surface-2); }
+.user-menu-subhead:has(> .menu-destination-back) { grid-template-columns: auto minmax(0, 1fr) 38px; }
+.user-menu-subhead button.menu-destination-back {
+    display: inline-flex;
+    width: auto;
+    max-width: 92px;
+    min-width: 38px;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding-inline: 8px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+}
+.user-menu-subhead button.menu-destination-back > strong {
+    overflow: hidden;
+    font-size: 0.64rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 .theme-toggle-icon {
     display: inline-flex;
@@ -4759,10 +4794,10 @@ a.mini-card-link:focus-visible {
 .user-menu-level {
     display: flex;
     align-items: center;
-    gap: 0.55rem;
-    padding: 0.55rem 0.6rem;
-    margin-bottom: 0.25rem;
-    border-radius: 10px;
+    gap: 0.48rem;
+    padding: 0.48rem 0.52rem;
+    margin-bottom: 0.16rem;
+    border-radius: 12px;
     background: var(--surface-2, rgba(148, 163, 184, 0.1));
     text-decoration: none;
 }
@@ -4775,7 +4810,7 @@ a.mini-card-link:focus-visible {
 }
 
 .user-menu-xp-bar {
-    height: 6px;
+    height: 5px;
     border-radius: 999px;
     background: rgba(148, 163, 184, 0.28);
     overflow: hidden;
@@ -4789,11 +4824,18 @@ a.mini-card-link:focus-visible {
 }
 
 .user-menu-xp-text {
-    font-size: 0.72rem;
+    font-size: 0.63rem;
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.user-menu-level .profile-level-badge {
+    flex: 0 0 auto;
+    padding: 0.24rem 0.48rem;
+    font-size: 0.66rem;
+    box-shadow: 0 4px 10px rgba(217, 119, 6, 0.2);
 }
 
 /* User level + XP */
@@ -11749,14 +11791,14 @@ body[data-theme="dark"] .flash-success {
 }
 
 .user-menu-panel {
-    padding: 0.45rem;
-    border-radius: 22px;
+    padding: 0.36rem;
+    border-radius: 18px;
 }
 
 .user-menu-panel a {
     border-bottom: 0;
-    border-radius: 14px;
-    padding: 0.72rem 0.82rem;
+    border-radius: 11px;
+    padding: 0.48rem 0.56rem;
 }
 
 .user-menu-panel a:hover,
@@ -11765,8 +11807,8 @@ body[data-theme="dark"] .flash-success {
 }
 
 .user-menu-panel .user-menu-theme-toggle {
-    border-radius: 14px;
-    padding: 0.72rem 0.82rem;
+    border-radius: 11px;
+    padding: 0.52rem 0.58rem;
 }
 
 .user-menu-panel .user-menu-theme-toggle:hover,
@@ -16492,6 +16534,7 @@ body[data-theme="dark"] .login-variant .remember-me-check {
     padding: 0.1rem 0.15rem 0.35rem;
     border-bottom: 1px solid var(--line);
 }
+.kebab-menu-sheet-head:has(> .menu-destination-back) { grid-template-columns: auto minmax(0, 1fr) 36px; }
 .kebab-menu-sheet-head strong {
     min-width: 0;
     overflow: hidden;
@@ -16521,6 +16564,24 @@ body[data-theme="dark"] .login-variant .remember-me-check {
 .kebab-menu-sheet-back:focus-visible,
 .kebab-menu-sheet-close:hover,
 .kebab-menu-sheet-close:focus-visible { color: var(--ink); background: color-mix(in srgb, var(--primary) 10%, transparent); }
+.kebab-menu-sheet-back.menu-destination-back {
+    display: inline-flex;
+    width: auto;
+    max-width: 104px;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding-inline: 8px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+}
+.kebab-menu-sheet-back.menu-destination-back > strong {
+    overflow: hidden;
+    font-size: 0.62rem;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 @keyframes kebabMenuIn {
     from { opacity: 0; transform: translateY(-4px); }
@@ -19488,22 +19549,19 @@ body.layout-edit-active .dashboard-layout > [data-dashboard-widget][hidden] {
     }
 }
 
-/* Below ~400px the words do not fit next to the kebab. Keep the control (and its
-   44px target), drop only the label - the kebab must never be pushed off-screen. */
+/* Keep the destination visible on narrow photo headers; the label is part of the
+   navigation contract and the pill truncates safely if space is genuinely tight. */
 @media (max-width: 400px) {
     .photo-back-btn {
-        min-width: 44px;
-        min-height: 40px;
-        display: inline-grid;
-        place-items: center;
-        font-size: 0;
-        padding: 0.3rem;
+        display: inline-flex;
+        width: auto;
+        max-width: 96px;
+        min-height: 44px;
+        padding-inline: 0.55rem;
+        font-size: inherit;
     }
 
-    .photo-back-btn::before {
-        content: "\2190";
-        font-size: 1.05rem;
-    }
+    .photo-back-btn::before { content: none; }
 }
 
 /* The legacy mobile edit-mode rule hides every .screen child except three named
@@ -21093,21 +21151,27 @@ body.theme-active-dark .brand-mark {
 .workouts-routine-custom-color input[type="color"]::-moz-color-swatch { border: 0; border-radius: 7px; }
 .workouts-routine-custom-color input[type="color"]:focus-visible { outline: 2px solid var(--workout-accent, var(--routine-accent, var(--primary))); outline-offset: 2px; }
 .workouts-routine-custom-color output { min-width: 64px; color: color-mix(in srgb, var(--workout-accent, var(--routine-accent, var(--primary))) 40%, var(--ink)); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.68rem; font-weight: 850; text-align: right; }
+/* Identity (symbol + color picker) gets its own indigo accent, independent of
+   --exercise-accent. It edits that very variable, so styling its chrome with
+   the exercise's current color made it visually indistinguishable from the
+   live preview card sitting right above it. Only the swatch itself (which is
+   meant to preview the chosen mark/color) still uses --exercise-accent. */
 .workouts-custom-color-details {
+    --identity-accent: #6366f1;
     overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--exercise-accent, var(--primary)) 28%, var(--line));
+    border: 1px solid color-mix(in srgb, var(--identity-accent) 26%, var(--line));
     border-radius: 15px;
-    background: color-mix(in srgb, var(--exercise-accent, var(--primary)) 4%, var(--surface));
+    background: color-mix(in srgb, var(--identity-accent) 4%, var(--surface));
 }
 .workouts-custom-color-details > summary { display: grid; grid-template-columns: 38px minmax(0, 1fr) 24px; align-items: center; gap: 0.65rem; min-height: 60px; padding: 0.55rem 0.7rem; cursor: pointer; list-style: none; }
 .workouts-custom-color-details > summary::-webkit-details-marker { display: none; }
 .workouts-custom-color-details > summary > span:nth-child(2) { display: grid; min-width: 0; gap: 0.08rem; }
 .workouts-custom-color-details > summary strong { color: var(--ink); font-size: 0.78rem; }
 .workouts-custom-color-details > summary small { overflow: hidden; color: var(--muted); font-size: 0.67rem; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
-.workouts-custom-color-details > summary > b { color: var(--muted); font-size: 1.2rem; text-align: center; transition: transform 160ms ease; }
+.workouts-custom-color-details > summary > b { color: var(--identity-accent); font-size: 1.2rem; text-align: center; transition: transform 160ms ease; }
 .workouts-custom-color-details[open] > summary > b { transform: rotate(45deg); }
 .workouts-custom-color-swatch { display: grid; width: 38px; height: 38px; place-items: center; border: 1px solid color-mix(in srgb, var(--exercise-accent, var(--primary)) 55%, var(--line)); border-radius: 12px; color: #fff; background: var(--exercise-accent, var(--primary)); box-shadow: inset 0 0 0 4px color-mix(in srgb, var(--surface) 25%, transparent); font-size: 1.05rem; line-height: 1; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.28); }
-.workouts-custom-color-details-body { display: grid; gap: 0.8rem; padding: 0.65rem 0.7rem 0.7rem; border-top: 1px solid color-mix(in srgb, var(--exercise-accent, var(--primary)) 18%, var(--line)); }
+.workouts-custom-color-details-body { display: grid; gap: 0.8rem; padding: 0.65rem 0.7rem 0.7rem; border-top: 1px solid color-mix(in srgb, var(--identity-accent) 16%, var(--line)); }
 .workouts-custom-defaults { overflow: hidden; border: 1px solid color-mix(in srgb, var(--exercise-accent, var(--primary)) 24%, var(--line)); border-radius: 15px; background: color-mix(in srgb, var(--exercise-accent, var(--primary)) 3%, var(--surface)); }
 .workouts-custom-defaults > summary { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto 24px; align-items: center; gap: 0.55rem; min-height: 66px; padding: 0.55rem 0.65rem; cursor: pointer; list-style: none; }
 .workouts-custom-defaults > summary::-webkit-details-marker { display: none; }
@@ -21391,8 +21455,11 @@ body.theme-active-dark .brand-mark {
 .workouts-muscle-filters a:hover,
 .workouts-muscle-filters a[aria-current="page"] { color: var(--ink); border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, var(--surface)); }
 .workouts-library-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
-.workouts-library-card { position: relative; display: grid; grid-template-rows: auto 1fr auto auto; gap: 0.72rem; min-width: 0; overflow: hidden; padding: 0.85rem; border: 1px solid color-mix(in srgb, var(--exercise-accent, var(--primary)) 24%, var(--line)); border-radius: 18px; background: linear-gradient(150deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--exercise-accent, var(--primary)) 5%, var(--surface))); box-shadow: 0 10px 25px rgba(8, 18, 30, 0.07); }
-.workouts-library-card::before { content: ""; position: absolute; z-index: 1; inset: 0 auto 0 0; width: 3px; background: var(--exercise-accent, var(--primary)); }
+.workouts-library-card { position: relative; display: grid; grid-template-rows: auto 1fr auto auto; gap: 0.72rem; min-width: 0; overflow: hidden; padding: 0.85rem; border: 1px solid color-mix(in srgb, var(--exercise-accent, var(--primary)) 24%, var(--line)); border-radius: 18px; background: linear-gradient(150deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--exercise-accent, var(--primary)) 6%, var(--surface))); box-shadow: 0 10px 25px rgba(8, 18, 30, 0.07); transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
+.workouts-library-card::before { content: ""; position: absolute; z-index: 1; inset: 0 auto 0 0; width: 4px; background: var(--exercise-accent, var(--primary)); }
+.workouts-library-card:hover { border-color: color-mix(in srgb, var(--exercise-accent, var(--primary)) 46%, var(--line)); box-shadow: 0 14px 32px rgba(8, 18, 30, 0.11); }
+@media (hover: hover) { .workouts-library-card:hover { transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .workouts-library-card { transition: none; } .workouts-library-card:hover { transform: none; } }
 .workouts-library-media {
     display: block;
     width: 100%;
@@ -21410,40 +21477,49 @@ body.theme-active-dark .brand-mark {
 .workouts-library-copy h3 { margin: 0; font-size: 1rem; }
 .workouts-library-copy h3 a { color: inherit; text-decoration: none; }
 .workouts-library-copy p { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.78rem; line-height: 1.45; }
-.workouts-library-grid.is-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; }
+/* Desktop list view: one true row per exercise, not a denser card grid. The
+   accent color moves to a left rail (like the mobile compact row) so the two
+   layouts share a mental model instead of "list" just meaning "smaller cards". */
+.workouts-library-grid.is-compact { grid-template-columns: minmax(0, 1fr); gap: 0.5rem; }
 .workouts-library-grid.is-compact .workouts-library-card {
-    grid-template-columns: 82px minmax(0, 1fr) auto;
-    grid-template-rows: auto auto auto;
+    grid-template-columns: 68px minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
     grid-template-areas:
         "media copy status"
-        "media tags status"
-        "foot foot foot";
-    gap: 0.42rem 0.65rem;
-    padding: 0.65rem;
-    border-radius: 15px;
+        "media tags foot";
+    align-items: center;
+    gap: 0.22rem 0.85rem;
+    padding: 0.6rem 0.9rem 0.6rem 0.75rem;
+    border-width: 1px 1px 1px 4px;
+    border-left-color: var(--exercise-accent, var(--primary));
+    border-radius: 13px;
     background: var(--surface);
-    box-shadow: none;
+    box-shadow: 0 1px 2px rgba(8, 18, 30, 0.04);
 }
-.workouts-library-grid.is-compact .workouts-library-media { grid-area: media; width: 82px; height: 82px; border-radius: 12px; }
-.workouts-library-grid.is-compact .workouts-library-media-badges { top: 0.3rem; right: 0.3rem; align-items: flex-end; flex-direction: column; gap: 0.15rem; }
-.workouts-library-grid.is-compact .workouts-library-media-badges em { min-height: 21px; padding: 0.18rem 0.3rem; font-size: 0.54rem; }
-.workouts-library-grid.is-compact .workouts-library-media.is-placeholder > span:not(.workouts-library-media-badges) { width: 38px; height: 38px; border-radius: 11px; font-size: 0.82rem; }
-.workouts-library-grid.is-compact .workouts-library-media.is-placeholder > small { max-width: 68px; overflow: hidden; font-size: 0.57rem; text-overflow: ellipsis; white-space: nowrap; }
-.workouts-library-grid.is-compact .workouts-library-play { width: 34px; height: 34px; font-size: 0.75rem; }
+.workouts-library-grid.is-compact .workouts-library-card::before { display: none; }
+.workouts-library-grid.is-compact .workouts-library-card:hover {
+    border-color: color-mix(in srgb, var(--exercise-accent, var(--primary)) 46%, var(--line));
+    box-shadow: 0 6px 16px rgba(8, 18, 30, 0.08);
+}
+.workouts-library-grid.is-compact .workouts-library-media { grid-area: media; width: 68px; height: 68px; border-radius: 12px; }
+.workouts-library-grid.is-compact .workouts-library-media-badges { top: 0.22rem; right: 0.22rem; align-items: flex-end; flex-direction: column; gap: 0.12rem; }
+.workouts-library-grid.is-compact .workouts-library-media-badges em { min-height: 18px; padding: 0.1rem 0.26rem; font-size: 0.5rem; }
+.workouts-library-grid.is-compact .workouts-library-media.is-placeholder > span:not(.workouts-library-media-badges) { width: 32px; height: 32px; border-radius: 10px; font-size: 0.72rem; }
+.workouts-library-grid.is-compact .workouts-library-media.is-placeholder > small { display: none; }
+.workouts-library-grid.is-compact .workouts-library-play { width: 28px; height: 28px; font-size: 0.65rem; }
 .workouts-library-grid.is-compact .workouts-library-card-head { grid-area: status; align-self: start; }
 .workouts-library-grid.is-compact .workouts-library-card-head > .workouts-muscle-token { display: none; }
-.workouts-library-grid.is-compact .workouts-library-card-status { align-items: flex-end; flex-direction: column; }
-.workouts-library-grid.is-compact .workouts-library-copy { grid-area: copy; align-self: end; }
-.workouts-library-grid.is-compact .workouts-library-copy h3 { font-size: 0.92rem; line-height: 1.2; }
-.workouts-library-grid.is-compact .workouts-library-copy p { display: -webkit-box; margin-top: 0.18rem; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; font-size: 0.7rem; line-height: 1.3; }
-.workouts-library-grid.is-compact .workouts-exercise-tags { grid-area: tags; align-self: start; flex-wrap: nowrap; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
-.workouts-library-grid.is-compact .workouts-exercise-tags::-webkit-scrollbar { display: none; }
-.workouts-library-grid.is-compact .workouts-exercise-tags span { flex: 0 0 auto; }
-.workouts-library-grid.is-compact .workouts-library-card-foot { grid-area: foot; align-items: center; flex-flow: row wrap; padding-top: 0.42rem; border-top: 1px solid color-mix(in srgb, var(--line) 78%, transparent); }
+.workouts-library-grid.is-compact .workouts-library-card-status { align-items: flex-end; flex-direction: row; gap: 0.55rem; }
+.workouts-library-grid.is-compact .workouts-library-rank-meta { align-items: end; }
+.workouts-library-grid.is-compact .workouts-library-copy { grid-area: copy; align-self: end; min-width: 0; }
+.workouts-library-grid.is-compact .workouts-library-copy h3 { overflow: hidden; font-size: 0.9rem; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.workouts-library-grid.is-compact .workouts-library-copy p { display: none; }
+.workouts-library-grid.is-compact .workouts-exercise-tags { grid-area: tags; align-self: start; flex-wrap: wrap; min-width: 0; }
+.workouts-library-grid.is-compact .workouts-library-card-foot { grid-area: foot; align-items: center; flex-flow: row wrap; justify-content: flex-end; padding-top: 0; border-top: 0; }
 .workouts-library-grid.is-compact .workouts-library-card-foot > * { min-width: 0; }
 .workouts-library-grid.is-compact .workouts-library-card-foot .inline-actions { display: flex; flex: 0 1 auto; gap: 0.35rem; }
-.workouts-library-grid.is-compact .workouts-library-add { flex: 1 1 150px; }
-.workouts-library-grid.is-compact .workouts-library-add select { width: 100%; }
+.workouts-library-grid.is-compact .workouts-library-add { flex: 0 0 auto; }
+.workouts-library-grid.is-compact .workouts-library-add select { width: auto; min-width: 120px; }
 .workouts-muscle-token,
 .workouts-rank-position { display: grid; place-items: center; flex: 0 0 auto; width: 38px; height: 38px; border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--line)); border-radius: 12px; color: var(--primary); background: color-mix(in srgb, var(--primary) 11%, transparent); font-size: 0.7rem; font-weight: 900; }
 .workouts-rank-position { font-size: 1rem; }
@@ -21851,6 +21927,14 @@ body.theme-active-dark .brand-mark {
 .workouts-guide-builder-empty { margin: 0; padding: 0.65rem; border: 1px dashed color-mix(in srgb, var(--guide-accent) 25%, var(--line)); border-radius: 12px; color: var(--muted); font-size: 0.72rem; text-align: center; }
 .workouts-guide-builder-add { width: max-content; min-height: 44px; color: var(--guide-accent); }
 .workouts-custom-media-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+/* Media step, grouped: "Appearance" (identity + cover) is a distinct decision
+   from "Photos and video" (what actually gets uploaded). A small eyebrow
+   label over each group replaces one long undifferentiated stack of
+   disclosure widgets with two legible sub-sections. */
+.workouts-custom-media-group { display: grid; gap: 0.55rem; }
+.workouts-custom-media-group + .workouts-custom-media-group { padding-top: 0.35rem; border-top: 1px dashed var(--line); }
+.workouts-custom-media-group-label { display: grid; gap: 0.1rem; margin: 0 0 -0.1rem; padding-inline: 0.1rem; color: var(--ink); font-size: 0.68rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.04em; }
+.workouts-custom-media-group-label span { color: var(--muted); font-size: 0.68rem; font-weight: 620; text-transform: none; letter-spacing: normal; }
 .workouts-custom-media-menus { display: grid; gap: 0.55rem; }
 .workouts-custom-media-details { --media-accent: var(--exercise-accent, var(--primary)); overflow: hidden; border: 1px solid color-mix(in srgb, var(--media-accent) 22%, var(--line)); border-radius: 15px; background: color-mix(in srgb, var(--media-accent) 3%, var(--surface)); }
 .workouts-custom-media-details[data-workout-video-details] { --media-accent: #8b5cf6; }
@@ -23391,6 +23475,49 @@ body.theme-active-dark .dashboard-training-progress-grid > span {
     font-size: 1.1rem;
     cursor: pointer;
 }
+.hierarchy-back.destination-back {
+    display: inline-flex;
+    width: auto;
+    min-width: 44px;
+    max-width: 148px;
+    height: auto;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 11px;
+    border-radius: 999px;
+    color: var(--muted);
+    text-decoration: none;
+}
+.hierarchy-back.destination-back:hover,
+.hierarchy-back.destination-back:focus-visible {
+    color: var(--ink);
+    border-color: color-mix(in srgb, var(--primary) 38%, var(--line));
+    background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+}
+.hierarchy-back.destination-back > span { flex: 0 0 auto; font-size: 1rem; line-height: 1; }
+.hierarchy-back.destination-back > strong {
+    overflow: hidden;
+    font-size: 0.68rem;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.hierarchy-page-header:has(> .destination-back) { grid-template-columns: auto minmax(0, 1fr); }
+.contextual-route-back .hierarchy-back.destination-back { width: auto; min-height: 44px; }
+
+@media (max-width: 390px) {
+    .hierarchy-back.destination-back { max-width: 92px; padding-inline: 9px; gap: 6px; }
+    .hierarchy-page-header:has(> .destination-back) { gap: 8px; }
+    .hierarchy-page-header:has(> .destination-back) h1 {
+        display: -webkit-box;
+        overflow: hidden;
+        white-space: normal;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+    }
+}
 .profile-section-header {
     display: grid !important;
     grid-template-columns: 44px minmax(0, 1fr) auto;
@@ -23998,6 +24125,9 @@ body.theme-active-dark .dashboard-training-progress-grid > span {
     .mobile-quick-head > div small { color: var(--muted); font-size: 0.68rem; }
     .mobile-quick-head > strong { text-align: center; }
     .mobile-quick-head button { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 13px; color: var(--ink); background: transparent; font-size: 1.15rem; cursor: pointer; }
+    .mobile-quick-head:has(> .menu-destination-back) { grid-template-columns: auto minmax(0, 1fr) 44px; gap: 5px; }
+    .mobile-quick-head button.menu-destination-back { display: inline-flex; width: auto; max-width: 112px; align-items: center; justify-content: center; gap: 5px; padding-inline: 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); }
+    .mobile-quick-head button.menu-destination-back > strong { overflow: hidden; font-size: 0.62rem; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
     .mobile-quick-nav,
     .mobile-quick-action { display: grid; align-items: center; gap: 10px; min-height: 60px; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--item-tone, var(--ink)) 18%, var(--line)); border-radius: 15px; color: var(--ink); background: color-mix(in srgb, var(--item-tone, var(--ink)) 5%, var(--surface)); font: inherit; text-align: left; text-decoration: none; cursor: pointer; transition: border-color 160ms ease, background 160ms ease, transform 120ms ease, box-shadow 160ms ease; }
     .mobile-quick-nav { grid-template-columns: 42px minmax(0, 1fr) 28px; }
@@ -24041,6 +24171,17 @@ body.theme-active-dark .dashboard-training-progress-grid > span {
         transform: translateX(-50%) !important;
         overscroll-behavior: contain;
     }
+    .topbar .user-menu[open] .user-menu-panel {
+        top: calc(58px + env(safe-area-inset-top)) !important;
+        left: auto !important;
+        right: max(10px, env(safe-area-inset-right)) !important;
+        width: min(252px, calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right))) !important;
+        max-height: calc(100dvh - 138px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+        gap: 2px !important;
+        padding: 6px !important;
+        border-radius: 17px !important;
+        transform: none !important;
+    }
     .topbar .user-menu-panel > .user-menu-view {
         display: grid;
         grid-template-columns: minmax(0, 1fr);
@@ -24048,12 +24189,12 @@ body.theme-active-dark .dashboard-training-progress-grid > span {
     }
     .topbar .user-menu-panel :where(a, .user-menu-theme-toggle, .user-menu-nav-button) {
         width: 100%;
-        min-height: 48px;
-        padding: 9px 12px;
-        border-radius: 13px;
+        min-height: 42px;
+        padding: 6px 8px;
+        border-radius: 11px;
         text-align: left;
     }
-    .topbar .user-menu-panel .user-menu-level { min-height: 58px; }
+    .topbar .user-menu-panel .user-menu-level { min-height: 52px; }
     .topbar-context-panel :where(form, label, select, .btn) { width: 100%; min-width: 0; }
     .topbar-context-panel :where(form, label) { display: grid; gap: 6px; }
     .topbar-context-panel :where(select, .btn) { min-height: 44px; }
@@ -24315,6 +24456,26 @@ body.theme-active-dark :where(.hierarchy-page-header .hierarchy-back, .hierarchy
     background: var(--dark-ui-surface, var(--surface));
 }
 
+/* The fixed topbar follows reading direction: down hides, up reveals. */
+.topbar {
+    transform: translate3d(0, 0, 0);
+    will-change: transform;
+    transition: transform 210ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease;
+}
+body.topbar-scroll-hidden .topbar {
+    pointer-events: none;
+    transform: translate3d(0, calc(-100% - 2px), 0);
+    box-shadow: none;
+}
+body.topbar-scroll-hidden:is(.app-scroll-locked, .layout-edit-active) .topbar {
+    pointer-events: auto;
+    transform: translate3d(0, 0, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .topbar { transition: none; }
+}
+
 /* Admin / Training: dense management tools with progressive disclosure. */
 .admin-training-dashboard {
     max-width: 1120px;
@@ -24351,6 +24512,21 @@ details.admin-training-block[open] > summary { border-bottom: 1px solid var(--li
 .admin-training-block > form,
 .admin-training-block > .admin-season-manager { padding: 1rem; }
 .settings-panel .admin-rank-tier-form { width: 100%; max-width: none; }
+
+.admin-training-feature > .panel-head { cursor: default; border-bottom: 1px solid var(--line); }
+.admin-training-feature > .panel-head > span:first-child { display: grid; gap: 0.12rem; min-width: 0; }
+.admin-training-feature > .panel-head small { color: var(--muted); font-weight: 500; }
+.admin-media-search-form { width: 100%; max-width: none; }
+.admin-media-search-form .standalone-check > span { display: grid; min-width: 0; gap: 0.14rem; }
+.admin-media-search-form .standalone-check small { color: var(--muted); font-weight: 500; line-height: 1.4; }
+.admin-media-search-providers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; }
+.admin-media-search-providers > span { display: grid; min-width: 0; grid-template-columns: 34px minmax(0, 1fr); grid-template-rows: auto auto; align-items: center; gap: 0.05rem 0.55rem; padding: 0.6rem; border: 1px solid var(--line); border-radius: 13px; font-size: 0.72rem; font-weight: 800; }
+.admin-media-search-providers > span > b { grid-row: 1 / 3; display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; color: #fff; background: #64748b; }
+.admin-media-search-providers > span:first-child > b { background: linear-gradient(145deg, #4285f4, #2563eb); }
+.admin-media-search-providers > span:nth-child(2) > b { padding-left: 2px; background: linear-gradient(145deg, #ff1744, #dc002c); font-size: 0.62rem; }
+.admin-media-search-providers small { overflow: hidden; color: var(--muted); font-size: 0.61rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.admin-media-search-providers .is-ready small { color: var(--success, #15803d); }
+.admin-media-search-providers .is-missing { border-style: dashed; }
 
 .admin-rank-tier-list {
     display: grid;
@@ -24474,6 +24650,7 @@ details.admin-training-block[open] > summary { border-bottom: 1px solid var(--li
     .admin-rank-tier-row .check { align-self: end; min-height: 44px; }
     .admin-training-core-fields { grid-template-columns: 1fr; }
     .admin-training-toggle-fields { grid-template-columns: 1fr; }
+    .admin-media-search-providers { grid-template-columns: 1fr; }
     .admin-training-exercise-list { max-height: none; overflow: visible; }
     .admin-training-exercise-row { grid-template-columns: 40px minmax(0, 1fr) auto; }
     .admin-training-exercise-row > img,
@@ -28418,6 +28595,12 @@ body[data-page="competitions"] .contextual-route-back .hierarchy-back {
     height: 44px;
     border-radius: 13px;
     box-shadow: none;
+}
+body[data-page="competitions"] .contextual-route-back .hierarchy-back.destination-back {
+    width: auto;
+    max-width: 104px;
+    height: auto;
+    border-radius: 999px;
 }
 
 body[data-page="competitions"] .competitions-screen > .app-page-hero {

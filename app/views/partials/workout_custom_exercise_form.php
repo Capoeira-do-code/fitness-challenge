@@ -43,10 +43,11 @@ $customDraftKey = implode(':', [
     'session-' . $customTargetSessionId,
 ]);
 $customDraftRevision = trim((string) ($customExercise['updated_at'] ?? ''));
+$customMediaSearchEnabled = !empty($wkMediaSearchEnabled);
 ?>
 
 <header class="hierarchy-page-header workouts-custom-header">
-    <button class="hierarchy-back" type="button" data-hierarchy-back data-fallback="<?= e($customReturnUrl) ?>" aria-label="<?= e(t('common.back')) ?>">&larr;</button>
+    <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="<?= e($customReturnUrl) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e(t('workouts.tab_library')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('workouts.tab_library')) ?></strong></button>
     <div>
         <p class="eyebrow"><?= e(t('workouts.my_exercises')) ?></p>
         <h1><?= e($customExerciseIsNew ? t('workouts.create_custom') : t('workouts.edit_custom')) ?></h1>
@@ -70,7 +71,7 @@ $customDraftRevision = trim((string) ($customExercise['updated_at'] ?? ''));
     </nav>
 
     <aside
-        class="workouts-custom-draft"
+        class="workouts-custom-draft is-dismissed"
         data-workout-draft-status
         data-state="ready"
         data-ready-label="<?= e(t('workouts.draft_ready')) ?>"
@@ -127,58 +128,72 @@ $customDraftRevision = trim((string) ($customExercise['updated_at'] ?? ''));
         $workoutLivePreviewId = 'custom-exercise-preview-' . ($customExerciseId > 0 ? $customExerciseId : 'new');
         require __DIR__ . '/workout_exercise_live_preview.php';
         ?>
-        <details class="workouts-custom-color-details" style="--exercise-accent: <?= e($customAccentColor) ?>; --workout-accent: <?= e($customAccentColor) ?>">
-            <summary><span class="workouts-custom-color-swatch" aria-hidden="true"><span data-workout-mark-preview><?= e($customVisualMark) ?></span></span><span><strong><?= e(t('workouts.exercise_identity')) ?></strong><small><?= e(t('workouts.exercise_identity_hint')) ?></small></span><b aria-hidden="true">+</b></summary>
-            <div class="workouts-custom-color-details-body">
-                <fieldset class="workouts-exercise-mark-picker" data-workout-mark-picker>
-                    <legend><?= e(t('workouts.exercise_symbol')) ?></legend>
-                    <p><?= e(t('workouts.exercise_symbol_hint')) ?></p>
-                    <div class="workouts-exercise-mark-options" aria-label="<?= e(t('workouts.exercise_symbol')) ?>">
-                        <?php foreach ($customMarkOptions as $markKey => $markValue): ?><label title="<?= e(t('workouts.mark_' . $markKey)) ?>"><input type="radio" name="visual_mark_preset" value="<?= e($markValue) ?>" data-workout-mark-preset<?= $customVisualMark === $markValue ? ' checked' : '' ?>><span aria-hidden="true"><?= e($markValue) ?></span><span class="sr-only"><?= e(t('workouts.mark_' . $markKey)) ?></span></label><?php endforeach; ?>
-                    </div>
-                    <label class="workouts-exercise-custom-mark"><span><strong><?= e(t('workouts.custom_symbol')) ?></strong><small><?= e(t('workouts.custom_symbol_hint')) ?></small></span><input type="text" name="visual_mark" value="<?= e($customVisualMark) ?>" maxlength="12" inputmode="text" autocomplete="off" data-workout-mark-input aria-label="<?= e(t('workouts.custom_symbol')) ?>"></label>
-                </fieldset>
-                <fieldset class="workouts-exercise-color-picker" data-workout-color-picker data-workout-color-property="--exercise-accent" style="--workout-accent: <?= e($customAccentColor) ?>">
-                    <legend><?= e(t('workouts.exercise_color')) ?></legend>
-                    <div class="workouts-routine-color-options" aria-label="<?= e(t('workouts.exercise_color')) ?>">
-                        <?php foreach ($customColorOptions as $colorKey => $colorValue): ?><label title="<?= e(t('workouts.color_' . $colorKey)) ?>"><input type="radio" name="accent_color_preset" value="<?= e($colorValue) ?>" data-workout-color-preset<?= $customAccentColor === $colorValue ? ' checked' : '' ?>><span style="--swatch: <?= e($colorValue) ?>"><span class="sr-only"><?= e(t('workouts.color_' . $colorKey)) ?></span></span></label><?php endforeach; ?>
-                    </div>
-                    <label class="workouts-routine-custom-color"><span><strong><?= e(t('workouts.custom_color')) ?></strong><small><?= e(t('workouts.custom_color_hint')) ?></small></span><span class="workouts-routine-custom-color-control"><input type="color" name="accent_color" value="<?= e($customAccentColor) ?>" data-workout-color-input aria-label="<?= e(t('workouts.custom_color')) ?>"><output data-workout-color-output><?= e(strtoupper($customAccentColor)) ?></output></span></label>
-                </fieldset>
-            </div>
-        </details>
-        <fieldset class="workouts-custom-cover-picker" data-workout-cover-picker>
-            <legend><?= e(t('workouts.custom_cover')) ?></legend>
-            <p><?= e(t('workouts.custom_cover_hint')) ?></p>
-            <div>
-                <?php foreach ([
-                    'auto' => ['spark', t('workouts.cover_auto')],
-                    'photo' => ['image', t('workouts.cover_photo')],
-                    'video' => ['play', t('workouts.cover_video')],
-                    'simple' => ['simple', t('workouts.cover_simple')],
-                ] as $coverMode => [$coverIcon, $coverLabel]): ?>
-                    <label><input type="radio" name="cover_mode" value="<?= e($coverMode) ?>"<?= $customCoverMode === $coverMode ? ' checked' : '' ?>><span><?php if ($coverIcon === 'play'): ?><b aria-hidden="true">&#9654;</b><?php elseif ($coverIcon === 'simple'): ?><b aria-hidden="true">AB</b><?php else: ?><?= activity_icon_svg($coverIcon) ?><?php endif; ?><strong><?= e($coverLabel) ?></strong></span></label>
-                <?php endforeach; ?>
-            </div>
-        </fieldset>
-        <div class="workouts-custom-media-menus">
-            <?php
-            $workoutGalleryExercise = $customExercise;
-            $workoutGalleryItems = (array) ($wkCustomExerciseMedia ?? []);
-            $workoutGalleryId = 'custom-exercise-gallery-' . ($customExerciseId > 0 ? $customExerciseId : 'new');
-            require __DIR__ . '/workout_exercise_gallery_editor.php';
-            ?>
-            <details class="workouts-custom-media-details<?= $customVideoUrl !== '' ? ' has-media' : '' ?>" data-workout-video-details>
-                <summary><span aria-hidden="true"><b class="workouts-custom-media-play">&#9654;</b></span><span><strong><?= e(t('workouts.video_panel')) ?></strong><small><?= e(t('workouts.video_panel_hint')) ?></small></span><em data-workout-video-status data-empty-label="<?= e(t('workouts.no_video')) ?>" data-ready-label="<?= e(t('workouts.video_added')) ?>" aria-live="polite"><?= e($customVideoUrl !== '' ? t('workouts.video_added') : t('workouts.no_video')) ?></em><b aria-hidden="true">+</b></summary>
-                <div class="workouts-custom-media-details-body">
-                    <div class="workouts-custom-media-control">
-                        <label><?= e(t('workouts.custom_video')) ?><input type="url" name="video_url" value="<?= e($customVideoUrl) ?>" placeholder="https://www.youtube.com/watch?v=..." inputmode="url" data-workout-video-input></label>
-                        <small><?= e(t('workouts.custom_video_hint')) ?></small>
-                        <button class="btn btn-ghost small" type="button" data-workout-clear-video><?= e(t('common.clear')) ?></button>
-                    </div>
-                    <div class="workouts-custom-video-preview" data-workout-video-preview data-empty-label="<?= e(t('workouts.video_preview')) ?>"></div>
+        <div class="workouts-custom-media-group">
+            <p class="workouts-custom-media-group-label"><?= e(t('workouts.media_group_appearance')) ?><span><?= e(t('workouts.media_group_appearance_hint')) ?></span></p>
+            <details class="workouts-custom-color-details" style="--exercise-accent: <?= e($customAccentColor) ?>; --workout-accent: <?= e($customAccentColor) ?>">
+                <summary><span class="workouts-custom-color-swatch" aria-hidden="true"><span data-workout-mark-preview><?= e($customVisualMark) ?></span></span><span><strong><?= e(t('workouts.exercise_identity')) ?></strong><small><?= e(t('workouts.exercise_identity_hint')) ?></small></span><b aria-hidden="true">+</b></summary>
+                <div class="workouts-custom-color-details-body">
+                    <fieldset class="workouts-exercise-mark-picker" data-workout-mark-picker>
+                        <legend><?= e(t('workouts.exercise_symbol')) ?></legend>
+                        <p><?= e(t('workouts.exercise_symbol_hint')) ?></p>
+                        <div class="workouts-exercise-mark-options" aria-label="<?= e(t('workouts.exercise_symbol')) ?>">
+                            <?php foreach ($customMarkOptions as $markKey => $markValue): ?><label title="<?= e(t('workouts.mark_' . $markKey)) ?>"><input type="radio" name="visual_mark_preset" value="<?= e($markValue) ?>" data-workout-mark-preset<?= $customVisualMark === $markValue ? ' checked' : '' ?>><span aria-hidden="true"><?= e($markValue) ?></span><span class="sr-only"><?= e(t('workouts.mark_' . $markKey)) ?></span></label><?php endforeach; ?>
+                        </div>
+                        <label class="workouts-exercise-custom-mark"><span><strong><?= e(t('workouts.custom_symbol')) ?></strong><small><?= e(t('workouts.custom_symbol_hint')) ?></small></span><input type="text" name="visual_mark" value="<?= e($customVisualMark) ?>" maxlength="12" inputmode="text" autocomplete="off" data-workout-mark-input aria-label="<?= e(t('workouts.custom_symbol')) ?>"></label>
+                    </fieldset>
+                    <fieldset class="workouts-exercise-color-picker" data-workout-color-picker data-workout-color-property="--exercise-accent" style="--workout-accent: <?= e($customAccentColor) ?>">
+                        <legend><?= e(t('workouts.exercise_color')) ?></legend>
+                        <div class="workouts-routine-color-options" aria-label="<?= e(t('workouts.exercise_color')) ?>">
+                            <?php foreach ($customColorOptions as $colorKey => $colorValue): ?><label title="<?= e(t('workouts.color_' . $colorKey)) ?>"><input type="radio" name="accent_color_preset" value="<?= e($colorValue) ?>" data-workout-color-preset<?= $customAccentColor === $colorValue ? ' checked' : '' ?>><span style="--swatch: <?= e($colorValue) ?>"><span class="sr-only"><?= e(t('workouts.color_' . $colorKey)) ?></span></span></label><?php endforeach; ?>
+                        </div>
+                        <label class="workouts-routine-custom-color"><span><strong><?= e(t('workouts.custom_color')) ?></strong><small><?= e(t('workouts.custom_color_hint')) ?></small></span><span class="workouts-routine-custom-color-control"><input type="color" name="accent_color" value="<?= e($customAccentColor) ?>" data-workout-color-input aria-label="<?= e(t('workouts.custom_color')) ?>"><output data-workout-color-output><?= e(strtoupper($customAccentColor)) ?></output></span></label>
+                    </fieldset>
                 </div>
             </details>
+            <fieldset class="workouts-custom-cover-picker" data-workout-cover-picker>
+                <legend><?= e(t('workouts.custom_cover')) ?></legend>
+                <p><?= e(t('workouts.custom_cover_hint')) ?></p>
+                <div>
+                    <?php foreach ([
+                        'auto' => ['spark', t('workouts.cover_auto')],
+                        'photo' => ['image', t('workouts.cover_photo')],
+                        'video' => ['play', t('workouts.cover_video')],
+                        'simple' => ['simple', t('workouts.cover_simple')],
+                    ] as $coverMode => [$coverIcon, $coverLabel]): ?>
+                        <label><input type="radio" name="cover_mode" value="<?= e($coverMode) ?>"<?= $customCoverMode === $coverMode ? ' checked' : '' ?>><span><?php if ($coverIcon === 'play'): ?><b aria-hidden="true">&#9654;</b><?php elseif ($coverIcon === 'simple'): ?><b aria-hidden="true">AB</b><?php else: ?><?= activity_icon_svg($coverIcon) ?><?php endif; ?><strong><?= e($coverLabel) ?></strong></span></label>
+                    <?php endforeach; ?>
+                </div>
+            </fieldset>
+        </div>
+        <div class="workouts-custom-media-group">
+            <p class="workouts-custom-media-group-label"><?= e(t('workouts.media_group_library')) ?><span><?= e(t('workouts.media_group_library_hint')) ?></span></p>
+            <div class="workouts-custom-media-menus">
+                <?php
+                $workoutGalleryExercise = $customExercise;
+                $workoutGalleryItems = (array) ($wkCustomExerciseMedia ?? []);
+                $workoutGalleryId = 'custom-exercise-gallery-' . ($customExerciseId > 0 ? $customExerciseId : 'new');
+                $workoutGalleryMediaSearch = $customMediaSearchEnabled;
+                require __DIR__ . '/workout_exercise_gallery_editor.php';
+                ?>
+                <details class="workouts-custom-media-details<?= $customVideoUrl !== '' ? ' has-media' : '' ?>" data-workout-video-details>
+                    <summary><span aria-hidden="true"><b class="workouts-custom-media-play">&#9654;</b></span><span><strong><?= e(t('workouts.video_panel')) ?></strong><small><?= e(t('workouts.video_panel_hint')) ?></small></span><em data-workout-video-status data-empty-label="<?= e(t('workouts.no_video')) ?>" data-ready-label="<?= e(t('workouts.video_added')) ?>" aria-live="polite"><?= e($customVideoUrl !== '' ? t('workouts.video_added') : t('workouts.no_video')) ?></em><b aria-hidden="true">+</b></summary>
+                    <div class="workouts-custom-media-details-body">
+                        <?php if ($customMediaSearchEnabled): ?>
+                        <?php
+                        $workoutMediaSearchType = 'video';
+                        $workoutMediaSearchId = 'custom-exercise-video-' . ($customExerciseId > 0 ? $customExerciseId : 'new');
+                        require __DIR__ . '/workout_media_search.php';
+                        ?>
+                        <?php endif; ?>
+                        <div class="workouts-custom-media-control">
+                            <label><?= e(t('workouts.custom_video')) ?><input type="url" name="video_url" value="<?= e($customVideoUrl) ?>" placeholder="https://www.youtube.com/watch?v=..." inputmode="url" data-workout-video-input></label>
+                            <small><?= e(t('workouts.custom_video_hint')) ?></small>
+                            <button class="btn btn-ghost small" type="button" data-workout-clear-video><?= e(t('common.clear')) ?></button>
+                        </div>
+                        <div class="workouts-custom-video-preview" data-workout-video-preview data-empty-label="<?= e(t('workouts.video_preview')) ?>"></div>
+                    </div>
+                </details>
+            </div>
         </div>
     </section>
 

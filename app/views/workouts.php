@@ -171,6 +171,14 @@ $libraryUrl = static function (array $changes = []) use ($filters, $targetRoutin
 $customExerciseUrl = $libraryUrl(['custom_exercise' => 'new', 'library_page' => null]);
 $hasLibrarySearch = trim((string) ($filters['q'] ?? '')) !== '';
 $hasActiveLibraryFilters = trim((string) ($filters['muscle'] ?? '')) !== '' || trim((string) ($filters['equipment'] ?? '')) !== '';
+$hasAnyLibraryFilter = $hasLibrarySearch || $hasActiveLibraryFilters;
+$libraryResultTotal = max(0, (int) ($wkLibraryTotal ?? count($libraryExercises)));
+$libraryClearUrl = $libraryUrl([
+    'q' => null,
+    'muscle' => null,
+    'equipment' => null,
+    'library_page' => null,
+]);
 ?>
 <section class="screen stack-lg workouts-screen">
     <?php if ($wkView !== 'custom_exercise'): ?>
@@ -193,7 +201,14 @@ $hasActiveLibraryFilters = trim((string) ($filters['muscle'] ?? '')) !== '' || t
                         : ($wkView === 'routine_exercise' && !empty($wkRoutine)
                             ? '/?page=workouts&routine_id=' . (int) $wkRoutine['id']
                             : ($wkView === 'custom_exercise' ? $workoutLibraryReturnUrl : '/?page=workouts')))); ?>
-            <a class="btn btn-ghost small" href="<?= e($workoutBack) ?>">← <?= e(t('common.back')) ?></a>
+            <?php $workoutBackDestination = $wkView === 'exercise' || $wkView === 'custom_exercise'
+                ? t('workouts.tab_library')
+                : ($wkView === 'routine_exercise' || ($wkView === 'routine' && in_array($routineSection, ['settings', 'organize'], true))
+                    ? (string) (($wkRoutine['name'] ?? '') !== '' ? $wkRoutine['name'] : t('workouts.my_routines'))
+                    : ($wkView === 'session' && $sessionSection === 'organize'
+                        ? (string) (($wkSession['title'] ?? '') !== '' ? $wkSession['title'] : t('workouts.session'))
+                        : ($wkView === 'routine' ? t('workouts.tab_plan') : t('workouts.title')))); ?>
+            <a class="hierarchy-back destination-back" href="<?= e($workoutBack) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e($workoutBackDestination) ?>"><span aria-hidden="true">&larr;</span><strong><?= e($workoutBackDestination) ?></strong></a>
         <?php endif; ?>
     </div>
     <?php endif; ?>
@@ -209,7 +224,7 @@ $hasActiveLibraryFilters = trim((string) ($filters['muscle'] ?? '')) !== '' || t
             </nav>
         <?php else: ?>
             <header class="workouts-mobile-subheader hierarchy-page-header<?= $wkView === 'library' ? ' is-library' : '' ?>">
-                <button class="hierarchy-back" type="button" data-hierarchy-back data-fallback="/?page=workouts" aria-label="<?= e(t('common.back')) ?>">&larr;</button>
+                <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="/?page=workouts" aria-label="<?= e(t('common.back')) ?>: <?= e(t('workouts.title')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('workouts.title')) ?></strong></button>
                 <div><p class="eyebrow"><?= e(t('workouts.title')) ?></p><h1><?= e($tabView === 'stats' ? t('workouts.stats') : t('workouts.tab_' . $tabView)) ?></h1></div>
                 <?php if ($wkView === 'library'): ?>
                     <?php $libraryToolbarVariant = 'mobile'; require __DIR__ . '/partials/workout_library_toolbar.php'; ?>
@@ -598,9 +613,9 @@ $hasActiveLibraryFilters = trim((string) ($filters['muscle'] ?? '')) !== '' || t
     <?php if ($libraryMode !== 'organize'): ?>
     <article class="panel workouts-library-head">
         <nav class="workouts-library-scope-tabs" aria-label="<?= e(t('workouts.library_scope')) ?>">
-            <a href="<?= e($libraryUrl(['scope' => null, 'library_page' => null])) ?>"<?= $libraryScope === '' ? ' aria-current="page"' : '' ?>><span><?= e(t('workouts.all_exercises')) ?></span><strong><?= count($exercises) ?></strong></a>
-            <a href="<?= e($libraryUrl(['scope' => 'favorites', 'library_page' => null])) ?>"<?= $libraryScope === 'favorites' ? ' aria-current="page"' : '' ?>><span><?= e(t('workouts.favorites')) ?></span><strong><?= $favoriteExerciseCount ?></strong></a>
-            <a href="<?= e($libraryUrl(['scope' => 'mine', 'library_page' => null])) ?>"<?= $libraryScope === 'mine' ? ' aria-current="page"' : '' ?>><span><?= e(t('workouts.my_exercises')) ?></span><strong><?= $personalExerciseCount ?></strong></a>
+            <a href="<?= e($libraryUrl(['scope' => null, 'library_page' => null])) ?>"<?= $libraryScope === '' ? ' aria-current="page"' : '' ?>><span class="workouts-library-scope-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span><span class="workouts-library-scope-label"><?= e(t('workouts.all_exercises')) ?></span><strong><?= count($exercises) ?></strong></a>
+            <a href="<?= e($libraryUrl(['scope' => 'favorites', 'library_page' => null])) ?>"<?= $libraryScope === 'favorites' ? ' aria-current="page"' : '' ?>><span class="workouts-library-scope-icon" aria-hidden="true"><?= activity_icon_svg('star') ?></span><span class="workouts-library-scope-label"><?= e(t('workouts.favorites')) ?></span><strong><?= $favoriteExerciseCount ?></strong></a>
+            <a href="<?= e($libraryUrl(['scope' => 'mine', 'library_page' => null])) ?>"<?= $libraryScope === 'mine' ? ' aria-current="page"' : '' ?>><span class="workouts-library-scope-icon" aria-hidden="true"><?= activity_icon_svg('user') ?></span><span class="workouts-library-scope-label"><?= e(t('workouts.my_exercises')) ?></span><strong><?= $personalExerciseCount ?></strong></a>
         </nav>
         <form method="get" action="/" id="workouts-library-search" class="workouts-library-mobile-search workouts-library-quick-search<?= $hasLibrarySearch ? ' is-open' : '' ?>" data-workout-search-panel aria-hidden="<?= $hasLibrarySearch ? 'false' : 'true' ?>">
             <input type="hidden" name="page" value="workouts"><input type="hidden" name="view" value="library">
@@ -612,9 +627,21 @@ $hasActiveLibraryFilters = trim((string) ($filters['muscle'] ?? '')) !== '' || t
             <label><span class="sr-only"><?= e(t('workouts.search_exercises')) ?></span><input type="search" name="q" value="<?= e((string) ($filters['q'] ?? '')) ?>" placeholder="<?= e(t('workouts.search_exercises')) ?>"></label>
             <button class="btn btn-primary btn-icon" type="submit" aria-label="<?= e(t('workouts.search_exercises')) ?>">&#128269;</button>
         </form>
+        <div class="workouts-library-results" aria-live="polite">
+            <span class="workouts-library-results-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
+            <div>
+                <strong><?= e(t('workouts.library_results', ['count' => $libraryResultTotal])) ?></strong>
+                <?php if ($hasAnyLibraryFilter): ?>
+                    <small><?php if ($hasLibrarySearch): ?><span>&ldquo;<?= e(trim((string) $filters['q'])) ?>&rdquo;</span><?php endif; ?><?php if ((string) ($filters['muscle'] ?? '') !== ''): ?><span><?= e($muscleLabel((string) $filters['muscle'])) ?></span><?php endif; ?><?php if ((string) ($filters['equipment'] ?? '') !== ''): ?><span><?= e($equipmentLabel((string) $filters['equipment'])) ?></span><?php endif; ?></small>
+                <?php else: ?>
+                    <small><?= e(t('workouts.library_subtitle')) ?></small>
+                <?php endif; ?>
+            </div>
+            <?php if ($hasAnyLibraryFilter): ?><a href="<?= e($libraryClearUrl) ?>"><?= e(t('common.clear')) ?><span aria-hidden="true">&times;</span></a><?php endif; ?>
+        </div>
     </article>
     <div class="workouts-filter-sheet" id="workouts-library-filters" data-workout-filter-panel aria-hidden="true">
-        <div class="workouts-filter-sheet-head"><strong><?= e(t('common.filter')) ?></strong><button type="button" data-workout-filter-close aria-label="<?= e(t('common.back')) ?>">&times;</button></div>
+        <div class="workouts-filter-sheet-head"><div><strong><?= e(t('common.filter')) ?></strong><small><?= e(t('workouts.library_results', ['count' => $libraryResultTotal])) ?></small></div><?php if ($hasAnyLibraryFilter): ?><a href="<?= e($libraryClearUrl) ?>"><?= e(t('common.clear')) ?></a><?php endif; ?><button type="button" data-workout-filter-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button></div>
         <form method="get" action="/" class="workouts-library-filters">
             <input type="hidden" name="page" value="workouts">
             <input type="hidden" name="view" value="library">
@@ -719,25 +746,22 @@ $hasActiveLibraryFilters = trim((string) ($filters['muscle'] ?? '')) !== '' || t
                         <a class="workouts-library-media is-placeholder" href="<?= e($exerciseGuideUrl) ?>" aria-label="<?= e((string) ($exercise['display_name'] ?? $exercise['name'])) ?>"><span><?= e($workoutExerciseMark((array) $exercise)) ?></span><small><?= e($hasExerciseVideo ? t('workouts.video_available') : $muscleLabel((string) ($exercise['muscle_group'] ?? ''))) ?></small><span class="workouts-library-media-badges"><?php if ($isPersonalExercise): ?><em><?= e(t('workouts.mine')) ?></em><?php endif; ?><?php if ($hasExerciseVideo): ?><em aria-label="<?= e(t('workouts.custom_video')) ?>">&#9654;</em><?php endif; ?></span></a>
                     <?php endif; ?>
                     <div class="workouts-library-card-head">
-                        <span class="workouts-muscle-token" aria-hidden="true"><?= e(strtoupper(substr((string) ($exercise['muscle_group'] ?? 'X'), 0, 2))) ?></span>
-                        <div class="workouts-library-card-status">
-                            <form method="post" action="/?page=workouts" class="workouts-favorite-form">
+                        <form method="post" action="/?page=workouts" class="workouts-favorite-form">
                                 <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>"><input type="hidden" name="action" value="exercise_favorite"><input type="hidden" name="exercise_id" value="<?= (int) $exercise['id'] ?>"><input type="hidden" name="value" value="<?= $isFavoriteExercise ? 0 : 1 ?>">
                                 <input type="hidden" name="muscle" value="<?= e((string) ($filters['muscle'] ?? '')) ?>"><input type="hidden" name="equipment" value="<?= e((string) ($filters['equipment'] ?? '')) ?>"><input type="hidden" name="q" value="<?= e((string) ($filters['q'] ?? '')) ?>"><input type="hidden" name="scope" value="<?= e($libraryScope) ?>"><input type="hidden" name="library_page" value="<?= (int) ($wkLibraryPage ?? 1) ?>">
                                 <?php if ($targetRoutineId > 0): ?><input type="hidden" name="target_routine_id" value="<?= $targetRoutineId ?>"><?php endif; ?>
                                 <?php if ($targetSessionId > 0): ?><input type="hidden" name="target_session_id" value="<?= $targetSessionId ?>"><?php endif; ?>
                                 <button class="workouts-favorite-toggle<?= $isFavoriteExercise ? ' is-active' : '' ?>" type="submit" aria-pressed="<?= $isFavoriteExercise ? 'true' : 'false' ?>" aria-label="<?= e($isFavoriteExercise ? t('workouts.remove_favorite') : t('workouts.add_favorite')) ?>"><?= $isFavoriteExercise ? '&#9733;' : '&#9734;' ?></button>
-                            </form>
-                            <?php $libraryRankProgress = $rankProgressData($rank); ?>
-                            <span class="workouts-library-rank-meta" data-rank="<?= e($rankKey) ?>">
-                                <span class="workouts-rank-badge" data-rank="<?= e($rankKey) ?>"><?= e($rankLabel($rankKey)) ?></span>
-                                <small><?= e(t('workouts.rank_points_short', ['points' => number_format((float) $libraryRankProgress['score'], 1, '.', '')])) ?></small>
-                            </span>
-                        </div>
+                        </form>
                     </div>
                     <div class="workouts-library-copy">
-                        <h3><a href="<?= e($exerciseGuideUrl) ?>"><?= e((string) ($exercise['display_name'] ?? $exercise['name'])) ?></a></h3>
+                        <h3><a class="workouts-library-name-link" href="<?= e($exerciseGuideUrl) ?>"><?= e((string) ($exercise['display_name'] ?? $exercise['name'])) ?></a></h3>
                         <p><?= e((string) ($content['summary'] ?? '')) ?></p>
+                    </div>
+                    <?php $libraryRankProgress = $rankProgressData($rank); ?>
+                    <div class="workouts-library-card-meta">
+                        <span class="workouts-rank-badge" data-rank="<?= e($rankKey) ?>"><?= e($rankLabel($rankKey)) ?></span>
+                        <small><?= e(t('workouts.rank_points_short', ['points' => number_format((float) $libraryRankProgress['score'], 1, '.', '')])) ?></small>
                     </div>
                     <div class="workouts-exercise-tags"><span><?= e($muscleLabel((string) ($exercise['muscle_group'] ?? ''))) ?></span><span><?= e($equipmentLabel((string) ($exercise['equipment'] ?? ''))) ?></span><span><?= e($difficultyLabel((string) ($exercise['difficulty'] ?? 'beginner'))) ?></span><?php if ($isPersonalExercise): ?><span class="workouts-training-default-chip" title="<?= e(t('workouts.training_defaults')) ?>"><?= e($libraryTrainingLabel) ?></span><?php endif; ?></div>
                     <div class="workouts-library-card-foot">
@@ -1161,7 +1185,7 @@ $hasActiveLibraryFilters = trim((string) ($filters['muscle'] ?? '')) !== '' || t
             </div>
             <?php if ($organizerExercises === []): ?>
                 <div class="workouts-routine-empty"><span aria-hidden="true">+</span><div><strong><?= e(t('workouts.no_exercises')) ?></strong><small><?= e(t('workouts.add_exercises_hint')) ?></small></div></div>
-                <div class="workouts-routine-organizer-actions"><a class="btn btn-ghost" href="/?page=workouts&routine_id=<?= $rid ?>"><?= e(t('common.back')) ?></a><a class="btn btn-primary" href="/?page=workouts&view=library&target_routine_id=<?= $rid ?>"><?= e(t('workouts.add_exercises')) ?></a></div>
+                <div class="workouts-routine-organizer-actions"><a class="hierarchy-back destination-back" href="/?page=workouts&routine_id=<?= $rid ?>" aria-label="<?= e(t('common.back')) ?>: <?= e((string) $r['name']) ?>"><span aria-hidden="true">&larr;</span><strong><?= e((string) $r['name']) ?></strong></a><a class="btn btn-primary" href="/?page=workouts&view=library&target_routine_id=<?= $rid ?>"><?= e(t('workouts.add_exercises')) ?></a></div>
             <?php else: ?>
                 <form method="post" action="/?page=workouts" data-exercise-organizer data-routine-exercise-organizer>
                     <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
@@ -1308,7 +1332,7 @@ $hasActiveLibraryFilters = trim((string) ($filters['muscle'] ?? '')) !== '' || t
             </div>
             <?php if ($sessionExercises === []): ?>
                 <div class="workouts-routine-empty"><span aria-hidden="true">+</span><div><strong><?= e(t('workouts.no_exercises')) ?></strong><small><?= e(t('workouts.add_from_library_hint')) ?></small></div></div>
-                <div class="workouts-routine-organizer-actions"><a class="btn btn-ghost" href="/?page=workouts&session_id=<?= $sid ?>"><?= e(t('common.back')) ?></a><a class="btn btn-primary" href="/?page=workouts&view=library&target_session_id=<?= $sid ?>"><?= e(t('workouts.add_exercise')) ?></a></div>
+                <div class="workouts-routine-organizer-actions"><a class="hierarchy-back destination-back" href="/?page=workouts&session_id=<?= $sid ?>" aria-label="<?= e(t('common.back')) ?>: <?= e((string) (($s['title'] ?? '') !== '' ? $s['title'] : t('workouts.session'))) ?>"><span aria-hidden="true">&larr;</span><strong><?= e((string) (($s['title'] ?? '') !== '' ? $s['title'] : t('workouts.session'))) ?></strong></a><a class="btn btn-primary" href="/?page=workouts&view=library&target_session_id=<?= $sid ?>"><?= e(t('workouts.add_exercise')) ?></a></div>
             <?php else: ?>
                 <form method="post" action="/?page=workouts" data-exercise-organizer data-session-exercise-organizer>
                     <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
@@ -1654,7 +1678,7 @@ $hasActiveLibraryFilters = trim((string) ($filters['muscle'] ?? '')) !== '' || t
     <div class="app-modal-card workouts-routine-modal-card">
         <div class="app-modal-head">
             <div><p class="eyebrow"><?= e(t('workouts.tab_plan')) ?></p><h2 id="wk-new-routine-title"><?= e(t('workouts.new_routine')) ?></h2></div>
-            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.back')) ?>">&times;</button>
+            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button>
         </div>
         <form method="post" action="/?page=workouts" enctype="multipart/form-data" class="stack" data-workout-media-editor>
             <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">

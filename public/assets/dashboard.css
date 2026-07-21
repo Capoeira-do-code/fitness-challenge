@@ -1,0 +1,33 @@
+.dashboard-setup-reminder {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+    order: -2;
+    padding: 14px;
+    border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--line));
+    border-radius: 19px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 9%, var(--surface)), color-mix(in srgb, #3b82f6 5%, var(--surface)));
+    box-shadow: 0 12px 30px color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.dashboard-setup-reminder-icon { display: grid; width: 52px; height: 52px; place-items: center; border-radius: 17px; color: #fff; background: linear-gradient(145deg, var(--primary), #2563eb); box-shadow: 0 8px 20px color-mix(in srgb, var(--primary) 24%, transparent); }
+.dashboard-setup-reminder-icon svg { width: 25px; height: 25px; }
+.dashboard-setup-reminder-copy { display: grid; min-width: 0; gap: 3px; }
+.dashboard-setup-reminder-copy :is(p, h2) { margin: 0; }
+.dashboard-setup-reminder-copy h2 { font-size: 1rem; }
+.dashboard-setup-reminder-copy p:last-child { color: var(--muted); font-size: 0.7rem; line-height: 1.4; }
+.dashboard-setup-reminder-actions { display: flex; align-items: center; gap: 7px; }
+.dashboard-setup-reminder-actions .btn { min-height: 44px; white-space: nowrap; }
+
+@media (max-width: 700px) {
+    .dashboard-setup-reminder { grid-template-columns: 44px minmax(0, 1fr); gap: 10px; margin-bottom: 2px; padding: 11px; border-radius: 17px; }
+    .dashboard-setup-reminder-icon { width: 44px; height: 44px; border-radius: 14px; }
+    .dashboard-setup-reminder-copy h2 { font-size: 0.88rem; }
+    .dashboard-setup-reminder-copy p:last-child { font-size: 0.64rem; }
+    .dashboard-setup-reminder-actions { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); }
+    .dashboard-setup-reminder-actions :is(form, .btn) { width: 100%; }
+}
+
+@media (max-width: 360px) {
+    .dashboard-setup-reminder-actions { grid-template-columns: minmax(0, 1fr); }
+}

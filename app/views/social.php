@@ -55,7 +55,7 @@ $row = static function (string $href, string $icon, string $title, string $descr
 <section class="screen hierarchy-screen social-hub-screen">
     <header class="hierarchy-page-header<?= $section === '' ? ' hierarchy-page-header-root' : '' ?>">
         <?php if ($section !== ''): ?>
-            <button class="hierarchy-back" type="button" data-hierarchy-back data-fallback="/?page=social" aria-label="<?= e(t('common.back')) ?>">&larr;</button>
+            <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="/?page=social" aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.social')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.social')) ?></strong></button>
         <?php endif; ?>
         <div>
             <p class="eyebrow"><?= e($section === '' ? t('social_hub.eyebrow') : t('social_hub.title')) ?></p>

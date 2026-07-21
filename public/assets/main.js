@@ -282,6 +282,32 @@
         }, true);
     };
 
+    const initEntryNativePickers = () => {
+        document.querySelectorAll('[data-entry-picker-control]').forEach((control) => {
+            if (!(control instanceof HTMLInputElement) || control.dataset.entryPickerReady === '1') {
+                return;
+            }
+            control.dataset.entryPickerReady = '1';
+            const display = control.parentElement?.querySelector('[data-entry-picker-value]');
+            const displayValue = () => {
+                const rawValue = String(control.value || '');
+                if (control.dataset.entryPickerFormat !== 'date-eu') {
+                    return rawValue;
+                }
+                const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(rawValue);
+                return match ? `${match[3]}/${match[2]}/${match[1]}` : rawValue;
+            };
+            const syncDisplay = () => {
+                if (display instanceof HTMLElement) {
+                    display.textContent = displayValue();
+                }
+            };
+            control.addEventListener('input', syncDisplay);
+            control.addEventListener('change', syncDisplay);
+            syncDisplay();
+        });
+    };
+
     // The entry form used to be wired up once, at script load. After an in-page
     // (pjax) navigation to ?page=entries the form is a brand new DOM node, so none
     // of these listeners existed - which is why "Add workout" did nothing when you
@@ -296,8 +322,13 @@
         const stepsInput = entryForm.querySelector('[name="steps"]');
         const kmInput = entryForm.querySelector('[name="distance_km"]');
         const missingReason = entryForm.querySelector('[data-reason="missing"]');
+        const missingReasonInput = entryForm.querySelector('[name="missing_reason"]');
         const missingReasonLabel = entryForm.querySelector('[data-missing-reason-label]');
         const missingReasonItems = entryForm.querySelector('[data-missing-reason-items]');
+        const penaltiesEnabled = entryForm.dataset.penaltiesEnabled === '1';
+        const habitsDisclosure = entryForm.querySelector('[data-entry-habits]');
+        const habitsCount = entryForm.querySelector('[data-entry-habits-count]');
+        const habitInputs = [...entryForm.querySelectorAll('[data-entry-habits] input[type="checkbox"]')];
         const workoutRows = entryForm.querySelector('[data-workout-rows]');
         const workoutTemplate = entryForm.querySelector('template[data-workout-template]');
         const workoutAddButton = entryForm.querySelector('[data-workout-add]');
@@ -592,6 +623,16 @@
         };
 
         const updateReasons = () => {
+            if (!penaltiesEnabled) {
+                if (missingReason instanceof HTMLElement) {
+                    missingReason.hidden = true;
+                }
+                if (missingReasonInput instanceof HTMLInputElement) {
+                    missingReasonInput.disabled = true;
+                    missingReasonInput.value = '';
+                }
+                return;
+            }
             const result = evaluateFailures();
             const isMissingAny = result.missingSteps || result.missingWorkout;
             if (missingReason instanceof HTMLElement) {
@@ -606,6 +647,19 @@
                     : '';
             }
         };
+
+        const updateHabitSummary = () => {
+            const selectedCount = habitInputs.filter((input) => input instanceof HTMLInputElement && input.checked).length;
+            if (habitsCount instanceof HTMLElement) {
+                habitsCount.textContent = String(selectedCount);
+            }
+            if (habitsDisclosure instanceof HTMLElement) {
+                habitsDisclosure.classList.toggle('has-selections', selectedCount > 0);
+            }
+        };
+
+        habitInputs.forEach((input) => input.addEventListener('change', updateHabitSummary));
+        updateHabitSummary();
 
         if (workoutRows instanceof HTMLElement) {
             workoutRows.addEventListener('change', (event) => {
@@ -703,8 +757,12 @@
         updateReasons();
     };
 
-    const proofPhotoForm = document.querySelector('[data-proof-photo-form]');
-    if (proofPhotoForm) {
+    const initProofPhotoForm = () => {
+        const proofPhotoForm = document.querySelector('[data-proof-photo-form]');
+        if (!(proofPhotoForm instanceof HTMLFormElement) || proofPhotoForm.dataset.proofPhotoReady === '1') {
+            return;
+        }
+        proofPhotoForm.dataset.proofPhotoReady = '1';
         const fileInput = proofPhotoForm.querySelector('[data-proof-photo-input]');
         const previewContainer = proofPhotoForm.querySelector('[data-proof-photo-preview]');
         const uploadState = proofPhotoForm.querySelector('[data-proof-photo-state]');
@@ -714,12 +772,6 @@
         const nutritionAdvanced = proofPhotoForm.querySelector('[data-photo-nutrition-advanced]');
         let activeObjectUrl = null;
 
-        const placeholderTitle = previewContainer instanceof HTMLElement
-            ? (previewContainer.dataset.placeholderTitle || 'Select a photo to preview')
-            : 'Select a photo to preview';
-        const placeholderHint = previewContainer instanceof HTMLElement
-            ? (previewContainer.dataset.placeholderHint || 'The image will be saved as proof')
-            : 'The image will be saved as proof';
         const unsupportedTitle = previewContainer instanceof HTMLElement
             ? (previewContainer.dataset.previewUnsupportedTitle || 'Preview not available')
             : 'Preview not available';
@@ -791,15 +843,8 @@
             if (!(previewContainer instanceof HTMLElement)) {
                 return;
             }
-            previewContainer.innerHTML = `
-                <div class="photo-placeholder">
-                    <div class="photo-placeholder-content">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v8.59l3.3-3.3a1 1 0 0 1 1.4 0L14 15.6l2.3-2.3a1 1 0 0 1 1.4 0L19 14.6V6Zm3 1.2a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6Z"/></svg>
-                        <p>${escapeHtml(placeholderTitle)}</p>
-                        <small>${escapeHtml(placeholderHint)}</small>
-                    </div>
-                </div>
-            `;
+            previewContainer.replaceChildren();
+            previewContainer.hidden = true;
             setUploadState(stateIdle);
         };
 
@@ -807,6 +852,7 @@
             if (!(previewContainer instanceof HTMLElement)) {
                 return;
             }
+            previewContainer.hidden = false;
             previewContainer.innerHTML = `
                 <div class="photo-placeholder photo-placeholder-unsupported">
                     <div class="photo-placeholder-content">
@@ -846,6 +892,7 @@
             }
             activeObjectUrl = URL.createObjectURL(selectedFile);
             previewContainer.innerHTML = '';
+            previewContainer.hidden = false;
             const previewImage = document.createElement('img');
             previewImage.src = activeObjectUrl;
             previewImage.alt = previewAlt;
@@ -880,7 +927,7 @@
                 URL.revokeObjectURL(activeObjectUrl);
             }
         });
-    }
+    };
 
     const initPhotoDeleteModal = () => {
         const modal = document.querySelector('[data-photo-delete-modal]');
@@ -2477,7 +2524,10 @@
         const list = widget.querySelector('[data-primary-goals-list]');
         const template = widget.querySelector('template[data-primary-goal-template]');
         const addButton = widget.querySelector('[data-primary-goal-add]');
+        const addButtonLabel = addButton?.querySelector('[data-primary-goal-add-label]');
         const empty = widget.querySelector('[data-primary-goals-empty]');
+        const reservedToggles = Array.from(form?.querySelectorAll('[data-primary-goal-reserves]') || [])
+            .filter((toggle) => toggle instanceof HTMLInputElement);
         if (!(form instanceof HTMLFormElement)
             || !(input instanceof HTMLInputElement)
             || !(list instanceof HTMLElement)
@@ -2488,6 +2538,44 @@
 
         const rows = () => Array.from(list.querySelectorAll('[data-primary-goal-row]'))
             .filter((row) => row instanceof HTMLElement);
+
+        const reservedTypes = () => new Set(reservedToggles
+            .filter((toggle) => toggle.checked)
+            .map((toggle) => String(toggle.dataset.primaryGoalReserves || '').trim())
+            .filter(Boolean));
+
+        const syncReservedOptions = (removeConflicts = false) => {
+            const reserved = reservedTypes();
+            rows().forEach((row) => {
+                const select = row.querySelector('[data-primary-goal-type]');
+                if (!(select instanceof HTMLSelectElement)) {
+                    return;
+                }
+                if (removeConflicts && reserved.has(select.value)) {
+                    row.remove();
+                    return;
+                }
+                const selectedElsewhere = new Set(rows()
+                    .filter((candidate) => candidate !== row)
+                    .map((candidate) => candidate.querySelector('[data-primary-goal-type]'))
+                    .filter((candidate) => candidate instanceof HTMLSelectElement)
+                    .map((candidate) => candidate.value));
+                Array.from(select.options).forEach((option) => {
+                    const unavailable = reserved.has(option.value) || selectedElsewhere.has(option.value);
+                    option.disabled = unavailable;
+                    option.hidden = unavailable;
+                });
+            });
+            const used = new Set(rows()
+                .map((row) => row.querySelector('[data-primary-goal-type]'))
+                .filter((select) => select instanceof HTMLSelectElement)
+                .map((select) => select.value));
+            const templateSelect = template.content.querySelector('[data-primary-goal-type]');
+            const hasAvailableType = templateSelect instanceof HTMLSelectElement
+                && Array.from(templateSelect.options).some((option) => !reserved.has(option.value) && !used.has(option.value));
+            addButton.disabled = !hasAvailableType;
+            addButton.hidden = !hasAvailableType;
+        };
 
         const formatGoalValue = (type, value) => {
             if (type === 'km') {
@@ -2516,8 +2604,17 @@
         };
 
         const updateEmptyState = () => {
+            const hasRows = rows().length > 0;
             if (empty instanceof HTMLElement) {
-                empty.hidden = rows().length > 0;
+                empty.hidden = hasRows;
+            }
+            const nextLabel = hasRows ? addButton.dataset.labelMore : addButton.dataset.labelEmpty;
+            if (nextLabel) {
+                if (addButtonLabel instanceof HTMLElement) {
+                    addButtonLabel.textContent = nextLabel;
+                } else {
+                    addButton.textContent = nextLabel;
+                }
             }
         };
 
@@ -2553,17 +2650,31 @@
             if (!(row instanceof HTMLElement)) {
                 return;
             }
+            const select = row.querySelector('[data-primary-goal-type]');
+            if (select instanceof HTMLSelectElement) {
+                const reserved = reservedTypes();
+                const used = new Set(rows()
+                    .map((existingRow) => existingRow.querySelector('[data-primary-goal-type]'))
+                    .filter((existingSelect) => existingSelect instanceof HTMLSelectElement)
+                    .map((existingSelect) => existingSelect.value));
+                const firstAvailable = Array.from(select.options).find((option) => !reserved.has(option.value) && !used.has(option.value));
+                if (!(firstAvailable instanceof HTMLOptionElement)) {
+                    return;
+                }
+                select.value = firstAvailable.value;
+            }
             list.appendChild(row);
+            syncReservedOptions();
             configureRow(row);
             updateEmptyState();
             serialize();
 
-            const select = row.querySelector('[data-primary-goal-type]');
             if (select instanceof HTMLSelectElement) {
                 select.focus();
             }
         };
 
+        syncReservedOptions(true);
         rows().forEach(configureRow);
         updateEmptyState();
         serialize();
@@ -2575,6 +2686,7 @@
                 return;
             }
             target.closest('[data-primary-goal-row]')?.remove();
+            syncReservedOptions();
             serialize();
         });
         list.addEventListener('input', (event) => {
@@ -2587,27 +2699,46 @@
             const row = event.target instanceof Element ? event.target.closest('[data-primary-goal-row]') : null;
             if (row instanceof HTMLElement) {
                 configureRow(row);
+                syncReservedOptions();
                 serialize();
             }
         });
         form.addEventListener('submit', serialize);
+        reservedToggles.forEach((toggle) => {
+            toggle.addEventListener('change', () => {
+                syncReservedOptions(true);
+                rows().forEach(configureRow);
+                serialize();
+            });
+        });
         widget.dataset.primaryGoalsReady = '1';
     };
 
+    const initPrimaryGoalsEditors = () => {
+        document.querySelectorAll('[data-primary-goals-editor]').forEach((widget) => {
+            const form = widget.closest('form');
+            if (form instanceof HTMLFormElement) {
+                initPrimaryGoalsSelector(form);
+            }
+        });
+    };
+
     const initPrivacyOptions = () => {
-        const form = document.querySelector('.profile-privacy-form');
-        if (!form) {
-            return;
-        }
-        const options = Array.from(form.querySelectorAll('.privacy-option'));
-        form.addEventListener('change', (event) => {
-            const target = event.target;
-            if (!target || target.name !== 'profile_visibility') {
+        document.querySelectorAll('.profile-privacy-form, .settings-privacy-card form').forEach((form) => {
+            if (!(form instanceof HTMLFormElement) || form.dataset.privacyOptionsReady === '1') {
                 return;
             }
-            options.forEach((option) => {
-                const input = option.querySelector('input[type="radio"]');
-                option.classList.toggle('is-selected', !!input && input.checked);
+            form.dataset.privacyOptionsReady = '1';
+            const options = Array.from(form.querySelectorAll('.privacy-option'));
+            form.addEventListener('change', (event) => {
+                const target = event.target;
+                if (!(target instanceof HTMLInputElement) || target.name !== 'profile_visibility') {
+                    return;
+                }
+                options.forEach((option) => {
+                    const input = option.querySelector('input[type="radio"]');
+                    option.classList.toggle('is-selected', !!input && input.checked);
+                });
             });
         });
     };
@@ -2761,13 +2892,14 @@
                 if (!(state.img instanceof Image)) {
                     return;
                 }
-                const size = canvas.width;
-                const baseScale = Math.max(size / state.img.naturalWidth, size / state.img.naturalHeight);
+                const canvasWidth = canvas.width;
+                const canvasHeight = canvas.height;
+                const baseScale = Math.max(canvasWidth / state.img.naturalWidth, canvasHeight / state.img.naturalHeight);
                 const drawScale = baseScale * state.scale;
                 const drawWidth = state.img.naturalWidth * drawScale;
                 const drawHeight = state.img.naturalHeight * drawScale;
-                const minX = Math.min(0, size - drawWidth);
-                const minY = Math.min(0, size - drawHeight);
+                const minX = Math.min(0, canvasWidth - drawWidth);
+                const minY = Math.min(0, canvasHeight - drawHeight);
                 state.offsetX = Math.min(0, Math.max(minX, state.offsetX));
                 state.offsetY = Math.min(0, Math.max(minY, state.offsetY));
             };
@@ -2799,8 +2931,9 @@
                 }
 
                 clampOffsets();
-                const size = canvas.width;
-                const baseScale = Math.max(size / state.img.naturalWidth, size / state.img.naturalHeight);
+                const canvasWidth = canvas.width;
+                const canvasHeight = canvas.height;
+                const baseScale = Math.max(canvasWidth / state.img.naturalWidth, canvasHeight / state.img.naturalHeight);
                 const drawScale = baseScale * state.scale;
                 const drawWidth = state.img.naturalWidth * drawScale;
                 const drawHeight = state.img.naturalHeight * drawScale;
@@ -2817,13 +2950,14 @@
                 if (!Number.isFinite(state.scale) || state.scale < 1) {
                     state.scale = 1;
                 }
-                const size = canvas.width;
-                const baseScale = Math.max(size / img.naturalWidth, size / img.naturalHeight);
+                const canvasWidth = canvas.width;
+                const canvasHeight = canvas.height;
+                const baseScale = Math.max(canvasWidth / img.naturalWidth, canvasHeight / img.naturalHeight);
                 const drawScale = baseScale * state.scale;
                 const drawWidth = img.naturalWidth * drawScale;
                 const drawHeight = img.naturalHeight * drawScale;
-                state.offsetX = (size - drawWidth) / 2;
-                state.offsetY = (size - drawHeight) / 2;
+                state.offsetX = (canvasWidth - drawWidth) / 2;
+                state.offsetY = (canvasHeight - drawHeight) / 2;
                 render();
             };
 
@@ -2864,9 +2998,10 @@
                     previousScale = 1;
                 }
                 const ratio = state.scale / previousScale;
-                const center = canvas.width / 2;
-                state.offsetX = center - (center - state.offsetX) * ratio;
-                state.offsetY = center - (center - state.offsetY) * ratio;
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                state.offsetX = centerX - (centerX - state.offsetX) * ratio;
+                state.offsetY = centerY - (centerY - state.offsetY) * ratio;
                 render();
             });
 
@@ -2886,8 +3021,11 @@
                 if (state.dragPointerId !== event.pointerId || !(state.img instanceof Image)) {
                     return;
                 }
-                state.offsetX = state.dragOriginX + (event.clientX - state.dragStartX);
-                state.offsetY = state.dragOriginY + (event.clientY - state.dragStartY);
+                const canvasRect = canvas.getBoundingClientRect();
+                const pointerScaleX = canvasRect.width > 0 ? canvas.width / canvasRect.width : 1;
+                const pointerScaleY = canvasRect.height > 0 ? canvas.height / canvasRect.height : 1;
+                state.offsetX = state.dragOriginX + ((event.clientX - state.dragStartX) * pointerScaleX);
+                state.offsetY = state.dragOriginY + ((event.clientY - state.dragStartY) * pointerScaleY);
                 render();
             });
 
@@ -3301,9 +3439,9 @@
         }
 
         const localDeps = {
-            jspdf: '/assets/vendor/jspdf.umd.min.js?v=2.5.1',
-            autoTable: '/assets/vendor/jspdf.plugin.autotable.min.js?v=3.8.4',
-            chart: '/assets/vendor/chart.umd.min.js?v=4.4.3',
+            jspdf: '/asset.php?file=vendor%2Fjspdf.umd.min.js&v=2.5.1',
+            autoTable: '/asset.php?file=vendor%2Fjspdf.plugin.autotable.min.js&v=3.8.4',
+            chart: '/asset.php?file=vendor%2Fchart.umd.min.js&v=4.4.3',
         };
         const loadScript = (src) => new Promise((resolve, reject) => {
             const absoluteSrc = new URL(src, window.location.origin).href;
@@ -3504,6 +3642,7 @@
             };
 
             button.disabled = true;
+            search.setAttribute('aria-busy', 'true');
             button.setAttribute('aria-busy', 'true');
             setButtonLabel(text('pdf_generating', 'Generating PDF...'));
 
@@ -4278,10 +4417,10 @@
 
         const ensureDeps = async () => {
             if (!window.jspdf) {
-                await loadScript('/assets/vendor/jspdf.umd.min.js?v=2.5.1');
+                await loadScript('/asset.php?file=vendor%2Fjspdf.umd.min.js&v=2.5.1');
             }
             if (!window.Chart) {
-                await loadScript('/assets/vendor/chart.umd.min.js?v=4.4.3');
+                await loadScript('/asset.php?file=vendor%2Fchart.umd.min.js&v=4.4.3');
             }
         };
 
@@ -4838,7 +4977,7 @@
                 return false;
             }
             const src = String(script.getAttribute('src') || '').trim();
-            if (src.includes('/assets/main.js')) {
+            if (src.includes('/assets/main.js') || (src.includes('/asset.php') && src.includes('file=main.js'))) {
                 return false;
             }
             return type === '' || type === 'text/javascript' || type === 'application/javascript' || type === 'module';
@@ -4924,6 +5063,49 @@
                 const currentLabel = current.querySelector('.nav-label');
                 if (nextLabel instanceof HTMLElement && currentLabel instanceof HTMLElement) {
                     currentLabel.textContent = nextLabel.textContent || '';
+                }
+            });
+        };
+
+        const syncPageStyles = async (doc) => {
+            const selector = 'link[rel="stylesheet"][data-pjax-page-style]';
+            const currentLinks = Array.from(document.head.querySelectorAll(selector))
+                .filter((link) => link instanceof HTMLLinkElement);
+            const nextLinks = Array.from(doc.head.querySelectorAll(selector))
+                .filter((link) => link instanceof HTMLLinkElement);
+            const resolvedHref = (link) => new URL(String(link.getAttribute('href') || ''), window.location.origin).href;
+            const nextHrefs = new Set(nextLinks.map(resolvedHref));
+            const existingHrefs = new Set(currentLinks.map(resolvedHref));
+            const themeLink = document.head.querySelector('link[data-theme-stylesheet]');
+            const pending = [];
+
+            nextLinks.forEach((sourceLink) => {
+                const sourceHref = resolvedHref(sourceLink);
+                if (existingHrefs.has(sourceHref)) {
+                    return;
+                }
+                const link = document.createElement('link');
+                Array.from(sourceLink.attributes).forEach((attribute) => {
+                    link.setAttribute(attribute.name, attribute.value);
+                });
+                const loaded = new Promise((resolve, reject) => {
+                    link.addEventListener('load', resolve, { once: true });
+                    link.addEventListener('error', () => reject(new Error(`Failed to load page stylesheet: ${sourceHref}`)), { once: true });
+                });
+                if (sourceLink.dataset.pjaxPageStyle === 'page' && themeLink instanceof HTMLLinkElement) {
+                    themeLink.before(link);
+                } else if (themeLink instanceof HTMLLinkElement) {
+                    themeLink.after(link);
+                } else {
+                    document.head.append(link);
+                }
+                pending.push(loaded);
+            });
+
+            await Promise.all(pending);
+            currentLinks.forEach((link) => {
+                if (!nextHrefs.has(resolvedHref(link))) {
+                    link.remove();
                 }
             });
         };
@@ -5031,6 +5213,7 @@
                 }
 
                 document.title = doc.title || document.title;
+                await syncPageStyles(doc);
                 syncBodyState(doc.body);
 
                 const currentTopbar = document.querySelector('header.topbar');
@@ -5435,6 +5618,7 @@
         safeInit(initPhotoEditModal);
         safeInit(initStrikeReviewModal);
         safeInit(initProfileGoalsSection);
+        safeInit(initPrimaryGoalsEditors);
         safeInit(initProfileConfigEditor);
         safeInit(initPrivacyOptions);
         safeInit(initSettingsAvatarHashFallback);
@@ -5446,7 +5630,9 @@
         safeInit(initProfilePdfExport);
         safeInit(initTeamLayoutEditor);
         safeInit(initNotificationsAjax);
+        safeInit(initEntryNativePickers);
         safeInit(initEntryForm);
+        safeInit(initProofPhotoForm);
         clearMobileViewTransitionState(true);
         queueMobileViewTransitionStateCleanup(350, true);
     };
@@ -5456,6 +5642,227 @@
     } else {
         runPageHydration(true);
     }
+})();
+
+/* Registration invite helpers and local onboarding image previews. */
+(function () {
+    'use strict';
+
+    if ('serviceWorker' in navigator && (window.isSecureContext || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+        window.addEventListener('load', function () {
+            navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).catch(function () {
+                // Asset compression still works when service workers are unavailable.
+            });
+        }, { once: true });
+    }
+
+    function fallbackCopy(input) {
+        input.focus({ preventScroll: true });
+        input.select();
+        input.setSelectionRange(0, input.value.length);
+        var copied = false;
+        try {
+            copied = document.execCommand('copy');
+        } catch (error) {
+            copied = false;
+        }
+        input.setSelectionRange(0, 0);
+        return copied;
+    }
+
+    function initInviteCopy() {
+        document.querySelectorAll('[data-copy-registration-url]').forEach(function (button) {
+            if (button.dataset.registrationCopyReady === '1') {
+                return;
+            }
+            button.dataset.registrationCopyReady = '1';
+            button.addEventListener('click', async function () {
+                var panel = button.closest('.admin-invite-created') || document;
+                var input = panel.querySelector('[data-registration-invite-url]');
+                if (!(input instanceof HTMLInputElement) || input.value === '') {
+                    return;
+                }
+                var copied = false;
+                if (navigator.clipboard && window.isSecureContext) {
+                    try {
+                        await navigator.clipboard.writeText(input.value);
+                        copied = true;
+                    } catch (error) {
+                        copied = false;
+                    }
+                }
+                if (!copied) {
+                    copied = fallbackCopy(input);
+                }
+                if (!copied) {
+                    return;
+                }
+                var originalLabel = button.dataset.copyLabel || button.textContent;
+                button.textContent = button.dataset.copiedLabel || originalLabel;
+                window.setTimeout(function () {
+                    button.textContent = originalLabel;
+                }, 1800);
+            });
+        });
+    }
+
+    function initOnboardingImagePreviews() {
+        document.querySelectorAll('[data-onboarding-image-input]').forEach(function (input) {
+            if (!(input instanceof HTMLInputElement) || input.dataset.onboardingPreviewReady === '1') {
+                return;
+            }
+            input.dataset.onboardingPreviewReady = '1';
+            input.addEventListener('change', function () {
+                var file = input.files && input.files[0];
+                var kind = input.dataset.onboardingImageInput || '';
+                var preview = document.querySelector('[data-onboarding-preview="' + kind + '"]');
+                if (!file || !file.type.startsWith('image/') || !(preview instanceof HTMLElement)) {
+                    return;
+                }
+                var previousUrl = preview.dataset.localPreviewUrl || '';
+                if (previousUrl !== '') {
+                    URL.revokeObjectURL(previousUrl);
+                }
+                var localUrl = URL.createObjectURL(file);
+                preview.dataset.localPreviewUrl = localUrl;
+                var image = document.createElement('img');
+                image.src = localUrl;
+                image.alt = '';
+                preview.replaceChildren(image);
+            });
+        });
+    }
+
+    function initOnboardingOptionalGoals() {
+        document.querySelectorAll('[data-onboarding-optional-card]').forEach(function (card) {
+            if (!(card instanceof HTMLElement) || card.dataset.onboardingOptionalReady === '1') {
+                return;
+            }
+            var toggle = card.querySelector('[data-onboarding-optional-toggle]');
+            var content = card.querySelector('[data-onboarding-optional-content]');
+            if (!(toggle instanceof HTMLInputElement) || !(content instanceof HTMLElement)) {
+                return;
+            }
+            card.dataset.onboardingOptionalReady = '1';
+            var sync = function () {
+                var enabled = toggle.checked;
+                card.classList.toggle('is-enabled', enabled);
+                content.hidden = !enabled;
+                content.querySelectorAll('input, select, textarea').forEach(function (field) {
+                    field.disabled = !enabled;
+                });
+            };
+            toggle.addEventListener('change', sync);
+            sync();
+        });
+
+        document.querySelectorAll('[data-onboarding-primary-goal]').forEach(function (select) {
+            if (!(select instanceof HTMLSelectElement) || select.dataset.onboardingPrimaryReady === '1') {
+                return;
+            }
+            var card = select.closest('.onboarding-primary-option');
+            var valueField = card ? card.querySelector('[data-onboarding-primary-value]') : null;
+            if (!(card instanceof HTMLElement) || !(valueField instanceof HTMLElement)) {
+                return;
+            }
+            var input = valueField.querySelector('input');
+            select.dataset.onboardingPrimaryReady = '1';
+            var sync = function () {
+                var enabled = select.value !== 'none';
+                card.classList.toggle('is-enabled', enabled);
+                valueField.hidden = !enabled;
+                if (input instanceof HTMLInputElement) {
+                    input.disabled = !enabled;
+                    if (enabled && input.value === '') {
+                        input.value = select.value === 'steps' ? '10000' : (select.value === 'workouts' ? '3' : '5');
+                    }
+                }
+            };
+            select.addEventListener('change', sync);
+            sync();
+        });
+    }
+
+    function initEuropeanDateInputs() {
+        document.querySelectorAll('[data-eu-date-input]').forEach(function (input) {
+            if (!(input instanceof HTMLInputElement) || input.dataset.euDateReady === '1') {
+                return;
+            }
+            input.dataset.euDateReady = '1';
+            input.addEventListener('input', function () {
+                var digits = input.value.replace(/\D/g, '').slice(0, 8);
+                var chunks = [];
+                if (digits.length > 0) chunks.push(digits.slice(0, 2));
+                if (digits.length > 2) chunks.push(digits.slice(2, 4));
+                if (digits.length > 4) chunks.push(digits.slice(4, 8));
+                input.value = chunks.join('/');
+            });
+        });
+    }
+
+    function initOptionalPrimaryGoalSelectors() {
+        document.querySelectorAll('[data-optional-primary-goal]').forEach(function (select) {
+            if (!(select instanceof HTMLSelectElement) || select.dataset.optionalPrimaryReady === '1') {
+                return;
+            }
+            var form = select.closest('form');
+            var valueField = form ? form.querySelector('[data-optional-primary-value]') : null;
+            if (!(valueField instanceof HTMLElement)) {
+                return;
+            }
+            var input = valueField.querySelector('input');
+            select.dataset.optionalPrimaryReady = '1';
+            var sync = function () {
+                var enabled = select.value !== 'none';
+                valueField.hidden = !enabled;
+                if (input instanceof HTMLInputElement) {
+                    input.disabled = !enabled;
+                    if (enabled && input.value === '') {
+                        input.value = select.value === 'steps' ? '10000' : (select.value === 'workouts' ? '3' : '5');
+                    }
+                }
+            };
+            select.addEventListener('change', sync);
+            sync();
+        });
+    }
+
+    function initPrivacyDataControls() {
+        document.querySelectorAll('[data-privacy-controls]').forEach(function (root) {
+            if (!(root instanceof HTMLElement) || root.dataset.privacyControlsReady === '1') {
+                return;
+            }
+            root.dataset.privacyControlsReady = '1';
+            root.addEventListener('change', function (event) {
+                var target = event.target;
+                if (!(target instanceof HTMLInputElement) || !target.matches('[data-privacy-default]') || !target.checked) {
+                    return;
+                }
+                root.querySelectorAll('[data-privacy-data]').forEach(function (select) {
+                    if (select instanceof HTMLSelectElement) {
+                        select.value = target.value;
+                    }
+                });
+            });
+        });
+    }
+
+    function init() {
+        initInviteCopy();
+        initOnboardingImagePreviews();
+        initOnboardingOptionalGoals();
+        initEuropeanDateInputs();
+        initOptionalPrimaryGoalSelectors();
+        initPrivacyDataControls();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+    document.addEventListener('pjax:loaded', init);
+    document.addEventListener('fc:afterPageSwap', init);
 })();
 
 /* Friend discovery: debounced, server-approved Instagram-style suggestions. */
@@ -5831,6 +6238,12 @@
         if (!(target instanceof HTMLElement)) return;
         event.preventDefault();
         const fallback = String(target.getAttribute('data-fallback') || '/');
+        // Destination-labelled back controls are a navigation promise: the text
+        // shown to the user must match the route that will actually open.
+        if (target.classList.contains('destination-back')) {
+            window.location.assign(fallback);
+            return;
+        }
         let sameOriginReferrer = false;
         try {
             sameOriginReferrer = document.referrer !== '' && new URL(document.referrer).origin === window.location.origin;
@@ -5965,8 +6378,28 @@
     }, { passive: true });
 
     // ---- App modal / drawer ----
+    const portalOverlay = (overlay) => {
+        if (!(overlay instanceof HTMLElement) || overlay.parentElement === document.body) return;
+        const placeholder = document.createComment(`app-overlay:${overlay.id || 'anonymous'}`);
+        overlay.parentNode?.insertBefore(placeholder, overlay);
+        overlay.__appOverlayPlaceholder = placeholder;
+        document.body.appendChild(overlay);
+    };
+
+    const restoreOverlay = (overlay) => {
+        const placeholder = overlay?.__appOverlayPlaceholder;
+        if (!(placeholder instanceof Comment) || !(placeholder.parentNode instanceof Node)) return;
+        placeholder.parentNode.insertBefore(overlay, placeholder);
+        placeholder.remove();
+        delete overlay.__appOverlayPlaceholder;
+    };
+
     const openOverlay = (overlay) => {
         if (!overlay) return;
+        // Glass panels use backdrop-filter, which makes fixed descendants use the
+        // panel as their containing block. Portal overlays while open so every
+        // modal truly covers the viewport, then put them back for PJAX cleanup.
+        portalOverlay(overlay);
         overlay.hidden = false;
         // Force reflow so the transition runs
         void overlay.offsetWidth;
@@ -5984,6 +6417,7 @@
         const anyOpen = () => document.querySelector('.app-modal.is-open, .app-drawer.is-open');
         const finish = () => {
             overlay.hidden = true;
+            restoreOverlay(overlay);
             if (!anyOpen()) document.body.classList.remove('app-scroll-locked');
         };
         let done = false;
@@ -7082,6 +7516,416 @@
     document.addEventListener('fc:afterPageSwap', init);
 })();
 
+/* Compact profile goals can grow into a long list. Keep discovery local and
+   instant, without a new request or moving the user away from the section. */
+(() => {
+    'use strict';
+
+    const normalize = (value) => String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase();
+
+    const initToolbar = (toolbar) => {
+        if (!(toolbar instanceof HTMLElement) || toolbar.dataset.profileGoalToolbarReady === '1') return;
+        toolbar.dataset.profileGoalToolbarReady = '1';
+
+        const section = toolbar.closest('.profile-goals-section');
+        const search = toolbar.querySelector('[data-profile-goal-search]');
+        const filters = Array.from(toolbar.querySelectorAll('[data-profile-goal-filter]'));
+        const empty = section?.querySelector('[data-profile-goal-empty]');
+        if (!(section instanceof HTMLElement) || !(search instanceof HTMLInputElement)) return;
+
+        let activeFilter = 'all';
+        const update = () => {
+            const query = normalize(search.value.trim());
+            const items = Array.from(section.querySelectorAll('[data-profile-goal-item]'));
+            let visible = 0;
+
+            items.forEach((item) => {
+                const matchesStatus = activeFilter === 'all' || item.dataset.goalStatus === activeFilter;
+                const matchesQuery = query === '' || normalize(item.dataset.goalTitle).includes(query);
+                item.hidden = !(matchesStatus && matchesQuery);
+                if (!item.hidden) visible += 1;
+            });
+            if (empty instanceof HTMLElement) empty.hidden = visible !== 0;
+        };
+
+        search.addEventListener('input', update);
+        filters.forEach((button) => button.addEventListener('click', () => {
+            activeFilter = button.dataset.profileGoalFilter || 'all';
+            filters.forEach((candidate) => candidate.setAttribute('aria-pressed', candidate === button ? 'true' : 'false'));
+            update();
+        }));
+        update();
+    };
+
+    const init = () => document.querySelectorAll('[data-profile-goal-toolbar]').forEach(initToolbar);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+    document.addEventListener('fc:afterPageSwap', init);
+})();
+
+/* Team challenge lists use the same compact discovery pattern as personal goals. */
+(() => {
+    'use strict';
+
+    const normalize = (value) => String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase();
+
+    const initToolbar = (toolbar) => {
+        if (!(toolbar instanceof HTMLElement) || toolbar.dataset.teamGoalToolbarReady === '1') return;
+        const collection = toolbar.closest('[data-team-goal-collection]');
+        const search = toolbar.querySelector('[data-team-goal-search]');
+        const filters = Array.from(toolbar.querySelectorAll('[data-team-goal-filter]'));
+        const empty = collection?.querySelector('[data-team-goal-empty]');
+        if (!(collection instanceof HTMLElement) || !(search instanceof HTMLInputElement)) return;
+        toolbar.dataset.teamGoalToolbarReady = '1';
+        let activeFilter = 'all';
+
+        const update = () => {
+            const query = normalize(search.value.trim());
+            let visible = 0;
+            collection.querySelectorAll('[data-team-goal-item]').forEach((item) => {
+                const matchesStatus = activeFilter === 'all' || item.dataset.goalStatus === activeFilter;
+                const matchesQuery = query === '' || normalize(item.dataset.goalTitle).includes(query);
+                item.hidden = !(matchesStatus && matchesQuery);
+                if (!item.hidden) visible += 1;
+            });
+            if (empty instanceof HTMLElement) empty.hidden = visible !== 0;
+        };
+
+        search.addEventListener('input', update);
+        filters.forEach((button) => button.addEventListener('click', () => {
+            activeFilter = button.dataset.teamGoalFilter || 'all';
+            filters.forEach((candidate) => candidate.setAttribute('aria-pressed', candidate === button ? 'true' : 'false'));
+            update();
+        }));
+        update();
+    };
+
+    const init = () => document.querySelectorAll('[data-team-goal-toolbar]').forEach(initToolbar);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+    document.addEventListener('fc:afterPageSwap', init);
+})();
+
+/* Direction-aware topbar: recover vertical space while reading without making
+   navigation feel lost. Menus and edit states pin it until interaction ends. */
+(() => {
+    'use strict';
+
+    const hiddenClass = 'topbar-scroll-hidden';
+    let scrollAnchor = Math.max(0, window.scrollY || 0);
+    let framePending = false;
+
+    const topbar = () => document.querySelector('header.topbar');
+    const setVisible = (visible) => {
+        const bar = topbar();
+        if (!(bar instanceof HTMLElement)) {
+            document.body.classList.remove(hiddenClass);
+            return;
+        }
+        document.body.classList.toggle(hiddenClass, !visible);
+        bar.dataset.scrollVisibility = visible ? 'visible' : 'hidden';
+    };
+    const isPinned = () => {
+        const bar = topbar();
+        if (!(bar instanceof HTMLElement)) return true;
+        return bar.querySelector(':focus-visible') !== null
+            || bar.querySelector('details[open]') !== null
+            || document.body.classList.contains('app-scroll-locked')
+            || document.body.classList.contains('layout-edit-active');
+    };
+    const update = () => {
+        framePending = false;
+        const y = Math.max(0, window.scrollY || 0);
+        const bar = topbar();
+        const revealZone = bar instanceof HTMLElement
+            ? Math.max(72, Math.round(bar.getBoundingClientRect().height + 24))
+            : 72;
+
+        if (y <= revealZone || isPinned()) {
+            setVisible(true);
+            scrollAnchor = y;
+            return;
+        }
+        if (y > scrollAnchor + 10) {
+            setVisible(false);
+            scrollAnchor = y;
+            return;
+        }
+        if (y < scrollAnchor - 6) {
+            setVisible(true);
+            scrollAnchor = y;
+        }
+    };
+    const scheduleUpdate = () => {
+        if (framePending) return;
+        framePending = true;
+        window.requestAnimationFrame(update);
+    };
+    const reset = () => {
+        scrollAnchor = Math.max(0, window.scrollY || 0);
+        setVisible(true);
+    };
+
+    window.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('resize', scheduleUpdate, { passive: true });
+    window.addEventListener('pageshow', reset);
+    document.addEventListener('focusin', (event) => {
+        if (event.target instanceof Element && event.target.closest('header.topbar')) setVisible(true);
+    });
+    document.addEventListener('toggle', (event) => {
+        if (event.target instanceof HTMLDetailsElement && event.target.open && event.target.closest('header.topbar')) {
+            setVisible(true);
+            scrollAnchor = Math.max(0, window.scrollY || 0);
+        }
+    }, true);
+    document.addEventListener('fc:beforePageSwap', reset);
+    document.addEventListener('fc:afterPageSwap', reset);
+    reset();
+})();
+
+/* In-app Google Images and YouTube search for the personal exercise editor. */
+(() => {
+    'use strict';
+
+    const safeExternalUrl = (value) => {
+        try {
+            const url = new URL(String(value || ''));
+            return url.protocol === 'https:' ? url.href : '';
+        } catch (_error) {
+            return '';
+        }
+    };
+
+    const initMediaSearch = (search) => {
+        if (!(search instanceof HTMLElement) || search.dataset.workoutMediaSearchReady === '1') return;
+        search.dataset.workoutMediaSearchReady = '1';
+        const type = search.dataset.mediaSearchType === 'video' ? 'video' : 'image';
+        const toggle = search.querySelector('[data-workout-media-search-toggle]');
+        const panel = search.querySelector('[data-workout-media-search-panel]');
+        const input = search.querySelector('[data-workout-media-search-input]');
+        const submit = search.querySelector('[data-workout-media-search-submit]');
+        const status = search.querySelector('[data-workout-media-search-status]');
+        const results = search.querySelector('[data-workout-media-search-results]');
+        const form = search.closest('form');
+        let controller = null;
+        if (!(toggle instanceof HTMLButtonElement)
+            || !(panel instanceof HTMLElement)
+            || !(input instanceof HTMLInputElement)
+            || !(submit instanceof HTMLButtonElement)
+            || !(status instanceof HTMLElement)
+            || !(results instanceof HTMLElement)
+            || !(form instanceof HTMLFormElement)
+        ) return;
+
+        const label = (key, fallback = '') => String(search.dataset[key] || fallback);
+        const setStatus = (message, state = '') => {
+            status.textContent = message;
+            status.dataset.state = state;
+        };
+        const setOpen = (open, focus = false) => {
+            panel.hidden = !open;
+            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            search.classList.toggle('is-open', open);
+            if (open && input.value.trim() === '') {
+                const exerciseName = String(form.querySelector('input[name="name"]')?.value || '').trim();
+                if (exerciseName !== '') input.value = exerciseName;
+            }
+            if (open && focus) window.requestAnimationFrame(() => input.focus({ preventScroll: true }));
+        };
+
+        const resultCard = (result) => {
+            const card = document.createElement('article');
+            card.className = 'workouts-media-search-result';
+            card.setAttribute('role', 'listitem');
+
+            const figure = document.createElement('figure');
+            const image = document.createElement('img');
+            image.src = String(result.thumbnail || '');
+            image.alt = '';
+            image.loading = 'lazy';
+            image.decoding = 'async';
+            image.referrerPolicy = 'no-referrer';
+            figure.appendChild(image);
+            if (type === 'video') {
+                const play = document.createElement('span');
+                play.className = 'workouts-media-search-play';
+                play.setAttribute('aria-hidden', 'true');
+                play.textContent = '\u25b6';
+                figure.appendChild(play);
+            }
+
+            const copy = document.createElement('div');
+            copy.className = 'workouts-media-search-result-copy';
+            const title = document.createElement('strong');
+            title.textContent = String(result.title || '');
+            copy.appendChild(title);
+            const sourceName = String(type === 'video' ? (result.channel || '') : (result.source_name || '')).trim();
+            const sourceUrl = safeExternalUrl(type === 'video' ? result.url : result.source_url);
+            if (sourceName !== '' || sourceUrl !== '') {
+                const source = sourceUrl !== '' ? document.createElement('a') : document.createElement('small');
+                source.textContent = sourceName !== '' ? sourceName : label('mediaSourceLabel', 'Source');
+                if (source instanceof HTMLAnchorElement) {
+                    source.href = sourceUrl;
+                    source.target = '_blank';
+                    source.rel = 'noopener noreferrer';
+                }
+                copy.appendChild(source);
+            }
+
+            const select = document.createElement('button');
+            select.className = 'btn btn-ghost small workouts-media-search-select';
+            select.type = 'button';
+            select.textContent = label('mediaSelectLabel', 'Use this');
+            select.dataset.mediaResultId = String(result.id || '');
+            select.dataset.mediaResultTitle = String(result.title || '');
+            if (type === 'video') select.dataset.mediaResultUrl = String(result.url || '');
+
+            card.append(figure, copy, select);
+            return card;
+        };
+
+        const renderResults = (items) => {
+            results.replaceChildren();
+            items.forEach((item) => results.appendChild(resultCard(item)));
+        };
+
+        const runSearch = async () => {
+            const query = input.value.trim();
+            if (query.length < 2 || query.length > 80) {
+                setStatus(label('mediaQueryInvalidLabel', 'Enter between 2 and 80 characters.'), 'error');
+                input.focus();
+                return;
+            }
+            if (controller) controller.abort();
+            const requestController = new AbortController();
+            controller = requestController;
+            submit.disabled = true;
+            search.classList.add('is-loading');
+            search.setAttribute('aria-busy', 'true');
+            results.replaceChildren();
+            setStatus(label('mediaSearchingLabel', 'Searching…'), 'loading');
+            try {
+                const endpoint = new URL(search.dataset.mediaSearchEndpoint || '/?page=api_workout_media_search', window.location.origin);
+                endpoint.searchParams.set('type', type);
+                endpoint.searchParams.set('q', query);
+                const response = await fetch(endpoint, {
+                    headers: { Accept: 'application/json' },
+                    credentials: 'same-origin',
+                    signal: requestController.signal,
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || payload.ok !== true) {
+                    throw new Error(String(payload.message || label('mediaErrorLabel', 'Search failed.')));
+                }
+                const items = Array.isArray(payload.results) ? payload.results : [];
+                renderResults(items);
+                const resultMessage = label('mediaResultsTemplate', '{count} results for “{query}”')
+                    .replace('{count}', String(items.length)).replace('{query}', query);
+                setStatus(items.length > 0 ? resultMessage : label('mediaEmptyLabel', 'No results.'), items.length > 0 ? 'ready' : 'empty');
+            } catch (error) {
+                if (error?.name === 'AbortError') return;
+                setStatus(String(error?.message || label('mediaErrorLabel', 'Search failed.')), 'error');
+            } finally {
+                if (controller === requestController) {
+                    submit.disabled = false;
+                    search.classList.remove('is-loading');
+                    search.setAttribute('aria-busy', 'false');
+                }
+            }
+        };
+
+        const addImageResult = async (button) => {
+            const gallery = search.closest('[data-workout-gallery-editor]');
+            const fileInput = gallery?.querySelector('[data-workout-gallery-input]');
+            const limit = Math.max(1, Number.parseInt(gallery?.dataset.galleryLimit || '4', 10) || 4);
+            const count = gallery?.querySelectorAll('[data-workout-gallery-item]').length || 0;
+            if (!(fileInput instanceof HTMLInputElement) || typeof DataTransfer !== 'function' || typeof File !== 'function') {
+                throw new Error(label('mediaUnsupportedLabel', 'This browser cannot add the image.'));
+            }
+            if (count >= limit) {
+                throw new Error(label('mediaLimitLabel', 'The gallery is full.'));
+            }
+            const body = new URLSearchParams({
+                csrf_token: String(search.dataset.mediaCsrf || ''),
+                selection: String(button.dataset.mediaResultId || ''),
+            });
+            const response = await fetch(search.dataset.mediaImportEndpoint || '/?page=api_workout_media_import', {
+                method: 'POST',
+                headers: { Accept: 'image/jpeg,image/png,image/webp,application/json', 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                credentials: 'same-origin',
+                body,
+            });
+            const contentType = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+            if (!response.ok || !['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(String(payload.message || label('mediaErrorLabel', 'Import failed.')));
+            }
+            const blob = await response.blob();
+            const extension = contentType === 'image/png' ? 'png' : (contentType === 'image/webp' ? 'webp' : 'jpg');
+            const base = String(button.dataset.mediaResultTitle || 'exercise')
+                .normalize('NFKD').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70) || 'exercise';
+            const file = new File([blob], `${base}.${extension}`, { type: contentType, lastModified: Date.now() });
+            const transfer = new DataTransfer();
+            [...(fileInput.files || [])].forEach((current) => transfer.items.add(current));
+            transfer.items.add(file);
+            fileInput.files = transfer.files;
+            fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+
+        results.addEventListener('click', async (event) => {
+            const button = event.target instanceof Element ? event.target.closest('[data-media-result-id]') : null;
+            if (!(button instanceof HTMLButtonElement) || button.disabled) return;
+            button.disabled = true;
+            const previous = button.textContent;
+            button.textContent = type === 'image' ? label('mediaImportingLabel', 'Adding…') : label('mediaSelectLabel', 'Use this');
+            setStatus(type === 'image' ? label('mediaImportingLabel', 'Adding…') : '', 'loading');
+            try {
+                if (type === 'image') {
+                    await addImageResult(button);
+                } else {
+                    const videoInput = form.querySelector('[data-workout-video-input]');
+                    if (!(videoInput instanceof HTMLInputElement)) throw new Error(label('mediaErrorLabel', 'Video field unavailable.'));
+                    videoInput.value = String(button.dataset.mediaResultUrl || '');
+                    videoInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    videoInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                results.querySelectorAll('[data-media-result-id]').forEach((candidate) => candidate.classList.toggle('is-selected', candidate === button));
+                button.textContent = '\u2713 ' + label('mediaChosenLabel', 'Selected');
+                setStatus(label('mediaSelectedLabel', 'Selected.'), 'success');
+            } catch (error) {
+                button.textContent = previous;
+                setStatus(String(error?.message || label('mediaErrorLabel', 'Selection failed.')), 'error');
+            } finally {
+                button.disabled = false;
+                search.setAttribute('aria-busy', 'false');
+            }
+        });
+
+        toggle.addEventListener('click', () => setOpen(panel.hidden, true));
+        submit.addEventListener('click', runSearch);
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                runSearch();
+            } else if (event.key === 'Escape') {
+                setOpen(false);
+                toggle.focus({ preventScroll: true });
+            }
+        });
+    };
+
+    const init = () => document.querySelectorAll('[data-workout-media-search]').forEach(initMediaSearch);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+    document.addEventListener('fc:afterPageSwap', init);
+})();
+
 /* Exercise media editor: local image and safe video previews for personal and
    admin exercise forms. It is PJAX-aware and never injects user HTML. */
 (() => {
@@ -7838,24 +8682,25 @@
 
         let restoring = false;
         let timer = 0;
+        let dismissTimer = 0;
         let foundDraft = storageRead(key);
         const label = (name) => String(status.dataset[name] || '');
         const setStatus = (state, heading, detail, showActions = false) => {
+            window.clearTimeout(dismissTimer);
             status.dataset.state = state;
             title.textContent = heading;
             hint.textContent = detail;
             actions.hidden = !showActions;
+            status.classList.toggle('is-dismissed', state === 'ready');
+            if (['saved', 'restored', 'discarded'].includes(state)) {
+                dismissTimer = window.setTimeout(() => status.classList.add('is-dismissed'), 2200);
+            }
         };
         const readyStatus = (heading = label('readyLabel')) => setStatus('ready', heading, '');
         const showFound = (draft) => {
             const detail = withTime(label('foundTemplate'), draft.updatedAt)
                 + (draft.hasFiles ? ` ${label('filesLabel')}` : '');
             setStatus('found', label('foundLabel'), detail, true);
-            if (window.matchMedia('(max-width: 700px)').matches) {
-                window.requestAnimationFrame(() => {
-                    if (status.dataset.state === 'found') status.scrollIntoView({ block: 'start' });
-                });
-            }
         };
         const saveNow = () => {
             window.clearTimeout(timer);
@@ -7876,7 +8721,7 @@
         const scheduleSave = () => {
             if (restoring) return;
             foundDraft = null;
-            setStatus('saving', label('savingLabel'), label('filesLabel'));
+            status.classList.add('is-dismissed');
             window.clearTimeout(timer);
             timer = window.setTimeout(saveNow, 500);
         };
@@ -7903,15 +8748,15 @@
             restoreDraft(form, foundDraft);
             restoring = false;
             const restoredAt = Date.now();
-            setStatus('restored', label('restoredLabel'), foundDraft.hasFiles ? label('filesLabel') : '');
             foundDraft.updatedAt = restoredAt;
-            window.setTimeout(saveNow, 0);
+            saveNow();
+            setStatus('restored', label('restoredLabel'), foundDraft.hasFiles ? label('filesLabel') : '');
         });
         discard?.addEventListener('click', () => {
             window.clearTimeout(timer);
             storageRemove(key);
             foundDraft = null;
-            readyStatus(label('discardedLabel'));
+            setStatus('discarded', label('discardedLabel'), '');
         });
     };
 

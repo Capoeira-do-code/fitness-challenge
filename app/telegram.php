@@ -18,6 +18,8 @@ const TELEGRAM_MAX_SENDS_PER_TICK = 25; // safety bound per scheduler tick
 
 function telegram_settings(PDO $pdo): array
 {
+    $configuredBaseUrl = configured_app_base_url($pdo);
+    $detectedBaseUrl = detected_app_base_url($pdo);
     return [
         'enabled' => telegram_bool((string) (app_setting($pdo, 'telegram_enabled', '0') ?? '0')),
         'external_bot' => telegram_bool((string) (app_setting($pdo, 'telegram_external_bot', '0') ?? '0')),
@@ -25,7 +27,9 @@ function telegram_settings(PDO $pdo): array
         'username' => trim((string) (app_setting($pdo, 'telegram_bot_username', '') ?? '')),
         'offset' => (int) (app_setting($pdo, 'telegram_update_offset', '0') ?? '0'),
         'last_poll_at' => trim((string) (app_setting($pdo, 'telegram_last_poll_at', '') ?? '')),
-        'base_url' => rtrim(trim((string) (app_setting($pdo, 'app_base_url', '') ?? '')), '/'),
+        'base_url' => integration_app_base_url($pdo),
+        'configured_base_url' => $configuredBaseUrl,
+        'detected_base_url' => $detectedBaseUrl,
     ];
 }
 
@@ -84,7 +88,12 @@ function telegram_update_settings(PDO $pdo, array $input, int $actorUserId): voi
     set_app_setting($pdo, 'telegram_bot_token', $token, $actorUserId);
     set_app_setting($pdo, 'telegram_bot_username', ltrim(trim((string) ($input['telegram_bot_username'] ?? '')), '@'), $actorUserId);
     if (array_key_exists('app_base_url', $input)) {
-        set_app_setting($pdo, 'app_base_url', rtrim(trim((string) $input['app_base_url']), '/'), $actorUserId);
+        $rawBaseUrl = trim((string) $input['app_base_url']);
+        $normalizedBaseUrl = normalize_app_base_url($rawBaseUrl);
+        if ($rawBaseUrl !== '' && $normalizedBaseUrl === '') {
+            throw new InvalidArgumentException(t('admin.app_base_url_invalid'));
+        }
+        set_app_setting($pdo, 'app_base_url', $normalizedBaseUrl, $actorUserId);
     }
 }
 
@@ -113,7 +122,6 @@ function telegram_api_request(string $token, string $method, array $params = [])
         $raw = curl_exec($handle);
         if ($raw === false) {
             $error = curl_error($handle);
-            curl_close($handle);
 
             return [
                 'ok' => false,
@@ -121,7 +129,6 @@ function telegram_api_request(string $token, string $method, array $params = [])
                 'error' => telegram_redact_secrets($error !== '' ? $error : 'curl_failed', $token),
             ];
         }
-        curl_close($handle);
     } else {
         $context = stream_context_create(['http' => [
             'method' => 'POST',
@@ -558,7 +565,12 @@ function telegram_handle_incoming(PDO $pdo, array $settings, string $chatId, str
     if (!preg_match('/^\/start(?:@\w+)?\s+(\S+)/i', $text, $matches)) {
         $user = db_fetch_one($pdo, 'SELECT * FROM users WHERE telegram_chat_id = :chat_id AND active = 1', [':chat_id' => $chatId]);
         if ($user === null) {
-            telegram_send_message($settings, $chatId, t('telegram.not_linked'));
+            telegram_send_message(
+                $settings,
+                $chatId,
+                t('telegram.not_linked'),
+                telegram_action_keyboard($settings, '/?page=settings&view=integrations#telegram')
+            );
             return;
         }
         $parts = preg_split('/\s+/', trim($text), 2) ?: [];
@@ -582,7 +594,12 @@ function telegram_handle_incoming(PDO $pdo, array $settings, string $chatId, str
     $code = $matches[1];
     $user = db_fetch_one($pdo, 'SELECT * FROM users WHERE telegram_link_code = :code', [':code' => $code]);
     if ($user === null) {
-        telegram_send_message($settings, $chatId, t('telegram.msg_invalid_link'));
+        telegram_send_message(
+            $settings,
+            $chatId,
+            t('telegram.msg_invalid_link'),
+            telegram_action_keyboard($settings, '/?page=settings&view=integrations#telegram')
+        );
         return;
     }
     db_execute(
@@ -594,8 +611,9 @@ function telegram_handle_incoming(PDO $pdo, array $settings, string $chatId, str
          WHERE id = :id',
         [':chat_id' => $chatId, ':updated_at' => now_iso(), ':id' => (int) $user['id']]
     );
-    telegram_with_user_locale($user, static function () use ($settings, $chatId): void {
-        telegram_send_message($settings, $chatId, t('telegram.msg_linked'));
+    $fresh = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id AND active = 1', [':id' => (int) $user['id']]) ?? $user;
+    telegram_with_user_locale($fresh, static function () use ($settings, $chatId, $fresh): void {
+        telegram_send_message($settings, $chatId, t('telegram.msg_linked'), telegram_preferences_keyboard($settings, $fresh));
     });
 }
 

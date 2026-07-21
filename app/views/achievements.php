@@ -12,6 +12,7 @@ $ownerName = $achievementScope === 'team'
     : (string) ($achievementOwner['display_name'] ?? t('common.user'));
 $achievementsUrl = (string) ($achievementsUrl ?? '/?page=achievements');
 $backHref = (string) ($backHref ?? '/?page=profile');
+$backDestination = $achievementScope === 'team' ? t('nav.team') : t('nav.profile');
 $achievementTotalCount = count($achievementsAll);
 $achievementUnlockedCount = count($unlockedAchievements);
 $achievementLockedCount = count($lockedAchievements);
@@ -64,7 +65,7 @@ $renderAchievementCard = static function (array $achievement): void {
 
 <section class="achievements-page-screen">
 <header class="hierarchy-page-header achievements-page-header<?= $achievementScope === 'team' ? ' achievements-page-header-team' : '' ?>">
-    <a class="hierarchy-back" href="<?= e($backHref) ?>" data-hierarchy-back data-fallback="<?= e($backHref) ?>" aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+    <a class="hierarchy-back destination-back" href="<?= e($backHref) ?>" data-hierarchy-back data-fallback="<?= e($backHref) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e($backDestination) ?>"><span aria-hidden="true">&larr;</span><strong><?= e($backDestination) ?></strong></a>
     <div>
         <p class="eyebrow"><?= e($ownerName) ?></p>
         <h1 data-navigation-focus tabindex="-1"><?= e(t('achievements.all_title')) ?></h1>

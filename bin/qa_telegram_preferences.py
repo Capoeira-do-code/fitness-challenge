@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import ssl
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -45,6 +46,16 @@ def create_db(path: Path) -> None:
             telegram_notify_social INTEGER DEFAULT 1,
             updated_at TEXT
         );
+        CREATE TABLE daily_logs (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER,
+            log_date TEXT,
+            steps INTEGER DEFAULT 0,
+            workout_done INTEGER DEFAULT 0,
+            distance_km REAL DEFAULT 0,
+            weight REAL,
+            notes TEXT
+        );
         INSERT INTO users (
             id, username, display_name, locale, active, telegram_chat_id,
             telegram_reminders_enabled, telegram_motivation_enabled, telegram_reminder_time
@@ -60,6 +71,8 @@ def main() -> int:
         db_path = Path(temp_dir) / "qa.sqlite"
         create_db(db_path)
         db = bot.BotDB(db_path)
+        assert bot.TLS_CONTEXT.verify_mode == ssl.CERT_REQUIRED
+        assert bot.TLS_CONTEXT.check_hostname is True
         settings = {"token": "test-token", "base_url": "https://fitness.example"}
         calls: list[tuple[str, dict]] = []
 
@@ -74,8 +87,14 @@ def main() -> int:
         assert user is not None
         panel = bot.build_notifications_panel(user)
         keyboard = bot.notification_keyboard(user, settings)
-        assert "Avisos de Telegram" in panel
+        assert "Tus notificaciones" in panel
         assert any(button.get("callback_data") == "tgpref:social" for row in keyboard["inline_keyboard"] for button in row)
+        assert any(button.get("url", "").endswith("/?page=settings&view=integrations#telegram") for row in keyboard["inline_keyboard"] for button in row)
+
+        reminder = bot.build_reminder(user, None, settings, 1)
+        today = bot.build_today(db, user, settings, "es")
+        assert "https://" not in reminder and "http://" not in reminder
+        assert "https://" not in today and "http://" not in today
 
         bot.process_update(db, settings, {
             "callback_query": {

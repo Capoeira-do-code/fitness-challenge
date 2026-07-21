@@ -45,6 +45,7 @@ if (!is_string($workoutFieldsJson)) {
 }
 $entryWorkouts = is_array($log['workouts'] ?? null) ? array_values((array) $log['workouts']) : [];
 $logTimeValue = normalize_log_time($log['log_time'] ?? '', (new DateTimeImmutable('now'))->format('H:i'));
+$entryDateDisplay = format_date_eu((string) $selectedDate);
 if ($entryWorkouts === [] && !empty($log)) {
     $legacyWorkoutDone = (int) ($log['workout_done'] ?? 0) === 1;
     $legacyWorkoutTypeId = !empty($log['workout_type_id']) ? (int) $log['workout_type_id'] : null;
@@ -76,6 +77,14 @@ $baseCaloriesValue = (string) ($log['base_training_calories_burned'] ?? $log['tr
 $missingReasonValue = trim((string) ($log['step_exception_reason'] ?? ''));
 if ($missingReasonValue === '') {
     $missingReasonValue = trim((string) ($log['workout_exception_reason'] ?? ''));
+}
+$entryPenaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
+$entrySelectedHabitCount = !empty($log) && (int) ($log['junk_food'] ?? 0) === 1 ? 1 : 0;
+foreach ((array) ($habits ?? []) as $entryHabit) {
+    $entryHabitCode = (string) ($entryHabit['code'] ?? '');
+    if ($entryHabitCode !== 'morning_walk' && !empty($log['habits'][$entryHabitCode]) && (int) ($log['habits'][$entryHabitCode]['value'] ?? 0) === 1) {
+        $entrySelectedHabitCount++;
+    }
 }
 $nutritionSummary = static function (array $photo): string {
     $parts = [];
@@ -194,14 +203,7 @@ if ($entryMode === 'calendar') {
     $topbarControls = ob_get_clean();
 }
 ?>
-<section class="screen stack-lg<?= $entryMode === 'calendar' ? ' entries-calendar-screen' : '' ?>">
-    <?php if ($entryMode !== 'calendar'): ?>
-    <nav class="entry-mode-tabs" aria-label="<?= e(t('entries.title')) ?>">
-        <a class="<?= $entryMode === 'data' ? 'active' : '' ?>" href="<?= e($entryUrlFor('data', (string) $selectedDate)) ?>" <?= $entryMode === 'data' ? 'aria-current="page"' : '' ?>><?= e(t('entries.quick_data')) ?></a>
-        <a class="<?= $entryMode === 'meal' ? 'active' : '' ?>" href="<?= e($entryUrlFor('meal', (string) $selectedDate)) ?>" <?= $entryMode === 'meal' ? 'aria-current="page"' : '' ?>><?= e(t('entries.quick_meal')) ?></a>
-    </nav>
-    <?php endif; ?>
-
+<section class="screen stack-lg<?= $entryMode === 'calendar' ? ' entries-calendar-screen' : '' ?><?= $entryMode === 'data' ? ' entries-data-screen' : '' ?><?= $entryMode === 'meal' ? ' entries-meal-screen' : '' ?>">
     <?php if ($entryMode === 'data'): ?>
         <article class="panel entry-data-panel">
             <div class="panel-head entry-data-head entry-data-toolbar">
@@ -211,40 +213,46 @@ if ($entryMode === 'calendar') {
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
                         </a>
                         <label class="entry-date-inline">
-                            <span><?= e(t('common.date')) ?></span>
-                            <input id="entry-date" type="date" name="log_date" value="<?= e($selectedDate) ?>" onchange="if (this.value) window.location='/?page=entries&mode=data&date='+this.value;" data-testid="entry-date">
+                            <span class="entry-picker-label"><?= e(t('common.date')) ?></span>
+                            <span class="entry-native-picker">
+                                <span class="entry-native-picker-value" aria-hidden="true"><?= e($entryDateDisplay) ?></span>
+                                <input id="entry-date" type="date" name="log_date" value="<?= e($selectedDate) ?>" onchange="if (this.value) window.location='/?page=entries&mode=data&date='+this.value;" data-testid="entry-date" aria-label="<?= e(t('common.date')) ?>">
+                            </span>
                         </label>
                         <a class="btn btn-ghost icon-btn entry-day-arrow" href="<?= e($entryUrlFor('data', $entryNextDate)) ?>" aria-label="<?= e(t('common.next')) ?> <?= e(t('common.date')) ?>">
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
                         </a>
                     </div>
                     <label class="entry-time-inline">
-                        <span><?= e(t('entries.log_time')) ?></span>
-                        <input type="time" name="log_time" value="<?= e($logTimeValue) ?>" form="entry-data-form">
+                        <span class="entry-picker-label"><?= e(t('entries.log_time')) ?></span>
+                        <span class="entry-native-picker">
+                            <span class="entry-native-picker-value" aria-hidden="true" data-entry-picker-value><?= e($logTimeValue) ?></span>
+                            <input type="time" name="log_time" value="<?= e($logTimeValue) ?>" form="entry-data-form" aria-label="<?= e(t('entries.log_time')) ?>" data-entry-picker-control>
+                        </span>
                     </label>
                 </div>
             </div>
 
-            <form id="entry-data-form" method="post" action="/?page=entries" class="stack entry-data-form" data-testid="entry-form" data-workout-fields="<?= e($workoutFieldsJson) ?>" data-primary-goal-type="<?= e((string) ($currentUser['primary_goal_type'] ?? 'steps')) ?>" data-primary-goal-value="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>" data-step-goal="<?= e((string) ($currentUser['step_goal'] ?? 0)) ?>" data-km-goal="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>" data-primary-goals="<?= e($entryPrimaryGoalsJson) ?>" data-label-steps="<?= e(t('metric.steps')) ?>" data-label-km="<?= e(t('metric.distance_km')) ?>" data-label-workouts="<?= e(t('metric.workouts')) ?>" data-missing-label="<?= e(t('entries.missing_reason')) ?>" data-missing-prefix="<?= e(t('entries.missing_reason_for')) ?>">
+            <form id="entry-data-form" method="post" action="/?page=entries" class="stack entry-data-form" data-testid="entry-form" data-workout-fields="<?= e($workoutFieldsJson) ?>" data-primary-goal-type="<?= e((string) ($currentUser['primary_goal_type'] ?? 'steps')) ?>" data-primary-goal-value="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>" data-step-goal="<?= e((string) ($currentUser['step_goal'] ?? 0)) ?>" data-km-goal="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>" data-primary-goals="<?= e($entryPrimaryGoalsJson) ?>" data-label-steps="<?= e(t('metric.steps')) ?>" data-label-km="<?= e(t('metric.distance_km')) ?>" data-label-workouts="<?= e(t('metric.workouts')) ?>" data-missing-label="<?= e(t('entries.missing_reason')) ?>" data-missing-prefix="<?= e(t('entries.missing_reason_for')) ?>" data-penalties-enabled="<?= $entryPenaltiesEnabled ? '1' : '0' ?>">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="save_log">
                 <input type="hidden" name="log_date" value="<?= e($selectedDate) ?>">
                 <input type="hidden" name="workout_form_mode" value="1">
                 <div class="entry-form-section grid-inline entries-two-col entry-metric-pair">
-                    <label>
-                        <?= e(t('metric.steps')) ?>
-                        <input type="number" min="0" name="steps" value="<?= e($baseStepsValue) ?>" data-testid="entry-steps">
+                    <label class="entry-metric-field" data-tone="blue">
+                        <span class="entry-field-label"><span aria-hidden="true"><?= activity_icon_svg('footsteps') ?></span><strong><?= e(t('metric.steps')) ?></strong></span>
+                        <input type="number" min="0" inputmode="numeric" name="steps" value="<?= e($baseStepsValue) ?>" data-testid="entry-steps">
                     </label>
-                    <label>
-                        <?= e(t('metric.distance_km')) ?>
-                        <input type="number" min="0" step="0.01" name="distance_km" value="<?= e($baseDistanceValue) ?>">
+                    <label class="entry-metric-field" data-tone="violet">
+                        <span class="entry-field-label"><span aria-hidden="true"><?= activity_icon_svg('target') ?></span><strong><?= e(t('metric.distance_km')) ?></strong></span>
+                        <input type="number" min="0" step="0.01" inputmode="decimal" name="distance_km" value="<?= e($baseDistanceValue) ?>">
                     </label>
                 </div>
 
                 <div class="entry-form-section quick-stats entries-two-col entry-metric-pair">
-                    <label>
-                        <?= e(t('entries.training_calories_burned')) ?>
-                        <input type="number" min="0" step="1" name="training_calories_burned" value="<?= e($baseCaloriesValue) ?>">
+                    <label class="entry-metric-field" data-tone="orange">
+                        <span class="entry-field-label"><span aria-hidden="true"><?= activity_icon_svg('flame') ?></span><strong><?= e(t('entries.training_calories_burned')) ?></strong></span>
+                        <input type="number" min="0" step="1" inputmode="numeric" name="training_calories_burned" value="<?= e($baseCaloriesValue) ?>">
                     </label>
                     <div class="entry-weight-control" id="entry-weight">
                         <div class="entry-weight-head">
@@ -264,9 +272,10 @@ if ($entryMode === 'calendar') {
                     <div class="workout-toggle-row">
                         <label class="check entry-workout-toggle">
                             <input type="checkbox" name="workout_enabled" value="1" data-workout-enabled <?= $workoutEnabled ? 'checked' : '' ?>>
-                            <?= e(t('entries.workout')) ?>
+                            <span class="entry-workout-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
+                            <strong><?= e(t('entries.workout')) ?></strong>
                         </label>
-                        <button type="button" class="btn btn-ghost small" data-workout-add><?= e(t('entries.add_workout')) ?></button>
+                        <button type="button" class="btn btn-ghost small" data-workout-add aria-label="<?= e(t('entries.add_workout')) ?>"><span aria-hidden="true"><?= activity_icon_svg('plus') ?></span><strong><?= e(t('entries.add_workout')) ?></strong></button>
                     </div>
                     <div class="workout-panel" data-workout-panel <?= $workoutEnabled ? '' : 'hidden' ?>>
                         <p class="muted small"><?= e(t('entries.workout_repeater_hint')) ?></p>
@@ -312,7 +321,7 @@ if ($entryMode === 'calendar') {
                                                 <?= e((string) $field['label']) ?>
                                                 <input
                                                     type="<?= ($field['input_kind'] ?? 'number') === 'text' ? 'text' : 'number' ?>"
-                                                    <?= ($field['input_kind'] ?? 'number') === 'text' ? '' : 'step="0.01" min="0"' ?>
+                                                    <?= ($field['input_kind'] ?? 'number') === 'text' ? '' : 'step="0.01" min="0" inputmode="decimal"' ?>
                                                     name="workouts[<?= (int) $rowIndex ?>][fields][<?= $fieldId ?>]"
                                                     data-name-template="workouts[__INDEX__][fields][<?= $fieldId ?>]"
                                                     data-workout-field-data-key="<?= e((string) ($field['data_key'] ?? '')) ?>"
@@ -357,43 +366,49 @@ if ($entryMode === 'calendar') {
                     </template>
                 </div>
 
-                <p class="entry-section-title"><?= e(t('table.habits_section')) ?></p>
-                <div class="toggle-row pill-toggles entries-toggles">
-                    <label class="check">
-                        <input type="checkbox" name="junk_food" value="1" <?= !empty($log) && (int) $log['junk_food'] === 1 ? 'checked' : '' ?> data-testid="entry-junk-food">
-                        <?= e(t('entries.junk_food')) ?>
-                    </label>
-                    <?php foreach (($habits ?? []) as $habit): ?>
-                        <?php $code = (string) $habit['code']; ?>
-                        <?php if ($code === 'morning_walk') {
-                            continue;
-                        } ?>
+                <details class="entry-habits-disclosure" data-entry-habits <?= $entrySelectedHabitCount > 0 ? 'open' : '' ?>>
+                    <summary class="entry-section-title"><span aria-hidden="true"><?= activity_icon_svg('check') ?></span><span><?= e(t('table.habits_section')) ?></span><span class="entry-habits-count" data-entry-habits-count><?= $entrySelectedHabitCount ?></span><span class="entry-habits-chevron" aria-hidden="true">⌄</span></summary>
+                    <div class="toggle-row pill-toggles entries-toggles">
                         <label class="check">
-                            <input type="checkbox" name="habit[<?= e($code) ?>]" value="1" <?= !empty($log['habits'][$code]) && (int) $log['habits'][$code]['value'] === 1 ? 'checked' : '' ?>>
-                            <?= e((string) $habit['label']) ?>
+                            <input type="checkbox" name="junk_food" value="1" <?= !empty($log) && (int) $log['junk_food'] === 1 ? 'checked' : '' ?> data-testid="entry-junk-food">
+                            <?= e(t('entries.junk_food')) ?>
                         </label>
-                    <?php endforeach; ?>
-                </div>
+                        <?php foreach (($habits ?? []) as $habit): ?>
+                            <?php $code = (string) $habit['code']; ?>
+                            <?php if ($code === 'morning_walk') {
+                                continue;
+                            } ?>
+                            <label class="check">
+                                <input type="checkbox" name="habit[<?= e($code) ?>]" value="1" <?= !empty($log['habits'][$code]) && (int) $log['habits'][$code]['value'] === 1 ? 'checked' : '' ?>>
+                                <?= e((string) $habit['label']) ?>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                </details>
 
-                <div class="grid-inline entries-two-col entry-reason-section">
-                    <label class="conditional-reason" data-reason="missing" hidden>
-                        <span data-missing-reason-label><?= e(t('entries.missing_reason')) ?></span>
-                        <small class="muted" data-missing-reason-items></small>
-                        <input type="text" name="missing_reason" placeholder="<?= e(t('entries.missing_reason_placeholder')) ?>" value="<?= e($missingReasonValue) ?>" data-testid="entry-missing-reason">
-                    </label>
-                </div>
+                <?php if ($entryPenaltiesEnabled): ?>
+                    <div class="grid-inline entries-two-col entry-reason-section">
+                        <label class="conditional-reason" data-reason="missing" hidden>
+                            <span data-missing-reason-label><?= e(t('entries.missing_reason')) ?></span>
+                            <small class="muted" data-missing-reason-items></small>
+                            <input type="text" name="missing_reason" placeholder="<?= e(t('entries.missing_reason_placeholder')) ?>" value="<?= e($missingReasonValue) ?>" data-testid="entry-missing-reason">
+                        </label>
+                    </div>
+                <?php endif; ?>
 
                 <label class="entry-notes-field">
-                    <?= e(t('common.notes')) ?>
+                    <span class="entry-notes-label"><span aria-hidden="true"><?= activity_icon_svg('spark') ?></span><strong><?= e(t('common.notes')) ?></strong></span>
                     <textarea name="notes" rows="3" placeholder="<?= e(t('entries.notes_placeholder')) ?>"><?= e((string) ($log['notes'] ?? '')) ?></textarea>
                 </label>
 
                 <div class="entry-form-actions">
-                    <button type="submit" class="btn btn-primary btn-block" data-testid="entry-save"><?= e(t('entries.save_data')) ?></button>
+                    <button type="submit" class="btn btn-primary btn-block" data-testid="entry-save"><span aria-hidden="true"><?= activity_icon_svg('check') ?></span><span><?= e(t('entries.save_data')) ?></span></button>
                 </div>
             </form>
 
-            <p class="muted small entry-pending-hint"><?= e(t('entries.pending_hint')) ?></p>
+            <?php if ($entryPenaltiesEnabled): ?>
+                <p class="muted small entry-pending-hint"><?= e(t('entries.pending_hint')) ?></p>
+            <?php endif; ?>
         </article>
     <?php endif; ?>
 
@@ -413,9 +428,12 @@ if ($entryMode === 'calendar') {
             <div class="proof-photo-grid">
                 <div class="stack proof-photo-main-card">
                     <div class="grid-inline entries-two-col proof-photo-meta">
-                        <label>
-                            <?= e(t('common.date')) ?>
-                            <input type="date" name="log_date" value="<?= e($selectedDate) ?>">
+                        <label class="proof-photo-date-field">
+                            <span class="entry-picker-label"><?= e(t('common.date')) ?></span>
+                            <span class="entry-native-picker">
+                                <span class="entry-native-picker-value" aria-hidden="true" data-entry-picker-value><?= e($entryDateDisplay) ?></span>
+                                <input type="date" name="log_date" value="<?= e($selectedDate) ?>" aria-label="<?= e(t('common.date')) ?>" data-entry-picker-control data-entry-picker-format="date-eu">
+                            </span>
                         </label>
 
                         <label>
@@ -436,52 +454,49 @@ if ($entryMode === 'calendar') {
 
                     <div class="proof-photo-upload-block">
                         <label class="proof-photo-upload-label">
-                            <span><?= e(t('entries.camera_hint')) ?></span>
-                            <input type="file" name="photo" accept="image/*" required data-proof-photo-input>
+                            <span class="proof-photo-upload-copy"><span class="proof-photo-upload-icon" aria-hidden="true"><?= activity_icon_svg('image') ?></span><span><strong><?= e(t('entries.camera_hint')) ?></strong><small><?= e(t('entries.photo_upload_help')) ?></small></span><span class="proof-photo-upload-plus" aria-hidden="true"><?= activity_icon_svg('plus') ?></span></span>
+                            <input type="file" name="photo" accept="image/*" required data-proof-photo-input aria-label="<?= e(t('entries.camera_hint')) ?>">
                         </label>
                         <p class="proof-photo-upload-state muted small" data-proof-photo-state><?= e(t('entries.photo_upload_idle')) ?></p>
-                        <p class="muted small"><?= e(t('entries.photo_upload_help')) ?></p>
                     </div>
-
-                    <button type="submit" class="btn btn-secondary btn-block proof-photo-submit"><?= e(t('entries.upload')) ?></button>
                 </div>
 
                 <div class="stack proof-photo-side-card">
                     <div class="photo-nutrition-tools">
-                        <button type="button" class="btn btn-ghost small" data-photo-nutrition-toggle><?= e(t('entries.add_calorie_info')) ?></button>
+                        <button type="button" class="btn btn-ghost small" data-photo-nutrition-toggle aria-expanded="false" aria-controls="photo-nutrition-panel"><span aria-hidden="true"><?= activity_icon_svg('flame') ?></span><strong><?= e(t('entries.add_calorie_info')) ?></strong><span class="photo-nutrition-chevron" aria-hidden="true">⌄</span></button>
                     </div>
-                    <div class="photo-nutrition-panel" data-photo-nutrition-panel hidden>
+                    <div class="photo-nutrition-panel" id="photo-nutrition-panel" data-photo-nutrition-panel hidden>
                         <label>
                             <?= e(t('entries.photo_calories')) ?>
-                            <input type="number" min="0" step="1" name="photo_calories" placeholder="650">
+                            <input type="number" min="0" step="1" inputmode="numeric" name="photo_calories" placeholder="650">
                         </label>
                         <div class="photo-nutrition-tools">
-                            <button type="button" class="btn btn-ghost small" data-photo-nutrition-advanced-toggle><?= e(t('entries.nutrition_advanced')) ?></button>
+                            <button type="button" class="btn btn-ghost small" data-photo-nutrition-advanced-toggle aria-expanded="false" aria-controls="photo-nutrition-advanced"><span aria-hidden="true"><?= activity_icon_svg('sliders') ?></span><strong><?= e(t('entries.nutrition_advanced')) ?></strong><span class="photo-nutrition-chevron" aria-hidden="true">⌄</span></button>
                         </div>
-                        <div class="grid-inline entries-two-col photo-nutrition-advanced" data-photo-nutrition-advanced hidden>
+                        <div class="grid-inline entries-two-col photo-nutrition-advanced" id="photo-nutrition-advanced" data-photo-nutrition-advanced hidden>
                             <label>
                                 <?= e(t('entries.photo_protein')) ?>
-                                <input type="number" min="0" step="0.1" name="photo_protein_g" placeholder="35">
+                                <input type="number" min="0" step="0.1" inputmode="decimal" name="photo_protein_g" placeholder="35">
                             </label>
                             <label>
                                 <?= e(t('entries.photo_carbs')) ?>
-                                <input type="number" min="0" step="0.1" name="photo_carbs_g" placeholder="60">
+                                <input type="number" min="0" step="0.1" inputmode="decimal" name="photo_carbs_g" placeholder="60">
                             </label>
                             <label>
                                 <?= e(t('entries.photo_fat')) ?>
-                                <input type="number" min="0" step="0.1" name="photo_fat_g" placeholder="22">
+                                <input type="number" min="0" step="0.1" inputmode="decimal" name="photo_fat_g" placeholder="22">
                             </label>
                             <label>
                                 <?= e(t('entries.photo_fiber')) ?>
-                                <input type="number" min="0" step="0.1" name="photo_fiber_g" placeholder="8">
+                                <input type="number" min="0" step="0.1" inputmode="decimal" name="photo_fiber_g" placeholder="8">
                             </label>
                             <label>
                                 <?= e(t('entries.photo_sugar')) ?>
-                                <input type="number" min="0" step="0.1" name="photo_sugar_g" placeholder="12">
+                                <input type="number" min="0" step="0.1" inputmode="decimal" name="photo_sugar_g" placeholder="12">
                             </label>
                             <label>
                                 <?= e(t('entries.photo_sodium')) ?>
-                                <input type="number" min="0" step="1" name="photo_sodium_mg" placeholder="700">
+                                <input type="number" min="0" step="1" inputmode="numeric" name="photo_sodium_mg" placeholder="700">
                             </label>
                         </div>
                     </div>
@@ -489,8 +504,7 @@ if ($entryMode === 'calendar') {
                     <div
                         class="proof-photo-preview"
                         data-proof-photo-preview
-                        data-placeholder-title="<?= e(t('entries.photo_preview_placeholder')) ?>"
-                        data-placeholder-hint="<?= e(t('entries.photo_preview_hint')) ?>"
+                        hidden
                         data-preview-unsupported-title="<?= e(t('entries.photo_preview_unsupported_title')) ?>"
                         data-preview-unsupported-hint="<?= e(t('entries.photo_preview_unsupported_hint')) ?>"
                         data-preview-alt="<?= e(t('common.photo')) ?>"
@@ -498,16 +512,12 @@ if ($entryMode === 'calendar') {
                         data-state-selected="<?= e(t('entries.photo_upload_selected')) ?>"
                         data-state-unsupported="<?= e(t('entries.photo_upload_unsupported')) ?>"
                         data-state-error="<?= e(t('entries.photo_upload_error')) ?>"
-                    >
-                        <div class="photo-placeholder">
-                            <div class="photo-placeholder-content">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v8.59l3.3-3.3a1 1 0 0 1 1.4 0L14 15.6l2.3-2.3a1 1 0 0 1 1.4 0L19 14.6V6Zm3 1.2a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6Z"/></svg>
-                                <p><?= e(t('entries.photo_preview_placeholder')) ?></p>
-                                <small><?= e(t('entries.photo_preview_hint')) ?></small>
-                            </div>
-                        </div>
-                    </div>
+                    ></div>
                 </div>
+            </div>
+
+            <div class="proof-photo-form-actions">
+                <button type="submit" class="btn btn-secondary btn-block proof-photo-submit"><span aria-hidden="true"><?= activity_icon_svg('check') ?></span><strong><?= e(t('entries.upload')) ?></strong></button>
             </div>
         </form>
 

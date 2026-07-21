@@ -34,8 +34,10 @@ import math
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 from runtime_lease import RuntimeLease, maintenance_shared_lock, runtime_owner_id
+from tls_context import trusted_ssl_context
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = ROOT / "storage" / "fitness.sqlite"
@@ -47,9 +49,12 @@ MAX_REMINDERS_PER_DAY = 3   # first nudge + up to 2 follow-ups while still unlog
 FOLLOWUP_MINUTES = 90       # gap between follow-up nudges
 ADD_DATA_PATH = "/?page=entries&mode=data"
 
+
+TLS_CONTEXT = trusted_ssl_context()
+
 MESSAGES = {
     "en": {
-        "linked": "Linked! You will get reminders and motivation here.\nType /progress to see how you are doing or /notifications to manage alerts.",
+        "linked": "✅ Account connected\n\nYour notifications are ready. Choose what you want to receive with the buttons below.",
         "invalid_link": "This Telegram link is invalid or expired. Open Settings in the app and press Link Telegram again.",
         "not_linked": "Your Telegram is not linked yet. Open Settings in the app and press Link Telegram.",
         "no_challenge": "There is no active challenge right now.",
@@ -71,7 +76,7 @@ MESSAGES = {
         "today_not_logged": "Today is NOT logged yet, {name}.",
         "ranking_head": "Team ranking", "ranking_empty": "No data to rank yet.",
         "milestone": "{name}, {streak}-day streak! You are on fire. Keep going!",
-        "notifications_head": "Telegram alerts",
+        "notifications_head": "🔔 Your notifications",
         "notifications_hint": "Tap to turn each alert on or off. Changes are saved instantly.",
         "pref_reminders": "Log reminder", "pref_motivation": "Daily motivation",
         "pref_duel": "Duels ending", "pref_streak": "Streak alerts",
@@ -84,7 +89,7 @@ MESSAGES = {
         "streak_risk": "Your {streak}-day streak is at risk. You have not logged today yet.",
     },
     "es": {
-        "linked": "Vinculado! Recibiras recordatorios y motivacion aqui.\nEscribe /progress para ver como vas o /notifications para gestionar avisos.",
+        "linked": "✅ Cuenta conectada\n\nTus notificaciones ya estan listas. Elige que quieres recibir con los botones de abajo.",
         "invalid_link": "Este enlace de Telegram no es valido o ha caducado. Abre Ajustes en la app y pulsa Vincular Telegram otra vez.",
         "not_linked": "Tu Telegram no esta vinculado. Ve a Ajustes en la app y pulsa Vincular Telegram.",
         "no_challenge": "No hay un challenge activo ahora mismo.",
@@ -106,7 +111,7 @@ MESSAGES = {
         "today_not_logged": "Hoy AUN no esta registrado, {name}.",
         "ranking_head": "Ranking del equipo", "ranking_empty": "Aun no hay datos para el ranking.",
         "milestone": "{name}, racha de {streak} dias! Imparable. Sigue asi!",
-        "notifications_head": "Avisos de Telegram",
+        "notifications_head": "🔔 Tus notificaciones",
         "notifications_hint": "Pulsa para activar o desactivar cada aviso. Los cambios se guardan al instante.",
         "pref_reminders": "Recordar registro", "pref_motivation": "Motivacion diaria",
         "pref_duel": "Final de duelos", "pref_streak": "Avisos de racha",
@@ -119,7 +124,7 @@ MESSAGES = {
         "streak_risk": "Tu racha de {streak} dias esta en riesgo. Aun no has registrado hoy.",
     },
     "it": {
-        "linked": "Collegato! Riceverai promemoria e motivazione qui.\nScrivi /progress per vedere i progressi o /notifications per gestire gli avvisi.",
+        "linked": "✅ Account collegato\n\nLe notifiche sono pronte. Scegli cosa vuoi ricevere con i pulsanti qui sotto.",
         "invalid_link": "Questo link Telegram non e valido o e scaduto. Apri Impostazioni nell'app e premi Collega Telegram di nuovo.",
         "not_linked": "Il tuo Telegram non e collegato. Apri Impostazioni nell'app e premi Collega Telegram.",
         "no_challenge": "Non c'e una challenge attiva al momento.",
@@ -138,7 +143,7 @@ MESSAGES = {
         "today_not_logged": "Oggi NON e ancora registrato, {name}.",
         "ranking_head": "Classifica del team", "ranking_empty": "Ancora nessun dato per la classifica.",
         "milestone": "{name}, striscia di {streak} giorni! Inarrestabile. Continua!",
-        "notifications_head": "Avvisi Telegram",
+        "notifications_head": "🔔 Le tue notifiche",
         "notifications_hint": "Tocca per attivare o disattivare ogni avviso. Le modifiche vengono salvate subito.",
         "pref_reminders": "Promemoria registro", "pref_motivation": "Motivazione giornaliera",
         "pref_duel": "Fine duelli", "pref_streak": "Avvisi serie",
@@ -276,9 +281,18 @@ class BotDB:
         self.conn.commit()
 
     def settings(self) -> dict:
-        base_url = self.setting("app_base_url", "").strip().rstrip("/")
-        if not base_url:
-            base_url = os.environ.get("APP_BASE_URL", "").strip().rstrip("/")
+        configured_base = self.setting("app_base_url", "").strip().rstrip("/")
+        detected_base = self.setting("app_detected_base_url", "").strip().rstrip("/")
+        runtime_base = os.environ.get("APP_BASE_URL", "").strip().rstrip("/")
+
+        def ephemeral(url: str) -> bool:
+            host = (urlparse(url).hostname or "").lower()
+            return host in ("", "localhost", "127.0.0.1", "::1", "devtunnels.ms") \
+                or host.endswith(".devtunnels.ms")
+
+        base_url = configured_base if configured_base and not ephemeral(configured_base) else (
+            detected_base or configured_base or runtime_base
+        )
         return {
             "enabled": self.setting("telegram_enabled", "0") in ("1", "true", "yes", "on"),
             "token": self.setting("telegram_bot_token", "").strip(),
@@ -481,7 +495,7 @@ def api_call(token: str, method: str, params: Optional[dict] = None, timeout: in
     data = json.dumps(params or {}).encode("utf-8")
     request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=timeout, context=TLS_CONTEXT) as response:
             body = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         try:
@@ -696,11 +710,6 @@ def stats_block(stats: Optional[dict], locale: str) -> str:
     return "\n".join(lines)
 
 
-def add_data_url(settings: dict) -> str:
-    base = str(settings.get("base_url") or "").strip().rstrip("/")
-    return base + ADD_DATA_PATH if base else ""
-
-
 def action_keyboard(settings: dict, path: str, label: str) -> Optional[dict]:
     """Build one clear, direct action without exposing a broken relative URL."""
     base = str(settings.get("base_url") or "").strip().rstrip("/")
@@ -725,9 +734,6 @@ def build_reminder(user: sqlite3.Row, stats: Optional[dict], settings: dict, att
     block = stats_block(stats, locale)
     if block:
         parts.append(block)
-    url = add_data_url(settings)
-    if url:
-        parts.append(f"{T(locale, 'cta')} {url}")
     return "\n\n".join(parts)
 
 
@@ -789,9 +795,7 @@ def build_streak(user: sqlite3.Row, stats: Optional[dict], locale: str) -> str:
 def build_today(db: BotDB, user: sqlite3.Row, settings: dict, locale: str) -> str:
     if db.logged_today(int(user["id"]), now().strftime("%Y-%m-%d")):
         return T(locale, "today_logged", name=str(user["display_name"] or ""))
-    url = add_data_url(settings)
-    msg = T(locale, "today_not_logged", name=str(user["display_name"] or ""))
-    return msg + (f"\n{T(locale, 'cta')} {url}" if url else "")
+    return T(locale, "today_not_logged", name=str(user["display_name"] or ""))
 
 
 def build_ranking(db: BotDB, locale: str) -> str:
@@ -991,11 +995,19 @@ def process_update(db: BotDB, settings: dict, update: dict) -> None:
     if match:
         user = db.user_by_link_code(match.group(1))
         if user is None:
-            send_message(settings["token"], chat_id, T(update_locale(message), "invalid_link"))
+            locale = update_locale(message)
+            send_message(
+                settings["token"], chat_id, T(locale, "invalid_link"),
+                action_keyboard(settings, "/?page=settings&view=integrations#telegram", action_label(locale)),
+            )
             log(f"invalid link code from chat={chat_id}")
             return
         db.link_user(int(user["id"]), chat_id)
-        ok, error = send_message(settings["token"], chat_id, T(user["locale"], "linked"))
+        fresh = db.user_by_id(int(user["id"])) or user
+        ok, error = send_message(
+            settings["token"], chat_id, T(user["locale"], "linked"),
+            notification_keyboard(fresh, settings),
+        )
         log(f"linked user #{user['id']} ({user['username']}) chat={chat_id}"
             + ("" if ok else f" (confirmation send failed: {error})"))
         return
@@ -1006,7 +1018,11 @@ def process_update(db: BotDB, settings: dict, update: dict) -> None:
     argument = parts[1].strip() if len(parts) > 1 else ""
     user = db.user_by_chat_id(chat_id)
     if user is None:
-        send_message(settings["token"], chat_id, T(update_locale(message), "not_linked"))
+        locale = update_locale(message)
+        send_message(
+            settings["token"], chat_id, T(locale, "not_linked"),
+            action_keyboard(settings, "/?page=settings&view=integrations#telegram", action_label(locale)),
+        )
         return
 
     locale = user["locale"]
@@ -1017,7 +1033,10 @@ def process_update(db: BotDB, settings: dict, update: dict) -> None:
     elif command == "streak":
         send_message(settings["token"], chat_id, build_streak(user, compute_stats(db, user), locale))
     elif command == "today":
-        send_message(settings["token"], chat_id, build_today(db, user, settings, locale))
+        send_message(
+            settings["token"], chat_id, build_today(db, user, settings, locale),
+            action_keyboard(settings, ADD_DATA_PATH, action_label(locale, "log")),
+        )
     elif command == "ranking":
         send_message(settings["token"], chat_id, build_ranking(db, locale))
     elif command in ("notifications", "notification", "avisos", "settings"):
@@ -1048,7 +1067,7 @@ def process_update(db: BotDB, settings: dict, update: dict) -> None:
         send_message(settings["token"], chat_id, T(locale, "help"))
 
 
-def poll_once(db: BotDB, settings: dict, timeout: int) -> None:
+def poll_once(db: BotDB, settings: dict, timeout: int) -> Optional[str]:
     result, error = api_call(
         settings["token"], "getUpdates",
         {"offset": settings["offset"], "timeout": timeout, "allowed_updates": ["message", "callback_query"]},
@@ -1056,7 +1075,7 @@ def poll_once(db: BotDB, settings: dict, timeout: int) -> None:
     )
     if error is not None:
         log(f"getUpdates failed: {error}")
-        return
+        return str(error)
     max_offset = settings["offset"]
     for update in result or []:
         update_id = int(update.get("update_id", 0))
@@ -1069,6 +1088,7 @@ def poll_once(db: BotDB, settings: dict, timeout: int) -> None:
     if max_offset != settings["offset"]:
         db.set_setting("telegram_update_offset", str(max_offset))
         settings["offset"] = max_offset
+    return None
 
 
 def run_reminders(db: BotDB, settings: dict) -> None:
@@ -1256,16 +1276,18 @@ def run_forever(db_path: Path, verbose: bool) -> int:
                 log("polling for Telegram updates... (link users from Settings, then press Start)")
                 started = True
 
-            poll_once(db, settings, POLL_TIMEOUT)
+            poll_error = poll_once(db, settings, POLL_TIMEOUT)
+            if poll_error is None:
+                # Event-driven pushes are low-latency: drain every loop iteration.
+                drain_outbox(db, settings)
 
-            # Event-driven pushes are low-latency: drain every loop iteration.
-            drain_outbox(db, settings)
+                if time.time() - last_reminder >= REMINDER_INTERVAL:
+                    run_reminders(db, settings)
+                    last_reminder = time.time()
 
-            if time.time() - last_reminder >= REMINDER_INTERVAL:
-                run_reminders(db, settings)
-                last_reminder = time.time()
-
-            lease.heartbeat(success=True)
+                lease.heartbeat(success=True)
+            else:
+                lease.heartbeat(error=redact_secrets(poll_error, settings["token"]))
             db.close()
         except KeyboardInterrupt:
             log("stopping (keyboard interrupt).")

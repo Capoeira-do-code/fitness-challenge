@@ -26,17 +26,21 @@ $profileTrainingRecords = is_array($profileTrainingRecords ?? null) ? array_valu
 $profileTrainingMuscles = is_array($profileTrainingMuscles ?? null) ? array_values((array) $profileTrainingMuscles) : [];
 $profileTeamsList = is_array($profileTeams ?? null) ? array_values((array) $profileTeams) : [];
 $profileGoalTeamsList = is_array($profileGoalTeams ?? null) ? array_values((array) $profileGoalTeams) : [];
+$profileDataAccess = is_array($profileDataAccess ?? null) ? $profileDataAccess : array_fill_keys(PRIVACY_DATA_KEYS, true);
+$canViewProfileWorkouts = $isOwnProfile || !empty($profileDataAccess['workouts']);
+$canViewProfilePerformance = $isOwnProfile || (!empty($profileDataAccess['steps']) && !empty($profileDataAccess['distance']) && !empty($profileDataAccess['workouts']));
 
 $activeSection = (string) ($_GET['section'] ?? '');
 $allowedSections = $isOwnProfile
     ? ['goals', 'training', 'social', 'achievements', 'config', 'activity']
-    : ['goals', 'training', 'social', 'achievements'];
+    : array_values(array_filter(['goals', 'training', 'social', 'achievements'], static fn(string $section): bool => $section !== 'training' || $canViewProfileWorkouts));
 if (!in_array($activeSection, $allowedSections, true)) {
     $activeSection = '';
 }
 
 $goalCreateMode = (string) ($_GET['goal_new'] ?? '') === '1';
 $goalDetailId = isset($_GET['goal_id']) ? (int) $_GET['goal_id'] : 0;
+$profileTodayDate = (new DateTimeImmutable('today'))->format('Y-m-d');
 $configEditMode = $canEditProfile && (string) ($_GET['edit'] ?? '') === '1';
 $profileMetric = is_array($profileMetric ?? null) ? (array) $profileMetric : [];
 $penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
@@ -64,6 +68,15 @@ if (!$penaltiesEnabled) {
 $primaryGoalsSpec = trim((string) ($profileUser['primary_goals_spec'] ?? ''));
 $profileTagline = trim((string) ($profileUser['profile_tagline'] ?? ''));
 $profileHeroMessage = $profileTagline !== '' ? $profileTagline : (string) t('profile.subtitle');
+$profileCoverPath = trim((string) ($profileUser['profile_cover_path'] ?? ''));
+$profileCoverUrl = '';
+if ($profileCoverPath !== '') {
+    $profileCoverFile = resolve_media_storage_path((array) $GLOBALS['config'], $profileCoverPath);
+    if ($profileCoverFile !== null && is_file($profileCoverFile)) {
+        $profileCoverVersion = !empty($profileUser['updated_at']) ? strtotime((string) $profileUser['updated_at']) : false;
+        $profileCoverUrl = media_url($profileCoverPath, $profileCoverVersion !== false ? (string) $profileCoverVersion : null);
+    }
+}
 
 $profileQueryBase = ['page' => 'profile'];
 if (!$isOwnProfile) {
@@ -87,7 +100,7 @@ $profileUrl = static function (string $section = '', array $extra = []) use ($pr
 // saved arrangement; default (no saved layout) keeps the original DOM order.
 $profileLayoutBlocks = $isOwnProfile
     ? ['goals', 'friends', 'teams', 'training_rank', 'training_progress', 'achievements', 'duels', 'competitions', 'setup', 'activity']
-    : ['goals', 'friends', 'teams', 'training_rank', 'training_progress', 'achievements'];
+    : array_values(array_filter(['goals', 'friends', 'teams', 'training_rank', 'training_progress', 'achievements'], static fn(string $block): bool => $canViewProfileWorkouts || !in_array($block, ['training_rank', 'training_progress'], true)));
 $profileLayoutLabels = [
     'goals' => t('goals.personal'),
     'friends' => t('nav.friends'),
@@ -621,6 +634,7 @@ if ($calorieConfigParts !== []) {
     $profileDataCards[] = ['label' => t('profile.calorie_config'), 'value' => (string) count($calorieConfigParts), 'meta' => implode(' / ', $calorieConfigParts)];
 }
 $primaryGoalOptions = [
+    ['value' => 'none', 'label' => (string) t('onboarding.no_primary_goal'), 'step' => '1', 'placeholder' => ''],
     ['value' => 'steps', 'label' => (string) t('metric.steps'), 'step' => '1', 'placeholder' => '13000'],
     ['value' => 'km', 'label' => (string) t('metric.distance_km'), 'step' => '0.1', 'placeholder' => '8'],
     ['value' => 'workouts', 'label' => (string) t('metric.workouts'), 'step' => '1', 'placeholder' => '3'],
@@ -641,8 +655,8 @@ $formatPrimarySetupValue = static function (float $value, string $type): string 
     return rtrim(rtrim(number_format($value, 2, '.', ''), '0'), '.') . ' km';
 };
 $profilePrimaryGoalType = strtolower((string) ($profileUser['primary_goal_type'] ?? 'steps'));
-if (!in_array($profilePrimaryGoalType, allowed_primary_goal_types(), true)) {
-    $profilePrimaryGoalType = 'steps';
+if ($profilePrimaryGoalType !== 'none' && !in_array($profilePrimaryGoalType, allowed_primary_goal_types(), true)) {
+    $profilePrimaryGoalType = 'none';
 }
 $profilePrimaryGoalValueSource = $profileUser['primary_goal_value'] ?? null;
 if ($profilePrimaryGoalType === 'steps' && ($profilePrimaryGoalValueSource === null || $profilePrimaryGoalValueSource === '')) {
@@ -704,10 +718,13 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
 <section class="screen stack-lg spa-shell profile-hierarchy-screen<?= !$isOwnProfile ? ' profile-external-view' : '' ?>" data-spa-page="profile" data-profile-section="<?= e($activeSection) ?>">
     <?php if (!$isOwnProfile && $profileBackUrl !== ''): ?>
         <nav class="context-back-nav" aria-label="<?= e(t('common.back')) ?>">
-            <a class="btn btn-ghost context-back-btn" href="<?= e($profileBackUrl) ?>">← <?= e(t('profile.back_to_team')) ?></a>
+            <a class="hierarchy-back destination-back profile-section-back profile-context-back" href="<?= e($profileBackUrl) ?>" aria-label="<?= e(t('profile.back_to_team')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.team')) ?></strong></a>
         </nav>
     <?php endif; ?>
-    <div class="hero-panel profile-hero compact-panel glass-panel">
+    <div class="hero-panel profile-hero compact-panel glass-panel<?= $profileCoverUrl !== '' ? ' has-profile-cover' : '' ?>">
+        <?php if ($profileCoverUrl !== ''): ?>
+            <span class="profile-cover-media" aria-hidden="true"><img src="<?= e($profileCoverUrl) ?>" alt=""></span>
+        <?php endif; ?>
         <div class="profile-title">
             <?php $profileAvatarUrl = avatar_url($profileUser); ?>
             <?php $profileFrameClass = cosmetic_frame_class($profileUser); ?>
@@ -731,9 +748,14 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                 <p class="eyebrow"><?= e(t('nav.profile')) ?></p>
                 <h1><?= e((string) $profileUser['display_name']) ?></h1>
                 <p class="muted">@<?= e((string) $profileUser['username']) ?> &middot; <?= e($profileHeroMessage) ?><?php if (!$isOwnProfile): ?> &middot; <?= e(t('profile.read_only')) ?><?php endif; ?></p>
-                <?php $xp = (array) ($profileXp ?? []); ?>
-                <button type="button" class="profile-level profile-level-trigger" data-app-modal-open="profile-level-modal" title="<?= e(t('xp.progress_title')) ?>" aria-haspopup="dialog">
-                    <span class="profile-level-badge"><?= e(t('xp.level_short')) ?> <?= (int) ($xp['level'] ?? 1) ?></span>
+                <?php
+                $xp = (array) ($profileXp ?? []);
+                $profileLevel = max(1, (int) ($xp['level'] ?? 1));
+                // Level 10, 20, 30… each unlock a new badge colour tier.
+                $profileLevelTier = min(9, intdiv($profileLevel, 10));
+                ?>
+                <button type="button" class="profile-level profile-level-trigger profile-level-tier-<?= $profileLevelTier ?>" data-level-tier="<?= $profileLevelTier ?>" data-app-modal-open="profile-level-modal" title="<?= e(t('xp.progress_title')) ?>" aria-haspopup="dialog">
+                    <span class="profile-level-badge"><?= e(t('xp.level_short')) ?> <?= $profileLevel ?></span>
                     <span class="profile-xp">
                         <span class="profile-xp-bar"><span style="width: <?= max(0, min(100, (int) ($xp['progress_pct'] ?? 0))) ?>%"></span></span>
                         <span class="profile-xp-label"><?= e(number_format((int) ($xp['total_xp'] ?? 0))) ?> <?= e(t('xp.points')) ?> &middot; <?= e(t('xp.to_next', ['xp' => number_format((int) ($xp['xp_to_next'] ?? 0))])) ?></span>
@@ -793,6 +815,9 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                             'children' => [[
                                 'label' => t('profile.edit_tagline'),
                                 'attrs' => ['data-app-modal-open' => 'profile-tagline-modal'],
+                            ], [
+                                'label' => t('profile.edit_cover'),
+                                'attrs' => ['data-app-modal-open' => 'profile-cover-modal'],
                             ], [
                                 'label' => t('profile.customize_layout'),
                                 'href' => $profileUrl('', ['layout_edit' => '1']),
@@ -907,11 +932,11 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                             <span><?= e($challengeStatus) ?></span>
                             <strong><?= e($challengeName) ?></strong>
                             <small><?= e($challengeRange) ?></small>
-                            <div class="profile-challenge-history-metrics" aria-label="<?= e(t('profile.challenge_history_metrics')) ?>">
+                            <?php if ($canViewProfilePerformance): ?><div class="profile-challenge-history-metrics" aria-label="<?= e(t('profile.challenge_history_metrics')) ?>">
                                 <span><small><?= e(t('metric.score')) ?></small><strong><?= e($challengeScore) ?></strong></span>
                                 <span><small><?= e(t('metric.steps')) ?></small><strong><?= e($challengeSteps) ?></strong></span>
                                 <span><small><?= e(t('metric.workouts')) ?></small><strong><?= e($challengeWorkoutText) ?></strong></span>
-                            </div>
+                            </div><?php endif; ?>
                         </a>
                     <?php endforeach; ?>
                 </div>
@@ -1136,6 +1161,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
             <?php endif; ?>
         </article>
 
+        <?php if ($canViewProfileWorkouts): ?>
         <article class="panel profile-home-card profile-training-rank-card compact-panel glass-panel" data-profile-block="training_rank" data-rank="<?= e($profileTrainingRankKey) ?>" style="<?= e($profileBlockStyle('training_rank')) ?>; --rank-color: <?= e((string) ($profileTrainingRank['color'] ?? '#64748b')) ?>">
             <div class="profile-home-card-head">
                 <div>
@@ -1205,6 +1231,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                 <a class="profile-training-empty" href="/?page=workouts"><?= e(t('dashboard.training_empty')) ?></a>
             <?php endif; ?>
         </article>
+        <?php endif; ?>
 
         <article class="panel profile-home-card compact-panel glass-panel" data-profile-block="achievements" style="<?= e($profileBlockStyle('achievements')) ?>">
             <div class="profile-home-card-head">
@@ -1357,36 +1384,72 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         <?php endif; ?>
     </section>
 
-    <article class="panel settings-panel profile-native-section<?= $activeSection === 'goals' ? ' active' : '' ?>" data-spa-section="goals" <?= $activeSection === 'goals' ? '' : 'hidden' ?>>
+    <?php
+    $profileGoalRows = array_values((array) ($personalGoals ?? []));
+    $profileGoalStatusCounts = ['active' => 0, 'complete' => 0];
+    foreach ($profileGoalRows as $profileGoalRow) {
+        $profileGoalRowStatus = (string) ($profileGoalRow['status'] ?? 'active');
+        if ($profileGoalRowStatus === 'complete') {
+            ++$profileGoalStatusCounts['complete'];
+        } elseif ($profileGoalRowStatus === 'active') {
+            ++$profileGoalStatusCounts['active'];
+        }
+    }
+    ?>
+    <article class="panel settings-panel profile-native-section profile-goals-section<?= $activeSection === 'goals' ? ' active' : '' ?>" data-spa-section="goals" <?= $activeSection === 'goals' ? '' : 'hidden' ?>>
         <div class="stack profile-section-list" data-spa-show-when-no-param="goal_id,goal_new" <?= $goalCreateMode || $goalDetailId > 0 ? 'hidden' : '' ?>>
             <div class="panel-head profile-section-header">
-                <a class="hierarchy-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+                <a class="hierarchy-back destination-back profile-section-back profile-goals-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.profile')) ?>">
+                    <span aria-hidden="true">&larr;</span><strong><?= e(t('nav.profile')) ?></strong>
+                </a>
                 <div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.mobile_goals')) ?></h2></div>
                 <?php if ($canEditProfile): ?>
-                    <a class="btn btn-primary profile-section-action" href="<?= e($profileUrl('goals', ['goal_new' => 1])) ?>" data-spa-link><?= e(t('profile.new_goal')) ?></a>
+                    <a class="btn btn-primary profile-section-action profile-goal-new-button" href="<?= e($profileUrl('goals', ['goal_new' => 1])) ?>" data-spa-link>
+                        <span aria-hidden="true">+</span><strong><?= e(t('profile.new_goal')) ?></strong>
+                    </a>
                 <?php endif; ?>
             </div>
 
-            <div class="settings-list" data-profile-goals-list>
-                <?php if (($personalGoals ?? []) === []): ?>
+            <?php if (count($profileGoalRows) >= 5): ?>
+                <div class="profile-goals-toolbar" data-profile-goal-toolbar>
+                    <label class="profile-goals-search">
+                        <span aria-hidden="true"><?= activity_icon_svg('search') ?></span>
+                        <span class="sr-only"><?= e(t('profile.search_goals')) ?></span>
+                        <input type="search" autocomplete="off" placeholder="<?= e(t('profile.search_goals')) ?>" data-profile-goal-search>
+                    </label>
+                    <div class="profile-goal-filters" role="group" aria-label="<?= e(t('common.status')) ?>">
+                        <button type="button" data-profile-goal-filter="all" aria-pressed="true"><?= e(t('profile.all_goals')) ?><b><?= count($profileGoalRows) ?></b></button>
+                        <button type="button" data-profile-goal-filter="active" aria-pressed="false"><?= e(t('common.active')) ?><b><?= $profileGoalStatusCounts['active'] ?></b></button>
+                        <button type="button" data-profile-goal-filter="complete" aria-pressed="false"><?= e(t('common.complete')) ?><b><?= $profileGoalStatusCounts['complete'] ?></b></button>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <div class="profile-goals-grid" data-profile-goals-list>
+                <?php if ($profileGoalRows === []): ?>
                     <p class="muted panel-inline-empty"><?= e(t('goals.empty')) ?></p>
                 <?php else: ?>
-                    <?php foreach ($personalGoals as $goal): ?>
+                    <?php foreach ($profileGoalRows as $goal): ?>
                         <?php $goalType = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom')); ?>
                         <?php $goalTarget = (float) ($goal['target_value'] ?? 0); ?>
                         <?php $goalCurrent = $goalCurrentValue($goal); ?>
-                        <a class="settings-row goal-row" href="<?= e($profileUrl('goals', ['goal_id' => (int) $goal['id']])) ?>" data-spa-link>
-                            <span>
+                        <?php $goalProgress = $goalProgressPercent($goal, $goalCurrent); ?>
+                        <?php $goalRowStatus = (string) ($goal['status'] ?? 'active'); ?>
+                        <a class="profile-goal-list-row is-<?= e($goalRowStatus) ?>" href="<?= e($profileUrl('goals', ['goal_id' => (int) $goal['id']])) ?>" data-spa-link data-profile-goal-item data-goal-status="<?= e($goalRowStatus) ?>" data-goal-title="<?= e((string) $goal['title']) ?>">
+                            <span class="profile-goal-list-icon" aria-hidden="true"><?= activity_icon_svg($goalRowStatus === 'complete' ? 'check' : 'target') ?></span>
+                            <span class="profile-goal-list-copy">
                                 <strong><?= e((string) $goal['title']) ?></strong>
-                                <small class="muted">
-                                    <?= e($goalTypeLabel((string) ($goal['target_type'] ?? ''))) ?> ·
-                                    <?= e($formatGoalValue($goalCurrent, $goalType)) ?> / <?= e($formatGoalValue($goalTarget, $goalType)) ?> ·
-                                    <?= e($goalStatusLabel((string) ($goal['status'] ?? 'active'))) ?>
-                                </small>
+                                <small><?= e($goalTypeLabel((string) ($goal['target_type'] ?? ''))) ?> · <?= e($formatGoalValue($goalCurrent, $goalType)) ?> / <?= e($formatGoalValue($goalTarget, $goalType)) ?></small>
+                                <span class="profile-goal-mini-progress" aria-hidden="true"><i style="width: <?= e((string) $goalProgress) ?>%"></i></span>
+                            </span>
+                            <span class="profile-goal-list-meta">
+                                <strong><?= e((string) round($goalProgress)) ?>%</strong>
+                                <small><?= e((string) ($goal['due_date'] ?? '') !== '' ? format_date_eu((string) $goal['due_date']) : $goalStatusLabel($goalRowStatus)) ?></small>
                             </span>
                             <span class="settings-chevron" aria-hidden="true">›</span>
                         </a>
                     <?php endforeach; ?>
+                    <p class="muted panel-inline-empty profile-goals-filter-empty" hidden data-profile-goal-empty><?= e(t('profile.no_goals_match')) ?></p>
                 <?php endif; ?>
             </div>
         </div>
@@ -1394,39 +1457,47 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         <?php if ($canEditProfile): ?>
             <div class="stack goal-subview profile-create-view" data-spa-param-show="goal_new" data-spa-value="1" <?= $goalCreateMode ? '' : 'hidden' ?>>
                 <div class="panel-head compact-head profile-section-header">
-                    <a class="hierarchy-back" href="<?= e($profileUrl('goals')) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+                    <a class="hierarchy-back destination-back profile-section-back profile-goals-back" href="<?= e($profileUrl('goals')) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('profile.mobile_goals')) ?>">
+                        <span aria-hidden="true">&larr;</span><strong><?= e(t('profile.mobile_goals')) ?></strong>
+                    </a>
                     <div class="profile-section-heading"><p class="eyebrow"><?= e(t('profile.mobile_goals')) ?></p><h3 data-navigation-focus tabindex="-1"><?= e(t('profile.new_goal')) ?></h3></div>
                 </div>
-                <form method="post" action="<?= e($profileUrl('goals')) ?>" class="stack compact-form">
-                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                    <input type="hidden" name="action" value="create_goal">
-                    <input type="hidden" name="profile_user_id" value="<?= (int) $profileUser['id'] ?>">
-                    <?php if ($profileGoalTeamsList !== []): ?>
-                        <label>
-                            <?= e(t('goals.scope')) ?>
-                            <select name="goal_team_id">
-                                <option value="0"><?= e(t('goals.personal')) ?></option>
-                                <?php foreach ($profileGoalTeamsList as $profileGoalTeam): ?>
-                                    <option value="<?= (int) ($profileGoalTeam['id'] ?? 0) ?>"><?= e(t('goals.team')) ?> · <?= e((string) ($profileGoalTeam['name'] ?? '')) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </label>
-                    <?php endif; ?>
-                    <label><?= e(t('goals.goal_name')) ?><input type="text" name="title" placeholder="<?= e(t('goals.placeholder')) ?>" required></label>
-                    <div class="grid-inline two">
-                        <label>
-                            <?= e(t('goals.type')) ?>
-                            <select name="target_type">
+                <div class="profile-goal-form-card">
+                    <div class="profile-goal-form-intro">
+                        <span aria-hidden="true"><?= activity_icon_svg('target') ?></span>
+                        <div><strong><?= e(t('profile.goal_create_title')) ?></strong><small><?= e(t('profile.goal_create_hint')) ?></small></div>
+                    </div>
+                    <form method="post" action="<?= e($profileUrl('goals')) ?>" class="profile-goal-form">
+                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                        <input type="hidden" name="action" value="create_goal">
+                        <input type="hidden" name="profile_user_id" value="<?= (int) $profileUser['id'] ?>">
+                        <div class="profile-goal-form-grid">
+                            <label class="profile-goal-title-field"><span><?= e(t('goals.goal_name')) ?></span><input type="text" name="title" placeholder="<?= e(t('goals.placeholder')) ?>" maxlength="120" required></label>
+                            <?php if ($profileGoalTeamsList !== []): ?>
+                                <label class="profile-goal-scope-field">
+                                    <span><?= e(t('goals.scope')) ?></span>
+                                    <select name="goal_team_id">
+                                        <option value="0"><?= e(t('goals.personal')) ?></option>
+                                        <?php foreach ($profileGoalTeamsList as $profileGoalTeam): ?>
+                                            <option value="<?= (int) ($profileGoalTeam['id'] ?? 0) ?>"><?= e(t('goals.team')) ?> · <?= e((string) ($profileGoalTeam['name'] ?? '')) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </label>
+                            <?php endif; ?>
+                            <label><span><?= e(t('goals.type')) ?></span><select name="target_type">
                                 <?php foreach ($goalTypeOptions as $option): ?>
                                     <option value="<?= e((string) $option['value']) ?>"><?= e((string) $option['label']) ?></option>
                                 <?php endforeach; ?>
-                            </select>
-                        </label>
-                        <label><?= e(t('goals.target')) ?><input type="number" step="0.1" name="target_value"></label>
-                        <label><?= e(t('goals.due_date')) ?><input type="date" name="due_date"></label>
-                    </div>
-                    <button class="btn btn-primary" type="submit"><?= e(t('goals.add')) ?></button>
-                </form>
+                            </select></label>
+                            <label><span><?= e(t('goals.target')) ?></span><input type="number" min="0" step="0.1" name="target_value" required></label>
+                            <label><span><?= e(t('goals.due_date')) ?></span><input type="date" name="due_date" min="<?= e($profileTodayDate) ?>"></label>
+                        </div>
+                        <div class="profile-goal-form-actions">
+                            <a class="btn btn-ghost" href="<?= e($profileUrl('goals')) ?>" data-spa-link><?= e(t('common.cancel')) ?></a>
+                            <button class="btn btn-primary" type="submit"><span aria-hidden="true">+</span><?= e(t('profile.create_goal_action')) ?></button>
+                        </div>
+                    </form>
+                </div>
             </div>
         <?php endif; ?>
 
@@ -1439,59 +1510,42 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
             <?php $goalCurrent = $goalCurrentValue($goal); ?>
             <?php $goalProgress = $goalProgressPercent($goal, $goalCurrent); ?>
             <?php $goalDueDate = (string) ($goal['due_date'] ?? ''); ?>
+            <?php $goalDetailStatus = (string) ($goal['status'] ?? 'active'); ?>
             <div class="stack goal-subview profile-detail-view" data-spa-param-show="goal_id" data-spa-value="<?= (int) $goal['id'] ?>" <?= $isActiveGoalDetail ? '' : 'hidden' ?>>
                 <div class="panel-head compact-head profile-section-header">
-                    <a class="hierarchy-back" href="<?= e($profileUrl('goals')) ?>" data-spa-back data-spa-history aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+                    <a class="hierarchy-back destination-back profile-section-back profile-goals-back" href="<?= e($profileUrl('goals')) ?>" data-spa-back data-spa-history aria-label="<?= e(t('common.back')) ?>: <?= e(t('profile.mobile_goals')) ?>">
+                        <span aria-hidden="true">&larr;</span><strong><?= e(t('profile.mobile_goals')) ?></strong>
+                    </a>
                     <div class="profile-section-heading"><p class="eyebrow"><?= e(t('profile.mobile_goals')) ?></p><h3 data-navigation-focus tabindex="-1"><?= e((string) $goal['title']) ?></h3></div>
                 </div>
 
-                <article class="mini-card goal-detail-card goal-detail-summary">
-                    <div class="goal-summary-grid">
-                        <div class="goal-summary-item">
-                            <strong><?= e(t('goals.goal_name')) ?></strong>
-                            <span><?= e((string) $goal['title']) ?></span>
+                <article class="mini-card goal-detail-card goal-detail-summary is-<?= e($goalDetailStatus) ?>">
+                    <div class="profile-goal-detail-overview">
+                        <span class="profile-goal-detail-icon" aria-hidden="true"><?= activity_icon_svg($goalDetailStatus === 'complete' ? 'check' : 'target') ?></span>
+                        <div class="profile-goal-detail-copy">
+                            <span><b><?= e($goalTypeLabel($goalRawType)) ?></b><i aria-hidden="true">·</i><em class="goal-status-chip"><?= e($goalStatusLabel($goalDetailStatus)) ?></em></span>
+                            <strong><?= e($formatGoalValue($goalCurrent, $goalType)) ?> <small>/ <?= e($formatGoalValue($goalTarget, $goalType)) ?></small></strong>
+                            <div class="goal-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= e((string) $goalProgress) ?>" aria-label="<?= e(t('profile.current_progress')) ?>"><span style="width: <?= e((string) $goalProgress) ?>%"></span></div>
                         </div>
-                        <div class="goal-summary-item">
-                            <strong><?= e(t('goals.type')) ?></strong>
-                            <span><?= e($goalTypeLabel($goalRawType)) ?></span>
-                        </div>
-                        <div class="goal-summary-item">
-                            <strong><?= e(t('goals.target')) ?></strong>
-                            <span><?= e($formatGoalValue($goalTarget, $goalType)) ?></span>
-                        </div>
-                        <div class="goal-summary-item">
-                            <strong><?= e(t('profile.current_progress')) ?></strong>
-                            <span><?= e($formatGoalValue($goalCurrent, $goalType)) ?></span>
-                        </div>
-                        <div class="goal-summary-item">
-                            <strong><?= e(t('common.status')) ?></strong>
-                            <span class="goal-status-chip"><?= e($goalStatusLabel((string) ($goal['status'] ?? 'active'))) ?></span>
-                        </div>
-                        <?php if ($goalDueDate !== ''): ?>
-                            <div class="goal-summary-item">
-                                <strong><?= e(t('goals.due_date')) ?></strong>
-                                <span><?= e(format_date_eu($goalDueDate)) ?></span>
-                            </div>
-                        <?php endif; ?>
+                        <strong class="profile-goal-detail-percent"><?= e((string) round($goalProgress)) ?><small>%</small></strong>
                     </div>
-                    <div class="goal-progress-wrap">
-                        <div class="goal-progress"><span style="width: <?= e((string) $goalProgress) ?>%"></span></div>
-                        <small><?= e((string) $goalProgress) ?>%</small>
-                    </div>
+                    <?php if ($goalDueDate !== ''): ?>
+                        <div class="profile-goal-detail-due"><span aria-hidden="true">&#128197;</span><small><?= e(t('goals.due_date')) ?></small><strong><?= e(format_date_eu($goalDueDate)) ?></strong></div>
+                    <?php endif; ?>
                     <?php if ($canEditProfile): ?>
                         <div class="goal-detail-actions">
                             <?php // Editing opens in a modal. It used to unfold inside the goal card,
                                   // which shoved the rest of the page down and left you editing in the
                                   // middle of the thing you were reading. ?>
-                            <button class="btn small btn-ghost" type="button" data-app-modal-open="goal-edit-modal-<?= (int) $goal['id'] ?>" aria-haspopup="dialog"><?= e(t('common.edit')) ?></button>
-                            <?php if ((string) ($goal['status'] ?? 'active') !== 'complete'): ?>
+                            <button class="btn small btn-ghost" type="button" data-app-modal-open="goal-edit-modal-<?= (int) $goal['id'] ?>" aria-haspopup="dialog"><span aria-hidden="true"><?= activity_icon_svg('sliders') ?></span><?= e(t('common.edit')) ?></button>
+                            <?php if ($goalDetailStatus !== 'complete'): ?>
                                 <form method="post" action="<?= e($profileUrl('goals')) ?>">
                                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                                     <input type="hidden" name="action" value="goal_status">
                                     <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
                                     <input type="hidden" name="status" value="complete">
                                     <input type="hidden" name="profile_user_id" value="<?= (int) $profileUser['id'] ?>">
-                                    <button class="btn small btn-ghost" type="submit"><?= e(t('common.complete')) ?></button>
+                                    <button class="btn small btn-ghost" type="submit"><span aria-hidden="true"><?= activity_icon_svg('check') ?></span><?= e(t('common.complete')) ?></button>
                                 </form>
                             <?php endif; ?>
                             <form method="post" action="<?= e($profileUrl('goals')) ?>">
@@ -1506,24 +1560,30 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                 </article>
 
                 <?php if ($canEditProfile): ?>
-                <div class="app-modal" id="goal-edit-modal-<?= (int) $goal['id'] ?>" hidden role="dialog" aria-modal="true" aria-labelledby="goal-edit-title-<?= (int) $goal['id'] ?>">
+                <div class="app-modal profile-goal-modal" id="goal-edit-modal-<?= (int) $goal['id'] ?>" hidden role="dialog" aria-modal="true" aria-labelledby="goal-edit-title-<?= (int) $goal['id'] ?>">
                     <div class="app-modal-card">
                         <div class="app-modal-head">
                             <div>
                                 <p class="eyebrow"><?= e(t('goals.personal')) ?></p>
                                 <h2 id="goal-edit-title-<?= (int) $goal['id'] ?>"><?= e((string) $goal['title']) ?></h2>
+                                <small><?= e(t('profile.goal_edit_hint')) ?></small>
                             </div>
                             <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.cancel')) ?>">&times;</button>
                         </div>
-                    <form method="post" action="<?= e($profileUrl('goals')) ?>" class="goal-editor" id="<?= e($editFormId) ?>" data-goal-edit-form>
+                    <div class="profile-goal-editor-context">
+                        <span aria-hidden="true"><?= activity_icon_svg('target') ?></span>
+                        <div><small><?= e(t('profile.current_progress')) ?></small><strong><?= e($formatGoalValue($goalCurrent, $goalType)) ?> / <?= e($formatGoalValue($goalTarget, $goalType)) ?> · <?= e($goalTypeLabel($goalRawType)) ?></strong></div>
+                        <b><?= e((string) round($goalProgress)) ?>%</b>
+                    </div>
+                    <form method="post" action="<?= e($profileUrl('goals')) ?>" class="goal-editor profile-goal-form" id="<?= e($editFormId) ?>" data-goal-edit-form>
                         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                         <input type="hidden" name="action" value="update_goal">
                         <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
                         <input type="hidden" name="profile_user_id" value="<?= (int) $profileUser['id'] ?>">
-                        <div class="goal-editor-grid">
-                            <label><?= e(t('goals.goal_name')) ?><input type="text" name="title" value="<?= e((string) $goal['title']) ?>"></label>
+                        <div class="goal-editor-grid profile-goal-form-grid">
+                            <label class="profile-goal-title-field"><span><?= e(t('goals.goal_name')) ?></span><input type="text" name="title" value="<?= e((string) $goal['title']) ?>" maxlength="120" required></label>
                             <label>
-                                <?= e(t('goals.type')) ?>
+                                <span><?= e(t('goals.type')) ?></span>
                                 <select name="target_type">
                                     <?php
                                     $hasCurrentOption = false;
@@ -1540,12 +1600,12 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                                     <?php endif; ?>
                                 </select>
                             </label>
-                            <label><?= e(t('goals.target')) ?><input type="number" step="0.1" name="target_value" value="<?= e((string) ($goal['target_value'] ?? '')) ?>"></label>
-                            <label><?= e(t('goals.due_date')) ?><input type="date" name="due_date" value="<?= e((string) ($goal['due_date'] ?? '')) ?>"></label>
+                            <label><span><?= e(t('goals.target')) ?></span><input type="number" min="0" step="0.1" name="target_value" value="<?= e((string) ($goal['target_value'] ?? '')) ?>" required></label>
+                            <label><span><?= e(t('goals.due_date')) ?></span><input type="date" name="due_date" value="<?= e((string) ($goal['due_date'] ?? '')) ?>"></label>
                         </div>
-                        <div class="goal-editor-actions">
-                            <button class="btn small btn-primary" type="submit"><?= e(t('common.save')) ?></button>
-                            <button class="btn small btn-ghost" type="button" data-app-modal-close><?= e(t('common.cancel')) ?></button>
+                        <div class="goal-editor-actions profile-goal-form-actions">
+                            <button class="btn btn-ghost" type="button" data-app-modal-close><?= e(t('common.cancel')) ?></button>
+                            <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
                         </div>
                     </form>
                     </div>
@@ -1555,8 +1615,9 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         <?php endforeach; ?>
     </article>
 
+    <?php if ($canViewProfileWorkouts): ?>
     <article class="panel settings-panel profile-native-section<?= $activeSection === 'training' ? ' active' : '' ?>" data-spa-section="training" <?= $activeSection === 'training' ? '' : 'hidden' ?>>
-        <div class="panel-head profile-native-section-head profile-section-header"><a class="hierarchy-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr;</a><div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.mobile_training')) ?></h2></div></div>
+        <div class="panel-head profile-native-section-head profile-section-header"><a class="hierarchy-back destination-back profile-section-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.profile')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.profile')) ?></strong></a><div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.mobile_training')) ?></h2></div></div>
         <div class="mobile-kpi-grid">
             <div><small><?= e(t('dashboard.training_rank_title')) ?></small><strong><?= e(t('workouts.rank_' . $profileTrainingRankKey)) ?></strong><span><?= e(number_format((float) ($profileTrainingRank['score'] ?? 0), 1, '.', '')) ?> <?= e(t('workouts.lift_points')) ?></span></div>
             <div><small><?= e(t('workouts.stat_sessions')) ?> · <?= e(t('workouts.this_month')) ?></small><strong><?= (int) ($profileTrainingMonth['sessions'] ?? 0) ?></strong><span><?= e(number_format((float) ($profileTrainingMonth['volume'] ?? 0), 0, '.', ' ')) ?> kg</span></div>
@@ -1569,9 +1630,10 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         </nav>
         <?php if ($profileTrainingRecentSessions !== []): ?><article class="native-list-card"><h3><?= e(t('workouts.recent_sessions')) ?></h3><?php foreach ($profileTrainingRecentSessions as $session): ?><div class="native-list-row"><span><strong><?= e((string) (($session['title'] ?? '') !== '' ? $session['title'] : t('workouts.session'))) ?></strong><small><?= e(human_time_ago((string) ($session['started_at'] ?? ''))) ?></small></span><strong><?= e(number_format((float) ($session['total_volume'] ?? 0), 0, '.', ' ')) ?> kg</strong></div><?php endforeach; ?></article><?php endif; ?>
     </article>
+    <?php endif; ?>
 
     <article class="panel settings-panel profile-native-section<?= $activeSection === 'social' ? ' active' : '' ?>" data-spa-section="social" <?= $activeSection === 'social' ? '' : 'hidden' ?>>
-        <div class="panel-head profile-native-section-head profile-section-header"><a class="hierarchy-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr;</a><div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.mobile_social')) ?></h2></div></div>
+        <div class="panel-head profile-native-section-head profile-section-header"><a class="hierarchy-back destination-back profile-section-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.profile')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.profile')) ?></strong></a><div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.mobile_social')) ?></h2></div></div>
         <div class="hierarchy-status-strip"><span><strong><?= count($profileFriends) ?></strong><small><?= e(t('nav.friends')) ?></small></span><span><strong><?= count((array) ($profileTeams ?? [])) ?></strong><small><?= e(t('social_hub.teams')) ?></small></span><span><strong><?= (int) (($profileDuelsSummary ?? [])['won'] ?? 0) + (int) (($profileCompetitionsSummary ?? [])['won'] ?? 0) ?></strong><small><?= e(t('common.won')) ?></small></span></div>
         <nav class="hierarchy-nav-list">
             <a class="hierarchy-nav-row" href="/?page=friends"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.friends')) ?></strong><small><?= e(t('social_hub.friends_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count($profileFriends) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
@@ -1583,7 +1645,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
 
     <article class="panel settings-panel profile-native-section profile-achievements-panel<?= $activeSection === 'achievements' ? ' active' : '' ?>" data-spa-section="achievements" <?= $activeSection === 'achievements' ? '' : 'hidden' ?>>
         <div class="panel-head profile-section-header">
-            <a class="hierarchy-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+            <a class="hierarchy-back destination-back profile-section-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.profile')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.profile')) ?></strong></a>
             <div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.achievements')) ?></h2></div>
         </div>
         <div class="achievement-grid achievement-grid-collapsible" data-achievement-grid>
@@ -1617,10 +1679,12 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
     <?php if ($isOwnProfile): ?>
     <article class="panel settings-panel profile-native-section<?= $activeSection === 'config' ? ' active' : '' ?>" data-spa-section="config" <?= $activeSection === 'config' ? '' : 'hidden' ?>>
         <div class="panel-head profile-section-header">
-            <a class="hierarchy-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+            <a class="hierarchy-back destination-back profile-section-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.profile')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.profile')) ?></strong></a>
             <div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.current_config')) ?></h2></div>
             <?php if ($canEditProfile): ?>
-                <a class="btn btn-ghost profile-section-action" href="<?= e($profileUrl('config', ['edit' => 1])) ?>" data-config-edit-link><?= e(t('common.edit')) ?></a>
+                <a class="btn btn-ghost profile-section-action profile-config-edit-action" href="<?= e($profileUrl('config', ['edit' => 1])) ?>" data-config-edit-link aria-label="<?= e(t('common.edit')) ?>">
+                    <span aria-hidden="true"><?= activity_icon_svg('sliders') ?></span><strong><?= e(t('common.edit')) ?></strong>
+                </a>
             <?php endif; ?>
         </div>
 
@@ -1688,13 +1752,13 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                         <label><?= e(t('common.username')) ?><input type="text" value="<?= e((string) $profileUser['username']) ?>" disabled></label>
                         <label>
                             <?= e(t('settings.primary_goal')) ?>
-                            <select name="primary_goal_type">
+                            <select name="primary_goal_type" data-optional-primary-goal>
                                 <?php foreach ($primaryGoalOptions as $option): ?>
                                     <option value="<?= e((string) $option['value']) ?>" <?= $profilePrimaryGoalType === (string) $option['value'] ? 'selected' : '' ?>><?= e((string) $option['label']) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </label>
-                        <label><?= e(t('settings.primary_goal_value')) ?><input type="number" step="0.1" name="primary_goal_value" value="<?= e((string) ($profileUser['primary_goal_value'] ?? '')) ?>"></label>
+                        <label data-optional-primary-value <?= $profilePrimaryGoalType === 'none' ? 'hidden' : '' ?>><?= e(t('settings.primary_goal_value')) ?><input type="number" min="0.1" step="0.1" name="primary_goal_value" value="<?= e((string) ($profileUser['primary_goal_value'] ?? '')) ?>" <?= $profilePrimaryGoalType === 'none' ? 'disabled' : '' ?>></label>
                         <div class="profile-primary-goals-field">
                             <div class="profile-field-head">
                                 <span><?= e(t('settings.primary_goals_spec')) ?></span>
@@ -1712,7 +1776,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                                             <label>
                                                 <span><?= e(t('settings.primary_goal')) ?></span>
                                                 <select data-primary-goal-type aria-label="<?= e(t('settings.primary_goal')) ?>">
-                                                    <?php foreach ($primaryGoalOptions as $option): ?>
+                                                    <?php foreach (array_filter($primaryGoalOptions, static fn(array $option): bool => (string) $option['value'] !== 'none') as $option): ?>
                                                         <option value="<?= e((string) $option['value']) ?>" data-step="<?= e((string) $option['step']) ?>" data-placeholder="<?= e((string) $option['placeholder']) ?>" <?= $goalType === (string) $option['value'] ? 'selected' : '' ?>><?= e((string) $option['label']) ?></option>
                                                     <?php endforeach; ?>
                                                 </select>
@@ -1732,7 +1796,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                                         <label>
                                             <span><?= e(t('settings.primary_goal')) ?></span>
                                             <select data-primary-goal-type aria-label="<?= e(t('settings.primary_goal')) ?>">
-                                                <?php foreach ($primaryGoalOptions as $option): ?>
+                                                <?php foreach (array_filter($primaryGoalOptions, static fn(array $option): bool => (string) $option['value'] !== 'none') as $option): ?>
                                                     <option value="<?= e((string) $option['value']) ?>" data-step="<?= e((string) $option['step']) ?>" data-placeholder="<?= e((string) $option['placeholder']) ?>"><?= e((string) $option['label']) ?></option>
                                                 <?php endforeach; ?>
                                             </select>
@@ -1763,7 +1827,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
 
     <article class="panel settings-panel profile-native-section<?= $activeSection === 'activity' ? ' active' : '' ?>" data-spa-section="activity" <?= $activeSection === 'activity' ? '' : 'hidden' ?>>
         <div class="panel-head profile-section-header">
-            <a class="hierarchy-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>">&larr;</a>
+            <a class="hierarchy-back destination-back profile-section-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.profile')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.profile')) ?></strong></a>
             <div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.recent_activity')) ?></h2></div>
         </div>
         <?php
@@ -1805,7 +1869,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                 <p class="eyebrow"><?= e(t('xp.level')) ?> <?= (int) ($xp['level'] ?? 1) ?></p>
                 <h2 id="profile-level-modal-title"><?= e(t('xp.progress_title')) ?></h2>
             </div>
-            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.back')) ?>">&times;</button>
+            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button>
         </div>
         <div class="level-progress-ring-wrap">
             <div class="profile-xp-bar level-progress-bar-lg"><span style="width: <?= max(0, min(100, (int) ($xp['progress_pct'] ?? 0))) ?>%"></span></div>
@@ -1831,18 +1895,60 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
 </div>
 
 <?php if (!empty($isOwnProfile)): ?>
-<div class="app-modal" id="profile-tagline-modal" hidden role="dialog" aria-modal="true" aria-labelledby="profile-tagline-modal-title">
+<div class="app-modal profile-cover-modal" id="profile-cover-modal" hidden role="dialog" aria-modal="true" aria-labelledby="profile-cover-modal-title">
+    <div class="app-modal-card">
+        <div class="app-modal-head">
+            <div><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 id="profile-cover-modal-title"><?= e(t('profile.cover_modal_title')) ?></h2></div>
+            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button>
+        </div>
+        <form id="profile-cover-form" method="post" action="<?= e($profileUrl()) ?>" enctype="multipart/form-data" class="stack profile-cover-form" data-image-cropper-form>
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="update_profile_cover">
+            <input type="hidden" name="profile_cover_cropped" value="" data-image-crop-output>
+
+            <?php if ($profileCoverUrl !== ''): ?>
+                <figure class="profile-cover-current">
+                    <img src="<?= e($profileCoverUrl) ?>" alt="">
+                    <figcaption><?= e(t('profile.cover_current')) ?></figcaption>
+                </figure>
+            <?php endif; ?>
+
+            <label class="profile-cover-upload">
+                <span aria-hidden="true"><?= activity_icon_svg('image') ?></span>
+                <span><strong><?= e(t('profile.cover_upload')) ?></strong><small><?= e(t('profile.cover_upload_hint')) ?></small></span>
+                <input class="sr-only" type="file" name="profile_cover" accept="image/jpeg,image/png,image/webp" data-image-crop-input>
+            </label>
+
+            <div class="image-cropper profile-cover-cropper" data-image-cropper hidden>
+                <canvas width="1200" height="400" data-image-crop-canvas></canvas>
+                <p class="muted small" data-image-crop-empty><?= e(t('admin.image_crop_hint')) ?></p>
+                <label><span><?= e(t('common.zoom')) ?></span><input type="range" min="1" max="3" step="0.01" value="1" data-image-crop-zoom></label>
+            </div>
+
+            <?php if ($profileCoverUrl !== ''): ?>
+                <label class="check profile-cover-remove"><input type="checkbox" name="remove_profile_cover" value="1"><?= e(t('profile.remove_cover')) ?></label>
+            <?php endif; ?>
+
+        </form>
+        <div class="profile-cover-actions">
+            <button class="btn btn-ghost" type="button" data-app-modal-close><?= e(t('common.cancel')) ?></button>
+            <button class="btn btn-primary" type="submit" form="profile-cover-form"><?= e(t('common.save')) ?></button>
+        </div>
+    </div>
+</div>
+
+<div class="app-modal profile-tagline-modal" id="profile-tagline-modal" hidden role="dialog" aria-modal="true" aria-labelledby="profile-tagline-modal-title">
     <div class="app-modal-card">
         <div class="app-modal-head">
             <h2 id="profile-tagline-modal-title"><?= e(t('profile.tagline_modal_title')) ?></h2>
-            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.back')) ?>">&times;</button>
+            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button>
         </div>
         <form method="post" action="<?= e($profileUrl()) ?>" class="stack profile-tagline-form">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="update_profile_tagline">
-            <label>
-                <?= e(t('profile.custom_message')) ?>
-                <input type="text" name="profile_tagline" maxlength="160" value="<?= e($profileTagline) ?>" placeholder="<?= e(t('profile.subtitle')) ?>">
+            <label class="profile-tagline-field">
+                <span><?= e(t('profile.custom_message')) ?></span>
+                <input type="text" name="profile_tagline" maxlength="160" value="<?= e($profileTagline) ?>" placeholder="<?= e(t('profile.subtitle')) ?>" autofocus>
             </label>
             <div class="profile-tagline-actions">
                 <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>

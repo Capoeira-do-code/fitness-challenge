@@ -319,7 +319,7 @@ ob_start();
 ?>
 <?php if ($analyticsLayoutEditMode): ?>
 <button class="btn btn-primary btn-topbar" type="submit" form="analytics-layout-edit-form"><?= e(t('common.save')) ?></button>
-<a class="btn btn-ghost btn-topbar" href="<?= e($analyticsCancelEditLayoutUrl) ?>"><?= e(t('common.back')) ?></a>
+<a class="hierarchy-back destination-back btn-topbar" href="<?= e($analyticsCancelEditLayoutUrl) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.analytics')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.analytics')) ?></strong></a>
 <?php else: ?>
 <details class="topbar-context analytics-view-menu">
     <summary class="btn btn-ghost btn-topbar"><?= e(t('common.view')) ?></summary>
@@ -367,7 +367,7 @@ ob_start();
                         <a class="btn btn-ghost small" href="/?<?= e(http_build_query(array_replace($analyticsBaseQuery, ['analytics_period' => 'month', 'analytics_month' => $analyticsMonthNext]))) ?>"><?= e(t('dashboard.analytics_next_month')) ?> &rarr;</a>
                     </div>
                 <?php endif; ?>
-                <a class="btn btn-ghost small analytics-dashboard-link" href="/?page=dashboard&user_id=<?= (int) ($selectedUser['id'] ?? 0) ?>"><?= e(t('nav.dashboard')) ?></a>
+                <a class="btn btn-ghost small analytics-dashboard-link" href="/?page=dashboard"><?= e(t('nav.dashboard')) ?></a>
             </div>
             <button class="btn btn-primary small analytics-apply-btn" type="submit"><?= e(t('audit.filter')) ?></button>
         </form>
@@ -401,7 +401,7 @@ $topbarControls = ob_get_clean();
         </div>
     <?php else: ?>
         <header class="hierarchy-page-header analytics-section-header">
-            <button class="hierarchy-back" type="button" data-hierarchy-back data-fallback="/?page=analytics" aria-label="<?= e(t('common.back')) ?>">&larr;</button>
+            <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="/?page=analytics" aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.analytics')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.analytics')) ?></strong></button>
             <div><p class="eyebrow"><?= e(t('nav.analytics')) ?></p><h1><?= e((string) ($analyticsSectionLabels[$analyticsSection] ?? $analyticsSection)) ?></h1><p><?= e($analyticsRangeText) ?></p></div>
         </header>
     <?php endif; ?>
@@ -595,4 +595,4 @@ $topbarControls = ob_get_clean();
     <script type="application/json" data-analytics-chart-data><?= json_encode($analyticsChartPayload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?></script>
 </section>
 
-<script src="/assets/vendor/chart.umd.min.js?v=4.4.3"></script>
+<script src="/asset.php?file=vendor%2Fchart.umd.min.js&amp;v=4.4.3"></script>

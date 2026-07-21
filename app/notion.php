@@ -140,6 +140,8 @@ function notion_refresh_schema_cache(PDO $pdo, int $actorUserId): array
 
 function notion_settings(PDO $pdo): array
 {
+    $configuredBaseUrl = configured_app_base_url($pdo);
+    $detectedBaseUrl = detected_app_base_url($pdo);
     return [
         'enabled' => notion_bool((string) (app_setting($pdo, 'notion_enabled', '0') ?? '0')),
         'external' => notion_bool((string) (app_setting($pdo, 'notion_external_sync', '0') ?? '0')),
@@ -149,7 +151,9 @@ function notion_settings(PDO $pdo): array
         'oauth_client_id' => trim((string) (app_setting($pdo, 'notion_oauth_client_id', '') ?? '')),
         'oauth_client_secret' => trim((string) (app_setting($pdo, 'notion_oauth_client_secret', '') ?? '')),
         'workspace_name' => trim((string) (app_setting($pdo, 'notion_workspace_name', '') ?? '')),
-        'base_url' => rtrim(trim((string) (app_setting($pdo, 'app_base_url', '') ?? '')), '/'),
+        'base_url' => integration_app_base_url($pdo),
+        'configured_base_url' => $configuredBaseUrl,
+        'detected_base_url' => $detectedBaseUrl,
         'frequency' => notion_normalize_frequency((string) (app_setting($pdo, 'notion_sync_frequency', 'off') ?? 'off')),
         'direction' => notion_normalize_direction((string) (app_setting($pdo, 'notion_sync_direction', 'push_only') ?? 'push_only')),
         'run_time' => trim((string) (app_setting($pdo, 'notion_sync_run_time', '03:00') ?? '03:00')),
@@ -445,12 +449,10 @@ function notion_api_request_curl(string $method, string $url, array $headers, ?s
     $raw = curl_exec($handle);
     if ($raw === false) {
         $error = curl_error($handle);
-        curl_close($handle);
 
         return ['ok' => false, 'status' => 0, 'data' => [], 'error' => $error !== '' ? $error : 'curl_failed'];
     }
     $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
-    curl_close($handle);
 
     return notion_api_finalize($status, is_string($raw) ? $raw : '');
 }

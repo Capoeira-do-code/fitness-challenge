@@ -215,7 +215,6 @@ $penaltiesHref = '/?' . http_build_query([
 $dashboardViewParam = (string) ($dashboardView ?? 'current_week');
 $dashboardTopbarQuery = [
     'page' => 'dashboard',
-    'user_id' => (int) ($selectedUser['id'] ?? 0),
     'view' => $dashboardViewParam,
 ];
 $dashboardEditLayoutUrl = '/?' . http_build_query($dashboardTopbarQuery + ['layout_edit' => '1']);
@@ -237,16 +236,6 @@ ob_start();
     <div class="topbar-context-panel">
         <form method="get" class="stack dashboard-control-form" data-dashboard-control-form>
         <input type="hidden" name="page" value="dashboard">
-        <label class="dashboard-control-field">
-            <?= e(t('dashboard.viewing')) ?>
-            <select class="glass-select" name="user_id" data-testid="dashboard-user-select">
-                <?php foreach ($users as $user): ?>
-                    <option value="<?= (int) $user['id'] ?>" <?= (int) $user['id'] === (int) $selectedUser['id'] ? 'selected' : '' ?>>
-                        <?= e((string) $user['display_name']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </label>
         <label class="dashboard-control-field">
             <?= e(t('dashboard.view_mode')) ?>
             <select class="glass-select" name="view" data-testid="dashboard-week-select">
@@ -270,7 +259,7 @@ $topbarControls = ob_get_clean();
 <section class="screen stack-lg dashboard-hierarchy-screen<?= $dashboardSection !== '' ? ' has-section' : '' ?>" data-dashboard-page data-dashboard-section="<?= e($dashboardSection) ?>">
     <?php if ($dashboardSection !== ''): ?>
         <header class="hierarchy-page-header">
-            <button class="hierarchy-back" type="button" data-hierarchy-back data-fallback="/?page=dashboard" aria-label="<?= e(t('common.back')) ?>">&larr;</button>
+            <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="/?page=dashboard" aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.home')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.home')) ?></strong></button>
             <div><p class="eyebrow"><?= e(t('nav.home')) ?></p><h1><?= e(t('dashboard.mobile_' . $dashboardSection)) ?></h1><p><?= e(t('dashboard.mobile_' . $dashboardSection . '_hint')) ?></p></div>
         </header>
 
@@ -329,6 +318,16 @@ $topbarControls = ob_get_clean();
             <?php endif; ?>
         <?php endif; ?>
     <?php else: ?>
+    <?php if (!empty($dashboardShowOnboardingPrompt)): ?>
+        <article class="dashboard-setup-reminder" role="region" aria-labelledby="dashboard-setup-reminder-title">
+            <span class="dashboard-setup-reminder-icon" aria-hidden="true"><?= activity_icon_svg('spark') ?></span>
+            <div class="dashboard-setup-reminder-copy"><p class="eyebrow"><?= e(t('onboarding.title')) ?></p><h2 id="dashboard-setup-reminder-title"><?= e(t('onboarding.prompt_title')) ?></h2><p><?= e(t('onboarding.prompt_hint')) ?></p></div>
+            <div class="dashboard-setup-reminder-actions">
+                <form method="post" action="/?page=dashboard"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="restart_onboarding"><button class="btn btn-primary" type="submit"><?= e(t('onboarding.prompt_action')) ?></button></form>
+                <form method="post" action="/?page=dashboard"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="dismiss_onboarding_prompt"><button class="btn btn-ghost" type="submit"><?= e(t('onboarding.prompt_dismiss')) ?></button></form>
+            </div>
+        </article>
+    <?php endif; ?>
     <div class="dashboard-mobile-home">
         <header class="mobile-home-greeting"><p><?= e(t('dashboard.mobile_today')) ?></p><h1><?= e((string) ($selectedUser['display_name'] ?? t('nav.home'))) ?></h1></header>
         <article class="mobile-today-card" data-dashboard-mobile-surface="mobile_today"<?= $showWidget('mobile_today') ? '' : ' hidden' ?>>
@@ -362,7 +361,6 @@ $topbarControls = ob_get_clean();
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="save_dashboard_layout">
             <input type="hidden" name="dashboard_view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
-            <input type="hidden" name="redirect_user_id" value="<?= (int) ($selectedUser['id'] ?? 0) ?>">
 
             <div class="dashboard-editbar-row">
                 <p class="dashboard-editbar-hint">
@@ -963,7 +961,6 @@ $topbarControls = ob_get_clean();
                             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                             <input type="hidden" name="action" value="resolve_approval">
                             <input type="hidden" name="approval_id" value="<?= (int) $approval['id'] ?>">
-                            <input type="hidden" name="redirect_user_id" value="<?= (int) $selectedUser['id'] ?>">
                             <input type="hidden" name="redirect_week_start" value="<?= e((string) $selectedWeekStart) ?>">
 
                             <div class="pending-head">

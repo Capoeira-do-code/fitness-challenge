@@ -108,9 +108,17 @@ function initialize_database(PDO $pdo, array $config): void
             theme_mode TEXT NOT NULL DEFAULT "light",
             locale TEXT NOT NULL DEFAULT "en",
             avatar_path TEXT,
+            profile_cover_path TEXT,
+            onboarding_status TEXT NOT NULL DEFAULT "complete",
+            onboarding_step TEXT NOT NULL DEFAULT "goals",
+            onboarding_completed_at TEXT,
+            onboarding_skipped INTEGER NOT NULL DEFAULT 0,
+            onboarding_prompt_dismissed INTEGER NOT NULL DEFAULT 0,
+            onboarding_goal_id INTEGER,
             primary_goal_type TEXT NOT NULL DEFAULT "steps",
             primary_goal_value REAL,
             primary_goals_spec TEXT,
+            data_visibility_json TEXT,
             dashboard_view TEXT NOT NULL DEFAULT "current_week",
             dashboard_layout_json TEXT,
             workout_library_layout TEXT NOT NULL DEFAULT "cards",
@@ -120,6 +128,24 @@ function initialize_database(PDO $pdo, array $config): void
             active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS registration_invites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            token_hash TEXT NOT NULL UNIQUE,
+            token_hint TEXT NOT NULL,
+            label TEXT NOT NULL DEFAULT "",
+            max_uses INTEGER NOT NULL DEFAULT 1,
+            used_count INTEGER NOT NULL DEFAULT 0,
+            expires_at TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            last_used_at TEXT,
+            revoked_at TEXT,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
         )'
     );
 
@@ -738,9 +764,17 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     $defaultLocale = config_default_locale($config);
     ensure_column($pdo, 'users', 'locale', "TEXT NOT NULL DEFAULT '" . $defaultLocale . "'");
     ensure_column($pdo, 'users', 'avatar_path', 'TEXT');
+    ensure_column($pdo, 'users', 'profile_cover_path', 'TEXT');
+    ensure_column($pdo, 'users', 'onboarding_status', 'TEXT NOT NULL DEFAULT "complete"');
+    ensure_column($pdo, 'users', 'onboarding_step', 'TEXT NOT NULL DEFAULT "goals"');
+    ensure_column($pdo, 'users', 'onboarding_completed_at', 'TEXT');
+    ensure_column($pdo, 'users', 'onboarding_skipped', 'INTEGER NOT NULL DEFAULT 0');
+    ensure_column($pdo, 'users', 'onboarding_prompt_dismissed', 'INTEGER NOT NULL DEFAULT 0');
+    ensure_column($pdo, 'users', 'onboarding_goal_id', 'INTEGER');
     ensure_column($pdo, 'users', 'primary_goal_type', 'TEXT NOT NULL DEFAULT "steps"');
     ensure_column($pdo, 'users', 'primary_goal_value', 'REAL');
     ensure_column($pdo, 'users', 'primary_goals_spec', 'TEXT');
+    ensure_column($pdo, 'users', 'data_visibility_json', 'TEXT');
     ensure_column($pdo, 'users', 'profile_tagline', 'TEXT');
     ensure_column($pdo, 'users', 'theme_mode', 'TEXT NOT NULL DEFAULT "light"');
     ensure_column($pdo, 'users', 'dashboard_view', 'TEXT NOT NULL DEFAULT "current_week"');
@@ -1005,6 +1039,7 @@ function seed_default_team(PDO $pdo): void
 {
     $now = now_iso();
     $team = db_fetch_one($pdo, 'SELECT * FROM teams WHERE slug = :slug', [':slug' => 'main']);
+    $teamWasCreated = false;
 
     if ($team === null) {
         db_execute(
@@ -1020,9 +1055,13 @@ function seed_default_team(PDO $pdo): void
             ]
         );
         $team = db_fetch_one($pdo, 'SELECT * FROM teams WHERE slug = :slug', [':slug' => 'main']);
+        $teamWasCreated = $team !== null;
     }
 
-    if ($team === null) {
+    // Populate the built-in team only during the initial installation. Re-running
+    // this on every request used to silently add newly registered users before
+    // they could choose a team (or explicitly continue without one).
+    if ($team === null || !$teamWasCreated) {
         return;
     }
 

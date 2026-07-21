@@ -191,7 +191,7 @@ $teamLayoutLabels = is_array($teamLayoutLabels ?? null) ? (array) $teamLayoutLab
 $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($teamLayoutIndex, $teamSection): string {
     if ($teamSection !== '') {
         $sectionWidgets = [
-            'challenge' => ['active_challenge', 'challenges', 'competitions'],
+            'challenge' => ['active_challenge', 'challenges'],
             'leaderboard' => ['leaderboard'],
             'members' => ['members'],
             'stats' => ['metrics', 'daily_charts', 'cumulative_steps', 'cumulative_distance', 'weekly_charts'],
@@ -228,7 +228,7 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
             </nav>
         </div>
     <?php else: ?>
-        <header class="hierarchy-page-header team-section-header"><button class="hierarchy-back" type="button" data-hierarchy-back data-fallback="/?page=team&team_id=<?= (int) ($team['id'] ?? 0) ?>" aria-label="<?= e(t('common.back')) ?>">&larr;</button><div><p class="eyebrow"><?= e((string) ($team['name'] ?? t('nav.team'))) ?></p><h1><?= e(t('team.mobile_' . $teamSection)) ?></h1></div></header>
+        <header class="hierarchy-page-header team-section-header"><button class="hierarchy-back destination-back team-section-back" type="button" data-hierarchy-back data-fallback="/?page=team&team_id=<?= (int) ($team['id'] ?? 0) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.team')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.team')) ?></strong></button><div><p class="eyebrow"><?= e((string) ($team['name'] ?? t('nav.team'))) ?></p><h1><?= e(t('team.mobile_' . $teamSection)) ?></h1></div><?php if ($teamSection === 'challenge' && !empty($canManageTeam)): ?><button class="btn btn-primary small team-goal-new-button" type="button" data-team-goal-open data-goal-mode="create"><span aria-hidden="true">+</span><strong><?= e(t('common.create')) ?></strong></button><?php endif; ?></header>
     <?php endif; ?>
     <div class="team-desktop-root">
     <?php if ($teamSection === ''): ?><header class="mobile-widget-feed-head"><div><p><?= e(t('dashboard.visible_widgets')) ?></p><h2><?= e(t('nav.team')) ?></h2></div><a href="<?= e($teamMobileEditLayoutUrl) ?>"><?= e(t('team.edit_layout')) ?></a></header><?php endif; ?>
@@ -308,7 +308,7 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                     <?php endforeach; ?>
                 </div>
                 <div class="team-layout-editor-actions">
-                    <a class="btn btn-ghost small" href="<?= e($teamBaseUrl) ?>"><?= e(t('common.back')) ?></a>
+                    <a class="hierarchy-back destination-back" href="<?= e($teamBaseUrl) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.team')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.team')) ?></strong></a>
                     <button class="btn btn-ghost small" type="submit" name="reset_team_layout" value="1"><?= e(t('team.reset_layout')) ?></button>
                     <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
                 </div>
@@ -507,7 +507,7 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                         <p class="muted"><?= e(t('team.penalty_rank_hint')) ?></p>
                     <?php endif; ?>
                 </div>
-                <a class="btn btn-ghost" href="<?= e($teamBaseUrl) ?>">← <?= e(t('common.back')) ?></a>
+                <a class="hierarchy-back destination-back" href="<?= e($teamBaseUrl) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.team')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.team')) ?></strong></a>
             </div>
 
             <div class="team-metric-detail-grid">
@@ -670,20 +670,39 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
             </div>
         </article>
 
-            <article class="panel team-layout-item team-widget-challenges team-challenges-panel" data-team-widget="challenges" style="<?= e($teamWidgetStyle('challenges', 40)) ?>">
+            <?php
+            $teamGoalStatusCounts = ['active' => 0, 'complete' => 0];
+            foreach ($goals as $teamGoalCountRow) {
+                $teamGoalCountStatus = (string) ($teamGoalCountRow['status'] ?? 'active');
+                if (isset($teamGoalStatusCounts[$teamGoalCountStatus])) {
+                    ++$teamGoalStatusCounts[$teamGoalCountStatus];
+                }
+            }
+            ?>
+            <article class="panel team-layout-item team-widget-challenges team-challenges-panel<?= $teamSection === 'challenge' ? ' team-goals-section' : '' ?>" data-team-widget="challenges"<?= $teamSection === 'challenge' ? ' data-team-goal-collection' : '' ?> style="<?= e($teamWidgetStyle('challenges', 40)) ?>">
                 <div class="panel-head">
                     <div>
-                        <p class="eyebrow"><?= e(t('team.challenges')) ?></p>
+                        <p class="eyebrow"><?= count($goals) ?> · <?= e((string) ($team['name'] ?? t('nav.team'))) ?></p>
                         <h2><?= e(t('team.challenges')) ?></h2>
                     </div>
-                    <?php if (!empty($canManageTeam)): ?>
-                        <button class="btn btn-primary small team-panel-create-btn" type="button" data-team-goal-open data-goal-mode="create"><?= e(t('common.create')) ?></button>
+                    <?php if (!empty($canManageTeam) && $teamSection !== 'challenge'): ?>
+                        <button class="btn btn-primary small team-panel-create-btn team-goal-new-button" type="button" data-team-goal-open data-goal-mode="create"><span aria-hidden="true">+</span><strong><?= e(t('common.create')) ?></strong></button>
                     <?php endif; ?>
                 </div>
 
                 <?php if ($goals === []): ?>
                     <p class="muted"><?= e(t('goals.empty')) ?></p>
                 <?php else: ?>
+                    <?php if ($teamSection === 'challenge' && count($goals) >= 5): ?>
+                        <div class="team-goals-toolbar" data-team-goal-toolbar>
+                            <label class="team-goals-search"><span aria-hidden="true"><?= activity_icon_svg('search') ?></span><span class="sr-only"><?= e(t('profile.search_goals')) ?></span><input type="search" autocomplete="off" placeholder="<?= e(t('profile.search_goals')) ?>" data-team-goal-search></label>
+                            <div class="team-goal-filters" role="group" aria-label="<?= e(t('common.status')) ?>">
+                                <button type="button" data-team-goal-filter="all" aria-pressed="true"><?= e(t('profile.all_goals')) ?><b><?= count($goals) ?></b></button>
+                                <button type="button" data-team-goal-filter="active" aria-pressed="false"><?= e(t('common.active')) ?><b><?= $teamGoalStatusCounts['active'] ?></b></button>
+                                <button type="button" data-team-goal-filter="complete" aria-pressed="false"><?= e(t('common.complete')) ?><b><?= $teamGoalStatusCounts['complete'] ?></b></button>
+                            </div>
+                        </div>
+                    <?php endif; ?>
                     <div class="card-list team-goals-list">
                         <?php foreach ($goals as $goal): ?>
                             <?php
@@ -728,20 +747,21 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                                 : '';
                             $progressDebug = is_array($goal['progress_debug'] ?? null) ? (array) $goal['progress_debug'] : [];
                             ?>
-                            <article class="mini-card team-goal-card">
+                            <article class="mini-card team-goal-card is-<?= e($status) ?>" data-team-goal-item data-goal-status="<?= e($status) ?>" data-goal-title="<?= e((string) $goal['title']) ?>">
                                 <button
                                     class="team-goal-mobile-preview<?= $rewardText !== '' ? ' has-reward' : '' ?>"
                                     type="button"
                                     data-team-goal-detail-trigger
                                     aria-label="<?= e(t('team.challenge_detail')) ?>: <?= e((string) $goal['title']) ?>"
                                 >
-                                    <strong class="team-goal-mobile-preview-title"><?= e((string) $goal['title']) ?></strong>
-                                    <span class="team-goal-mobile-preview-status team-goal-status status-<?= e($statusBadgeClass) ?>"><?= e($statusBadgeText) ?></span>
-                                    <span class="team-goal-mobile-preview-progress"><?= e($formatPercent($progressRaw)) ?>%</span>
-                                    <?php if ($rewardText !== ''): ?>
-                                        <small class="team-goal-mobile-preview-reward"><?= e(t('achievements.reward')) ?>: <?= e($rewardText) ?></small>
-                                    <?php endif; ?>
-                                    <span class="team-goal-mobile-preview-bar" aria-hidden="true"><span style="width: <?= e((string) $progressVisual) ?>%"></span></span>
+                                    <span class="team-goal-list-icon" aria-hidden="true"><?= activity_icon_svg($status === 'complete' ? 'check' : 'target') ?></span>
+                                    <span class="team-goal-list-copy">
+                                        <strong class="team-goal-mobile-preview-title"><?= e((string) $goal['title']) ?></strong>
+                                        <small><?= e((string) ($goal['target_type_label'] ?? t('common.other'))) ?> · <?= e((string) ($goal['progress_display'] ?? '0')) ?> / <?= e((string) ($goal['target_display'] ?? '-')) ?></small>
+                                        <span class="team-goal-mobile-preview-bar" aria-hidden="true"><span style="width: <?= e((string) $progressVisual) ?>%"></span></span>
+                                    </span>
+                                    <span class="team-goal-list-meta"><strong class="team-goal-mobile-preview-progress"><?= e($formatPercent($progressRaw)) ?>%</strong><small><?= $dueDate !== '' ? e(format_date_eu($dueDate)) : e($statusBadgeText) ?></small></span>
+                                    <span class="settings-chevron" aria-hidden="true">›</span>
                                 </button>
                                 <div class="team-goal-main">
                                     <div class="team-goal-head">
@@ -856,15 +876,16 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                                     ?>
                                     <?php foreach ($goalStatusForms as $statusFormId => $nextStatus): ?>
                                         <form id="<?= e($statusFormId) ?>" method="post" action="/?page=team" hidden>
-                                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>"><input type="hidden" name="goal_id" value="<?= $goalId ?>"><input type="hidden" name="redirect_view" value="<?= e($teamView) ?>"><input type="hidden" name="status" value="<?= e($nextStatus) ?>"><input type="hidden" name="action" value="goal_status">
+                                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>"><input type="hidden" name="goal_id" value="<?= $goalId ?>"><input type="hidden" name="redirect_view" value="<?= e($teamView) ?>"><input type="hidden" name="redirect_section" value="<?= e($teamSection) ?>"><input type="hidden" name="status" value="<?= e($nextStatus) ?>"><input type="hidden" name="action" value="goal_status">
                                         </form>
                                     <?php endforeach; ?>
                                     <form id="<?= e($deleteFormId) ?>" method="post" action="/?page=team" hidden>
-                                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>"><input type="hidden" name="goal_id" value="<?= $goalId ?>"><input type="hidden" name="redirect_view" value="<?= e($teamView) ?>"><input type="hidden" name="action" value="delete_goal">
+                                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>"><input type="hidden" name="goal_id" value="<?= $goalId ?>"><input type="hidden" name="redirect_view" value="<?= e($teamView) ?>"><input type="hidden" name="redirect_section" value="<?= e($teamSection) ?>"><input type="hidden" name="action" value="delete_goal">
                                     </form>
                                 <?php endif; ?>
                             </article>
                         <?php endforeach; ?>
+                        <p class="muted panel-inline-empty team-goals-filter-empty" hidden data-team-goal-empty><?= e(t('profile.no_goals_match')) ?></p>
                     </div>
                 <?php endif; ?>
             </article>
@@ -1048,12 +1069,16 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
         <div class="confirm-modal" hidden aria-hidden="true" data-team-goal-modal>
             <div class="confirm-modal-backdrop" data-team-goal-close></div>
             <div class="confirm-modal-card team-goal-modal-card" role="dialog" aria-modal="true" aria-labelledby="team-goal-title">
-                <button class="achievement-info-close team-goal-modal-close" type="button" aria-label="<?= e(t('common.close_action')) ?>" data-team-goal-close>&times;</button>
-                <h3 id="team-goal-title" data-team-goal-modal-title data-title-create="<?= e(t('goals.create_team_challenge')) ?>" data-title-edit="<?= e(t('goals.edit_team_challenge')) ?>"><?= e(t('goals.create_team_challenge')) ?></h3>
+                <div class="team-goal-modal-head">
+                    <span class="team-goal-modal-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span>
+                    <div><p class="eyebrow"><?= e((string) ($team['name'] ?? t('nav.team'))) ?></p><h3 id="team-goal-title" data-team-goal-modal-title data-title-create="<?= e(t('goals.create_team_challenge')) ?>" data-title-edit="<?= e(t('goals.edit_team_challenge')) ?>"><?= e(t('goals.create_team_challenge')) ?></h3><small><?= e(t('goals.team_challenge_form_hint')) ?></small></div>
+                    <button class="achievement-info-close team-goal-modal-close" type="button" aria-label="<?= e(t('common.close_action')) ?>" data-team-goal-close>&times;</button>
+                </div>
                 <form method="post" action="/?page=team" class="stack compact-form team-goal-form" data-team-goal-form>
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
                     <input type="hidden" name="redirect_view" value="<?= e($teamView) ?>">
+                    <input type="hidden" name="redirect_section" value="<?= e($teamSection) ?>">
                     <input type="hidden" name="action" value="create_goal" data-team-goal-action>
                     <input type="hidden" name="goal_id" value="" data-team-goal-id>
                     <label class="team-goal-form-full">
@@ -1137,7 +1162,7 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                     </label>
                     <label>
                         <?= e(t('goals.due_date')) ?>
-                        <input type="date" name="due_date" data-goal-due-date-input>
+                        <input type="date" name="due_date" data-goal-due-date-input data-min-date="<?= e($nowDateTime->format('Y-m-d')) ?>" data-past-message="<?= e(t('goals.due_in_past')) ?>">
                     </label>
                     <label>
                         <?= e(t('goals.due_time')) ?>
@@ -1167,7 +1192,7 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
 </section>
 
 <?php if ($teamMetricDetail !== null || $teamHasDailyStepsData || $teamHasDailyDistanceData || $teamHasCumulativeStepsData || $teamHasCumulativeDistanceData || $teamHasDailyWorkoutsData || ($penaltiesEnabled && $teamHasWeeklyData)): ?>
-<script src="/assets/vendor/chart.umd.min.js?v=4.4.3"></script>
+<script src="/asset.php?file=vendor%2Fchart.umd.min.js&amp;v=4.4.3"></script>
 <?php endif; ?>
 <script>
 (function () {
@@ -1626,6 +1651,23 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
         const defaultPlaceholder = '100';
         let opener = null;
 
+        const validateDueDeadline = () => {
+            if (!(dueDateInput instanceof HTMLInputElement)) return true;
+            dueDateInput.setCustomValidity('');
+            if (goalForm instanceof HTMLFormElement && goalForm.dataset.goalMode === 'edit') return true;
+            const dueDate = dueDateInput.value.trim();
+            if (dueDate === '') return true;
+            const dueTime = dueTimeInput instanceof HTMLInputElement && dueTimeInput.value !== ''
+                ? dueTimeInput.value
+                : '23:59';
+            const deadline = new Date(`${dueDate}T${dueTime}:00`);
+            if (!Number.isNaN(deadline.getTime()) && deadline.getTime() < Date.now()) {
+                dueDateInput.setCustomValidity(String(dueDateInput.dataset.pastMessage || 'The deadline must be now or later.'));
+                return false;
+            }
+            return true;
+        };
+
         const updateObjectiveInputs = (typeSelect, targetField, unitWrap, unitInput) => {
             if (!(typeSelect instanceof HTMLSelectElement)) {
                 return;
@@ -1700,6 +1742,9 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                 ? String(trigger.dataset.goalMode || 'create').trim().toLowerCase()
                 : 'create';
             const isEdit = mode === 'edit';
+            if (goalForm instanceof HTMLFormElement) {
+                goalForm.dataset.goalMode = isEdit ? 'edit' : 'create';
+            }
             if (trigger instanceof HTMLElement) {
                 const parentMenu = trigger.closest('details');
                 if (parentMenu instanceof HTMLDetailsElement) {
@@ -1758,6 +1803,8 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
             }
             if (dueDateInput instanceof HTMLInputElement) {
                 dueDateInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalDueDate || '').trim() : '';
+                dueDateInput.min = isEdit ? '' : String(dueDateInput.dataset.minDate || '');
+                dueDateInput.setCustomValidity('');
             }
             if (dueTimeInput instanceof HTMLInputElement) {
                 dueTimeInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalDueTime || '').trim() : '';
@@ -1784,6 +1831,7 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
             updateSecondaryVisibility();
             updateGoalFormByType();
             updateRewardVisibility();
+            validateDueDeadline();
             if (firstInput instanceof HTMLElement) {
                 window.setTimeout(() => firstInput.focus(), 0);
             }
@@ -1819,6 +1867,14 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
             rewardToggle.addEventListener('change', updateRewardVisibility);
             updateRewardVisibility();
         }
+        dueDateInput?.addEventListener('change', validateDueDeadline);
+        dueTimeInput?.addEventListener('change', validateDueDeadline);
+        goalForm?.addEventListener('submit', (event) => {
+            if (!validateDueDeadline()) {
+                event.preventDefault();
+                dueDateInput?.reportValidity();
+            }
+        });
 
         window.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && !goalModal.hidden) {

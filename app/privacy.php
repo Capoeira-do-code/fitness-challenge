@@ -14,11 +14,13 @@ declare(strict_types=1);
  */
 
 const PRIVACY_LEVELS = ['private', 'friends', 'public'];
+const PRIVACY_DATA_KEYS = ['weight', 'steps', 'distance', 'workouts', 'nutrition'];
 
 function privacy_ensure_schema(PDO $pdo): void
 {
     if (function_exists('ensure_column')) {
         ensure_column($pdo, 'users', 'profile_visibility', "TEXT NOT NULL DEFAULT 'public'");
+        ensure_column($pdo, 'users', 'data_visibility_json', 'TEXT');
     }
     // Friend-activity relies on the friendships table; make sure it exists.
     if (function_exists('friends_ensure_schema')) {
@@ -59,6 +61,68 @@ function privacy_set_visibility(PDO $pdo, int $userId, string $value): void
         'UPDATE users SET profile_visibility = :v, updated_at = :now WHERE id = :id',
         [':v' => privacy_normalize($value), ':now' => now_iso(), ':id' => $userId]
     );
+}
+
+function privacy_data_preferences(?array $user): array
+{
+    $fallback = user_visibility($user);
+    $preferences = array_fill_keys(PRIVACY_DATA_KEYS, $fallback);
+    $raw = trim((string) ($user['data_visibility_json'] ?? ''));
+    if ($raw === '') {
+        return $preferences;
+    }
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return $preferences;
+    }
+    foreach (PRIVACY_DATA_KEYS as $key) {
+        if (isset($decoded[$key]) && is_string($decoded[$key])) {
+            $preferences[$key] = privacy_normalize($decoded[$key]);
+        }
+    }
+
+    return $preferences;
+}
+
+function privacy_set_preferences(PDO $pdo, int $userId, string $profileVisibility, array $dataVisibility): void
+{
+    if ($userId <= 0) {
+        return;
+    }
+    $profileVisibility = privacy_normalize($profileVisibility);
+    $normalized = [];
+    foreach (PRIVACY_DATA_KEYS as $key) {
+        $normalized[$key] = privacy_normalize((string) ($dataVisibility[$key] ?? $profileVisibility));
+    }
+    db_execute(
+        $pdo,
+        'UPDATE users SET profile_visibility = :profile_visibility, data_visibility_json = :data_visibility_json, updated_at = :updated_at WHERE id = :id',
+        [
+            ':profile_visibility' => $profileVisibility,
+            ':data_visibility_json' => json_encode($normalized, JSON_UNESCAPED_SLASHES),
+            ':updated_at' => now_iso(),
+            ':id' => $userId,
+        ]
+    );
+}
+
+function can_view_user_data(PDO $pdo, int $viewerId, int $targetId, string $dataKey, bool $viewerIsAdmin = false, ?array $targetUser = null): bool
+{
+    if ($viewerId === $targetId || $viewerIsAdmin) {
+        return true;
+    }
+    if (!in_array($dataKey, PRIVACY_DATA_KEYS, true) || $targetId <= 0) {
+        return false;
+    }
+    if ($targetUser === null) {
+        $targetUser = db_fetch_one($pdo, 'SELECT profile_visibility, data_visibility_json FROM users WHERE id = :id', [':id' => $targetId]);
+    }
+    if ($targetUser === null) {
+        return false;
+    }
+    $visibility = privacy_data_preferences($targetUser)[$dataKey] ?? user_visibility($targetUser);
+
+    return can_view_user_content($pdo, $viewerId, $targetId, false, $visibility);
 }
 
 /**
@@ -124,8 +188,12 @@ function social_broadcast_activity(PDO $pdo, int $actorId, string $type): void
     if (!function_exists('friends_list') || !function_exists('social_notify')) {
         return;
     }
-    $actor = db_fetch_one($pdo, 'SELECT display_name, profile_visibility FROM users WHERE id = :id AND active = 1', [':id' => $actorId]);
+    $actor = db_fetch_one($pdo, 'SELECT display_name, profile_visibility, data_visibility_json FROM users WHERE id = :id AND active = 1', [':id' => $actorId]);
     if ($actor === null || user_visibility($actor) === 'private') {
+        return;
+    }
+    $activityDataKey = $type === 'meal' ? 'nutrition' : 'workouts';
+    if ((privacy_data_preferences($actor)[$activityDataKey] ?? 'public') === 'private') {
         return;
     }
     privacy_ensure_schema($pdo);

@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
+from tls_context import configure_tls_environment, trusted_ssl_context
+
 ROOT = Path(__file__).resolve().parents[1]
 STORAGE_DIR = ROOT / "storage"
 REPORT_DIR = ROOT / "e2e-report"
@@ -37,6 +39,8 @@ WINDOWS_DEFAULT_PORTABLE_PHP_URLS = [
     "https://windows.php.net/downloads/releases/latest/php-8.3-nts-Win32-vs16-x64-latest.zip",
     "https://windows.php.net/downloads/releases/latest/php-8.4-nts-Win32-vs17-x64-latest.zip",
 ]
+configure_tls_environment()
+OUTBOUND_TLS_CONTEXT = trusted_ssl_context()
 
 
 class RunnerError(RuntimeError):
@@ -227,7 +231,7 @@ def windows_runtime_extension_flags(php_bin: str) -> list[str]:
 
 def download_file(url: str, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(url, timeout=120) as response:
+    with urllib.request.urlopen(url, timeout=120, context=OUTBOUND_TLS_CONTEXT) as response:
         if getattr(response, "status", 200) >= 400:
             raise RunnerError(f"Download failed ({response.status}) for {url}")
         with destination.open("wb") as output:
@@ -1052,6 +1056,7 @@ def start_side_process(script_name: str, label: str, db_path: Path, base_url: st
     if not script.exists():
         return None
     env = os.environ.copy()
+    configure_tls_environment(env)
     env["DB_PATH"] = str(db_path)
     env["APP_BASE_URL"] = base_url.rstrip("/")
     env.setdefault("PYTHONIOENCODING", "utf-8")
