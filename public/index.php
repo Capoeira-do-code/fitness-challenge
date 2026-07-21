@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/app/bootstrap.php';
 
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: SAMEORIGIN');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+
 $page = $_GET['page'] ?? null;
 if ($page === null) {
     $pathPage = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/');
@@ -22,7 +27,10 @@ if ($page === 'users') {
     $page = 'admin';
 }
 
-if ($currentUser !== null && !in_array($page, ['app_icon', 'login_background', 'media', 'media_thumb', 'api_meal_calendar', 'api_gallery_recent'], true)) {
+if ($currentUser !== null
+    && !empty($config['request_schedulers_enabled'])
+    && !in_array($page, ['app_icon', 'login_background', 'media', 'media_thumb', 'api_meal_calendar', 'api_gallery_recent'], true)
+) {
     run_system_backup_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
     notion_run_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
     telegram_run_scheduler($pdo, $config);
@@ -645,6 +653,34 @@ if ($page === 'media_thumb') {
 }
 
 $currentUser = require_login($pdo);
+
+if ($page === 'api_friend_search') {
+    friends_ensure_schema($pdo);
+    $query = trim((string) ($_GET['q'] ?? ''));
+    if ($query !== '' && (function_exists('mb_strlen') ? mb_strlen($query) : strlen($query)) < 2) {
+        json_response(['ok' => true, 'users' => []]);
+    }
+    if ((function_exists('mb_strlen') ? mb_strlen($query) : strlen($query)) > 64) {
+        json_response(['ok' => false, 'error' => 'query_too_long'], 422);
+    }
+    $now = microtime(true);
+    $lastSearchAt = (float) ($_SESSION['friend_search_last_at'] ?? 0.0);
+    if ($lastSearchAt > 0 && ($now - $lastSearchAt) < 0.15) {
+        json_response(['ok' => false, 'error' => 'rate_limited'], 429);
+    }
+    $_SESSION['friend_search_last_at'] = $now;
+    $users = friends_search_addable_users($pdo, (int) $currentUser['id'], $query, 10);
+    json_response([
+        'ok' => true,
+        'users' => array_map(static fn(array $user): array => [
+            'id' => (int) ($user['id'] ?? 0),
+            'display_name' => (string) ($user['display_name'] ?? ''),
+            'username' => (string) ($user['username'] ?? ''),
+            'avatar_url' => avatar_url($user),
+            'initials' => initials_for((string) ($user['display_name'] ?? $user['username'] ?? '?')),
+        ], $users),
+    ]);
+}
 
 if ($page === 'api_gallery_recent') {
     $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
@@ -1815,7 +1851,8 @@ if ($page === 'friends') {
     $friendsList = friends_list($pdo, $meId);
     $friendsIncoming = friends_incoming($pdo, $meId);
     $friendsOutgoing = friends_outgoing($pdo, $meId);
-    $friendsAddable = friends_addable_users($pdo, $meId);
+    $friendsAddableCount = friends_addable_count($pdo, $meId);
+    $friendsAddable = friends_search_addable_users($pdo, $meId, '', 8);
 
     $friendsSettings = challenge_settings($pdo, $config);
     $friendsChallengeStart = (string) ($friendsSettings['challenge_start'] ?? to_date(null));
@@ -1858,6 +1895,7 @@ if ($page === 'friends') {
         'friendsIncoming' => $friendsIncoming,
         'friendsOutgoing' => $friendsOutgoing,
         'friendsAddable' => $friendsAddable,
+        'friendsAddableCount' => $friendsAddableCount,
         'friendCompare' => $friendCompare,
         'config' => $config,
     ]);
@@ -2522,6 +2560,7 @@ if ($page === 'workouts') {
             case 'exercise_add_to_routine':
             case 'exercise_add_to_session':
                 $targetRoutine = (int) ($_POST['routine_id'] ?? 0);
+                $addedRoutineId = 0;
                 $contextRoutine = max(0, (int) ($_POST['target_routine_id'] ?? 0));
                 $contextSession = max(0, (int) ($_POST['target_session_id'] ?? 0));
                 if ($wkAction === 'exercise_add_to_session' && $contextSession <= 0) {
@@ -2553,8 +2592,12 @@ if ($page === 'workouts') {
                     } elseif (trim((string) ($_POST['target_duration_seconds'] ?? '')) !== '') {
                         $libraryTargets['target_duration'] = max(0, (int) $_POST['target_duration_seconds']);
                     }
-                    wk_routine_add_exercise($pdo, $targetRoutine, $targetExercise, $libraryTargets);
-                    flash_set('success', t('workouts.exercise_added'));
+                    if (wk_routine_add_exercise($pdo, $targetRoutine, $targetExercise, $libraryTargets) > 0) {
+                        $addedRoutineId = $targetRoutine;
+                        if ($wkAction !== 'library_add_exercise' || $contextRoutine > 0) {
+                            flash_set('success', t('workouts.exercise_added'));
+                        }
+                    }
                 }
                 if ($wkAction === 'exercise_add_to_routine') {
                     $exerciseReturn = ['page' => 'workouts', 'exercise_id' => $targetExercise];
@@ -2585,6 +2628,9 @@ if ($page === 'workouts') {
                 $libraryPage = max(1, (int) ($_POST['library_page'] ?? 1));
                 if ($libraryPage > 1) {
                     $libraryQuery['library_page'] = $libraryPage;
+                }
+                if ($addedRoutineId > 0 && $contextRoutine === 0) {
+                    $libraryQuery['added_routine_id'] = $addedRoutineId;
                 }
                 redirect('/?' . http_build_query($libraryQuery));
             case 'routine_remove_exercise':
@@ -5490,9 +5536,7 @@ if ($page === 'admin') {
             }
 
             try {
-                $pdo = null;
-                $GLOBALS['pdo'] = null;
-                restore_system_backup_archive($config, $absolutePath);
+                restore_system_backup_archive($pdo, $config, $absolutePath);
                 $pdo = db_connect($config);
                 $GLOBALS['pdo'] = $pdo;
                 reconcile_system_backups($pdo, $config);
@@ -5619,6 +5663,7 @@ if ($page === 'admin') {
     $backupSettings = system_backup_settings($pdo);
     reconcile_system_backups($pdo, $config);
     $systemBackups = list_system_backups($pdo, $config, 200);
+    $integrationStatuses = integration_runtime_statuses($pdo);
     $workoutTypeFields = list_workout_type_fields_grouped($pdo, false);
     $loginBackgroundLibrary = list_login_background_library($config);
     $adminAchievements = list_achievements_for_admin($pdo);
@@ -5735,6 +5780,7 @@ if ($page === 'admin') {
         'loginStyle' => login_style_normalize(app_setting($pdo, 'login_style', 'split')),
         'backupSettings' => $backupSettings,
         'systemBackups' => $systemBackups,
+        'integrationStatuses' => $integrationStatuses,
         'challengeSettings' => $challengeSettings,
         'challengeArchives' => list_challenge_archives($pdo),
         'auditLogs' => fetch_audit_logs($pdo, $auditFilters, 100),

@@ -1,0 +1,440 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+$qaRoot = rtrim(sys_get_temp_dir(), '/\\') . '/fitness_stabilization_' . bin2hex(random_bytes(6));
+$qaDb = $qaRoot . '/fitness.sqlite';
+$qaUploads = $qaRoot . '/uploads';
+mkdir($qaUploads, 0775, true);
+putenv('DB_PATH=' . $qaDb);
+putenv('UPLOAD_DIR=' . $qaUploads);
+putenv('SEED_PASSWORD=qa-only-password');
+putenv('REQUEST_SCHEDULERS_ENABLED=0');
+
+require dirname(__DIR__) . '/app/bootstrap.php';
+
+$checks = 0;
+$assert = static function (bool $condition, string $message) use (&$checks): void {
+    $checks++;
+    if (!$condition) {
+        throw new RuntimeException($message);
+    }
+    fwrite(STDOUT, "[ok] {$message}\n");
+};
+
+$probeSeedUserCount = static function (string $dbPath, string $uploadDir, string $password): int {
+    $probe = 'require ' . var_export(dirname(__DIR__) . '/app/bootstrap.php', true)
+        . '; echo (int) $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();';
+    $pipes = [];
+    $process = proc_open(
+        [PHP_BINARY, '-r', $probe],
+        [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+        $pipes,
+        dirname(__DIR__),
+        [
+            'DB_PATH' => $dbPath,
+            'UPLOAD_DIR' => $uploadDir,
+            'SEED_PASSWORD' => $password,
+            'REQUEST_SCHEDULERS_ENABLED' => '0',
+        ]
+    );
+    if (!is_resource($process)) {
+        throw new RuntimeException('Could not launch isolated seed probe.');
+    }
+    $stdout = stream_get_contents($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $exitCode = proc_close($process);
+    if ($exitCode !== 0) {
+        throw new RuntimeException('Seed probe failed: ' . trim((string) $stderr));
+    }
+
+    return (int) trim((string) $stdout);
+};
+
+try {
+    $requestLock = system_maintenance_acquire($config, false, true);
+    $assert(is_resource($requestLock), 'web-style shared maintenance lock can be acquired');
+    $GLOBALS['request_maintenance_handle'] = $requestLock;
+    $GLOBALS['request_maintenance_exclusive'] = false;
+    $upgradedLock = system_maintenance_acquire($config, true, true);
+    $assert($upgradedLock === $requestLock, 'request maintenance lock upgrades in place for backup and restore');
+    $competingRead = system_maintenance_acquire($config, false, true);
+    $assert($competingRead === false, 'exclusive maintenance blocks another web request before SQLite opens');
+    system_maintenance_release($upgradedLock);
+    $competingRead = system_maintenance_acquire($config, false, true);
+    $assert(is_resource($competingRead), 'maintenance lock downgrades after the exclusive operation');
+    system_maintenance_release($competingRead);
+    system_request_maintenance_release();
+
+    $emptySeedCount = $probeSeedUserCount($qaRoot . '/seed-empty.sqlite', $qaRoot . '/seed-empty-uploads', '');
+    $assert($emptySeedCount === 0, 'a fresh database creates no fixed seed users without SEED_PASSWORD');
+    $explicitSeedCount = $probeSeedUserCount($qaRoot . '/seed-explicit.sqlite', $qaRoot . '/seed-explicit-uploads', 'explicit-qa-password');
+    $assert($explicitSeedCount === 2, 'seed users are created only when SEED_PASSWORD is explicitly configured');
+    $phpTelegramSecret = '123456:php-qa-secret';
+    $phpTelegramError = telegram_redact_secrets(
+        'network failure at https://api.telegram.org/bot' . $phpTelegramSecret . '/getMe',
+        $phpTelegramSecret
+    );
+    $assert(!str_contains($phpTelegramError, $phpTelegramSecret), 'PHP Telegram errors redact the bot token');
+
+    set_app_setting_silent($pdo, 'qa_snapshot_marker', 'before');
+    file_put_contents($qaUploads . '/marker.txt', 'before');
+    $walPath = $qaDb . '-wal';
+    $assert(is_file($walPath) && (int) filesize($walPath) > 0, 'backup fixture includes committed data still represented in WAL');
+
+    $backup = create_system_backup($pdo, $config, 'manual', null);
+    $archive = system_backup_absolute_path($config, (string) ($backup['file_path'] ?? ''));
+    $assert(is_string($archive) && is_file($archive), 'backup archive is created');
+    $manifest = validate_system_backup_archive((string) $archive);
+    $assert((int) ($manifest['version'] ?? 0) === 2, 'backup manifest v2 is emitted');
+    $assert((string) ($manifest['db']['integrity'] ?? '') === 'ok', 'snapshot integrity is recorded');
+    $assert(system_backup_absolute_path($config, 'fitness.sqlite') === null, 'backup metadata cannot resolve to the live database');
+    $assert(system_backup_absolute_path($config, 'backups/../fitness.sqlite') === null, 'backup metadata path traversal is rejected');
+
+    $legacyArchive = null;
+    if (class_exists('ZipArchive') && str_ends_with(strtolower((string) $archive), '.zip')) {
+        $sourceZip = new ZipArchive();
+        if ($sourceZip->open((string) $archive) !== true) {
+            throw new RuntimeException('Could not open v2 backup fixture.');
+        }
+        $legacyDb = $sourceZip->getFromName('fitness.sqlite');
+        $legacyUpload = $sourceZip->getFromName('uploads/marker.txt');
+        $sourceZip->close();
+        if (!is_string($legacyDb) || !is_string($legacyUpload)) {
+            throw new RuntimeException('Could not read v1 backup fixture data.');
+        }
+        $legacyArchive = $qaRoot . '/legacy-v1.zip';
+        $legacyManifest = [
+            'version' => 1,
+            'created_at' => now_iso(),
+            'trigger' => 'manual',
+            'scope' => 'db_uploads',
+            'db' => [
+                'path' => 'fitness.sqlite',
+                'size_bytes' => strlen($legacyDb),
+                'sha256' => hash('sha256', $legacyDb),
+            ],
+            'uploads' => [[
+                'path' => 'uploads/marker.txt',
+                'size_bytes' => strlen($legacyUpload),
+                'sha256' => hash('sha256', $legacyUpload),
+            ]],
+        ];
+        $legacyZip = new ZipArchive();
+        $legacyZip->open($legacyArchive, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $legacyZip->addFromString('fitness.sqlite', $legacyDb);
+        $legacyZip->addFromString('uploads/marker.txt', $legacyUpload);
+        $legacyZip->addFromString('manifest.json', json_encode($legacyManifest, JSON_UNESCAPED_SLASHES));
+        $legacyZip->close();
+        $validatedLegacyManifest = validate_system_backup_archive($legacyArchive);
+        $assert((int) ($validatedLegacyManifest['version'] ?? 0) === 1, 'legacy manifest v1 remains verifiable');
+
+        $missingChecksumArchive = $qaRoot . '/missing-checksum-v2.zip';
+        $missingChecksumZip = new ZipArchive();
+        $missingChecksumZip->open($missingChecksumArchive, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $missingChecksumZip->addFromString('fitness.sqlite', $legacyDb);
+        $missingChecksumZip->addFromString('manifest.json', json_encode([
+            'version' => 2,
+            'db' => [
+                'path' => 'fitness.sqlite',
+                'size_bytes' => strlen($legacyDb),
+                'integrity' => 'ok',
+                'user_version' => 0,
+                'table_count' => 1,
+            ],
+            'upload_count' => 0,
+            'upload_bytes' => 0,
+            'uploads' => [],
+        ], JSON_UNESCAPED_SLASHES));
+        $missingChecksumZip->close();
+        $missingChecksumRejected = false;
+        try {
+            validate_system_backup_archive($missingChecksumArchive);
+        } catch (RuntimeException) {
+            $missingChecksumRejected = true;
+        }
+        $assert($missingChecksumRejected, 'backup manifest v2 requires cryptographic checksums');
+    }
+
+    set_app_setting_silent($pdo, 'qa_snapshot_marker', 'after');
+    file_put_contents($qaUploads . '/marker.txt', 'after');
+    restore_system_backup_archive($pdo, $config, (string) $archive);
+    $pdo = db_connect($config);
+    $GLOBALS['pdo'] = $pdo;
+    $assert(app_setting($pdo, 'qa_snapshot_marker', '') === 'before', 'database restore returns to snapshot state');
+    $assert(file_get_contents($qaUploads . '/marker.txt') === 'before', 'upload restore returns to snapshot state');
+    $assert(system_backup_assert_sqlite_integrity($qaDb)['integrity'] === 'ok', 'restored database passes integrity_check');
+
+    if (is_string($legacyArchive)) {
+        set_app_setting_silent($pdo, 'qa_snapshot_marker', 'after-v1');
+        file_put_contents($qaUploads . '/marker.txt', 'after-v1');
+        restore_system_backup_archive($pdo, $config, $legacyArchive);
+        $pdo = db_connect($config);
+        $GLOBALS['pdo'] = $pdo;
+        $assert(app_setting($pdo, 'qa_snapshot_marker', '') === 'before', 'legacy v1 database can be restored');
+        $assert(file_get_contents($qaUploads . '/marker.txt') === 'before', 'legacy v1 uploads can be restored');
+    }
+
+    if (class_exists('ZipArchive')) {
+        $unsafeArchive = $qaRoot . '/unsafe.zip';
+        $zip = new ZipArchive();
+        $zip->open($unsafeArchive, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('../escape.txt', 'unsafe');
+        $zip->close();
+        $rejected = false;
+        try {
+            validate_system_backup_archive($unsafeArchive);
+        } catch (RuntimeException) {
+            $rejected = true;
+        }
+        $assert($rejected, 'unsafe archive paths are rejected');
+        $assert(!file_exists(dirname($qaRoot) . '/escape.txt'), 'unsafe archive cannot escape its workspace');
+
+        $invalidDbArchive = $qaRoot . '/invalid-db.zip';
+        $zip = new ZipArchive();
+        $zip->open($invalidDbArchive, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('fitness.sqlite', 'not a sqlite database');
+        $zip->addFromString('manifest.json', json_encode([
+            'version' => 2,
+            'db' => ['path' => 'fitness.sqlite', 'size_bytes' => 21, 'sha256' => hash('sha256', 'not a sqlite database')],
+            'uploads' => [],
+        ], JSON_UNESCAPED_SLASHES));
+        $zip->close();
+        $invalidRejected = false;
+        try {
+            validate_system_backup_archive($invalidDbArchive);
+        } catch (Throwable) {
+            $invalidRejected = true;
+        }
+        $assert($invalidRejected, 'corrupt SQLite data is rejected even with a matching checksum');
+
+        $incompatibleDb = $qaRoot . '/incompatible.sqlite';
+        $incompatiblePdo = new PDO('sqlite:' . $incompatibleDb);
+        $incompatiblePdo->exec('CREATE TABLE unrelated (id INTEGER PRIMARY KEY)');
+        $incompatiblePdo = null;
+        $rollbackArchive = $qaRoot . '/rollback-test.zip';
+        $zip = new ZipArchive();
+        $zip->open($rollbackArchive, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFile($incompatibleDb, 'fitness.sqlite');
+        $zip->addFromString('manifest.json', json_encode([
+            'version' => 2,
+            'db' => [
+                'path' => 'fitness.sqlite',
+                'size_bytes' => filesize($incompatibleDb),
+                'sha256' => hash_file('sha256', $incompatibleDb),
+            ],
+            'uploads' => [],
+        ], JSON_UNESCAPED_SLASHES));
+        $zip->close();
+        $rollbackTriggered = false;
+        try {
+            restore_system_backup_archive($pdo, $config, $rollbackArchive);
+        } catch (RuntimeException) {
+            $rollbackTriggered = true;
+        }
+        $pdo = db_connect($config);
+        $GLOBALS['pdo'] = $pdo;
+        $assert($rollbackTriggered, 'post-restore health failure triggers rollback');
+        $assert(app_setting($pdo, 'qa_snapshot_marker', '') === 'before', 'rollback preserves the pre-restore database');
+        $assert(file_get_contents($qaUploads . '/marker.txt') === 'before', 'rollback preserves the pre-restore uploads');
+    }
+
+    workouts_ensure_schema($pdo);
+    squads_ensure_schema($pdo);
+    $users = db_fetch_all($pdo, 'SELECT * FROM users ORDER BY id LIMIT 2');
+    $assert(count($users) === 2, 'competition fixture has two users');
+    $firstUserId = (int) $users[0]['id'];
+    $secondUserId = (int) $users[1]['id'];
+    $firstSquadId = squad_create($pdo, $firstUserId, 'QA Alpha');
+    $secondSquadId = squad_create($pdo, $secondUserId, 'QA Beta');
+    db_execute(
+        $pdo,
+        'INSERT OR IGNORE INTO squad_members (squad_id, user_id, created_at) VALUES (:squad_id, :user_id, :created_at)',
+        [':squad_id' => $secondSquadId, ':user_id' => $firstUserId, ':created_at' => now_iso()]
+    );
+    $secondSquad = squad_get($pdo, $secondSquadId);
+    squad_link_core_team($pdo, (array) $secondSquad);
+
+    $today = to_date(null);
+    $firstTeamId = (int) ((squad_get($pdo, $firstSquadId)['team_id'] ?? 0));
+    $secondTeamId = (int) ((squad_get($pdo, $secondSquadId)['team_id'] ?? 0));
+    db_execute(
+        $pdo,
+        'UPDATE team_membership_periods SET joined_at = :joined_at, updated_at = :updated_at
+         WHERE user_id = :user_id AND team_id IN (:first_team, :second_team)',
+        [
+            ':joined_at' => $today . ' 08:00:00',
+            ':updated_at' => now_iso(),
+            ':user_id' => $firstUserId,
+            ':first_team' => $firstTeamId,
+            ':second_team' => $secondTeamId,
+        ]
+    );
+    db_execute(
+        $pdo,
+        'INSERT INTO workout_sessions (user_id, routine_id, daily_log_id, title, status, started_at, ended_at, notes, created_at, updated_at)
+         VALUES (:user_id, NULL, NULL, "QA walk", "completed", :started_at, :ended_at, "", :created_at, :updated_at)',
+        [
+            ':user_id' => $firstUserId,
+            ':started_at' => $today . ' 09:00:00',
+            ':ended_at' => $today . ' 10:00:00',
+            ':created_at' => now_iso(),
+            ':updated_at' => now_iso(),
+        ]
+    );
+    $alphaValue = comp_squad_value($pdo, $config, $firstSquadId, 'wk_sessions', $today, $today);
+    $betaValue = comp_squad_value($pdo, $config, $secondSquadId, 'wk_sessions', $today, $today);
+    $assert($alphaValue === 1.0, 'one workout counts once for the first team');
+    $assert($betaValue === 1.0, 'the same workout also counts once for the second team');
+
+    set_team_membership($pdo, $secondTeamId, $firstUserId, false, $firstUserId);
+    set_team_membership($pdo, $secondTeamId, $firstUserId, true, $firstUserId);
+    $membershipPeriods = db_fetch_all(
+        $pdo,
+        'SELECT * FROM team_membership_periods WHERE team_id = :team_id AND user_id = :user_id ORDER BY id',
+        [':team_id' => $secondTeamId, ':user_id' => $firstUserId]
+    );
+    $assert(count($membershipPeriods) >= 2, 'leaving and rejoining preserves separate membership periods');
+    $firstPeriodId = (int) ($membershipPeriods[0]['id'] ?? 0);
+    $secondPeriodId = (int) ($membershipPeriods[count($membershipPeriods) - 1]['id'] ?? 0);
+    db_execute(
+        $pdo,
+        'UPDATE team_membership_periods SET removed_at = :removed_at, updated_at = :updated_at WHERE id = :id',
+        [':removed_at' => $today . ' 10:00:00', ':updated_at' => now_iso(), ':id' => $firstPeriodId]
+    );
+    db_execute(
+        $pdo,
+        'UPDATE team_membership_periods SET joined_at = :joined_at, updated_at = :updated_at WHERE id = :id',
+        [':joined_at' => $today . ' 12:00:00', ':updated_at' => now_iso(), ':id' => $secondPeriodId]
+    );
+    db_execute(
+        $pdo,
+        'INSERT INTO team_membership_periods (team_id, user_id, joined_at, removed_at, created_at, updated_at)
+         VALUES (:team_id, :user_id, :joined_at, :removed_at, :created_at, :updated_at)',
+        [
+            ':team_id' => $secondTeamId,
+            ':user_id' => $firstUserId,
+            ':joined_at' => $today . ' 08:30:00',
+            ':removed_at' => $today . ' 09:30:00',
+            ':created_at' => now_iso(),
+            ':updated_at' => now_iso(),
+        ]
+    );
+    $assert(
+        comp_squad_value($pdo, $config, $secondSquadId, 'wk_sessions', $today, $today) === 1.0,
+        'overlapping exact membership periods never duplicate a workout inside one team'
+    );
+    db_execute(
+        $pdo,
+        'INSERT INTO workout_sessions (user_id, routine_id, daily_log_id, title, status, started_at, ended_at, notes, created_at, updated_at)
+         VALUES (:user_id, NULL, NULL, "QA gap walk", "completed", :started_at, :ended_at, "", :created_at, :updated_at)',
+        [
+            ':user_id' => $firstUserId,
+            ':started_at' => $today . ' 11:00:00',
+            ':ended_at' => $today . ' 11:30:00',
+            ':created_at' => now_iso(),
+            ':updated_at' => now_iso(),
+        ]
+    );
+    $assert(
+        comp_squad_value($pdo, $config, $secondSquadId, 'wk_sessions', $today, $today) === 1.0,
+        'a workout between membership periods does not count for that team'
+    );
+    $assert(
+        comp_squad_value($pdo, $config, $firstSquadId, 'wk_sessions', $today, $today) === 2.0,
+        'the same gap workout still counts for another team with continuous membership'
+    );
+    db_execute(
+        $pdo,
+        'INSERT INTO workout_sessions (user_id, routine_id, daily_log_id, title, status, started_at, ended_at, notes, created_at, updated_at)
+         VALUES (:user_id, NULL, NULL, "QA afternoon walk", "completed", :started_at, :ended_at, "", :created_at, :updated_at)',
+        [
+            ':user_id' => $firstUserId,
+            ':started_at' => $today . ' 13:00:00',
+            ':ended_at' => $today . ' 13:30:00',
+            ':created_at' => now_iso(),
+            ':updated_at' => now_iso(),
+        ]
+    );
+    $assert(
+        comp_squad_value($pdo, $config, $secondSquadId, 'wk_sessions', $today, $today) === 2.0,
+        'separate valid membership periods on one day count both sessions'
+    );
+    $assert(
+        comp_squad_value($pdo, $config, $secondSquadId, 'wk_days', $today, $today) === 1.0,
+        'multiple valid membership periods on one day count only one training day'
+    );
+    $assert(
+        comp_squad_value($pdo, $config, $firstSquadId, 'wk_sessions', $today, $today) === 3.0,
+        'the continuously joined team counts every valid workout once'
+    );
+    $betaActivity = comp_squad_recent_workouts($pdo, $secondSquadId, $today, $today, 10);
+    $betaActivityTitles = array_map(static fn(array $row): string => (string) ($row['title'] ?? ''), $betaActivity);
+    $assert(
+        in_array('QA walk', $betaActivityTitles, true)
+        && in_array('QA afternoon walk', $betaActivityTitles, true)
+        && !in_array('QA gap walk', $betaActivityTitles, true),
+        'recent competition activity respects exact membership windows'
+    );
+    db_execute($pdo, 'UPDATE users SET active = 0 WHERE id = :id', [':id' => $firstUserId]);
+    $assert(
+        comp_squad_value($pdo, $config, $secondSquadId, 'wk_sessions', $today, $today) === 2.0,
+        'historical competition contributions survive later user deactivation'
+    );
+    db_execute($pdo, 'UPDATE users SET active = 1 WHERE id = :id', [':id' => $firstUserId]);
+
+    $assert(!comp_create($pdo, 0, $secondSquadId, $firstUserId, 'wk_sessions', 7), 'competition creation rejects a missing challenger team');
+    $assert(comp_create($pdo, $firstSquadId, $secondSquadId, $firstUserId, 'wk_sessions', 7), 'competition creation accepts one valid selected team and opponent');
+    $assert(!comp_create($pdo, $firstSquadId, $secondSquadId, $firstUserId, 'wk_sessions', 7), 'duplicate open competitions are rejected');
+
+    friends_ensure_schema($pdo);
+    $searchBefore = friends_search_addable_users($pdo, $firstUserId, (string) $users[1]['username'], 10);
+    $assert(count($searchBefore) === 1 && (int) $searchBefore[0]['id'] === $secondUserId, 'friend search returns an eligible suggestion');
+    friends_send_request($pdo, $firstUserId, $secondUserId);
+    $searchAfter = friends_search_addable_users($pdo, $firstUserId, (string) $users[1]['username'], 10);
+    $assert($searchAfter === [], 'friend search excludes users with an existing relationship');
+    $assert(friends_respond($pdo, $secondUserId, $firstUserId, true), 'friend request can be accepted');
+
+    duels_ensure_schema($pdo);
+    $assert(!duels_create($pdo, $firstUserId, $firstUserId, 'steps', 7), 'duel creation rejects challenging yourself');
+    $assert(duels_create($pdo, $firstUserId, $secondUserId, 'steps', 7), 'duel creation accepts a valid friend and metric');
+    $duel = db_fetch_one($pdo, 'SELECT * FROM user_duels ORDER BY id DESC LIMIT 1');
+    $assert($duel !== null && duels_respond($pdo, (int) $duel['id'], $secondUserId, true), 'duel opponent can accept in-page flow');
+    $activeDuel = db_fetch_one($pdo, 'SELECT * FROM user_duels WHERE id = :id', [':id' => (int) ($duel['id'] ?? 0)]);
+    $assert((string) ($activeDuel['status'] ?? '') === 'active', 'accepted duel starts with a bounded date range');
+    $assert(!duels_create($pdo, $firstUserId, $secondUserId, 'steps', 7), 'duplicate open duels are rejected');
+
+    db_execute(
+        $pdo,
+        "INSERT INTO integration_runtime_leases (service, owner_id, heartbeat_at, lease_until, last_success_at, last_error)
+         VALUES ('notion', 'qa-worker', datetime('now', '-121 seconds'), datetime('now', '+30 seconds'), NULL, NULL)
+         ON CONFLICT(service) DO UPDATE SET heartbeat_at = excluded.heartbeat_at, lease_until = excluded.lease_until, last_error = NULL"
+    );
+    $assert((integration_runtime_statuses($pdo)['notion']['state'] ?? '') === 'delayed', 'admin status identifies a delayed integration lease');
+    db_execute($pdo, "UPDATE integration_runtime_leases SET last_error = 'qa failure' WHERE service = 'notion'");
+    $assert((integration_runtime_statuses($pdo)['notion']['state'] ?? '') === 'error', 'admin status identifies an integration error');
+    $runtimeSecret = 'secret_php_runtime_qa';
+    set_app_setting_silent($pdo, 'notion_token', $runtimeSecret, null);
+    db_execute(
+        $pdo,
+        "UPDATE integration_runtime_leases SET last_error = :error WHERE service = 'notion'",
+        [':error' => 'request failed with ' . $runtimeSecret]
+    );
+    $safeRuntimeError = (string) (integration_runtime_statuses($pdo)['notion']['last_error'] ?? '');
+    $assert(
+        !str_contains($safeRuntimeError, $runtimeSecret) && str_contains($safeRuntimeError, '[redacted]'),
+        'admin integration status redacts stored secrets before rendering'
+    );
+
+    fwrite(STDOUT, "All {$checks} stabilization checks passed.\n");
+    exit(0);
+} catch (Throwable $error) {
+    fwrite(STDERR, '[fail] ' . $error->getMessage() . PHP_EOL);
+    exit(1);
+} finally {
+    db_reset_connection();
+    system_backup_recursive_delete($qaRoot);
+}

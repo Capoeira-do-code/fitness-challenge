@@ -11,9 +11,8 @@ from the SQLite database the web app uses:
 - Pull (two-way mode): Notion edits -> app, app wins on conflict.
 
 Config (token, database id, field mapping, direction, schedule) is managed from
-the web app (Admin > App). The database itself is created or connected from the
-web UI. Enable "Use the standalone Notion sync" in Admin > App so the web app
-defers scheduled syncs to this process.
+the web app. The database itself is created or connected from the web UI, while
+runtime ownership is coordinated automatically through an expiring SQLite lease.
 
 Standard library only, no dependencies. Requires outbound HTTPS.
 
@@ -36,7 +35,9 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
+
+from runtime_lease import RuntimeLease, maintenance_shared_lock, runtime_owner_id
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = ROOT / "storage" / "fitness.sqlite"
@@ -105,15 +106,29 @@ def truncate(value: str, limit: int) -> str:
 
 class SyncDB:
     def __init__(self, path: Path):
+        self._closed = False
+        self._maintenance_lock = maintenance_shared_lock(path)
+        self._maintenance_lock.__enter__()
         self.conn = sqlite3.connect(str(path), timeout=10)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA busy_timeout = 5000")
+        self.conn.execute("PRAGMA journal_mode = WAL")
+        self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS notion_sync_state ("
             "log_id INTEGER PRIMARY KEY, user_id INTEGER, notion_page_id TEXT, "
             "content_hash TEXT, synced_at TEXT)"
         )
         self.conn.commit()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self.conn.close()
+        finally:
+            self._maintenance_lock.__exit__(None, None, None)
 
     def setting(self, key: str, default: str = "") -> str:
         row = self.conn.execute(
@@ -406,7 +421,19 @@ def active_field_map(field_map: dict, schema: dict) -> dict:
     return {f: p for f, p in field_map.items() if str(p or "").strip() and str(p).strip() in present}
 
 
-def push(db: SyncDB, settings: dict, schema: dict, field_map: dict, limit: int) -> dict:
+def renew_lease(heartbeat: Optional[Callable[[], bool]]) -> None:
+    if heartbeat is not None and not heartbeat():
+        raise RuntimeError("Notion runtime lease was lost during synchronization.")
+
+
+def push(
+    db: SyncDB,
+    settings: dict,
+    schema: dict,
+    field_map: dict,
+    limit: int,
+    heartbeat: Optional[Callable[[], bool]] = None,
+) -> dict:
     result = {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "reached_limit": False, "first_error": ""}
     rng = db.challenge_range()
     if rng is None:
@@ -430,6 +457,7 @@ def push(db: SyncDB, settings: dict, schema: dict, field_map: dict, limit: int) 
                 data, status, error = api_call(settings["token"], "PATCH", "/pages/" + urllib.request.quote(page_id, safe=""), {"properties": props})
             else:
                 data, status, error = api_call(settings["token"], "POST", "/pages", {"parent": {"database_id": settings["database_id"]}, "properties": props})
+            renew_lease(heartbeat)
             if error is not None:
                 result["failed"] += 1
                 if not result["first_error"]:
@@ -448,7 +476,14 @@ def push(db: SyncDB, settings: dict, schema: dict, field_map: dict, limit: int) 
     return result
 
 
-def pull(db: SyncDB, settings: dict, schema: dict, field_map: dict, limit: int) -> dict:
+def pull(
+    db: SyncDB,
+    settings: dict,
+    schema: dict,
+    field_map: dict,
+    limit: int,
+    heartbeat: Optional[Callable[[], bool]] = None,
+) -> dict:
     result = {"pulled": 0, "checked": 0, "failed": 0, "reached_limit": False, "first_error": ""}
     present = schema.get("present") or {}
     pull_fields = {f: p for f, p in active_field_map(field_map, schema).items() if f in PULL_FIELDS}
@@ -465,6 +500,7 @@ def pull(db: SyncDB, settings: dict, schema: dict, field_map: dict, limit: int) 
         if cursor:
             body["start_cursor"] = cursor
         data, status, error = api_call(settings["token"], "POST", "/databases/" + urllib.request.quote(settings["database_id"], safe="") + "/query", body)
+        renew_lease(heartbeat)
         if error is not None:
             result["failed"] += 1
             result["first_error"] = error
@@ -539,7 +575,7 @@ def parse_dt(value: str):
         return None
 
 
-def sync_run(db: SyncDB, verbose: bool) -> dict:
+def sync_run(db: SyncDB, verbose: bool, heartbeat: Optional[Callable[[], bool]] = None) -> dict:
     settings = db.settings()
     summary = {"ok": False, "status": "not_configured", "pulled": 0, "created": 0, "updated": 0, "skipped": 0, "failed": 0, "message": ""}
     if not settings["enabled"] or not settings["token"] or not settings["database_id"]:
@@ -567,12 +603,12 @@ def sync_run(db: SyncDB, verbose: bool) -> dict:
 
     first_error = ""
     if settings["direction"] == "two_way":
-        p = pull(db, settings, schema, field_map, SYNC_BATCH_LIMIT)
+        p = pull(db, settings, schema, field_map, SYNC_BATCH_LIMIT, heartbeat)
         summary["pulled"] = p["pulled"]
         summary["failed"] += p["failed"]
         first_error = first_error or p["first_error"]
 
-    pu = push(db, settings, schema, field_map, SYNC_BATCH_LIMIT)
+    pu = push(db, settings, schema, field_map, SYNC_BATCH_LIMIT, heartbeat)
     summary["created"] = pu["created"]
     summary["updated"] = pu["updated"]
     summary["skipped"] = pu["skipped"]
@@ -614,7 +650,9 @@ def due_daily(last_sync_at: str, run_time: str) -> bool:
 def run_forever(db_path: Path, verbose: bool) -> int:
     log(f"Fitness Challenge Notion sync starting. DB: {db_path}")
     started = False
+    owner_id = runtime_owner_id("notion")
     while True:
+        lease = None
         try:
             if not db_path.exists():
                 if verbose:
@@ -626,27 +664,46 @@ def run_forever(db_path: Path, verbose: bool) -> int:
             if not settings["enabled"] or not settings["token"] or not settings["database_id"]:
                 if verbose:
                     log("Notion sync disabled or not configured; waiting...")
-                db.conn.close()
+                db.close()
+                time.sleep(15)
+                continue
+            lease = RuntimeLease(db.conn, "notion", owner_id, ttl_seconds=300)
+            if not lease.acquire():
+                if verbose:
+                    log("another Notion worker owns the active lease; waiting...")
+                db.close()
                 time.sleep(15)
                 continue
             if not started:
-                if not settings["external"]:
-                    db.set_setting("notion_external_sync", "1")
-                    log("enabled external Notion sync so the web app defers scheduled syncs")
                 log("running initial Notion sync...")
-                summary = sync_run(db, verbose)
+                summary = sync_run(db, verbose, lease.heartbeat)
                 log(summary["message"])
                 started = True
             elif settings["frequency"] == "daily" and due_daily(settings["last_sync_at"], settings["run_time"]):
                 log("running scheduled Notion sync...")
-                summary = sync_run(db, verbose)
+                summary = sync_run(db, verbose, lease.heartbeat)
                 log(summary["message"])
-            db.conn.close()
+            lease.heartbeat(success=True)
+            db.close()
         except KeyboardInterrupt:
             log("stopping (keyboard interrupt).")
             return 0
         except Exception as exc:  # noqa: BLE001
-            log(f"loop error: {exc}")
+            safe_error = str(exc)
+            token = str((settings if 'settings' in locals() else {}).get("token", ""))
+            if token:
+                safe_error = safe_error.replace(token, "[redacted]")
+            if lease is not None:
+                try:
+                    lease.heartbeat(error=safe_error)
+                except Exception:
+                    pass
+            if 'db' in locals():
+                try:
+                    db.close()
+                except Exception:
+                    pass
+            log(f"loop error: {safe_error}")
             time.sleep(10)
         time.sleep(LOOP_CHECK_SECONDS)
 
@@ -654,11 +711,19 @@ def run_forever(db_path: Path, verbose: bool) -> int:
 def run_once(db_path: Path, verbose: bool) -> int:
     db = SyncDB(db_path)
     settings = db.settings()
-    if not settings["external"] and settings["enabled"]:
-        db.set_setting("notion_external_sync", "1")
-    summary = sync_run(db, verbose)
+    lease = RuntimeLease(db.conn, "notion", runtime_owner_id("notion-once"), ttl_seconds=300)
+    if not lease.acquire():
+        log("another Notion worker owns the active lease; skipping.")
+        db.close()
+        return 0
+    summary = sync_run(db, verbose, lease.heartbeat)
+    lease.heartbeat(
+        success=bool(summary.get("ok")),
+        error=None if summary.get("ok") else str(summary.get("message", "sync_failed")),
+    )
+    lease.release()
     log(summary["message"])
-    db.conn.close()
+    db.close()
     return 0 if summary.get("ok") or summary.get("status") in ("not_configured", "ok") else 1
 
 

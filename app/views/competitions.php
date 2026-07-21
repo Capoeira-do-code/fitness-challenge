@@ -238,6 +238,17 @@ $hasAnySquad = $participatingSquadIds !== [] || $mySquads !== [];
                     } catch (Throwable) {
                         $competitionDaysLeft = 0;
                     }
+                    $recentActivity = [];
+                    foreach ((array) ($standing['challenger_activity'] ?? []) as $activity) {
+                        $activity['team_name'] = $challengerName;
+                        $recentActivity[] = $activity;
+                    }
+                    foreach ((array) ($standing['opponent_activity'] ?? []) as $activity) {
+                        $activity['team_name'] = $opponentName;
+                        $recentActivity[] = $activity;
+                    }
+                    usort($recentActivity, static fn(array $left, array $right): int => strcmp((string) ($right['started_at'] ?? ''), (string) ($left['started_at'] ?? '')));
+                    $recentActivity = array_slice($recentActivity, 0, 4);
                     ?>
                     <div class="duel-card competition-card competition-live-card" data-state="active">
                         <div class="competition-card-top"><span class="competition-state-chip is-live"><i aria-hidden="true"></i><?= e(t('competitions.live_now')) ?></span><strong><?= $competitionDaysLeft > 0 ? e(t('season.days_left', ['n' => $competitionDaysLeft])) : e(t('season.ends_today')) ?></strong></div>
@@ -251,6 +262,23 @@ $hasAnySquad = $participatingSquadIds !== [] || $mySquads !== [];
                             <?php $renderRoster((array) ($standing['challenger_members'] ?? []), $metric, $challengerName); ?>
                             <?php $renderRoster((array) ($standing['opponent_members'] ?? []), $metric, $opponentName); ?>
                         </div>
+                        <section class="competition-recent-activity">
+                            <div class="competition-recent-activity-head"><strong><?= e(t('competitions.recent_activity')) ?></strong><small><?= e(t('competitions.recent_activity_hint')) ?></small></div>
+                            <?php if ($recentActivity === []): ?>
+                                <p><?= e(t('competitions.recent_activity_empty')) ?></p>
+                            <?php else: ?>
+                                <div class="competition-activity-list">
+                                    <?php foreach ($recentActivity as $activity): ?>
+                                        <?php $activityUser = ['id' => (int) ($activity['user_id'] ?? 0), 'username' => (string) ($activity['username'] ?? ''), 'display_name' => (string) ($activity['display_name'] ?? ''), 'avatar_path' => (string) ($activity['avatar_path'] ?? ''), 'avatar_frame' => (string) ($activity['avatar_frame'] ?? '')]; ?>
+                                        <a href="/?page=profile&amp;user_id=<?= (int) $activityUser['id'] ?>">
+                                            <?php $renderAvatar($activityUser, 'competition-activity-avatar'); ?>
+                                            <span><strong><?= e((string) ($activity['title'] ?? t('workouts.session'))) ?></strong><small><?= e((string) ($activityUser['display_name'] ?: $activityUser['username'])) ?> · <?= e((string) ($activity['team_name'] ?? '')) ?></small></span>
+                                            <time datetime="<?= e((string) ($activity['started_at'] ?? '')) ?>"><?= e(human_time_ago((string) ($activity['started_at'] ?? ''))) ?></time>
+                                        </a>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </section>
                         <?php $renderCompetitionDetails($competition); ?>
                         <div class="competition-card-danger"><?php $duelActionForm('comp_cancel', 'comp_id', (int) $competition['id'], t('duels.cancel'), 'btn-ghost'); ?></div>
                     </div>

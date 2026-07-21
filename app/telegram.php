@@ -57,6 +57,21 @@ function telegram_is_enabled(array $settings): bool
     return !empty($settings['enabled']) && telegram_is_configured($settings);
 }
 
+function telegram_redact_secrets(string $message, string ...$secrets): string
+{
+    foreach ($secrets as $secret) {
+        if ($secret !== '') {
+            $message = str_replace($secret, '[redacted]', $message);
+        }
+    }
+
+    return preg_replace(
+        '#https://api\.telegram\.org/bot[^/\s]+#i',
+        'https://api.telegram.org/bot[redacted]',
+        $message
+    ) ?? $message;
+}
+
 function telegram_update_settings(PDO $pdo, array $input, int $actorUserId): void
 {
     $token = trim((string) ($input['telegram_bot_token'] ?? ''));
@@ -64,7 +79,8 @@ function telegram_update_settings(PDO $pdo, array $input, int $actorUserId): voi
         $token = trim((string) (app_setting($pdo, 'telegram_bot_token', '') ?? ''));
     }
     set_app_setting($pdo, 'telegram_enabled', !empty($input['telegram_enabled']) ? '1' : '0', $actorUserId);
-    set_app_setting($pdo, 'telegram_external_bot', !empty($input['telegram_external_bot']) ? '1' : '0', $actorUserId);
+    // Ownership is automatic through expiring runtime leases.
+    set_app_setting($pdo, 'telegram_external_bot', '0', $actorUserId);
     set_app_setting($pdo, 'telegram_bot_token', $token, $actorUserId);
     set_app_setting($pdo, 'telegram_bot_username', ltrim(trim((string) ($input['telegram_bot_username'] ?? '')), '@'), $actorUserId);
     if (array_key_exists('app_base_url', $input)) {
@@ -99,7 +115,11 @@ function telegram_api_request(string $token, string $method, array $params = [])
             $error = curl_error($handle);
             curl_close($handle);
 
-            return ['ok' => false, 'result' => null, 'error' => $error !== '' ? $error : 'curl_failed'];
+            return [
+                'ok' => false,
+                'result' => null,
+                'error' => telegram_redact_secrets($error !== '' ? $error : 'curl_failed', $token),
+            ];
         }
         curl_close($handle);
     } else {
@@ -121,7 +141,11 @@ function telegram_api_request(string $token, string $method, array $params = [])
         return ['ok' => false, 'result' => null, 'error' => 'bad_response'];
     }
     if (empty($data['ok'])) {
-        return ['ok' => false, 'result' => null, 'error' => (string) ($data['description'] ?? 'telegram_error')];
+        return [
+            'ok' => false,
+            'result' => null,
+            'error' => telegram_redact_secrets((string) ($data['description'] ?? 'telegram_error'), $token),
+        ];
     }
 
     return ['ok' => true, 'result' => $data['result'] ?? null, 'error' => ''];
@@ -922,10 +946,9 @@ function telegram_run_scheduler(PDO $pdo, array $config): void
         if (!telegram_is_enabled($settings)) {
             return;
         }
-        // When the standalone Python bot (bin/telegram_bot.py) runs, it owns all
-        // Telegram I/O — the PHP app must not poll or send, to avoid double
-        // reminders and getUpdates offset conflicts. The bot drains the outbox.
-        if (!empty($settings['external_bot'])) {
+        // A live standalone worker owns Telegram I/O. Expired leases recover
+        // automatically, unlike the legacy permanent external flag.
+        if (integration_runtime_lease_is_active($pdo, 'telegram')) {
             return;
         }
         telegram_poll_updates($pdo, $settings);

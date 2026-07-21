@@ -14,6 +14,18 @@ $muscleLabel = static fn(string $m): string => $m !== '' ? t('workouts.muscle_' 
 $equipmentLabel = static fn(string $equipment): string => $equipment !== '' ? t('workouts.equipment_' . $equipment) : '';
 $difficultyLabel = static fn(string $difficulty): string => t('workouts.difficulty_' . (in_array($difficulty, ['beginner', 'intermediate', 'advanced', 'custom'], true) ? $difficulty : 'beginner'));
 $rankLabel = static fn(string $rank): string => t('workouts.rank_' . (array_key_exists($rank, wk_rank_tiers()) ? $rank : 'unranked'));
+$rankProgressData = static function (array $rank): array {
+    $score = max(0.0, (float) ($rank['score'] ?? 0));
+    $target = isset($rank['next_score']) ? max($score, (float) $rank['next_score']) : null;
+
+    return [
+        'score' => $score,
+        'target' => $target,
+        'remaining' => $target !== null ? max(0.0, $target - $score) : 0.0,
+        'progress' => max(0, min(100, (int) ($rank['progress'] ?? 0))),
+        'next_key' => isset($rank['next_key']) ? (string) $rank['next_key'] : null,
+    ];
+};
 $dayLabel = static fn(string $day): string => t('workouts.day_' . $day);
 $routineIconOptions = wk_routine_icon_options();
 $routineColorOptions = wk_routine_color_options();
@@ -58,6 +70,17 @@ $workoutHubLabels = [
 $workoutHeroTitle = (string) ($workoutHubLabels[$tabView][0] ?? t('workouts.title'));
 $workoutHeroHint = (string) ($workoutHubLabels[$tabView][1] ?? t('workouts.subtitle'));
 $activeRoutines = array_values(array_filter((array) ($wkRoutines ?? []), static fn($r) => (int) ($r['is_archived'] ?? 0) === 0));
+$addedRoutineId = max(0, (int) ($_GET['added_routine_id'] ?? 0));
+$addedRoutine = null;
+if ($addedRoutineId > 0) {
+    foreach ($activeRoutines as $candidateRoutine) {
+        if ((int) ($candidateRoutine['id'] ?? 0) === $addedRoutineId) {
+            $addedRoutine = (array) $candidateRoutine;
+            break;
+        }
+    }
+}
+$archivedRoutines = array_values(array_filter((array) ($wkRoutines ?? []), static fn($r) => (int) ($r['is_archived'] ?? 0) === 1));
 $routinesByDay = (array) ($wkRoutinesByDay ?? []);
 $workoutDayKeys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 $todayWorkoutDay = $workoutDayKeys[max(0, min(6, (int) date('N') - 1))];
@@ -124,6 +147,30 @@ if ($targetRoutineId > 0) {
     $libraryReturnQuery['target_session_id'] = $targetSessionId;
 }
 $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
+$filters = (array) ($wkLibraryFilters ?? []);
+$libraryExercises = (array) ($wkLibrary ?? []);
+$libraryScope = (string) ($filters['scope'] ?? '');
+$libraryMode = (string) ($wkLibraryMode ?? 'browse') === 'organize' && $libraryScope === 'favorites' && !$hasLibraryTarget ? 'organize' : 'browse';
+$libraryLayout = in_array((string) ($wkLibraryLayout ?? 'cards'), ['cards', 'compact'], true) ? (string) $wkLibraryLayout : 'cards';
+$useCompactLibrary = !$hasLibraryTarget && $libraryLayout === 'compact';
+$libraryUrl = static function (array $changes = []) use ($filters, $targetRoutineId, $targetSessionId): string {
+    $base = ['page' => 'workouts', 'view' => 'library'];
+    if ($targetRoutineId > 0) {
+        $base['target_routine_id'] = $targetRoutineId;
+    } elseif ($targetSessionId > 0) {
+        $base['target_session_id'] = $targetSessionId;
+    }
+    $query = array_merge($base, array_filter($filters, static fn($value): bool => (string) $value !== ''), $changes);
+    foreach ($query as $key => $value) {
+        if ($value === '' || $value === null) {
+            unset($query[$key]);
+        }
+    }
+    return '/?' . http_build_query($query);
+};
+$customExerciseUrl = $libraryUrl(['custom_exercise' => 'new', 'library_page' => null]);
+$hasLibrarySearch = trim((string) ($filters['q'] ?? '')) !== '';
+$hasActiveLibraryFilters = trim((string) ($filters['muscle'] ?? '')) !== '' || trim((string) ($filters['equipment'] ?? '')) !== '';
 ?>
 <section class="screen stack-lg workouts-screen">
     <?php if ($wkView !== 'custom_exercise'): ?>
@@ -133,6 +180,9 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
             <h1><?= e($wkView === 'organize' ? t('workouts.organize_routines') : (in_array($wkView, $hubViews, true) ? $workoutHeroTitle : t('workouts.title'))) ?></h1>
             <p class="muted"><?= e($wkView === 'organize' ? t('workouts.organize_routines_hint') : (in_array($wkView, $hubViews, true) ? $workoutHeroHint : t('workouts.subtitle'))) ?></p>
         </div>
+        <?php if ($wkView === 'library'): ?>
+            <?php $libraryToolbarVariant = 'desktop'; require __DIR__ . '/partials/workout_library_toolbar.php'; ?>
+        <?php endif; ?>
         <?php if (!in_array($wkView, $hubViews, true)): ?>
             <?php $workoutBack = $wkView === 'exercise'
                 ? $workoutLibraryReturnUrl
@@ -158,9 +208,12 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
                 <a class="hierarchy-nav-row" data-tone="orange" href="/?page=week_editor&range=week"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('workouts.challenge_log')) ?></strong><small><?= e(t('workouts.challenge_log_hint')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
             </nav>
         <?php else: ?>
-            <header class="workouts-mobile-subheader hierarchy-page-header">
+            <header class="workouts-mobile-subheader hierarchy-page-header<?= $wkView === 'library' ? ' is-library' : '' ?>">
                 <button class="hierarchy-back" type="button" data-hierarchy-back data-fallback="/?page=workouts" aria-label="<?= e(t('common.back')) ?>">&larr;</button>
                 <div><p class="eyebrow"><?= e(t('workouts.title')) ?></p><h1><?= e($tabView === 'stats' ? t('workouts.stats') : t('workouts.tab_' . $tabView)) ?></h1></div>
+                <?php if ($wkView === 'library'): ?>
+                    <?php $libraryToolbarVariant = 'mobile'; require __DIR__ . '/partials/workout_library_toolbar.php'; ?>
+                <?php endif; ?>
             </header>
         <?php endif; ?>
     <?php endif; ?>
@@ -184,7 +237,7 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
     ?>
     <article class="panel workouts-routine-library-organizer">
         <div class="panel-head workouts-routine-library-organizer-head">
-            <div><p class="eyebrow"><?= count($activeRoutines) ?> <?= e(t('workouts.routines')) ?></p><h2><?= e(t('workouts.your_routines')) ?></h2></div>
+            <div><p class="eyebrow"><?= count((array) ($wkRoutines ?? [])) ?> <?= e(t('workouts.routines')) ?></p><h2><?= e(t('workouts.your_routines')) ?></h2></div>
         </div>
         <?php if ($activeRoutines === []): ?>
             <div class="empty-state"><span class="empty-state-icon"><?= activity_icon_svg('dumbbell') ?></span><p class="muted"><?= e(t('workouts.no_routines')) ?></p></div>
@@ -231,6 +284,25 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
                     </section>
                 <?php endforeach; ?>
             </div>
+        <?php endif; ?>
+        <?php if ($archivedRoutines !== []): ?>
+            <details class="workouts-archived workouts-all-routines-archived">
+                <summary><?= e(t('workouts.archived')) ?> (<?= count($archivedRoutines) ?>)</summary>
+                <div class="workouts-archived-list">
+                    <?php foreach ($archivedRoutines as $routine): ?>
+                        <div class="workouts-archived-row">
+                            <span><?= e((string) $routine['name']) ?></span>
+                            <form method="post" action="/?page=workouts" class="inline-form">
+                                <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
+                                <input type="hidden" name="action" value="routine_archive">
+                                <input type="hidden" name="routine_id" value="<?= (int) $routine['id'] ?>">
+                                <input type="hidden" name="value" value="0">
+                                <button type="submit" class="btn btn-ghost small"><?= e(t('workouts.unarchive')) ?></button>
+                            </form>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </details>
         <?php endif; ?>
     </article>
 
@@ -325,12 +397,9 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
                 <p class="eyebrow"><?= count(array_filter((array) ($wkRoutines ?? []), static fn($r) => (int) ($r['is_archived'] ?? 0) === 0)) ?> <?= e(t('workouts.routines')) ?></p>
                 <h2><?= e(t('workouts.your_routines')) ?></h2>
             </div>
-            <?php if (count($activeRoutines) > 1): ?><a class="btn btn-ghost small workouts-organize-routines-link" href="/?page=workouts&view=organize"><?= e(t('workouts.organize')) ?></a><?php endif; ?>
+            <?php if (count($activeRoutines) > 3): ?><a class="btn btn-ghost small workouts-organize-routines-link" href="/?page=workouts&view=organize"><?= e(t('common.view_all')) ?></a><?php endif; ?>
         </div>
 
-        <?php
-        $archivedRoutines = array_values(array_filter((array) ($wkRoutines ?? []), static fn($r) => (int) ($r['is_archived'] ?? 0) === 1));
-        ?>
         <?php if ($activeRoutines === []): ?>
             <div class="empty-state">
                 <span class="empty-state-icon"><?= activity_icon_svg('dumbbell') ?></span>
@@ -338,8 +407,8 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
                 <p class="muted small"><?= e(t('workouts.no_routines_hint')) ?></p>
             </div>
         <?php else: ?>
-            <div class="workouts-routine-grid">
-                <?php foreach ($activeRoutines as $routine): ?>
+            <div class="workouts-routine-grid workouts-routine-preview-grid">
+                <?php foreach (array_slice($activeRoutines, 0, 3) as $routine): ?>
                     <?php
                     $rid = (int) $routine['id'];
                     $routineIcon = wk_normalize_routine_icon($routine['icon'] ?? 'dumbbell');
@@ -348,11 +417,10 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
                     [$routineStateKey, $routineStateLabel] = $workoutRoutineState((array) $routine);
                     $routineMenu = render_kebab_menu([
                         ['label' => t('common.edit'), 'href' => '/?page=workouts&routine_id=' . $rid],
-                        ['label' => t('menu.organize'), 'children' => [
-                            ['label' => (int) ($routine['is_favorite'] ?? 0) === 1 ? t('workouts.favorite') . ' ✓' : t('workouts.favorite'), 'attrs' => ['data-wk-submit' => 'routine_favorite', 'data-wk-routine' => (string) $rid, 'data-wk-value' => (int) ($routine['is_favorite'] ?? 0) === 1 ? '0' : '1']],
-                            ['label' => t('workouts.duplicate'), 'attrs' => ['data-wk-submit' => 'routine_duplicate', 'data-wk-routine' => (string) $rid]],
-                            ['label' => t('workouts.archive'), 'attrs' => ['data-wk-submit' => 'routine_archive', 'data-wk-routine' => (string) $rid, 'data-wk-value' => '1']],
-                        ]],
+                        ['label' => t('menu.organize'), 'href' => '/?page=workouts&routine_id=' . $rid . '&section=organize'],
+                        ['label' => (int) ($routine['is_favorite'] ?? 0) === 1 ? t('workouts.favorite') . ' ✓' : t('workouts.favorite'), 'attrs' => ['data-wk-submit' => 'routine_favorite', 'data-wk-routine' => (string) $rid, 'data-wk-value' => (int) ($routine['is_favorite'] ?? 0) === 1 ? '0' : '1']],
+                        ['label' => t('workouts.duplicate'), 'attrs' => ['data-wk-submit' => 'routine_duplicate', 'data-wk-routine' => (string) $rid]],
+                        ['label' => t('workouts.archive'), 'attrs' => ['data-wk-submit' => 'routine_archive', 'data-wk-routine' => (string) $rid, 'data-wk-value' => '1']],
                         ['label' => t('workouts.delete_routine'), 'danger' => true, 'attrs' => ['data-wk-submit' => 'routine_delete', 'data-wk-routine' => (string) $rid, 'data-wk-confirm' => t('common.confirm_delete')]],
                     ], ['align' => 'end', 'title' => (string) $routine['name']]);
                     ?>
@@ -387,26 +455,9 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
                     </article>
                 <?php endforeach; ?>
             </div>
-        <?php endif; ?>
-
-        <?php if ($archivedRoutines !== []): ?>
-            <details class="workouts-archived">
-                <summary><?= e(t('workouts.archived')) ?> (<?= count($archivedRoutines) ?>)</summary>
-                <div class="workouts-archived-list">
-                    <?php foreach ($archivedRoutines as $routine): ?>
-                        <div class="workouts-archived-row">
-                            <span><?= e((string) $routine['name']) ?></span>
-                            <form method="post" action="/?page=workouts" class="inline-form">
-                                <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
-                                <input type="hidden" name="action" value="routine_archive">
-                                <input type="hidden" name="routine_id" value="<?= (int) $routine['id'] ?>">
-                                <input type="hidden" name="value" value="0">
-                                <button type="submit" class="btn btn-ghost small"><?= e(t('workouts.unarchive')) ?></button>
-                            </form>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            </details>
+            <?php if (count($activeRoutines) > 3): ?>
+                <a class="workouts-routine-preview-more" href="/?page=workouts&amp;view=organize"><span><?= e(t('common.view_all')) ?></span><strong><?= count($activeRoutines) ?></strong><span aria-hidden="true">&rarr;</span></a>
+            <?php endif; ?>
         <?php endif; ?>
     </article>
 
@@ -537,40 +588,6 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
     <?php require __DIR__ . '/partials/workout_custom_exercise_form.php'; ?>
 
 <?php elseif ($wkView === 'library'): ?>
-    <?php
-    $filters = (array) ($wkLibraryFilters ?? []);
-    $libraryExercises = (array) ($wkLibrary ?? []);
-    $libraryScope = (string) ($filters['scope'] ?? '');
-    $libraryMode = (string) ($wkLibraryMode ?? 'browse') === 'organize' && $libraryScope === 'favorites' && !$hasLibraryTarget ? 'organize' : 'browse';
-    $libraryLayout = in_array((string) ($wkLibraryLayout ?? 'cards'), ['cards', 'compact'], true) ? (string) $wkLibraryLayout : 'cards';
-    $useCompactLibrary = !$hasLibraryTarget && $libraryLayout === 'compact';
-    $libraryHeading = $libraryMode === 'organize'
-        ? t('workouts.organize_favorites')
-        : ($libraryScope === 'mine'
-        ? t('workouts.my_exercises')
-        : ($libraryScope === 'favorites' ? t('workouts.favorite_exercises') : t('workouts.library_title')));
-    $libraryHint = $libraryMode === 'organize'
-        ? t('workouts.organize_favorites_hint')
-        : ($libraryScope === 'mine'
-        ? t('workouts.my_exercises_hint')
-        : ($libraryScope === 'favorites' ? t('workouts.favorite_exercises_hint') : t('workouts.library_subtitle')));
-    $libraryUrl = static function (array $changes = []) use ($filters, $targetRoutineId, $targetSessionId): string {
-        $base = ['page' => 'workouts', 'view' => 'library'];
-        if ($targetRoutineId > 0) {
-            $base['target_routine_id'] = $targetRoutineId;
-        } elseif ($targetSessionId > 0) {
-            $base['target_session_id'] = $targetSessionId;
-        }
-        $query = array_merge($base, array_filter($filters, static fn($value): bool => (string) $value !== ''), $changes);
-        foreach ($query as $key => $value) {
-            if ($value === '' || $value === null) {
-                unset($query[$key]);
-            }
-        }
-        return '/?' . http_build_query($query);
-    };
-    $customExerciseUrl = $libraryUrl(['custom_exercise' => 'new', 'library_page' => null]);
-    ?>
     <?php if ($hasLibraryTarget): ?>
         <aside class="workouts-library-target" aria-label="<?= e(t('workouts.add_exercises')) ?>">
             <span class="workouts-library-target-icon"<?= $targetRoutineId > 0 ? ' style="--routine-accent: ' . e(wk_normalize_routine_color($targetRoutine['accent_color'] ?? '#14b8a6')) . '"' : '' ?>><?= activity_icon_svg($targetSessionId > 0 ? 'fire' : wk_normalize_routine_icon($targetRoutine['icon'] ?? 'dumbbell')) ?></span>
@@ -578,42 +595,14 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
             <a class="btn btn-primary small" href="<?= e($targetSessionId > 0 ? '/?page=workouts&session_id=' . $targetSessionId : '/?page=workouts&routine_id=' . $targetRoutineId) ?>"><?= e($targetSessionId > 0 ? t('workouts.back_to_session') : t('workouts.finish_adding')) ?></a>
         </aside>
     <?php endif; ?>
-    <article class="panel workouts-library-head<?= $libraryMode === 'organize' ? ' is-organizing' : '' ?>">
-        <div class="panel-head">
-            <div><p class="eyebrow"><?= e(t('workouts.library_results', ['count' => (int) ($wkLibraryTotal ?? count($libraryExercises))])) ?></p><h2><?= e($libraryHeading) ?></h2><p class="muted"><?= e($libraryHint) ?></p></div>
-            <div class="workouts-library-actions">
-                <?php if ($libraryMode === 'organize'): ?>
-                    <a class="btn btn-primary small" href="<?= e($libraryUrl(['scope' => 'favorites', 'library_mode' => null, 'library_page' => null, 'q' => null, 'muscle' => null, 'equipment' => null])) ?>"><?= e(t('workouts.finish_adding')) ?></a>
-                <?php else: ?>
-                    <?php if ($libraryScope === 'favorites' && $favoriteExerciseCount > 1 && !$hasLibraryTarget): ?><a class="btn btn-ghost small" href="<?= e($libraryUrl(['scope' => 'favorites', 'library_mode' => 'organize', 'library_page' => null, 'q' => null, 'muscle' => null, 'equipment' => null])) ?>"><?= e(t('workouts.organize')) ?></a><?php endif; ?>
-                    <a class="btn btn-primary small" href="<?= e($customExerciseUrl) ?>">+ <?= e(t('workouts.create_custom')) ?></a>
-                    <button class="btn btn-ghost small workouts-filter-open" type="button" data-workout-filter-open><?= e(t('common.filter')) ?></button>
-                <?php endif; ?>
-            </div>
-        </div>
-        <?php if ($libraryMode !== 'organize'): ?>
+    <?php if ($libraryMode !== 'organize'): ?>
+    <article class="panel workouts-library-head">
         <nav class="workouts-library-scope-tabs" aria-label="<?= e(t('workouts.library_scope')) ?>">
             <a href="<?= e($libraryUrl(['scope' => null, 'library_page' => null])) ?>"<?= $libraryScope === '' ? ' aria-current="page"' : '' ?>><span><?= e(t('workouts.all_exercises')) ?></span><strong><?= count($exercises) ?></strong></a>
             <a href="<?= e($libraryUrl(['scope' => 'favorites', 'library_page' => null])) ?>"<?= $libraryScope === 'favorites' ? ' aria-current="page"' : '' ?>><span><?= e(t('workouts.favorites')) ?></span><strong><?= $favoriteExerciseCount ?></strong></a>
             <a href="<?= e($libraryUrl(['scope' => 'mine', 'library_page' => null])) ?>"<?= $libraryScope === 'mine' ? ' aria-current="page"' : '' ?>><span><?= e(t('workouts.my_exercises')) ?></span><strong><?= $personalExerciseCount ?></strong></a>
         </nav>
-        <?php if (!$hasLibraryTarget): ?>
-        <form method="post" action="/?page=workouts" class="workouts-library-layout-switch" data-library-layout-switch>
-            <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
-            <input type="hidden" name="action" value="library_layout_update">
-            <input type="hidden" name="muscle" value="<?= e((string) ($filters['muscle'] ?? '')) ?>">
-            <input type="hidden" name="equipment" value="<?= e((string) ($filters['equipment'] ?? '')) ?>">
-            <input type="hidden" name="q" value="<?= e((string) ($filters['q'] ?? '')) ?>">
-            <input type="hidden" name="scope" value="<?= e($libraryScope) ?>">
-            <input type="hidden" name="library_page" value="<?= (int) ($wkLibraryPage ?? 1) ?>">
-            <span class="workouts-library-layout-copy"><strong><?= e(t('workouts.library_layout')) ?></strong><small><?= e(t($libraryLayout === 'compact' ? 'workouts.layout_compact_hint' : 'workouts.layout_cards_hint')) ?></small></span>
-            <span class="workouts-library-layout-options" role="group" aria-label="<?= e(t('workouts.library_layout')) ?>">
-                <button type="submit" name="library_layout" value="cards" class="<?= $libraryLayout === 'cards' ? 'is-active' : '' ?>" aria-pressed="<?= $libraryLayout === 'cards' ? 'true' : 'false' ?>" title="<?= e(t('workouts.layout_cards_hint')) ?>"><span class="workouts-layout-icon is-cards" aria-hidden="true"></span><span><?= e(t('workouts.layout_cards')) ?></span></button>
-                <button type="submit" name="library_layout" value="compact" class="<?= $libraryLayout === 'compact' ? 'is-active' : '' ?>" aria-pressed="<?= $libraryLayout === 'compact' ? 'true' : 'false' ?>" title="<?= e(t('workouts.layout_compact_hint')) ?>"><span class="workouts-layout-icon is-compact" aria-hidden="true"></span><span><?= e(t('workouts.layout_compact')) ?></span></button>
-            </span>
-        </form>
-        <?php endif; ?>
-        <form method="get" action="/" class="workouts-library-mobile-search">
+        <form method="get" action="/" id="workouts-library-search" class="workouts-library-mobile-search workouts-library-quick-search<?= $hasLibrarySearch ? ' is-open' : '' ?>" data-workout-search-panel aria-hidden="<?= $hasLibrarySearch ? 'false' : 'true' ?>">
             <input type="hidden" name="page" value="workouts"><input type="hidden" name="view" value="library">
             <?php if ($targetRoutineId > 0): ?><input type="hidden" name="target_routine_id" value="<?= $targetRoutineId ?>"><?php endif; ?>
             <?php if ($targetSessionId > 0): ?><input type="hidden" name="target_session_id" value="<?= $targetSessionId ?>"><?php endif; ?>
@@ -623,7 +612,8 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
             <label><span class="sr-only"><?= e(t('workouts.search_exercises')) ?></span><input type="search" name="q" value="<?= e((string) ($filters['q'] ?? '')) ?>" placeholder="<?= e(t('workouts.search_exercises')) ?>"></label>
             <button class="btn btn-primary btn-icon" type="submit" aria-label="<?= e(t('workouts.search_exercises')) ?>">&#128269;</button>
         </form>
-        <div class="workouts-filter-sheet" data-workout-filter-panel aria-hidden="false">
+    </article>
+    <div class="workouts-filter-sheet" id="workouts-library-filters" data-workout-filter-panel aria-hidden="true">
         <div class="workouts-filter-sheet-head"><strong><?= e(t('common.filter')) ?></strong><button type="button" data-workout-filter-close aria-label="<?= e(t('common.back')) ?>">&times;</button></div>
         <form method="get" action="/" class="workouts-library-filters">
             <input type="hidden" name="page" value="workouts">
@@ -645,9 +635,8 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
                 <a href="<?= e($libraryUrl(['muscle' => $muscle])) ?>"<?= (string) ($filters['muscle'] ?? '') === (string) $muscle ? ' aria-current="page"' : '' ?>><?= e($muscleLabel((string) $muscle)) ?></a>
             <?php endforeach; ?>
         </nav>
-        </div>
-        <?php endif; ?>
-    </article>
+    </div>
+    <?php endif; ?>
 
     <?php if ($libraryMode === 'organize' && $libraryExercises !== []): ?>
         <article class="panel workouts-favorite-order-panel">
@@ -739,7 +728,11 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
                                 <?php if ($targetSessionId > 0): ?><input type="hidden" name="target_session_id" value="<?= $targetSessionId ?>"><?php endif; ?>
                                 <button class="workouts-favorite-toggle<?= $isFavoriteExercise ? ' is-active' : '' ?>" type="submit" aria-pressed="<?= $isFavoriteExercise ? 'true' : 'false' ?>" aria-label="<?= e($isFavoriteExercise ? t('workouts.remove_favorite') : t('workouts.add_favorite')) ?>"><?= $isFavoriteExercise ? '&#9733;' : '&#9734;' ?></button>
                             </form>
-                            <span class="workouts-rank-badge" data-rank="<?= e($rankKey) ?>"><?= e($rankLabel($rankKey)) ?></span>
+                            <?php $libraryRankProgress = $rankProgressData($rank); ?>
+                            <span class="workouts-library-rank-meta" data-rank="<?= e($rankKey) ?>">
+                                <span class="workouts-rank-badge" data-rank="<?= e($rankKey) ?>"><?= e($rankLabel($rankKey)) ?></span>
+                                <small><?= e(t('workouts.rank_points_short', ['points' => number_format((float) $libraryRankProgress['score'], 1, '.', '')])) ?></small>
+                            </span>
                         </div>
                     </div>
                     <div class="workouts-library-copy">
@@ -762,14 +755,9 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
                                 <button class="btn <?= $isInLibraryTarget ? 'btn-ghost is-added' : 'btn-primary' ?> small" type="submit"<?= $isInLibraryTarget ? ' disabled' : '' ?>><?= e($isInLibraryTarget ? t('workouts.added_to_routine') : t('workouts.add_to_routine')) ?></button>
                             </form>
                         <?php elseif ($activeRoutines !== []): ?>
-                            <form method="post" action="/?page=workouts" class="workouts-library-add">
-                                <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>"><input type="hidden" name="action" value="library_add_exercise"><input type="hidden" name="exercise_def_id" value="<?= (int) $exercise['id'] ?>">
-                                <input type="hidden" name="muscle" value="<?= e((string) ($filters['muscle'] ?? '')) ?>"><input type="hidden" name="equipment" value="<?= e((string) ($filters['equipment'] ?? '')) ?>"><input type="hidden" name="q" value="<?= e((string) ($filters['q'] ?? '')) ?>"><input type="hidden" name="scope" value="<?= e((string) ($filters['scope'] ?? '')) ?>">
-                                <label><span class="sr-only"><?= e(t('workouts.choose_routine')) ?></span><select name="routine_id" required><?php foreach ($activeRoutines as $routine): ?><option value="<?= (int) $routine['id'] ?>"><?= e((string) $routine['name']) ?></option><?php endforeach; ?></select></label>
-                                <button class="btn btn-primary btn-icon small" type="submit" aria-label="<?= e(t('workouts.add_to_routine')) ?>">+</button>
-                            </form>
+                            <button class="btn btn-primary workouts-library-add-trigger" type="button" data-app-modal-open="wk-add-exercise-modal" data-workout-routine-picker-open data-exercise-id="<?= (int) $exercise['id'] ?>" data-exercise-name="<?= e((string) ($exercise['display_name'] ?? $exercise['name'])) ?>" aria-label="<?= e(t('workouts.add_to_routine')) ?>"><span aria-hidden="true">+</span><span class="workouts-library-add-label"><?= e(t('workouts.add_to_routine')) ?></span></button>
                         <?php else: ?>
-                            <button class="btn btn-primary small" type="button" data-app-modal-open="wk-new-routine-modal"><?= e(t('workouts.new_routine')) ?></button>
+                            <button class="btn btn-primary workouts-library-add-trigger" type="button" data-app-modal-open="wk-new-routine-modal" aria-label="<?= e(t('workouts.new_routine')) ?>"><span aria-hidden="true">+</span><span class="workouts-library-add-label"><?= e(t('workouts.new_routine')) ?></span></button>
                         <?php endif; ?>
                     </div>
                 </article>
@@ -790,10 +778,28 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
     <?php endif; ?>
 
 <?php elseif ($wkView === 'ranks'): ?>
-    <?php $overallRank = (array) ($wkOverallRank ?? wk_rank_from_score(0)); $overallKey = (string) ($overallRank['key'] ?? 'unranked'); ?>
+    <?php
+    $overallRank = (array) ($wkOverallRank ?? wk_rank_from_score(0));
+    $overallKey = (string) ($overallRank['key'] ?? 'unranked');
+    $overallProgress = $rankProgressData($overallRank);
+    $overallNextLabel = $overallProgress['next_key'] !== null ? $rankLabel((string) $overallProgress['next_key']) : '';
+    ?>
     <article class="workouts-rank-hero" data-rank="<?= e($overallKey) ?>">
-        <div class="workouts-rank-emblem"><span><?= e($rankLabel($overallKey)) ?></span><strong><?= e(number_format((float) ($overallRank['score'] ?? 0), 1, '.', '')) ?></strong></div>
-        <div><p class="eyebrow"><?= e(t('workouts.overall_rank')) ?></p><h2><?= e(t('workouts.rank_title')) ?></h2><p><?= e(t('workouts.rank_subtitle')) ?></p><small><?= e(t('workouts.rank_formula_hint')) ?></small></div>
+        <div class="workouts-rank-emblem"><span><?= e($rankLabel($overallKey)) ?></span><strong><?= e(number_format((float) $overallProgress['score'], 1, '.', '')) ?></strong><small><?= e(t('workouts.points_abbr')) ?></small></div>
+        <div class="workouts-rank-hero-copy">
+            <p class="eyebrow"><?= e(t('workouts.overall_rank')) ?> · <?= e(t('workouts.ranked_count', ['ranked' => (int) ($overallRank['body_parts_ranked'] ?? 0), 'total' => (int) ($overallRank['body_parts_total'] ?? 0)])) ?></p>
+            <h2><?= e(t('workouts.rank_title')) ?></h2>
+            <p><?= e(t('workouts.rank_subtitle')) ?></p>
+            <div class="workouts-rank-hero-progress">
+                <div>
+                    <strong><?= e($overallProgress['target'] !== null ? t('workouts.rank_progress_points', ['current' => number_format((float) $overallProgress['score'], 1, '.', ''), 'target' => number_format((float) $overallProgress['target'], 1, '.', '')]) : t('workouts.rank_points_short', ['points' => number_format((float) $overallProgress['score'], 1, '.', '')])) ?></strong>
+                    <span><?= e($overallProgress['next_key'] !== null ? t('workouts.rank_points_remaining', ['points' => number_format((float) $overallProgress['remaining'], 1, '.', ''), 'rank' => $overallNextLabel]) : t('workouts.rank_maximum')) ?></span>
+                </div>
+                <div class="workouts-rank-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= (int) $overallProgress['progress'] ?>" aria-label="<?= e(t('workouts.rank_progress_percent', ['percent' => (int) $overallProgress['progress']])) ?>"><span style="width: <?= (int) $overallProgress['progress'] ?>%"></span></div>
+                <small><?= e(t('workouts.rank_progress_percent', ['percent' => (int) $overallProgress['progress']])) ?></small>
+            </div>
+            <small class="workouts-rank-formula"><?= e(t('workouts.rank_formula_hint')) ?></small>
+        </div>
     </article>
 
     <?php if (wk_user_bodyweight($GLOBALS['pdo'], (int) $currentUser['id']) === null): ?>
@@ -804,10 +810,10 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
         <div class="panel-head"><div><h2><?= e(t('workouts.body_part_ranks')) ?></h2></div></div>
         <div class="workouts-body-rank-grid">
             <?php foreach ((array) ($wkMuscleRanks ?? []) as $muscleRank): ?>
-                <?php $rank = (array) ($muscleRank['rank'] ?? []); $rankKey = (string) ($rank['key'] ?? 'unranked'); ?>
+                <?php $rank = (array) ($muscleRank['rank'] ?? []); $rankKey = (string) ($rank['key'] ?? 'unranked'); $bodyRankProgress = $rankProgressData($rank); ?>
                 <a class="workouts-body-rank-card" data-rank="<?= e($rankKey) ?>" href="/?page=workouts&view=library&muscle=<?= e((string) $muscleRank['muscle']) ?>">
                     <span class="workouts-muscle-token"><?= e(strtoupper(substr((string) $muscleRank['muscle'], 0, 2))) ?></span>
-                    <span><strong><?= e($muscleLabel((string) $muscleRank['muscle'])) ?></strong><small><?= e(t('workouts.ranked_count', ['ranked' => (int) $muscleRank['ranked_count'], 'total' => (int) $muscleRank['catalog_count']])) ?></small></span>
+                    <span><strong><?= e($muscleLabel((string) $muscleRank['muscle'])) ?></strong><small><?= e(t('workouts.ranked_count', ['ranked' => (int) $muscleRank['ranked_count'], 'total' => (int) $muscleRank['catalog_count']])) ?> · <?= e(t('workouts.rank_points_short', ['points' => number_format((float) $bodyRankProgress['score'], 1, '.', '')])) ?></small><span class="workouts-rank-mini-progress" aria-hidden="true"><i style="width: <?= (int) $bodyRankProgress['progress'] ?>%"></i></span></span>
                     <span class="workouts-rank-badge" data-rank="<?= e($rankKey) ?>"><?= e($rankLabel($rankKey)) ?></span>
                 </a>
             <?php endforeach; ?>
@@ -819,10 +825,10 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
             <div class="panel-head"><div><h2><?= e(t('workouts.exercise_ranks')) ?></h2></div></div>
             <div class="workouts-exercise-rank-list">
                 <?php foreach ((array) ($wkExerciseRanks ?? []) as $exercise): ?>
-                    <?php if (!(bool) ($exercise['rank']['rankable'] ?? true)) { continue; } $rank = (array) $exercise['rank']; $rankKey = (string) ($rank['key'] ?? 'unranked'); ?>
-                    <a href="/?page=workouts&exercise_id=<?= (int) $exercise['id'] ?>" class="workouts-exercise-rank-row">
+                    <?php if (!(bool) ($exercise['rank']['rankable'] ?? true)) { continue; } $rank = (array) $exercise['rank']; $rankKey = (string) ($rank['key'] ?? 'unranked'); $exerciseRankProgress = $rankProgressData($rank); ?>
+                    <a href="/?page=workouts&exercise_id=<?= (int) $exercise['id'] ?>" class="workouts-exercise-rank-row" data-rank="<?= e($rankKey) ?>">
                         <span class="workouts-rank-position"><?= e($workoutExerciseMark((array) $exercise)) ?></span>
-                        <span><strong><?= e((string) ($exercise['display_name'] ?? $exercise['name'])) ?></strong><small><?= e($muscleLabel((string) ($exercise['muscle_group'] ?? ''))) ?> · <?= e(number_format((float) ($rank['score'] ?? 0), 1, '.', '')) ?> <?= e(t('workouts.lift_points')) ?></small></span>
+                        <span><strong><?= e((string) ($exercise['display_name'] ?? $exercise['name'])) ?></strong><small><?= e($muscleLabel((string) ($exercise['muscle_group'] ?? ''))) ?> · <?= e(t('workouts.rank_points_short', ['points' => number_format((float) $exerciseRankProgress['score'], 1, '.', '')])) ?></small><span class="workouts-rank-mini-progress" aria-hidden="true"><i style="width: <?= (int) $exerciseRankProgress['progress'] ?>%"></i></span><?php if ($exerciseRankProgress['next_key'] !== null): ?><small><?= e(t('workouts.rank_points_remaining', ['points' => number_format((float) $exerciseRankProgress['remaining'], 1, '.', ''), 'rank' => $rankLabel((string) $exerciseRankProgress['next_key'])])) ?></small><?php else: ?><small><?= e(t('workouts.rank_maximum')) ?></small><?php endif; ?></span>
                         <span class="workouts-rank-badge" data-rank="<?= e($rankKey) ?>"><?= e($rankLabel($rankKey)) ?></span>
                     </a>
                 <?php endforeach; ?>
@@ -834,7 +840,7 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
                 <?php foreach ((array) ($wkRankLeaderboard ?? []) as $rankedUser): ?>
                     <?php $userRank = (array) ($rankedUser['rank'] ?? []); $userRankKey = (string) ($userRank['key'] ?? 'unranked'); ?>
                     <a href="/?page=profile&user_id=<?= (int) $rankedUser['id'] ?>" class="workouts-leaderboard-row<?= (int) $rankedUser['id'] === (int) $currentUser['id'] ? ' is-me' : '' ?>">
-                        <strong>#<?= (int) $rankedUser['position'] ?></strong><span class="avatar-small"><?= e(initials_for((string) $rankedUser['display_name'])) ?></span><span><strong><?= e((string) $rankedUser['display_name']) ?></strong><small>@<?= e((string) $rankedUser['username']) ?></small></span><span class="workouts-rank-badge" data-rank="<?= e($userRankKey) ?>"><?= e($rankLabel($userRankKey)) ?></span>
+                        <strong>#<?= (int) $rankedUser['position'] ?></strong><span class="avatar-small"><?= e(initials_for((string) $rankedUser['display_name'])) ?></span><span><strong><?= e((string) $rankedUser['display_name']) ?></strong><small>@<?= e((string) $rankedUser['username']) ?> · <?= e(t('workouts.rank_points_short', ['points' => number_format((float) ($userRank['score'] ?? 0), 1, '.', '')])) ?></small></span><span class="workouts-rank-badge" data-rank="<?= e($userRankKey) ?>"><?= e($rankLabel($userRankKey)) ?></span>
                     </a>
                 <?php endforeach; ?>
             </div>
@@ -847,6 +853,7 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
     $content = (array) ($exercise['content'] ?? wk_exercise_content($exercise));
     $rank = (array) ($wkExerciseRank ?? wk_rank_from_score(0));
     $rankKey = (string) ($rank['key'] ?? 'unranked');
+    $exerciseGuideRankProgress = $rankProgressData($rank);
     $secondaryMuscles = json_decode((string) ($exercise['secondary_muscles'] ?? '[]'), true);
     $secondaryMuscles = is_array($secondaryMuscles) ? $secondaryMuscles : [];
     $exerciseGallery = (array) ($wkExerciseMedia ?? []);
@@ -873,7 +880,7 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
     <article class="workouts-exercise-hero panel" style="<?= e($exerciseAccentStyle) ?>" data-muscle="<?= e((string) ($exercise['muscle_group'] ?? '')) ?>">
         <div class="workouts-exercise-hero-icon"><?= e($workoutExerciseMark($exercise)) ?></div>
         <div class="workouts-exercise-hero-copy"><p class="eyebrow"><?= e(t('workouts.guide')) ?></p><h2><?= e((string) ($exercise['display_name'] ?? $exercise['name'])) ?></h2><p><?= e((string) ($content['summary'] ?? '')) ?></p><div class="workouts-exercise-tags"><span><?= e($muscleLabel((string) ($exercise['muscle_group'] ?? ''))) ?></span><span><?= e($equipmentLabel((string) ($exercise['equipment'] ?? ''))) ?></span><span><?= e($difficultyLabel((string) ($exercise['difficulty'] ?? 'beginner'))) ?></span></div></div>
-        <div class="workouts-exercise-rank-card"><span class="workouts-rank-badge" data-rank="<?= e($rankKey) ?>"><?= e($rankLabel($rankKey)) ?></span><strong><?= e(number_format((float) ($rank['score'] ?? 0), 1, '.', '')) ?></strong><small><?= e(t('workouts.lift_points')) ?></small><div class="workouts-rank-progress"><span style="width: <?= (int) ($rank['progress'] ?? 0) ?>%"></span></div></div>
+        <div class="workouts-exercise-rank-card" data-rank="<?= e($rankKey) ?>"><span class="workouts-rank-badge" data-rank="<?= e($rankKey) ?>"><?= e($rankLabel($rankKey)) ?></span><strong><?= e(t('workouts.rank_points_short', ['points' => number_format((float) $exerciseGuideRankProgress['score'], 1, '.', '')])) ?></strong><small><?= e($exerciseGuideRankProgress['next_key'] !== null ? t('workouts.rank_points_remaining', ['points' => number_format((float) $exerciseGuideRankProgress['remaining'], 1, '.', ''), 'rank' => $rankLabel((string) $exerciseGuideRankProgress['next_key'])]) : t('workouts.rank_maximum')) ?></small><div class="workouts-rank-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= (int) $exerciseGuideRankProgress['progress'] ?>"><span style="width: <?= (int) $exerciseGuideRankProgress['progress'] ?>%"></span></div><em><?= e(t('workouts.rank_progress_percent', ['percent' => (int) $exerciseGuideRankProgress['progress']])) ?></em></div>
         <div class="workouts-exercise-hero-actions">
             <?php $guideIsFavorite = (int) ($exercise['is_favorite'] ?? 0) === 1; ?>
             <form method="post" action="/?page=workouts" class="workouts-favorite-form"><input type="hidden" name="csrf_token" value="<?= e($csrf) ?>"><input type="hidden" name="action" value="exercise_favorite"><input type="hidden" name="exercise_id" value="<?= (int) $exercise['id'] ?>"><input type="hidden" name="value" value="<?= $guideIsFavorite ? 0 : 1 ?>"><input type="hidden" name="return_to" value="exercise"><?php if ($targetRoutineId > 0): ?><input type="hidden" name="target_routine_id" value="<?= $targetRoutineId ?>"><?php elseif ($targetSessionId > 0): ?><input type="hidden" name="target_session_id" value="<?= $targetSessionId ?>"><?php endif; ?><button class="btn btn-ghost small" type="submit" aria-pressed="<?= $guideIsFavorite ? 'true' : 'false' ?>"><?= $guideIsFavorite ? '&#9733; ' . e(t('workouts.favorite')) : '&#9734; ' . e(t('workouts.add_favorite')) ?></button></form>
@@ -1601,6 +1608,46 @@ $workoutLibraryReturnUrl = '/?' . http_build_query($libraryReturnQuery);
             <?php endif; ?>
         </article>
     </div>
+<?php endif; ?>
+
+<?php if ($wkView === 'library' && !$hasLibraryTarget && $activeRoutines !== []): ?>
+<div class="app-modal workouts-add-routine-modal" id="wk-add-exercise-modal" hidden role="dialog" aria-modal="true" aria-labelledby="wk-add-exercise-title" data-workout-routine-picker data-single-routine="<?= count($activeRoutines) === 1 ? '1' : '0' ?>">
+    <div class="app-modal-card workouts-add-routine-card">
+        <div class="app-modal-head">
+            <div><p class="eyebrow"><?= e(t('workouts.exercises')) ?></p><h2 id="wk-add-exercise-title"><?= e(t('workouts.add_to_routine')) ?></h2><p class="muted" data-workout-routine-picker-copy><?= e(t('workouts.choose_routine')) ?></p></div>
+            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button>
+        </div>
+        <form method="post" action="/?page=workouts" class="workouts-add-routine-form" data-workout-routine-picker-form>
+            <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
+            <input type="hidden" name="action" value="library_add_exercise">
+            <input type="hidden" name="exercise_def_id" value="" data-workout-routine-picker-exercise>
+            <input type="hidden" name="muscle" value="<?= e((string) ($filters['muscle'] ?? '')) ?>"><input type="hidden" name="equipment" value="<?= e((string) ($filters['equipment'] ?? '')) ?>"><input type="hidden" name="q" value="<?= e((string) ($filters['q'] ?? '')) ?>"><input type="hidden" name="scope" value="<?= e((string) ($filters['scope'] ?? '')) ?>"><input type="hidden" name="library_page" value="<?= (int) ($wkLibraryPage ?? 1) ?>">
+            <fieldset class="workouts-routine-choice-list">
+                <legend class="sr-only"><?= e(t('workouts.choose_routine')) ?></legend>
+                <?php foreach ($activeRoutines as $routine): ?>
+                    <?php $routineAccent = wk_normalize_routine_color($routine['accent_color'] ?? '#14b8a6'); ?>
+                    <label style="--routine-accent: <?= e($routineAccent) ?>">
+                        <input type="radio" name="routine_id" value="<?= (int) $routine['id'] ?>" required<?= count($activeRoutines) === 1 ? ' checked' : '' ?>>
+                        <span class="workouts-routine-choice-icon" aria-hidden="true"><?= activity_icon_svg(wk_normalize_routine_icon($routine['icon'] ?? 'dumbbell')) ?></span>
+                        <span class="workouts-routine-choice-copy"><strong><?= e((string) $routine['name']) ?></strong><small><?= (int) ($routine['exercise_count'] ?? 0) ?> <?= e(t('workouts.exercises')) ?></small></span>
+                        <span class="workouts-routine-choice-check" aria-hidden="true"><?= activity_icon_svg('check') ?></span>
+                    </label>
+                <?php endforeach; ?>
+            </fieldset>
+            <div class="workouts-add-routine-actions"><button class="btn btn-ghost" type="button" data-app-modal-close><?= e(t('common.cancel')) ?></button><button class="btn btn-primary" type="submit" data-workout-routine-picker-submit<?= count($activeRoutines) > 1 ? ' disabled' : '' ?>><?= e(t('workouts.add_to_routine')) ?></button></div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if ($wkView === 'library' && $addedRoutine !== null): ?>
+<div class="app-modal workouts-added-success-modal" id="wk-added-success-modal" hidden role="dialog" aria-modal="true" aria-labelledby="wk-added-success-title" data-workout-add-success>
+    <div class="app-modal-card workouts-added-success-card">
+        <span class="workouts-added-success-icon" aria-hidden="true"><?= activity_icon_svg('check') ?></span>
+        <div><p class="eyebrow"><?= e(t('workouts.exercise_added_title')) ?></p><h2 id="wk-added-success-title"><?= e(t('workouts.exercise_added')) ?></h2><p><?= e(t('workouts.exercise_added_to_named', ['routine' => (string) ($addedRoutine['name'] ?? '')])) ?></p></div>
+        <div class="workouts-added-success-actions"><a class="btn btn-primary" href="/?page=workouts&amp;routine_id=<?= (int) $addedRoutine['id'] ?>" tabindex="0"><?= e(t('workouts.view_routine')) ?></a><a class="btn btn-ghost" href="<?= e($libraryUrl([])) ?>"><?= e(t('common.close_action')) ?></a></div>
+    </div>
+</div>
 <?php endif; ?>
 
 <div class="app-modal" id="wk-new-routine-modal" hidden role="dialog" aria-modal="true" aria-labelledby="wk-new-routine-title">

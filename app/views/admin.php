@@ -73,6 +73,26 @@ $backupFrequency = normalize_backup_frequency((string) ($backupSettings['frequen
 $backupRunTime = normalize_backup_run_time((string) ($backupSettings['run_time'] ?? '00:00'));
 $backupRetentionCount = max(1, (int) ($backupSettings['retention_count'] ?? 20));
 $backupLastAutoAt = trim((string) ($backupSettings['last_auto_at'] ?? ''));
+$backupLastDrillAt = trim((string) ($backupSettings['last_drill_at'] ?? ''));
+$backupNextRunAt = trim((string) ($backupSettings['next_run_at'] ?? ''));
+$backupLastError = trim((string) ($backupSettings['last_error'] ?? ''));
+$integrationStatuses = is_array($integrationStatuses ?? null) ? (array) $integrationStatuses : [];
+$integrationState = static function (array $worker): string {
+    $state = (string) ($worker['state'] ?? 'stopped');
+    return in_array($state, ['active', 'stopped', 'delayed', 'error'], true) ? $state : 'stopped';
+};
+$integrationStateLabel = static fn(string $state): string => t('admin.integration_worker_' . $state);
+$formatRuntimeDate = static function (string $value): string {
+    if ($value === '') {
+        return t('admin.backup_last_auto_never');
+    }
+    try {
+        $date = new DateTimeImmutable($value);
+        return format_date_eu($date->format('Y-m-d')) . ' ' . $date->format('H:i');
+    } catch (Throwable) {
+        return $value;
+    }
+};
 $backupLastAutoLabel = t('admin.backup_last_auto_never');
 if ($backupLastAutoAt !== '') {
     try {
@@ -85,12 +105,14 @@ if ($backupLastAutoAt !== '') {
 $backupTriggerLabel = static function (string $trigger): string {
     return match ($trigger) {
         'auto' => t('admin.backup_trigger_auto'),
+        'pre_restore' => t('admin.backup_trigger_pre_restore'),
         default => t('admin.backup_trigger_manual'),
     };
 };
 $backupStatusLabel = static function (string $status): string {
     return match ($status) {
         'restored' => t('admin.backup_status_restored'),
+        'verified' => t('admin.backup_status_verified'),
         'error' => t('common.error'),
         default => t('common.saved'),
     };
@@ -576,12 +598,10 @@ try {
                         <?= e(t('admin.notion_enabled')) ?>
                     </label>
                 </div>
-                <div class="toggle-row">
-                    <label class="check standalone-check">
-                        <input type="checkbox" name="notion_external_sync" value="1" <?= !empty($notion['external']) ? 'checked' : '' ?>>
-                        <?= e(t('admin.notion_external')) ?>
-                    </label>
-                    <p class="muted small"><?= e(t('admin.notion_external_hint')) ?></p>
+                <?php $notionWorker = (array) ($integrationStatuses['notion'] ?? []); ?>
+                <?php $notionWorkerState = $integrationState($notionWorker); ?>
+                <div class="integration-runtime-status is-<?= e($notionWorkerState) ?>">
+                    <span aria-hidden="true"></span><div><strong><?= e(t('admin.integration_worker_managed')) ?></strong><small><?= e($integrationStateLabel($notionWorkerState)) ?><?php if (trim((string) ($notionWorker['last_error'] ?? '')) !== ''): ?> · <?= e(mb_substr(trim((string) $notionWorker['last_error']), 0, 180)) ?><?php endif; ?></small></div>
                 </div>
                 <label>
                     <?= e(t('admin.notion_token')) ?>
@@ -723,12 +743,10 @@ try {
                     <input type="text" name="app_base_url" value="<?= e((string) ($telegram['base_url'] ?? '')) ?>" placeholder="http://localhost:8080">
                     <span class="muted small"><?= e(t('admin.telegram_base_url_hint')) ?></span>
                 </label>
-                <div class="toggle-row">
-                    <label class="check standalone-check">
-                        <input type="checkbox" name="telegram_external_bot" value="1" <?= !empty($telegram['external_bot']) ? 'checked' : '' ?>>
-                        <?= e(t('admin.telegram_external')) ?>
-                    </label>
-                    <p class="muted small"><?= e(t('admin.telegram_external_hint')) ?></p>
+                <?php $telegramWorker = (array) ($integrationStatuses['telegram'] ?? []); ?>
+                <?php $telegramWorkerState = $integrationState($telegramWorker); ?>
+                <div class="integration-runtime-status is-<?= e($telegramWorkerState) ?>">
+                    <span aria-hidden="true"></span><div><strong><?= e(t('admin.integration_worker_managed')) ?></strong><small><?= e($integrationStateLabel($telegramWorkerState)) ?><?php if (trim((string) ($telegramWorker['last_error'] ?? '')) !== ''): ?> · <?= e(mb_substr(trim((string) $telegramWorker['last_error']), 0, 180)) ?><?php endif; ?></small></div>
                 </div>
                 <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
             </form>
@@ -915,6 +933,27 @@ try {
             <a class="btn btn-ghost" href="/?page=admin" data-spa-back aria-label="<?= e(t('common.back')) ?>">← <?= e(t('common.back')) ?></a>
         </div>
         <p class="muted"><?= e(t('admin.backups_subtitle')) ?></p>
+
+        <?php
+        $latestValidBackup = null;
+        foreach ((array) $systemBackups as $candidateBackup) {
+            if ((int) ($candidateBackup['file_exists'] ?? 0) === 1
+                && in_array((string) ($candidateBackup['status'] ?? ''), ['verified', 'restored'], true)) {
+                $latestValidBackup = $candidateBackup;
+                break;
+            }
+        }
+        $activeIntegrations = count(array_filter($integrationStatuses, static fn(array $status): bool => (int) ($status['active'] ?? 0) === 1));
+        ?>
+        <div class="backup-health-grid" aria-label="<?= e(t('admin.backup_health')) ?>">
+            <div><small><?= e(t('admin.backup_last_valid')) ?></small><strong><?= e($latestValidBackup !== null ? $formatRuntimeDate((string) ($latestValidBackup['created_at'] ?? '')) . ' · ' . (string) ($latestValidBackup['size_label'] ?? '0 B') : t('admin.backup_last_auto_never')) ?></strong></div>
+            <div><small><?= e(t('admin.backup_next_run')) ?></small><strong><?= e($backupAutoEnabled ? $formatRuntimeDate($backupNextRunAt) : t('admin.backup_disabled')) ?></strong></div>
+            <div><small><?= e(t('admin.backup_last_drill')) ?></small><strong><?= e($formatRuntimeDate($backupLastDrillAt)) ?></strong></div>
+            <div><small><?= e(t('admin.integration_workers')) ?></small><strong><?= $activeIntegrations ?>/2 <?= e(t('admin.integration_workers_active')) ?></strong></div>
+        </div>
+        <?php if ($backupLastError !== ''): ?>
+            <p class="backup-health-error" role="alert"><strong><?= e(t('common.error')) ?>:</strong> <?= e($backupLastError) ?></p>
+        <?php endif; ?>
 
         <form method="post" action="/?page=admin" class="stack compact-form">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">

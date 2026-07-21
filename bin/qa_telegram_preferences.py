@@ -125,6 +125,10 @@ def main() -> int:
         assert bot.parse_switch("si") is True
         assert bot.parse_switch("off") is False
         assert bot.normalize_hm("24:00") == ""
+        secret = "123456:QA-secret-token"
+        leaked_url = f"network error at https://api.telegram.org/bot{secret}/getUpdates"
+        redacted = bot.redact_secrets(leaked_url, secret)
+        assert secret not in redacted and "bot[redacted]" in redacted
         db.conn.close()
 
     print("Telegram preference QA: PASS")

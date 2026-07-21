@@ -31,5 +31,7 @@ return [
     'db_slow_query_ms' => (float) env_value('DB_SLOW_QUERY_MS', '50'),
     'challenge_start' => env_value('CHALLENGE_START', '2026-04-13'),
     'challenge_end' => env_value('CHALLENGE_END', '2026-06-07'),
-    'seed_password' => env_value('SEED_PASSWORD', 'ChangeMe123!'),
+    // Seed accounts are opt-in. Existing databases are unaffected.
+    'seed_password' => env_value('SEED_PASSWORD', ''),
+    'request_schedulers_enabled' => env_value('REQUEST_SCHEDULERS_ENABLED', '0') === '1',
 ];

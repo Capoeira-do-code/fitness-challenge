@@ -218,7 +218,8 @@ function notion_update_settings(PDO $pdo, array $input, int $actorUserId): void
     }
 
     set_app_setting($pdo, 'notion_enabled', !empty($input['notion_enabled']) ? '1' : '0', $actorUserId);
-    set_app_setting($pdo, 'notion_external_sync', !empty($input['notion_external_sync']) ? '1' : '0', $actorUserId);
+    // Ownership is automatic through expiring runtime leases.
+    set_app_setting($pdo, 'notion_external_sync', '0', $actorUserId);
     set_app_setting($pdo, 'notion_token', $token, $actorUserId);
     set_app_setting($pdo, 'notion_database_id', trim((string) ($input['notion_database_id'] ?? '')), $actorUserId);
     if (array_key_exists('notion_parent_page_id', $input)) {
@@ -468,8 +469,11 @@ function notion_api_request_stream(string $method, string $url, array $headers, 
     ]);
     $raw = @file_get_contents($url, false, $context);
     $status = 0;
-    if (isset($http_response_header) && is_array($http_response_header)) {
-        foreach ($http_response_header as $line) {
+    $responseHeaders = function_exists('http_get_last_response_headers')
+        ? http_get_last_response_headers()
+        : ($http_response_header ?? []);
+    if (is_array($responseHeaders)) {
+        foreach ($responseHeaders as $line) {
             if (preg_match('#^HTTP/\S+\s+(\d+)#', $line, $matches) === 1) {
                 $status = (int) $matches[1];
             }
@@ -1164,8 +1168,9 @@ function notion_run_scheduler(PDO $pdo, array $config, ?int $actorUserId = null)
         if (!notion_is_enabled($settings) || $settings['frequency'] === 'off') {
             return;
         }
-        // The standalone Python sync (bin/notion_sync.py) owns scheduled syncs.
-        if (!empty($settings['external'])) {
+        // A live standalone worker owns scheduled syncs. Expired leases recover
+        // automatically, unlike the legacy permanent external flag.
+        if (integration_runtime_lease_is_active($pdo, 'notion')) {
             return;
         }
         if (!function_exists('should_run_scheduled_backup')) {

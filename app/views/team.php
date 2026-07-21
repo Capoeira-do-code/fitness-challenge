@@ -215,20 +215,6 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
     <?php if ($teamSection === ''): ?>
         <div class="team-mobile-root">
             <header class="mobile-home-greeting"><p><?= e(t('nav.team')) ?></p><h1><?= e((string) ($team['name'] ?? t('nav.team'))) ?></h1><small><?= e((string) (($team['description'] ?? '') !== '' ? $team['description'] : t('team.subtitle'))) ?></small></header>
-            <?php if (count((array) ($userTeams ?? [])) > 1): ?>
-                <form method="get" class="team-mobile-team-selector">
-                    <input type="hidden" name="page" value="team">
-                    <input type="hidden" name="view" value="<?= e($teamView) ?>">
-                    <label>
-                        <span><?= e(t('team.your_teams')) ?></span>
-                        <select name="team_id" onchange="this.form.submit()">
-                            <?php foreach ((array) $userTeams as $userTeamOption): ?>
-                                <option value="<?= (int) ($userTeamOption['id'] ?? 0) ?>" <?= (int) ($userTeamOption['id'] ?? 0) === (int) ($team['id'] ?? 0) ? 'selected' : '' ?>><?= e((string) ($userTeamOption['name'] ?? '')) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </label>
-                </form>
-            <?php endif; ?>
             <nav class="hierarchy-nav-list mobile-hub-section-grid" aria-label="<?= e(t('nav.team')) ?>">
                 <?php foreach ([
                     'challenge' => ['target', t('team.mobile_challenge'), t('team.mobile_challenge_hint'), count($goals), 'orange'],
@@ -251,14 +237,6 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
             <p class="eyebrow"><?= e(t('nav.team')) ?></p>
             <h1><?= e((string) $team['name']) ?></h1>
             <p class="muted"><?= e((string) (($team['description'] ?? '') !== '' ? $team['description'] : t('team.subtitle'))) ?></p>
-            <?php $myTeams = (array) ($userTeams ?? []); ?>
-            <?php if (count($myTeams) > 1): ?>
-                <div class="team-switcher" role="group" aria-label="<?= e(t('team.your_teams')) ?>">
-                    <?php foreach ($myTeams as $ut): ?>
-                        <a class="team-switcher-chip<?= (int) $ut['id'] === (int) $team['id'] ? ' is-active' : '' ?>" href="/?page=team&team_id=<?= (int) $ut['id'] ?>"><?= e((string) $ut['name']) ?></a>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
         </div>
         <div class="team-hero-actions inline-actions-mini">
             <?php if (($joinableTeams ?? []) !== []): ?>

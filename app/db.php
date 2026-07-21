@@ -22,7 +22,7 @@ function db_retry(callable $operation, int $maxAttempts = 6): mixed
 
 function db_connect(array $config): PDO
 {
-    static $pdo = null;
+    $pdo = $GLOBALS['fitness_challenge_db_connection'] ?? null;
 
     if ($pdo instanceof PDO) {
         return $pdo;
@@ -50,8 +50,15 @@ function db_connect(array $config): PDO
     }
 
     db_current($pdo);
+    $GLOBALS['fitness_challenge_db_connection'] = $pdo;
 
     return $pdo;
+}
+
+function db_reset_connection(): void
+{
+    $GLOBALS['fitness_challenge_db_connection'] = null;
+    db_current(null, true);
 }
 
 /**
@@ -59,9 +66,14 @@ function db_connect(array $config): PDO
  * at hand (views, in particular, only receive the params they were rendered
  * with). Returns null before the first connect.
  */
-function db_current(?PDO $pdo = null): ?PDO
+function db_current(?PDO $pdo = null, bool $reset = false): ?PDO
 {
     static $current = null;
+
+    if ($reset) {
+        $current = null;
+        return null;
+    }
 
     if ($pdo instanceof PDO) {
         $current = $pdo;
@@ -287,6 +299,20 @@ function initialize_database(PDO $pdo, array $config): void
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             UNIQUE (team_id, user_id),
+            FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS team_membership_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            joined_at TEXT NOT NULL,
+            removed_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
             FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )'
@@ -571,6 +597,17 @@ function initialize_database(PDO $pdo, array $config): void
     );
 
     $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS integration_runtime_leases (
+            service TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            heartbeat_at TEXT NOT NULL,
+            lease_until TEXT NOT NULL,
+            last_success_at TEXT,
+            last_error TEXT
+        )'
+    );
+
+    $pdo->exec(
         'CREATE TABLE IF NOT EXISTS achievement_rules (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             achievement_id INTEGER NOT NULL,
@@ -595,13 +632,14 @@ function initialize_database(PDO $pdo, array $config): void
     );
 
     ensure_schema_columns($pdo, $config);
+    backfill_team_membership_periods($pdo);
     ensure_indexes($pdo);
     migrate_photo_categories($pdo);
 
     $stmt = $pdo->query('SELECT COUNT(*) AS total FROM users');
     $totalUsers = (int) $stmt->fetch()['total'];
 
-    if ($totalUsers === 0) {
+    if ($totalUsers === 0 && trim((string) ($config['seed_password'] ?? '')) !== '') {
         $seedPasswordHash = password_hash((string) $config['seed_password'], PASSWORD_DEFAULT);
         $now = now_iso();
 
@@ -860,6 +898,9 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_comments_user ON photo_comments(user_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_team_memberships_team ON team_memberships(team_id, active)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_team_memberships_user ON team_memberships(user_id, active)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_team_membership_periods_team_dates ON team_membership_periods(team_id, joined_at, removed_at)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_team_membership_periods_user_dates ON team_membership_periods(user_id, joined_at, removed_at)');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_team_membership_periods_one_open ON team_membership_periods(team_id, user_id) WHERE removed_at IS NULL');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_goals_scope ON goals(scope, status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_goal_team ON goals(team_id, status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_goal_user ON goals(user_id, status)');
@@ -894,6 +935,7 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_user_unique_key ON user_notifications(user_id, unique_key) WHERE unique_key IS NOT NULL');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_system_backups_created ON system_backups(created_at DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_system_backups_status ON system_backups(status)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_integration_runtime_leases_until ON integration_runtime_leases(lease_until)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_challenge_archives_archived_at ON challenge_archives(archived_at DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_requests_target ON strike_review_requests(target_user_id, week_start, event_date)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_requests_target_status ON strike_review_requests(target_user_id, status, week_start, event_date)');
@@ -901,6 +943,20 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_strike_review_requests_event_unique ON strike_review_requests(target_user_id, week_start, event_date, reason)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_votes_request ON strike_review_votes(request_id)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_strike_review_votes_unique ON strike_review_votes(request_id, voter_user_id)');
+}
+
+/** Preserve the interval represented by pre-history membership rows. */
+function backfill_team_membership_periods(PDO $pdo): void
+{
+    $pdo->exec(
+        'INSERT INTO team_membership_periods (team_id, user_id, joined_at, removed_at, created_at, updated_at)
+         SELECT tm.team_id, tm.user_id, tm.joined_at, tm.removed_at, tm.created_at, tm.updated_at
+         FROM team_memberships tm
+         WHERE NOT EXISTS (
+             SELECT 1 FROM team_membership_periods periods
+             WHERE periods.team_id = tm.team_id AND periods.user_id = tm.user_id
+         )'
+    );
 }
 
 function migrate_photo_categories(PDO $pdo): void
@@ -989,6 +1045,19 @@ function seed_default_team(PDO $pdo): void
                 ':team_id' => (int) $team['id'],
                 ':user_id' => (int) $user['id'],
                 ':role' => $user['role'] === 'admin' ? 'owner' : 'member',
+                ':joined_at' => $now,
+                ':created_at' => $now,
+                ':updated_at' => $now,
+            ]
+        );
+        db_execute(
+            $pdo,
+            'INSERT OR IGNORE INTO team_membership_periods
+                (team_id, user_id, joined_at, removed_at, created_at, updated_at)
+             VALUES (:team_id, :user_id, :joined_at, NULL, :created_at, :updated_at)',
+            [
+                ':team_id' => (int) $team['id'],
+                ':user_id' => (int) $user['id'],
                 ':joined_at' => $now,
                 ':created_at' => $now,
                 ':updated_at' => $now,

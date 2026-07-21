@@ -14,7 +14,8 @@ services:
       PHOTO_UPLOAD_MAX_BYTES: ${PHOTO_UPLOAD_MAX_BYTES:-15728640}
       CHALLENGE_START: 2026-04-13
       CHALLENGE_END: 2026-06-07
-      SEED_PASSWORD: ChangeMe123!
+      SEED_PASSWORD: ${SEED_PASSWORD:-}
+      REQUEST_SCHEDULERS_ENABLED: ${REQUEST_SCHEDULERS_ENABLED:-0}
     volumes:
       - ./storage:/var/www/storage
       - ./public/uploads:/var/www/public/uploads:ro

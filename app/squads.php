@@ -119,6 +119,11 @@ function squad_link_core_team(PDO $pdo, array $squad): int
             continue;
         }
         $role = $memberId === $ownerId ? 'owner' : 'member';
+        $existingMembership = db_fetch_one(
+            $pdo,
+            'SELECT active FROM team_memberships WHERE team_id = :team_id AND user_id = :user_id',
+            [':team_id' => $teamId, ':user_id' => $memberId]
+        );
         db_execute(
             $pdo,
             'INSERT INTO team_memberships (team_id, user_id, role, active, joined_at, removed_at, created_at, updated_at)
@@ -137,6 +142,21 @@ function squad_link_core_team(PDO $pdo, array $squad): int
                 ':updated_at' => $now,
             ]
         );
+        if ($existingMembership === null || (int) ($existingMembership['active'] ?? 0) !== 1) {
+            db_execute(
+                $pdo,
+                'INSERT OR IGNORE INTO team_membership_periods
+                    (team_id, user_id, joined_at, removed_at, created_at, updated_at)
+                 VALUES (:team_id, :user_id, :joined_at, NULL, :created_at, :updated_at)',
+                [
+                    ':team_id' => $teamId,
+                    ':user_id' => $memberId,
+                    ':joined_at' => $now,
+                    ':created_at' => $now,
+                    ':updated_at' => $now,
+                ]
+            );
+        }
     }
 
     return $teamId;
@@ -419,34 +439,188 @@ function comp_cancel(PDO $pdo, int $compId, int $userId): bool
     return true;
 }
 
-/** Aggregate metric value for all members of a squad over a date range. */
-function comp_squad_value(PDO $pdo, array $config, int $squadId, string $metric, string $rangeStart, string $rangeEnd): float
+/**
+ * Membership windows intersecting a competition. The same user can appear in
+ * another squad's result: one workout intentionally contributes to every team
+ * they belonged to on that workout date.
+ *
+ * @return array<int,array{user:array,start:string,end:string}>
+ */
+function comp_squad_membership_windows(PDO $pdo, int $squadId, string $rangeStart, string $rangeEnd): array
 {
-    $members = squad_member_users($pdo, $squadId);
-    if ($members === []) {
-        return 0.0;
+    $rangeStart = to_date($rangeStart);
+    $rangeEnd = to_date($rangeEnd, $rangeStart);
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT u.*, periods.joined_at AS competition_joined_at, periods.removed_at AS competition_removed_at
+         FROM squads s
+         JOIN team_membership_periods periods ON periods.team_id = s.team_id
+         JOIN users u ON u.id = periods.user_id
+         WHERE s.id = :squad_id
+           AND date(COALESCE(NULLIF(periods.joined_at, ""), :range_start)) <= :range_end
+           AND (periods.removed_at IS NULL OR date(periods.removed_at) >= :range_start)
+         ORDER BY u.display_name COLLATE NOCASE ASC, periods.joined_at ASC',
+        [':squad_id' => $squadId, ':range_start' => $rangeStart, ':range_end' => $rangeEnd]
+    );
+
+    $linkedTeam = db_fetch_one($pdo, 'SELECT team_id FROM squads WHERE id = :id', [':id' => $squadId]);
+    $linkedTeamId = (int) ($linkedTeam['team_id'] ?? 0);
+    $hasHistory = $linkedTeamId > 0 && db_fetch_one(
+        $pdo,
+        'SELECT 1 AS found FROM team_membership_periods WHERE team_id = :team_id LIMIT 1',
+        [':team_id' => $linkedTeamId]
+    ) !== null;
+    if ($rows === [] && !$hasHistory) {
+        // Legacy squads created before the core-team link keep full-range
+        // behavior until squads_ensure_schema() completes their migration.
+        $rows = squad_member_users($pdo, $squadId);
     }
 
-    // Workout-powered metrics sum each member's workout value over the range.
-    if (function_exists('duels_metric_is_workout') && duels_metric_is_workout($metric) && function_exists('wk_metric_over_range')) {
-        $total = 0.0;
-        foreach ($members as $member) {
-            $total += wk_metric_over_range($pdo, (int) ($member['id'] ?? 0), $metric, $rangeStart, $rangeEnd);
+    $windowsByUser = [];
+    foreach ($rows as $member) {
+        $joinedAt = trim((string) ($member['competition_joined_at'] ?? ''));
+        $removedAt = trim((string) ($member['competition_removed_at'] ?? ''));
+        $memberStart = $joinedAt !== '' ? max($rangeStart, to_date(substr($joinedAt, 0, 10), $rangeStart)) : $rangeStart;
+        $memberEnd = $removedAt !== '' ? min($rangeEnd, to_date(substr($removedAt, 0, 10), $rangeEnd)) : $rangeEnd;
+        if ($memberStart > $memberEnd) {
+            continue;
+        }
+        $memberId = (int) ($member['id'] ?? 0);
+        if ($memberId <= 0) {
+            continue;
+        }
+        $candidate = ['user' => $member, 'start' => $memberStart, 'end' => $memberEnd];
+        $memberWindows = $windowsByUser[$memberId] ?? [];
+        $lastIndex = count($memberWindows) - 1;
+        if ($lastIndex >= 0) {
+            $lastEndPlusOne = date('Y-m-d', strtotime((string) $memberWindows[$lastIndex]['end'] . ' +1 day'));
+            if ($memberStart <= $lastEndPlusOne) {
+                $memberWindows[$lastIndex]['end'] = max((string) $memberWindows[$lastIndex]['end'], $memberEnd);
+                $windowsByUser[$memberId] = $memberWindows;
+                continue;
+            }
+        }
+        $memberWindows[] = $candidate;
+        $windowsByUser[$memberId] = $memberWindows;
+    }
+
+    return array_merge(...array_values($windowsByUser ?: [[]]));
+}
+
+/**
+ * Exact half-open membership windows for timestamped workout sessions. Periods
+ * are merged per user so overlapping history can never count a session twice.
+ *
+ * @return array<int,array{user:array,start:string,end:string,start_at:string,end_exclusive_at:string}>
+ */
+function comp_squad_membership_datetime_windows(PDO $pdo, int $squadId, string $rangeStart, string $rangeEnd): array
+{
+    $rangeStart = to_date($rangeStart);
+    $rangeEnd = to_date($rangeEnd, $rangeStart);
+    $competitionStartAt = $rangeStart . ' 00:00:00';
+    $competitionEndExclusiveAt = (new DateTimeImmutable($rangeEnd))->modify('+1 day')->format('Y-m-d 00:00:00');
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT u.*, periods.joined_at AS competition_joined_at, periods.removed_at AS competition_removed_at
+         FROM squads s
+         JOIN team_membership_periods periods ON periods.team_id = s.team_id
+         JOIN users u ON u.id = periods.user_id
+         WHERE s.id = :squad_id
+           AND COALESCE(NULLIF(periods.joined_at, ""), :range_start) < :range_end
+           AND (periods.removed_at IS NULL OR periods.removed_at > :range_start)
+         ORDER BY u.id ASC, periods.joined_at ASC',
+        [':squad_id' => $squadId, ':range_start' => $competitionStartAt, ':range_end' => $competitionEndExclusiveAt]
+    );
+
+    $linkedTeam = db_fetch_one($pdo, 'SELECT team_id FROM squads WHERE id = :id', [':id' => $squadId]);
+    $linkedTeamId = (int) ($linkedTeam['team_id'] ?? 0);
+    $hasHistory = $linkedTeamId > 0 && db_fetch_one(
+        $pdo,
+        'SELECT 1 AS found FROM team_membership_periods WHERE team_id = :team_id LIMIT 1',
+        [':team_id' => $linkedTeamId]
+    ) !== null;
+    if ($rows === [] && !$hasHistory) {
+        // Legacy squads without membership history keep their current members
+        // across the whole competition until schema migration creates periods.
+        $rows = array_map(
+            static function (array $member): array {
+                $member['competition_joined_at'] = '';
+                $member['competition_removed_at'] = null;
+                return $member;
+            },
+            squad_member_users($pdo, $squadId)
+        );
+    }
+
+    $windowsByUser = [];
+    foreach ($rows as $member) {
+        $memberId = (int) ($member['id'] ?? 0);
+        if ($memberId <= 0) {
+            continue;
+        }
+        $joinedAt = trim((string) ($member['competition_joined_at'] ?? ''));
+        $removedAt = trim((string) ($member['competition_removed_at'] ?? ''));
+        $memberStartAt = $joinedAt !== '' ? max($competitionStartAt, $joinedAt) : $competitionStartAt;
+        $memberEndExclusiveAt = $removedAt !== '' ? min($competitionEndExclusiveAt, $removedAt) : $competitionEndExclusiveAt;
+        if ($memberStartAt >= $memberEndExclusiveAt) {
+            continue;
         }
 
-        return round($total, 2);
+        $candidate = [
+            'user' => $member,
+            'start' => substr($memberStartAt, 0, 10),
+            'end' => date('Y-m-d', max(0, strtotime($memberEndExclusiveAt) - 1)),
+            'start_at' => $memberStartAt,
+            'end_exclusive_at' => $memberEndExclusiveAt,
+        ];
+        $memberWindows = $windowsByUser[$memberId] ?? [];
+        $lastIndex = count($memberWindows) - 1;
+        if ($lastIndex >= 0 && $memberStartAt <= (string) $memberWindows[$lastIndex]['end_exclusive_at']) {
+            if ($memberEndExclusiveAt > (string) $memberWindows[$lastIndex]['end_exclusive_at']) {
+                $memberWindows[$lastIndex]['end_exclusive_at'] = $memberEndExclusiveAt;
+                $memberWindows[$lastIndex]['end'] = $candidate['end'];
+            }
+            $windowsByUser[$memberId] = $memberWindows;
+            continue;
+        }
+        $memberWindows[] = $candidate;
+        $windowsByUser[$memberId] = $memberWindows;
     }
 
-    $metrics = compute_challenge_metrics($pdo, $members, $rangeStart, $rangeEnd);
+    return array_merge(...array_values($windowsByUser ?: [[]]));
+}
+
+function comp_member_metric_value(PDO $pdo, array $member, string $metric, string $rangeStart, string $rangeEnd): float
+{
+    $memberId = (int) ($member['id'] ?? 0);
+    if ($memberId <= 0) {
+        return 0.0;
+    }
+    $startAt = trim((string) ($member['competition_window_start_at'] ?? ''));
+    $endExclusiveAt = trim((string) ($member['competition_window_end_exclusive_at'] ?? ''));
+    if ($startAt !== '' && $endExclusiveAt !== '' && function_exists('wk_metric_over_datetime_range')) {
+        return wk_metric_over_datetime_range($pdo, $memberId, $metric, $startAt, $endExclusiveAt);
+    }
+    if (function_exists('duels_metric_is_workout') && duels_metric_is_workout($metric) && function_exists('wk_metric_over_range')) {
+        return wk_metric_over_range($pdo, $memberId, $metric, $rangeStart, $rangeEnd);
+    }
+
+    $metrics = compute_challenge_metrics($pdo, [$member], $rangeStart, $rangeEnd);
     if (function_exists('apply_strike_review_overrides_to_metrics')) {
         $metrics = apply_strike_review_overrides_to_metrics($pdo, $metrics);
     }
-    $total = 0.0;
-    foreach ($metrics as $m) {
-        $total += duels_metric_value($m, $metric);
+    foreach ($metrics as $memberMetrics) {
+        return duels_metric_value($memberMetrics, $metric);
     }
 
-    return round($total, 2);
+    return 0.0;
+}
+
+/** Aggregate metric value for all memberships intersecting the date range. */
+function comp_squad_value(PDO $pdo, array $config, int $squadId, string $metric, string $rangeStart, string $rangeEnd): float
+{
+    $memberValues = comp_squad_member_values($pdo, $squadId, $metric, $rangeStart, $rangeEnd);
+    return round(array_sum(array_map(static fn(array $row): float => (float) ($row['value'] ?? 0), $memberValues)), 2);
 }
 
 /**
@@ -456,31 +630,53 @@ function comp_squad_value(PDO $pdo, array $config, int $squadId, string $metric,
  */
 function comp_squad_member_values(PDO $pdo, int $squadId, string $metric, string $rangeStart, string $rangeEnd): array
 {
-    $members = squad_member_users($pdo, $squadId);
-    if ($members === []) {
+    $preciseWorkoutMetric = function_exists('duels_metric_is_workout') && duels_metric_is_workout($metric) && $metric !== 'wk_improvement';
+    $windows = $preciseWorkoutMetric
+        ? comp_squad_membership_datetime_windows($pdo, $squadId, $rangeStart, $rangeEnd)
+        : comp_squad_membership_windows($pdo, $squadId, $rangeStart, $rangeEnd);
+    if ($windows === []) {
         return [];
     }
 
     $valuesByUser = [];
-    if (function_exists('duels_metric_is_workout') && duels_metric_is_workout($metric) && function_exists('wk_metric_over_range')) {
-        foreach ($members as $member) {
-            $memberId = (int) ($member['id'] ?? 0);
-            $valuesByUser[$memberId] = wk_metric_over_range($pdo, $memberId, $metric, $rangeStart, $rangeEnd);
+    $membersByUser = [];
+    $preciseWindowsByUser = [];
+    foreach ($windows as $window) {
+        $member = (array) ($window['user'] ?? []);
+        $memberId = (int) ($member['id'] ?? 0);
+        if ($memberId <= 0) {
+            continue;
         }
-    } else {
-        $metrics = compute_challenge_metrics($pdo, $members, $rangeStart, $rangeEnd);
-        if (function_exists('apply_strike_review_overrides_to_metrics')) {
-            $metrics = apply_strike_review_overrides_to_metrics($pdo, $metrics);
+        if ($preciseWorkoutMetric) {
+            $membersByUser[$memberId] = $member;
+            $preciseWindowsByUser[$memberId][] = [
+                'start_at' => (string) ($window['start_at'] ?? ''),
+                'end_exclusive_at' => (string) ($window['end_exclusive_at'] ?? ''),
+            ];
+            continue;
         }
-        foreach ($metrics as $memberMetrics) {
-            $memberId = (int) (($memberMetrics['user'] ?? [])['id'] ?? 0);
-            $valuesByUser[$memberId] = duels_metric_value($memberMetrics, $metric);
+        $membersByUser[$memberId] = $member;
+        $valuesByUser[$memberId] = (float) ($valuesByUser[$memberId] ?? 0) + comp_member_metric_value(
+            $pdo,
+            $member,
+            $metric,
+            (string) ($window['start'] ?? $rangeStart),
+            (string) ($window['end'] ?? $rangeEnd)
+        );
+    }
+    if ($preciseWorkoutMetric && function_exists('wk_metric_over_datetime_windows')) {
+        foreach ($preciseWindowsByUser as $memberId => $memberWindows) {
+            $valuesByUser[$memberId] = wk_metric_over_datetime_windows(
+                $pdo,
+                (int) $memberId,
+                $metric,
+                $memberWindows
+            );
         }
     }
 
     $rows = [];
-    foreach ($members as $member) {
-        $memberId = (int) ($member['id'] ?? 0);
+    foreach ($membersByUser as $memberId => $member) {
         $rows[] = ['user' => $member, 'value' => round((float) ($valuesByUser[$memberId] ?? 0), 2)];
     }
     usort($rows, static function (array $left, array $right): int {
@@ -496,6 +692,44 @@ function comp_squad_member_values(PDO $pdo, int $squadId, string $metric, string
     });
 
     return $rows;
+}
+
+/** Recent completed workouts that happened while the user belonged to the squad. */
+function comp_squad_recent_workouts(PDO $pdo, int $squadId, string $rangeStart, string $rangeEnd, int $limit = 4): array
+{
+    $windows = comp_squad_membership_datetime_windows($pdo, $squadId, $rangeStart, $rangeEnd);
+    $conditions = [];
+    $params = [];
+    foreach (array_slice($windows, 0, 200) as $index => $window) {
+        $memberId = (int) (($window['user'] ?? [])['id'] ?? 0);
+        $startAt = trim((string) ($window['start_at'] ?? ''));
+        $endAt = trim((string) ($window['end_exclusive_at'] ?? ''));
+        if ($memberId <= 0 || $startAt === '' || $endAt === '' || $startAt >= $endAt) {
+            continue;
+        }
+        $userKey = ':activity_user_' . $index;
+        $startKey = ':activity_start_' . $index;
+        $endKey = ':activity_end_' . $index;
+        $conditions[] = '(s.user_id = ' . $userKey . ' AND s.started_at >= ' . $startKey . ' AND s.started_at < ' . $endKey . ')';
+        $params[$userKey] = $memberId;
+        $params[$startKey] = $startAt;
+        $params[$endKey] = $endAt;
+    }
+    if ($conditions === []) {
+        return [];
+    }
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT DISTINCT s.id, s.title, s.started_at, s.ended_at,
+                u.id AS user_id, u.username, u.display_name, u.avatar_path, u.avatar_frame
+         FROM workout_sessions s
+         JOIN users u ON u.id = s.user_id
+         WHERE s.status = "completed" AND (' . implode(' OR ', $conditions) . ')
+         ORDER BY s.started_at DESC, s.id DESC
+         LIMIT ' . max(1, min(12, $limit)),
+        $params
+    );
 }
 
 /** Competition view model: names, aggregate values, leader. */
@@ -518,11 +752,17 @@ function comp_standing(PDO $pdo, array $config, array $comp): array
         static fn(array $user): array => ['user' => $user, 'value' => null],
         squad_member_users($pdo, (int) $comp['opponent_squad_id'])
     );
+    $challengerActivity = [];
+    $opponentActivity = [];
     if ($status === 'active' || $status === 'completed') {
         $challengerMembers = comp_squad_member_values($pdo, (int) $comp['challenger_squad_id'], $metric, $rangeStart, $rangeEnd);
         $opponentMembers = comp_squad_member_values($pdo, (int) $comp['opponent_squad_id'], $metric, $rangeStart, $rangeEnd);
         $cVal = round(array_sum(array_map(static fn(array $row): float => (float) ($row['value'] ?? 0), $challengerMembers)), 2);
         $oVal = round(array_sum(array_map(static fn(array $row): float => (float) ($row['value'] ?? 0), $opponentMembers)), 2);
+        if ($status === 'active') {
+            $challengerActivity = comp_squad_recent_workouts($pdo, (int) $comp['challenger_squad_id'], $rangeStart, $rangeEnd, 4);
+            $opponentActivity = comp_squad_recent_workouts($pdo, (int) $comp['opponent_squad_id'], $rangeStart, $rangeEnd, 4);
+        }
     }
 
     return [
@@ -532,6 +772,8 @@ function comp_standing(PDO $pdo, array $config, array $comp): array
         'opponent_value' => $oVal,
         'challenger_members' => $challengerMembers,
         'opponent_members' => $opponentMembers,
+        'challenger_activity' => $challengerActivity,
+        'opponent_activity' => $opponentActivity,
     ];
 }
 

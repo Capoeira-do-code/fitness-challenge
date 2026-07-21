@@ -3219,6 +3219,79 @@ function wk_metric_over_range(PDO $pdo, int $userId, string $metric, string $sta
     return 0.0;
 }
 
+/** Workout metric over an exact half-open timestamp window [start, end). */
+function wk_metric_over_datetime_range(PDO $pdo, int $userId, string $metric, string $startAt, string $endExclusiveAt): float
+{
+    return wk_metric_over_datetime_windows($pdo, $userId, $metric, [[
+        'start_at' => $startAt,
+        'end_exclusive_at' => $endExclusiveAt,
+    ]]);
+}
+
+/** Workout metric over the union of exact half-open timestamp windows. */
+function wk_metric_over_datetime_windows(PDO $pdo, int $userId, string $metric, array $windows): float
+{
+    if ($userId <= 0 || !in_array($metric, ['wk_days', 'wk_sessions', 'wk_volume'], true)) {
+        return 0.0;
+    }
+
+    $conditions = [];
+    $params = [':u' => $userId];
+    foreach (array_slice($windows, 0, 200) as $index => $window) {
+        $startAt = trim((string) ($window['start_at'] ?? ''));
+        $endExclusiveAt = trim((string) ($window['end_exclusive_at'] ?? ''));
+        if ($startAt === '' || $endExclusiveAt === '' || $startAt >= $endExclusiveAt) {
+            continue;
+        }
+        $startKey = ':window_start_' . $index;
+        $endKey = ':window_end_' . $index;
+        $conditions[] = '(s.started_at >= ' . $startKey . ' AND s.started_at < ' . $endKey . ')';
+        $params[$startKey] = $startAt;
+        $params[$endKey] = $endExclusiveAt;
+    }
+    if ($conditions === []) {
+        return 0.0;
+    }
+    $windowSql = '(' . implode(' OR ', $conditions) . ')';
+
+    try {
+        if ($metric === 'wk_days') {
+            $row = db_fetch_one(
+                $pdo,
+                'SELECT COUNT(DISTINCT DATE(s.started_at)) AS v FROM workout_sessions s
+                 WHERE s.user_id = :u AND s.status = \'completed\' AND ' . $windowSql,
+                $params
+            );
+            return (float) ($row['v'] ?? 0);
+        }
+        if ($metric === 'wk_sessions') {
+            $row = db_fetch_one(
+                $pdo,
+                'SELECT COUNT(*) AS v FROM workout_sessions s
+                 WHERE s.user_id = :u AND s.status = \'completed\' AND ' . $windowSql,
+                $params
+            );
+            return (float) ($row['v'] ?? 0);
+        }
+        if ($metric === 'wk_volume') {
+            $row = db_fetch_one(
+                $pdo,
+                'SELECT COALESCE(SUM(CASE WHEN ws.completed = 1 AND ws.weight IS NOT NULL AND ws.reps IS NOT NULL THEN ws.weight * ws.reps ELSE 0 END), 0) AS v
+                 FROM workout_sessions s
+                 JOIN session_exercises se ON se.session_id = s.id
+                 JOIN workout_sets ws ON ws.session_exercise_id = se.id
+                 WHERE s.user_id = :u AND s.status = \'completed\' AND ' . $windowSql,
+                $params
+            );
+            return (float) ($row['v'] ?? 0);
+        }
+    } catch (Throwable) {
+        return 0.0;
+    }
+
+    return 0.0;
+}
+
 /**
  * Render the <optgroup> of a user's routines for the daily-log "Workout type"
  * selector (#13). Values are "routine:<id>"; normalize_workout_row() resolves

@@ -6,6 +6,7 @@ $friendsList = is_array($friendsList ?? null) ? array_values((array) $friendsLis
 $friendsIncoming = is_array($friendsIncoming ?? null) ? array_values((array) $friendsIncoming) : [];
 $friendsOutgoing = is_array($friendsOutgoing ?? null) ? array_values((array) $friendsOutgoing) : [];
 $friendsAddable = is_array($friendsAddable ?? null) ? array_values((array) $friendsAddable) : [];
+$friendsAddableCount = max(0, (int) ($friendsAddableCount ?? count($friendsAddable)));
 $friendCompare = is_array($friendCompare ?? null) ? (array) $friendCompare : null;
 
 $friendProfileUrl = static function (array $user): string {
@@ -85,12 +86,12 @@ $fmtVal = static function (string $fmt, $v): string {
         <span class="badge"><?= count($friendsList) ?> <?= e(t('friends.count_label')) ?></span>
     </div>
 
-    <article class="panel friends-panel friend-discovery-panel" data-friend-discovery>
+    <article class="panel friends-panel friend-discovery-panel" data-friend-discovery data-friend-search-endpoint="/?page=api_friend_search" data-friend-csrf="<?= e(csrf_token()) ?>" data-friend-add-label="<?= e(t('friends.add')) ?>" data-friend-empty-label="<?= e(t('friends.no_search_results')) ?>">
         <div class="friend-discovery-head">
             <div><p class="eyebrow"><?= e(t('friends.discover')) ?></p><h2><?= e(t('friends.add_title')) ?></h2><p><?= e(t('friends.search_hint')) ?></p></div>
-            <span class="badge"><?= count($friendsAddable) ?></span>
+            <span class="badge"><?= $friendsAddableCount ?></span>
         </div>
-        <?php if ($friendsAddable === []): ?>
+        <?php if ($friendsAddableCount === 0): ?>
             <p class="muted friend-discovery-empty"><?= e(t('friends.add_none')) ?></p>
         <?php else: ?>
             <label class="friend-search-box">

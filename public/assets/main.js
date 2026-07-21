@@ -5231,33 +5231,126 @@
 
     const initWorkoutLibraryFilters = () => {
         const panel = document.querySelector('[data-workout-filter-panel]');
-        const openButton = document.querySelector('[data-workout-filter-open]');
-        if (!(panel instanceof HTMLElement) || !(openButton instanceof HTMLButtonElement)) {
-            return;
-        }
-        const closeButton = panel.querySelector('[data-workout-filter-close]');
-        const setOpen = (open) => {
-            const mobileSheet = window.matchMedia('(max-width: 700px)').matches;
-            panel.classList.toggle('is-open', open);
-            panel.setAttribute('aria-hidden', mobileSheet && !open ? 'true' : 'false');
-            document.body.classList.toggle('has-workout-filter-sheet', open);
-            if (open) {
-                window.requestAnimationFrame(() => panel.querySelector('select, input, button')?.focus());
-            }
-        };
-        if (panel.dataset.workoutFilterReady === '1') {
-            return;
-        }
-        panel.dataset.workoutFilterReady = '1';
-        openButton.addEventListener('click', () => setOpen(true));
-        closeButton?.addEventListener('click', () => setOpen(false));
-        document.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape' && panel.classList.contains('is-open')) {
+        const openButtons = Array.from(document.querySelectorAll('[data-workout-filter-open]'))
+            .filter((button) => button instanceof HTMLButtonElement);
+        if (panel instanceof HTMLElement && openButtons.length > 0) {
+            const closeButton = panel.querySelector('[data-workout-filter-close]');
+            const setOpen = (open) => {
+                const mobileSheet = window.matchMedia('(max-width: 899px)').matches;
+                if (open && mobileSheet && panel.parentElement !== document.body) {
+                    // A transformed app shell changes the containing block of
+                    // position:fixed and can leave the sheet below the viewport.
+                    document.body.append(panel);
+                }
+                panel.classList.toggle('is-open', open);
+                panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+                openButtons.forEach((button) => button.setAttribute('aria-expanded', open ? 'true' : 'false'));
+                document.body.classList.toggle('has-workout-filter-sheet', mobileSheet && open);
+                if (open) {
+                    window.requestAnimationFrame(() => panel.querySelector('select, input, button')?.focus());
+                }
+            };
+            if (panel.dataset.workoutFilterReady !== '1') {
+                panel.dataset.workoutFilterReady = '1';
+                openButtons.forEach((button) => button.addEventListener('click', () => setOpen(!panel.classList.contains('is-open'))));
+                closeButton?.addEventListener('click', () => setOpen(false));
+                document.addEventListener('pointerdown', (event) => {
+                    if (!panel.classList.contains('is-open') || !window.matchMedia('(max-width: 899px)').matches) {
+                        return;
+                    }
+                    const target = event.target;
+                    if (target instanceof Node
+                        && !panel.contains(target)
+                        && !openButtons.some((button) => button.contains(target))) {
+                        setOpen(false);
+                    }
+                });
+                document.addEventListener('keydown', (event) => {
+                    if (event.key === 'Escape' && panel.classList.contains('is-open')) {
+                        setOpen(false);
+                        openButtons.find((button) => button.offsetParent !== null)?.focus();
+                    }
+                });
                 setOpen(false);
-                openButton.focus();
             }
-        });
-        setOpen(false);
+        }
+
+        const searchPanel = document.querySelector('[data-workout-search-panel]');
+        const searchButtons = Array.from(document.querySelectorAll('[data-workout-search-toggle]'))
+            .filter((button) => button instanceof HTMLButtonElement);
+        if (searchPanel instanceof HTMLElement && searchButtons.length > 0 && searchPanel.dataset.workoutSearchReady !== '1') {
+            searchPanel.dataset.workoutSearchReady = '1';
+            const searchInput = searchPanel.querySelector('input[type="search"]');
+            const setSearchOpen = (open) => {
+                searchPanel.classList.toggle('is-open', open);
+                searchPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
+                searchButtons.forEach((button) => button.setAttribute('aria-expanded', open ? 'true' : 'false'));
+                if (open) {
+                    window.requestAnimationFrame(() => searchInput?.focus());
+                }
+            };
+            searchButtons.forEach((button) => button.addEventListener('click', () => setSearchOpen(!searchPanel.classList.contains('is-open'))));
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && searchPanel.classList.contains('is-open')) {
+                    setSearchOpen(false);
+                    searchButtons.find((button) => button.offsetParent !== null)?.focus();
+                }
+            });
+            if (searchInput instanceof HTMLInputElement && searchInput.value.trim() !== '') {
+                setSearchOpen(true);
+            }
+        }
+    };
+
+    const initWorkoutRoutinePicker = () => {
+        const picker = document.querySelector('[data-workout-routine-picker]');
+        if (picker instanceof HTMLElement && picker.dataset.workoutRoutinePickerReady !== '1') {
+            const form = picker.querySelector('[data-workout-routine-picker-form]');
+            const exerciseInput = picker.querySelector('[data-workout-routine-picker-exercise]');
+            const pickerCopy = picker.querySelector('[data-workout-routine-picker-copy]');
+            const submit = picker.querySelector('[data-workout-routine-picker-submit]');
+            const routineInputs = Array.from(picker.querySelectorAll('input[name="routine_id"]'))
+                .filter((input) => input instanceof HTMLInputElement);
+            const triggers = Array.from(document.querySelectorAll('[data-workout-routine-picker-open]'))
+                .filter((button) => button instanceof HTMLButtonElement);
+            const singleRoutine = picker.dataset.singleRoutine === '1';
+            const defaultCopy = pickerCopy?.textContent || '';
+
+            const syncSubmit = () => {
+                if (submit instanceof HTMLButtonElement) {
+                    submit.disabled = !routineInputs.some((input) => input.checked);
+                }
+            };
+
+            triggers.forEach((trigger) => trigger.addEventListener('click', () => {
+                if (exerciseInput instanceof HTMLInputElement) {
+                    exerciseInput.value = trigger.dataset.exerciseId || '';
+                }
+                if (pickerCopy instanceof HTMLElement) {
+                    const exerciseName = String(trigger.dataset.exerciseName || '').trim();
+                    pickerCopy.textContent = exerciseName !== '' ? `${defaultCopy}: ${exerciseName}` : defaultCopy;
+                }
+                if (!singleRoutine) {
+                    routineInputs.forEach((input) => { input.checked = false; });
+                }
+                syncSubmit();
+            }));
+            routineInputs.forEach((input) => input.addEventListener('change', syncSubmit));
+            form?.addEventListener('submit', () => {
+                if (submit instanceof HTMLButtonElement) {
+                    submit.disabled = true;
+                    submit.classList.add('is-loading');
+                }
+            });
+            picker.dataset.workoutRoutinePickerReady = '1';
+            syncSubmit();
+        }
+
+        const successModal = document.querySelector('[data-workout-add-success]');
+        if (successModal instanceof HTMLElement && successModal.dataset.workoutAddSuccessReady !== '1') {
+            successModal.dataset.workoutAddSuccessReady = '1';
+            window.requestAnimationFrame(() => window.AppOverlay?.open(successModal));
+        }
     };
 
     const initContextualBack = () => {
@@ -5330,6 +5423,7 @@
         safeInit(initCollapsibleLists);
         safeInit(initWorkoutHubTabs);
         safeInit(initWorkoutLibraryFilters);
+        safeInit(initWorkoutRoutinePicker);
         safeInit(initSpaNavigation);
         safeInit(initAdminAchievementFields);
         safeInit(initAchievementInfoModal);
@@ -5364,42 +5458,128 @@
     }
 })();
 
-/* Friend discovery: instant Instagram-style filtering over server-approved users. */
+/* Friend discovery: debounced, server-approved Instagram-style suggestions. */
 (function () {
     'use strict';
-
-    function normalized(value) {
-        var text = String(value || '').toLocaleLowerCase();
-        return typeof text.normalize === 'function'
-            ? text.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-            : text;
-    }
 
     function initFriendDiscovery() {
         document.querySelectorAll('[data-friend-discovery]').forEach(function (panel) {
             if (panel.dataset.friendDiscoveryReady === '1') return;
             var input = panel.querySelector('[data-friend-search]');
             if (!(input instanceof HTMLInputElement)) return;
-            var candidates = Array.prototype.slice.call(panel.querySelectorAll('[data-friend-candidate]'));
+            var list = panel.querySelector('[data-friend-suggestion-list]');
+            if (!(list instanceof HTMLElement)) return;
             var empty = panel.querySelector('[data-friend-search-empty]');
+            var endpoint = panel.dataset.friendSearchEndpoint || '/?page=api_friend_search';
+            var csrf = panel.dataset.friendCsrf || '';
+            var addLabel = panel.dataset.friendAddLabel || 'Add';
+            var emptyLabel = panel.dataset.friendEmptyLabel || '';
+            var initialMarkup = list.innerHTML;
+            var timer = 0;
+            var activeRequest = null;
             panel.dataset.friendDiscoveryReady = '1';
 
-            function filterCandidates() {
-                var query = normalized(input.value.trim());
-                var visible = 0;
-                candidates.forEach(function (candidate, index) {
-                    var matches = query === ''
-                        ? index < 8
-                        : normalized(candidate.dataset.friendSearchValue).includes(query);
-                    candidate.hidden = !matches;
-                    if (matches) visible++;
-                });
-                if (empty) empty.hidden = visible !== 0;
+            function appendHidden(form, name, value) {
+                var field = document.createElement('input');
+                field.type = 'hidden';
+                field.name = name;
+                field.value = value;
+                form.appendChild(field);
             }
 
-            input.addEventListener('input', filterCandidates);
-            input.addEventListener('search', filterCandidates);
-            filterCandidates();
+            function renderUsers(users) {
+                list.innerHTML = '';
+                (Array.isArray(users) ? users : []).forEach(function (user) {
+                    var row = document.createElement('div');
+                    row.className = 'friend-suggestion-row';
+                    row.dataset.friendCandidate = '1';
+
+                    var profile = document.createElement('a');
+                    profile.className = 'friend-suggestion-profile';
+                    profile.href = '/?page=profile&user_id=' + encodeURIComponent(String(user.id || 0));
+                    profile.dataset.spaLink = '';
+                    if (user.avatar_url) {
+                        var avatar = document.createElement('img');
+                        avatar.className = 'member-avatar';
+                        avatar.src = String(user.avatar_url);
+                        avatar.alt = String(user.display_name || '');
+                        avatar.loading = 'lazy';
+                        profile.appendChild(avatar);
+                    } else {
+                        var initials = document.createElement('span');
+                        initials.className = 'member-avatar member-avatar-initials';
+                        initials.textContent = String(user.initials || '?');
+                        profile.appendChild(initials);
+                    }
+                    var identity = document.createElement('span');
+                    var name = document.createElement('strong');
+                    name.textContent = String(user.display_name || user.username || '');
+                    var username = document.createElement('small');
+                    username.textContent = '@' + String(user.username || '');
+                    identity.append(name, username);
+                    profile.appendChild(identity);
+
+                    var form = document.createElement('form');
+                    form.method = 'post';
+                    form.action = '/?page=friends';
+                    form.className = 'inline-form';
+                    appendHidden(form, 'csrf_token', csrf);
+                    appendHidden(form, 'action', 'friend_request');
+                    appendHidden(form, 'user_id', String(user.id || 0));
+                    var button = document.createElement('button');
+                    button.className = 'btn btn-primary small';
+                    button.type = 'submit';
+                    button.textContent = addLabel;
+                    form.appendChild(button);
+                    row.append(profile, form);
+                    list.appendChild(row);
+                });
+                var noResults = document.createElement('p');
+                noResults.className = 'friend-search-empty';
+                noResults.dataset.friendSearchEmpty = '';
+                noResults.textContent = emptyLabel;
+                noResults.hidden = Array.isArray(users) && users.length > 0;
+                list.appendChild(noResults);
+                empty = noResults;
+            }
+
+            function search() {
+                window.clearTimeout(timer);
+                var query = input.value.trim();
+                if (activeRequest) activeRequest.abort();
+                if (query === '') {
+                    list.innerHTML = initialMarkup;
+                    empty = list.querySelector('[data-friend-search-empty]');
+                    return;
+                }
+                if (query.length < 2) {
+                    renderUsers([]);
+                    return;
+                }
+                timer = window.setTimeout(function () {
+                    activeRequest = new AbortController();
+                    panel.classList.add('is-searching');
+                    fetch(endpoint + '&q=' + encodeURIComponent(query), {
+                        headers: { 'Accept': 'application/json' },
+                        credentials: 'same-origin',
+                        signal: activeRequest.signal
+                    }).then(function (response) {
+                        if (!response.ok) throw new Error('search_failed');
+                        return response.json();
+                    }).then(function (payload) {
+                        if (input.value.trim() !== query) return;
+                        renderUsers(payload && payload.users);
+                    }).catch(function (error) {
+                        if (error && error.name === 'AbortError') return;
+                        if (empty) empty.hidden = false;
+                    }).finally(function () {
+                        panel.classList.remove('is-searching');
+                    });
+                }, 260);
+            }
+
+            input.addEventListener('input', search);
+            input.addEventListener('search', search);
         });
     }
 

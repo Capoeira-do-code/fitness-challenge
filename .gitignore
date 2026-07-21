@@ -1,5 +1,13 @@
 .tools/
 .env.live
+.artifacts/
+e2e-report/
+**/__pycache__/
+*.py[cod]
+
+# User/runtime media must live in backups, never in source control.
+public/uploads/*
+!public/uploads/.gitkeep
 
 # Runtime storage artifacts (keep directory scaffold)
 storage/

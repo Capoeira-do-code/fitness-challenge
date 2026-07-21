@@ -60,12 +60,12 @@ En `docker-compose.yml`:
 
 ## Usuarios iniciales
 
-Se crean automáticamente si la DB está vacía:
+Solo se crean cuando la DB está vacía y `SEED_PASSWORD` se ha definido expresamente:
 
 - `roberto`
 - `catalina`
 
-Contraseña inicial: variable `SEED_PASSWORD` (por defecto `ChangeMe123!`).
+Contraseña inicial: define expresamente `SEED_PASSWORD`. Sin esa variable no se crean cuentas seed en una base nueva.
 Recomendación: entrar con cada usuario y cambiar contraseña desde `Perfil`.
 
 ## Reglas implementadas
@@ -111,6 +111,8 @@ Script para operacion live estandar con Docker Nginx + PHP-FPM:
 python bin/live_manager.py provision
 python bin/live_manager.py deploy
 python bin/live_manager.py verify
+python bin/live_manager.py runtime
+python bin/live_manager.py runtime-status
 ```
 
 Flujo recomendado en live:
@@ -178,7 +180,7 @@ Variables opcionales para credenciales de test:
 - `E2E_USER`, `E2E_PASS`
 - `E2E_SECOND_USER`, `E2E_SECOND_PASS`
 
-Si no se definen, usa seed users y `SEED_PASSWORD` (o `ChangeMe123!`).
+Las cuentas seed solo se crean cuando `SEED_PASSWORD` está definida expresamente.
 
 ## PHP Runtime Manager (instalador + UI dedicada)
 

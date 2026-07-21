@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 function auth_cookie_secure_flag(): bool
 {
-    return !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+        return true;
+    }
+
+    $forwardedProto = strtolower(trim((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));
+    return $forwardedProto !== '' && trim(explode(',', $forwardedProto)[0]) === 'https';
 }
 
 function remember_me_cookie_name(array $config): string

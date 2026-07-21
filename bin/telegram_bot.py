@@ -8,9 +8,8 @@ loads), reading config and users from the same SQLite database the web app uses:
 - Sends each linked user a daily reminder (only if the day is still unlogged) and
   an optional motivation message, at their configured time.
 
-Config (bot token, per-user preferences) is managed from the web app
-(Admin > App and Settings). Enable "Use the standalone Python bot" in Admin > App
-so the PHP app stops polling/sending and this process owns all Telegram I/O.
+Config (bot token, per-user preferences) is managed from the web app. Runtime
+ownership is coordinated automatically through an expiring SQLite lease.
 
 Standard library only, no dependencies. Requires outbound HTTPS.
 
@@ -35,6 +34,8 @@ import math
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
+
+from runtime_lease import RuntimeLease, maintenance_shared_lock, runtime_owner_id
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = ROOT / "storage" / "fitness.sqlite"
@@ -179,6 +180,19 @@ def log(message: str) -> None:
     print(f"[{now_iso()}] {message}", flush=True)
 
 
+def redact_secrets(message: object, *secrets: str) -> str:
+    safe = str(message)
+    for secret in secrets:
+        if secret:
+            safe = safe.replace(secret, "[redacted]")
+    return re.sub(
+        r"https://api\.telegram\.org/bot[^/\s]+",
+        f"{TELEGRAM_API_BASE}/bot[redacted]",
+        safe,
+        flags=re.IGNORECASE,
+    )
+
+
 def T(locale: str, key: str, **params) -> str:
     locale = (locale or "en").lower()
     table = MESSAGES.get(locale) or MESSAGES["en"]
@@ -197,9 +211,14 @@ def fmt_int(value) -> str:
 
 class BotDB:
     def __init__(self, path: Path):
+        self._closed = False
+        self._maintenance_lock = maintenance_shared_lock(path)
+        self._maintenance_lock.__enter__()
         self.conn = sqlite3.connect(str(path), timeout=10)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA busy_timeout = 5000")
+        self.conn.execute("PRAGMA journal_mode = WAL")
+        self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS telegram_progress ("
             "user_id INTEGER PRIMARY KEY, last_streak_milestone INTEGER DEFAULT 0)"
@@ -212,6 +231,15 @@ class BotDB:
                 "ALTER TABLE users ADD COLUMN telegram_notify_social INTEGER NOT NULL DEFAULT 1"
             )
         self.conn.commit()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self.conn.close()
+        finally:
+            self._maintenance_lock.__exit__(None, None, None)
 
     def milestone(self, user_id: int) -> int:
         row = self.conn.execute(
@@ -461,7 +489,7 @@ def api_call(token: str, method: str, params: Optional[dict] = None, timeout: in
         except Exception:
             return None, f"http_{exc.code}"
     except Exception as exc:
-        return None, str(exc)
+        return None, redact_secrets(exc, token)
     if not body.get("ok"):
         return None, str(body.get("description", "telegram_error"))
     return body.get("result"), None
@@ -1198,7 +1226,9 @@ def run_forever(db_path: Path, verbose: bool) -> int:
     log(f"Timezone: {TZ if TZ is not None else 'system local (zoneinfo unavailable)'}")
     last_reminder = 0.0
     started = False
+    owner_id = runtime_owner_id("telegram")
     while True:
+        lease = None
         try:
             if not db_path.exists():
                 if verbose:
@@ -1210,18 +1240,19 @@ def run_forever(db_path: Path, verbose: bool) -> int:
             if not settings["enabled"] or not settings["token"]:
                 if verbose:
                     log("bot disabled or no token; waiting...")
-                db.conn.close()
+                db.close()
+                time.sleep(10)
+                continue
+            lease = RuntimeLease(db.conn, "telegram", owner_id, ttl_seconds=90)
+            if not lease.acquire():
+                if verbose:
+                    log("another Telegram worker owns the active lease; waiting...")
+                db.close()
                 time.sleep(10)
                 continue
             if not started:
                 ensure_no_webhook(settings["token"])
                 claim_ownership(db, settings)
-                if not settings["external"]:
-                    # Claim ownership of Telegram I/O so the PHP scheduler defers
-                    # and there is no double polling/sending while this bot runs.
-                    db.set_setting("telegram_external_bot", "1")
-                    settings["external"] = True
-                    log("enabled external-bot mode so the web app defers to this process")
                 log("polling for Telegram updates... (link users from Settings, then press Start)")
                 started = True
 
@@ -1234,12 +1265,25 @@ def run_forever(db_path: Path, verbose: bool) -> int:
                 run_reminders(db, settings)
                 last_reminder = time.time()
 
-            db.conn.close()
+            lease.heartbeat(success=True)
+            db.close()
         except KeyboardInterrupt:
             log("stopping (keyboard interrupt).")
             return 0
         except Exception as exc:  # noqa: BLE001
-            log(f"loop error: {exc}")
+            token = str((settings if 'settings' in locals() else {}).get("token", ""))
+            safe_error = redact_secrets(exc, token)
+            if lease is not None:
+                try:
+                    lease.heartbeat(error=safe_error)
+                except Exception:
+                    pass
+            if 'db' in locals():
+                try:
+                    db.close()
+                except Exception:
+                    pass
+            log(f"loop error: {safe_error}")
             time.sleep(5)
 
 
@@ -1248,17 +1292,21 @@ def run_once(db_path: Path, verbose: bool) -> int:
     settings = db.settings()
     if not settings["enabled"] or not settings["token"]:
         log("bot disabled or no token; nothing to do.")
-        db.conn.close()
+        db.close()
+        return 0
+    lease = RuntimeLease(db.conn, "telegram", runtime_owner_id("telegram-once"), ttl_seconds=90)
+    if not lease.acquire():
+        log("another Telegram worker owns the active lease; skipping.")
+        db.close()
         return 0
     ensure_no_webhook(settings["token"])
     claim_ownership(db, settings)
-    if not settings["external"]:
-        db.set_setting("telegram_external_bot", "1")
-        settings["external"] = True
     poll_once(db, settings, 0)
     drain_outbox(db, settings)
     run_reminders(db, settings)
-    db.conn.close()
+    lease.heartbeat(success=True)
+    lease.release()
+    db.close()
     return 0
 
 

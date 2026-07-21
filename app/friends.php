@@ -216,6 +216,47 @@ function friends_addable_users(PDO $pdo, int $me): array
     );
 }
 
+function friends_addable_count(PDO $pdo, int $me): int
+{
+    $row = db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS total FROM users
+         WHERE active = 1 AND id <> :me
+           AND id NOT IN (
+               SELECT CASE WHEN requester_id = :me THEN addressee_id ELSE requester_id END
+               FROM friendships WHERE requester_id = :me OR addressee_id = :me
+           )',
+        [':me' => $me]
+    );
+    return max(0, (int) ($row['total'] ?? 0));
+}
+
+function friends_search_addable_users(PDO $pdo, int $me, string $query, int $limit = 10): array
+{
+    $limit = max(1, min(10, $limit));
+    $query = trim($query);
+    $params = [':me' => $me];
+    $search = '';
+    if ($query !== '') {
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $query);
+        $params[':query'] = '%' . $escaped . '%';
+        $search = ' AND (display_name LIKE :query ESCAPE "\\" OR username LIKE :query ESCAPE "\\")';
+    }
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT * FROM users
+         WHERE active = 1 AND id <> :me
+           AND id NOT IN (
+               SELECT CASE WHEN requester_id = :me THEN addressee_id ELSE requester_id END
+               FROM friendships WHERE requester_id = :me OR addressee_id = :me
+           )' . $search . '
+         ORDER BY display_name COLLATE NOCASE ASC
+         LIMIT ' . $limit,
+        $params
+    );
+}
+
 function friends_count(PDO $pdo, int $me): int
 {
     $row = db_fetch_one(

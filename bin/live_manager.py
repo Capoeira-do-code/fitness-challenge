@@ -4,9 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import platform
+import re
 import shutil
+import signal
+import sqlite3
 import ssl
 import subprocess
 import sys
@@ -20,6 +24,7 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ENV_FILE = ROOT / ".env.live"
 DEFAULT_DB_PATH = "/var/www/storage/fitness.sqlite"
+DEFAULT_LOCAL_DB_PATH = ROOT / "storage" / "fitness.sqlite"
 
 
 class LiveManagerError(RuntimeError):
@@ -485,6 +490,152 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return verify_base_url(active_base, require_gzip=bool(args.require_gzip))
 
 
+def runtime_status_rows(db_path: Path) -> list[dict[str, object]]:
+    if not db_path.exists():
+        return []
+    connection = sqlite3.connect(str(db_path), timeout=5)
+    connection.row_factory = sqlite3.Row
+    try:
+        table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'integration_runtime_leases'"
+        ).fetchone()
+        if table is None:
+            return []
+        rows = connection.execute(
+            "SELECT service, owner_id, heartbeat_at, lease_until, last_success_at, last_error, "
+            "CASE WHEN lease_until > datetime('now') THEN 1 ELSE 0 END AS active, "
+            "CASE WHEN COALESCE(last_error, '') != '' THEN 'error' "
+            "WHEN lease_until <= datetime('now') THEN 'stopped' "
+            "WHEN heartbeat_at <= datetime('now', '-120 seconds') THEN 'delayed' "
+            "ELSE 'active' END AS state "
+            "FROM integration_runtime_leases ORDER BY service"
+        ).fetchall()
+        secrets: list[str] = []
+        try:
+            secret_rows = connection.execute(
+                "SELECT setting_value FROM app_settings "
+                "WHERE setting_key IN ('telegram_bot_token', 'notion_token', 'notion_oauth_client_secret')"
+            ).fetchall()
+            secrets = [str(row[0]) for row in secret_rows if row[0]]
+        except sqlite3.OperationalError:
+            pass
+
+        sanitized: list[dict[str, object]] = []
+        for row in rows:
+            item = dict(row)
+            error = str(item.get("last_error") or "")
+            for secret in secrets:
+                error = error.replace(secret, "[redacted]")
+            error = re.sub(
+                r"https://api\.telegram\.org/bot[^/\s]+",
+                "https://api.telegram.org/bot[redacted]",
+                error,
+                flags=re.IGNORECASE,
+            )
+            item["last_error"] = error
+            sanitized.append(item)
+        return sanitized
+    finally:
+        connection.close()
+
+
+def print_runtime_status(db_path: Path) -> None:
+    rows = runtime_status_rows(db_path)
+    if not rows:
+        print(f"[runtime] no worker leases found in {db_path}")
+        return
+    for row in rows:
+        state = str(row.get("state") or "stopped")
+        heartbeat = str(row.get("heartbeat_at") or "never")
+        error = str(row.get("last_error") or "").strip()
+        suffix = f" error={error}" if error else ""
+        print(f"[runtime] {row.get('service')}: {state}, heartbeat={heartbeat}{suffix}")
+
+
+def cmd_runtime_status(args: argparse.Namespace) -> int:
+    db_path = Path(args.db).expanduser().resolve()
+    if bool(args.json):
+        print(json.dumps({"db": str(db_path), "workers": runtime_status_rows(db_path)}))
+    else:
+        print_runtime_status(db_path)
+    return 0
+
+
+def cmd_runtime(args: argparse.Namespace) -> int:
+    db_path = Path(args.db).expanduser().resolve()
+    runtime_env = os.environ.copy()
+    runtime_env["DB_PATH"] = str(db_path)
+    runtime_env.setdefault("REQUEST_SCHEDULERS_ENABLED", "0")
+    specs: dict[str, list[str]] = {}
+    if not args.no_telegram:
+        specs["telegram"] = [sys.executable, str(ROOT / "bin" / "telegram_bot.py"), "--db", str(db_path)]
+    if not args.no_notion:
+        specs["notion"] = [sys.executable, str(ROOT / "bin" / "notion_sync.py"), "--db", str(db_path)]
+    if args.verbose:
+        for command in specs.values():
+            command.append("--verbose")
+
+    processes: dict[str, subprocess.Popen] = {}
+    stopping = False
+
+    def stop_runtime(_signum=None, _frame=None) -> None:
+        nonlocal stopping
+        stopping = True
+
+    signal.signal(signal.SIGINT, stop_runtime)
+    signal.signal(signal.SIGTERM, stop_runtime)
+
+    def start_worker(name: str) -> None:
+        print(f"[runtime] starting {name}")
+        processes[name] = subprocess.Popen(specs[name], cwd=str(ROOT), env=runtime_env)
+
+    for worker_name in specs:
+        start_worker(worker_name)
+
+    backup_interval = max(15, int(args.backup_check_s))
+    last_backup_check = 0.0
+    last_status = 0.0
+    try:
+        while not stopping:
+            for name, process in list(processes.items()):
+                exit_code = process.poll()
+                if exit_code is not None:
+                    print(f"[runtime] {name} exited with {exit_code}; restarting")
+                    time.sleep(2)
+                    start_worker(name)
+
+            current = time.time()
+            if not args.no_backups and current - last_backup_check >= backup_interval:
+                last_backup_check = current
+                if command_exists("php") and db_path.exists():
+                    result = run_cmd(
+                        ["php", str(ROOT / "bin" / "backup.php"), "scheduled"],
+                        env=runtime_env,
+                        check=False,
+                        capture_output=True,
+                    )
+                    if result.returncode != 0:
+                        print("[runtime] backup scheduler error: " + (result.stdout or "unknown error").strip())
+                elif args.verbose:
+                    print("[runtime] backup scheduler waiting for PHP/database")
+
+            if current - last_status >= 60:
+                last_status = current
+                print_runtime_status(db_path)
+            time.sleep(1)
+    finally:
+        for name, process in processes.items():
+            if process.poll() is None:
+                print(f"[runtime] stopping {name}")
+                process.terminate()
+        for process in processes.values():
+            try:
+                process.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                process.kill()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Provision, deploy and verify live Docker runtime.")
     subparsers = parser.add_subparsers(dest="command")
@@ -531,6 +682,18 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--wait-timeout-s", type=int, default=120, help="Health wait timeout in seconds.")
     verify.add_argument("--wait-interval-ms", type=int, default=400, help="Health poll interval in ms.")
 
+    runtime = subparsers.add_parser("runtime", help="Supervise local Telegram, Notion and backup workers.")
+    runtime.add_argument("--db", default=str(DEFAULT_LOCAL_DB_PATH), help="Local SQLite database path.")
+    runtime.add_argument("--no-telegram", action="store_true", help="Do not start the Telegram worker.")
+    runtime.add_argument("--no-notion", action="store_true", help="Do not start the Notion worker.")
+    runtime.add_argument("--no-backups", action="store_true", help="Do not run the backup scheduler.")
+    runtime.add_argument("--backup-check-s", type=int, default=60, help="Seconds between scheduled-backup checks.")
+    runtime.add_argument("--verbose", action="store_true", help="Enable verbose worker output.")
+
+    runtime_status = subparsers.add_parser("runtime-status", help="Show local integration worker leases.")
+    runtime_status.add_argument("--db", default=str(DEFAULT_LOCAL_DB_PATH), help="Local SQLite database path.")
+    runtime_status.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
     return parser
 
 
@@ -546,6 +709,10 @@ def main() -> int:
             return cmd_deploy(args)
         if command == "verify":
             return cmd_verify(args)
+        if command == "runtime":
+            return cmd_runtime(args)
+        if command == "runtime-status":
+            return cmd_runtime_status(args)
         raise LiveManagerError(f"Unsupported command: {command}")
     except LiveManagerError as exc:
         print(f"[error] {exc}")
@@ -554,4 +721,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
