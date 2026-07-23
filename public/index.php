@@ -3848,6 +3848,17 @@ if ($page === 'workouts') {
         }
     } elseif ($requestedWorkoutView === 'stats') {
         $wkView = 'analytics';
+        // Read-only detail sub-page for a completed session (distinct from the
+        // editable session focus mode reached via session_id).
+        $statsDetailSessionId = max(0, (int) ($_GET['detail_session'] ?? 0));
+        $wkStatsSession = null;
+        $wkStatsSessionExercises = [];
+        if ($statsDetailSessionId > 0) {
+            $wkStatsSession = wk_session_get($pdo, $statsDetailSessionId, $meId);
+            if ($wkStatsSession !== null) {
+                $wkStatsSessionExercises = wk_session_exercises($pdo, $statsDetailSessionId);
+            }
+        }
         $wkStats = [
             'weekly' => wk_weekly_series($pdo, $meId, 8),
             'streak' => wk_streak_days($pdo, $meId),
@@ -3928,6 +3939,8 @@ if ($page === 'workouts') {
         'currentUser' => $currentUser,
         'wkView' => $wkView,
         'wkStats' => $wkStats,
+        'wkStatsSession' => $wkStatsSession ?? null,
+        'wkStatsSessionExercises' => $wkStatsSessionExercises ?? [],
         'wkRoutines' => wk_routines_for_user($pdo, $meId, true),
         'wkRoutine' => $wkRoutine,
         'wkRoutineExercises' => $wkRoutineExercises,

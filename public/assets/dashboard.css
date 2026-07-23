@@ -468,6 +468,12 @@ body[data-page="dashboard"] [data-dashboard-collapsible] .dashboard-training-ran
 body[data-page="dashboard"] [data-dashboard-collapsible] > .dashboard-training-rank-summary {
     margin: 0;
 }
+/* Widget body cards share one padding so their content aligns with the head (~10px) across widgets. */
+body[data-page="dashboard"] .dashboard-training-rank[data-dashboard-collapsible] > .dashboard-training-rank-summary,
+body[data-page="dashboard"] [data-dashboard-collapsible] > .dashboard-versus-body,
+body[data-page="dashboard"] [data-dashboard-collapsible] > .season-widget-overview {
+    padding: 0.55rem;
+}
 body[data-page="dashboard"] .dashboard-panel-head-actions {
     display: flex;
     min-width: 0;
