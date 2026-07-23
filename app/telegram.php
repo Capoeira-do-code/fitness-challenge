@@ -38,8 +38,8 @@ function telegram_linked_users(PDO $pdo): array
 {
     return db_fetch_all(
         $pdo,
-        "SELECT id, username, display_name, telegram_chat_id, telegram_reminders_enabled,
-                telegram_motivation_enabled, telegram_reminder_time
+        "SELECT id, username, display_name, avatar_path, updated_at, telegram_chat_id,
+                telegram_reminders_enabled, telegram_motivation_enabled, telegram_reminder_time
          FROM users
          WHERE telegram_chat_id IS NOT NULL AND TRIM(telegram_chat_id) <> ''
          ORDER BY display_name COLLATE NOCASE ASC"
@@ -78,15 +78,28 @@ function telegram_redact_secrets(string $message, string ...$secrets): string
 
 function telegram_update_settings(PDO $pdo, array $input, int $actorUserId): void
 {
-    $token = trim((string) ($input['telegram_bot_token'] ?? ''));
-    if ($token === '') {
-        $token = trim((string) (app_setting($pdo, 'telegram_bot_token', '') ?? ''));
+    if (array_key_exists('telegram_enabled_present', $input) || array_key_exists('telegram_enabled', $input)) {
+        set_app_setting($pdo, 'telegram_enabled', !empty($input['telegram_enabled']) ? '1' : '0', $actorUserId);
     }
-    set_app_setting($pdo, 'telegram_enabled', !empty($input['telegram_enabled']) ? '1' : '0', $actorUserId);
+
     // Ownership is automatic through expiring runtime leases.
     set_app_setting($pdo, 'telegram_external_bot', '0', $actorUserId);
-    set_app_setting($pdo, 'telegram_bot_token', $token, $actorUserId);
-    set_app_setting($pdo, 'telegram_bot_username', ltrim(trim((string) ($input['telegram_bot_username'] ?? '')), '@'), $actorUserId);
+
+    if (array_key_exists('telegram_bot_token', $input)) {
+        $token = trim((string) $input['telegram_bot_token']);
+        // An empty secret field deliberately means "keep the current secret".
+        if ($token !== '') {
+            set_app_setting($pdo, 'telegram_bot_token', $token, $actorUserId);
+        }
+    }
+    if (array_key_exists('telegram_bot_username', $input)) {
+        set_app_setting(
+            $pdo,
+            'telegram_bot_username',
+            ltrim(trim((string) $input['telegram_bot_username']), '@'),
+            $actorUserId
+        );
+    }
     if (array_key_exists('app_base_url', $input)) {
         $rawBaseUrl = trim((string) $input['app_base_url']);
         $normalizedBaseUrl = normalize_app_base_url($rawBaseUrl);

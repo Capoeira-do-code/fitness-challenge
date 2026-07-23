@@ -122,6 +122,7 @@ body[data-page="onboarding"] main.container { width: min(100%, 1040px); margin: 
 .onboarding-shell[data-onboarding-step="telegram"] .onboarding-step-icon { color: #0284c7; background: color-mix(in srgb, #0ea5e9 12%, var(--surface)); }
 .onboarding-shell[data-onboarding-step="challenge"] .onboarding-step-icon { color: #d97706; background: color-mix(in srgb, #f59e0b 12%, var(--surface)); }
 .onboarding-shell[data-onboarding-step="teams"] .onboarding-step-icon { color: #2563eb; background: color-mix(in srgb, #3b82f6 11%, var(--surface)); }
+.onboarding-shell[data-onboarding-step="install"] .onboarding-step-icon { color: #7c3aed; background: color-mix(in srgb, #8b5cf6 12%, var(--surface)); }
 .onboarding-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 9px; padding-top: 4px; }
 .onboarding-actions .btn { width: 100%; min-height: 44px; padding-block: 8px; font-size: 0.72rem; }
 
@@ -229,6 +230,55 @@ body[data-page="onboarding"] main.container { width: min(100%, 1040px); margin: 
 .onboarding-empty :is(p, strong) { margin: 0; }
 .onboarding-empty p { color: var(--muted); }
 
+/* Final optional step: install the PWA on a phone. */
+.onboarding-install { display: grid; gap: 10px; }
+.onboarding-install-hero { display: grid; grid-template-columns: 126px minmax(0, 1fr); align-items: center; gap: 18px; min-height: 206px; padding: 16px; overflow: hidden; border: 1px solid color-mix(in srgb, #8b5cf6 28%, var(--line)); border-radius: 20px; background: radial-gradient(circle at 0 100%, color-mix(in srgb, #8b5cf6 15%, transparent), transparent 44%), var(--surface-2); }
+.onboarding-install-phone { position: relative; display: grid; width: 116px; height: 184px; justify-self: center; align-content: center; justify-items: center; gap: 9px; padding: 20px 12px 13px; border: 5px solid color-mix(in srgb, var(--text) 88%, #10131a); border-radius: 26px; color: #fff; background: linear-gradient(160deg, #121826, #202a3c); box-shadow: 0 18px 34px rgba(15, 23, 42, 0.2); transform: rotate(-3deg); }
+.onboarding-install-phone-speaker { position: absolute; top: 7px; width: 30px; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.22); }
+.onboarding-install-app-icon { display: grid; width: 58px; height: 58px; place-items: center; overflow: hidden; border-radius: 17px; box-shadow: 0 9px 18px rgba(0, 0, 0, 0.25); }
+.onboarding-install-app-icon img { width: 100%; height: 100%; object-fit: cover; }
+.onboarding-install-app-name { max-width: 88px; overflow: hidden; font-size: 0.61rem; font-weight: 850; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.onboarding-install-app-bars { display: grid; width: 82px; gap: 5px; margin-top: 4px; }
+.onboarding-install-app-bars i { height: 5px; border-radius: 999px; background: rgba(255, 255, 255, 0.13); }
+.onboarding-install-app-bars i:nth-child(2) { width: 76%; }
+.onboarding-install-app-bars i:nth-child(3) { width: 54%; }
+.onboarding-install-copy { display: grid; min-width: 0; justify-items: start; gap: 7px; }
+.onboarding-install-copy :is(h3, p) { margin: 0; }
+.onboarding-install-copy h3 { font-size: 1.08rem; }
+.onboarding-install-copy p { max-width: 52ch; color: var(--muted); font-size: 0.7rem; line-height: 1.5; }
+.onboarding-install-status { display: inline-flex; min-height: 30px; align-items: center; gap: 7px; padding: 5px 9px; border-radius: 999px; color: #6d28d9; background: color-mix(in srgb, #8b5cf6 11%, var(--surface)); font-size: 0.59rem; font-weight: 850; }
+.onboarding-install-status i { width: 7px; height: 7px; border-radius: 50%; background: #8b5cf6; }
+.onboarding-install.is-installed .onboarding-install-status { color: #047857; background: color-mix(in srgb, #10b981 11%, var(--surface)); }
+.onboarding-install.is-installed .onboarding-install-status i { background: #10b981; }
+.onboarding-install-native { min-height: 44px; gap: 5px; margin-top: 3px; }
+.onboarding-install-native[hidden] { display: none !important; }
+.onboarding-install-instructions { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 17px; background: var(--surface-2); }
+.onboarding-install-instructions[hidden],
+.onboarding-install-done[hidden] { display: none !important; }
+.onboarding-install-instruction-head { display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: center; gap: 9px; }
+.onboarding-install-instruction-head > span { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 12px; color: #7c3aed; background: color-mix(in srgb, #8b5cf6 10%, var(--surface)); font-size: 1.02rem; font-weight: 800; }
+.onboarding-install-instruction-head svg { width: 18px; height: 18px; }
+.onboarding-install-instruction-head > div { display: grid; gap: 2px; }
+.onboarding-install-instruction-head strong { font-size: 0.75rem; }
+.onboarding-install-instruction-head small { color: var(--muted); font-size: 0.61rem; line-height: 1.35; }
+.onboarding-install-instructions ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
+.onboarding-install-instructions[data-pwa-install-instructions="android"] ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.onboarding-install-instructions li { display: grid; grid-template-columns: 25px minmax(0, 1fr) auto; align-items: center; gap: 7px; min-height: 50px; padding: 7px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.onboarding-install-instructions li b { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 8px; color: #7c3aed; background: color-mix(in srgb, #8b5cf6 10%, var(--surface)); font-size: 0.61rem; }
+.onboarding-install-instructions li span { font-size: 0.62rem; font-weight: 750; line-height: 1.3; }
+.onboarding-install-instructions li i { color: #7c3aed; font-size: 0.82rem; font-style: normal; font-weight: 850; }
+.onboarding-install-url { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+.onboarding-install-url input { min-width: 0; min-height: 44px; font-size: 16px; }
+.onboarding-install-url button { min-height: 44px; padding: 7px 11px; border: 1px solid color-mix(in srgb, #8b5cf6 28%, var(--line)); border-radius: 12px; color: #6d28d9; background: color-mix(in srgb, #8b5cf6 8%, var(--surface)); font-size: 0.65rem; font-weight: 850; cursor: pointer; }
+.onboarding-install-done { display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: center; gap: 10px; padding: 11px; border: 1px solid color-mix(in srgb, #10b981 30%, var(--line)); border-radius: 16px; background: color-mix(in srgb, #10b981 7%, var(--surface)); }
+.onboarding-install-done > span { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 13px; color: #059669; background: color-mix(in srgb, #10b981 12%, var(--surface)); }
+.onboarding-install-done svg { width: 20px; height: 20px; }
+.onboarding-install-done > div { display: grid; gap: 2px; }
+.onboarding-install-done strong { font-size: 0.75rem; }
+.onboarding-install-done small { color: var(--muted); font-size: 0.62rem; }
+.onboarding-install-note { display: flex; align-items: center; gap: 7px; margin: 0 2px; color: var(--muted); font-size: 0.61rem; line-height: 1.4; }
+.onboarding-install-note svg { width: 16px; min-width: 16px; height: 16px; color: #7c3aed; }
+
 @media (max-width: 700px) {
     body[data-page="register"] main.container,
     body[data-page="onboarding"] main.container { padding: 14px 12px calc(18px + env(safe-area-inset-bottom)); }
@@ -267,6 +317,11 @@ body[data-page="onboarding"] main.container { width: min(100%, 1040px); margin: 
     .onboarding-form :is(input, select, textarea) { font-size: 16px; }
     .onboarding-team-option { grid-template-columns: auto 38px minmax(0, 1fr); }
     .onboarding-team-option em { grid-column: 2 / -1; justify-self: start; }
+    .onboarding-install-hero { grid-template-columns: 102px minmax(0, 1fr); gap: 12px; min-height: 180px; padding: 12px; }
+    .onboarding-install-phone { width: 92px; height: 150px; border-width: 4px; border-radius: 22px; }
+    .onboarding-install-app-icon { width: 48px; height: 48px; border-radius: 14px; }
+    .onboarding-install-instructions ol { grid-template-columns: minmax(0, 1fr); }
+    .onboarding-install-instructions[data-pwa-install-instructions="android"] ol { grid-template-columns: minmax(0, 1fr); }
     .onboarding-actions { position: sticky; bottom: 0; z-index: 3; margin: 0 -4px -4px; padding: 9px 4px 4px; background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(12px); }
 }
 
@@ -289,4 +344,13 @@ body[data-page="onboarding"] main.container { width: min(100%, 1040px); margin: 
     .onboarding-telegram-options,
     .onboarding-telegram-fields { grid-template-columns: minmax(0, 1fr); }
     .onboarding-telegram-option:last-child { grid-column: auto; }
+    .onboarding-install-hero { grid-template-columns: 76px minmax(0, 1fr); gap: 10px; min-height: 148px; padding: 10px; }
+    .onboarding-install-phone { width: 70px; height: 116px; padding: 15px 7px 8px; border-width: 3px; border-radius: 17px; }
+    .onboarding-install-app-icon { width: 38px; height: 38px; border-radius: 11px; }
+    .onboarding-install-app-name { max-width: 58px; font-size: 0.49rem; }
+    .onboarding-install-app-bars { width: 50px; gap: 3px; }
+    .onboarding-install-app-bars i { height: 3px; }
+    .onboarding-install-copy h3 { font-size: 0.88rem; }
+    .onboarding-install-copy p { font-size: 0.62rem; }
+    .onboarding-install-url { grid-template-columns: minmax(0, 1fr); }
 }

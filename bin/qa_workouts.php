@@ -348,6 +348,53 @@ $check(
 $linkedSession = db_fetch_one($pdo, 'SELECT daily_log_id FROM workout_sessions WHERE id = :session', [':session' => $sessionId]);
 $check((int) ($linkedSession['daily_log_id'] ?? 0) > 0, 'sesión cuenta para el reto');
 
+$draftSessionId = wk_session_start($pdo, $me, $routineId);
+$draftSessionExercises = wk_session_exercises($pdo, $draftSessionId);
+$draftSessionExerciseId = (int) ($draftSessionExercises[0]['id'] ?? 0);
+$draftFirstSetId = (int) ($draftSessionExercises[0]['sets'][0]['id'] ?? 0);
+$draftSecondSetId = (int) ($draftSessionExercises[0]['sets'][1]['id'] ?? 0);
+$draftUpdated = wk_session_update_draft_sets($pdo, $draftSessionId, $me, [
+    $draftFirstSetId => ['weight' => '82.5', 'reps' => '5', 'completed' => '1'],
+    $draftSecondSetId => ['weight' => '77.5', 'reps' => '7', 'completed' => '0'],
+    999999 => ['weight' => '999', 'reps' => '999', 'completed' => '1'],
+]);
+$draftAddedSetId = wk_set_add($pdo, $draftSessionExerciseId, $me);
+$draftSavedExercises = wk_session_exercises($pdo, $draftSessionId);
+$draftSavedSets = (array) ($draftSavedExercises[0]['sets'] ?? []);
+$check(
+    $draftUpdated === 2
+        && abs((float) ($draftSavedSets[0]['weight'] ?? 0) - 82.5) < 0.01
+        && (int) ($draftSavedSets[0]['reps'] ?? 0) === 5
+        && abs((float) ($draftSavedSets[1]['weight'] ?? 0) - 77.5) < 0.01
+        && (int) ($draftSavedSets[1]['reps'] ?? 0) === 7
+        && $draftAddedSetId > 0
+        && abs((float) ($draftSavedSets[count($draftSavedSets) - 1]['weight'] ?? 0) - 72.5) < 0.01,
+    'guardar todas las series antes de añadir conserva el borrador completo'
+);
+$deleteCandidateId = (int) ($draftSavedSets[1]['id'] ?? 0);
+$draftDeleteSaved = wk_set_delete_for_user($pdo, $deleteCandidateId, $me);
+$afterDeleteSets = (array) (wk_session_exercises($pdo, $draftSessionId)[0]['sets'] ?? []);
+$check(
+    $draftDeleteSaved
+        && !wk_set_delete_for_user($pdo, (int) ($afterDeleteSets[0]['id'] ?? 0), $other)
+        && array_map(static fn(array $set): int => (int) ($set['set_index'] ?? 0), $afterDeleteSets) === [1, 2, 3],
+    'eliminar serie guarda propiedad y reordena las restantes'
+);
+wk_set_delete_for_user($pdo, (int) ($afterDeleteSets[2]['id'] ?? 0), $me);
+wk_set_delete_for_user($pdo, (int) ($afterDeleteSets[1]['id'] ?? 0), $me);
+$lastDraftSet = (array) (wk_session_exercises($pdo, $draftSessionId)[0]['sets'][0] ?? []);
+$check(
+    !wk_set_delete_for_user($pdo, (int) ($lastDraftSet['id'] ?? 0), $me),
+    'no se puede eliminar la última serie de un ejercicio'
+);
+$lastCompletedSets = wk_last_completed_sets_for_exercises($pdo, $me, [$benchId], $draftSessionId);
+$check(
+    abs((float) ($lastCompletedSets[$benchId][1]['weight'] ?? 0) - 80.0) < 0.01
+        && (int) ($lastCompletedSets[$benchId][1]['reps'] ?? 0) === 5,
+    'segunda sesión recupera la última ejecución completada como referencia'
+);
+wk_session_cancel($pdo, $draftSessionId, $me);
+
 $runningExercise = db_fetch_one($pdo, 'SELECT id FROM exercise_definitions WHERE slug = :slug', [':slug' => 'running']);
 $plankExercise = db_fetch_one($pdo, 'SELECT id FROM exercise_definitions WHERE slug = :slug', [':slug' => 'plank']);
 $organizeSessionId = wk_session_start($pdo, $me, null, 'QA Session order');
@@ -408,7 +455,43 @@ $check(
 wk_session_cancel($pdo, $cardioSessionId, $me);
 wk_routine_delete($pdo, $cardioRoutineId, $me);
 
-db_execute($pdo, 'UPDATE users SET ideal_weight = 75 WHERE id = :user', [':user' => $me]);
+db_execute(
+    $pdo,
+    'UPDATE users SET ideal_weight = 55, height_cm = 170, competitive_division = "men" WHERE id = :user',
+    [':user' => $me]
+);
+$rankWithoutMeasurement = null;
+foreach (wk_exercise_ranks_for_user($pdo, $me) as $rankedExercise) {
+    if ((int) $rankedExercise['id'] === $benchId) {
+        $rankWithoutMeasurement = (array) $rankedExercise['rank'];
+        break;
+    }
+}
+$check(
+    (float) ($rankWithoutMeasurement['score'] ?? 0) === 0.0
+        && !empty($rankWithoutMeasurement['requires_weight'])
+        && wk_user_bodyweight($pdo, $me) === null,
+    'el peso objetivo no sustituye un pesaje real'
+);
+db_execute(
+    $pdo,
+    'UPDATE daily_logs SET weight = 75, log_date = :old_date, updated_at = :updated WHERE id = :id',
+    [
+        ':old_date' => (new DateTimeImmutable('today'))->modify('-181 days')->format('Y-m-d'),
+        ':updated' => now_iso(),
+        ':id' => (int) ($linkedSession['daily_log_id'] ?? 0),
+    ]
+);
+$staleWeightRecord = wk_user_bodyweight_record($pdo, $me);
+$check(
+    $staleWeightRecord !== null && !$staleWeightRecord['recent'] && wk_user_bodyweight($pdo, $me) === null,
+    'un pesaje de más de 180 días deja el rango provisional'
+);
+db_execute(
+    $pdo,
+    'UPDATE daily_logs SET weight = 75, log_date = :today, updated_at = :updated WHERE id = :id',
+    [':today' => (new DateTimeImmutable('today'))->format('Y-m-d'), ':updated' => now_iso(), ':id' => (int) ($linkedSession['daily_log_id'] ?? 0)]
+);
 $benchRank = null;
 foreach (wk_exercise_ranks_for_user($pdo, $me) as $rankedExercise) {
     if ((int) $rankedExercise['id'] === $benchId) {
@@ -417,9 +500,52 @@ foreach (wk_exercise_ranks_for_user($pdo, $me) as $rankedExercise) {
     }
 }
 $check(
-    (float) ($benchRank['score'] ?? 0) > 120 && ($benchRank['key'] ?? '') !== 'unranked',
-    'rango por ejercicio',
+    (float) ($benchRank['score'] ?? 0) > 120
+        && ($benchRank['key'] ?? '') !== 'unranked'
+        && ($benchRank['calculation']['method'] ?? '') === 'allometric_1rm'
+        && abs((float) ($benchRank['calculation']['adjustment'] ?? 0) - 1.0) < 0.001,
+    'rango por ejercicio con cálculo alométrico explicable',
     (string) ($benchRank['key'] ?? 'none') . ' ' . (string) ($benchRank['score'] ?? 0)
+);
+$scoreBeforeHeightChange = (float) ($benchRank['score'] ?? 0);
+db_execute($pdo, 'UPDATE users SET height_cm = 210 WHERE id = :user', [':user' => $me]);
+$benchAfterHeightChange = null;
+foreach (wk_exercise_ranks_for_user($pdo, $me) as $rankedExercise) {
+    if ((int) $rankedExercise['id'] === $benchId) {
+        $benchAfterHeightChange = (array) $rankedExercise['rank'];
+        break;
+    }
+}
+$check(
+    abs((float) ($benchAfterHeightChange['score'] ?? 0) - $scoreBeforeHeightChange) < 0.001,
+    'la altura aporta contexto pero no altera la score'
+);
+db_execute($pdo, 'UPDATE users SET height_cm = 170 WHERE id = :user', [':user' => $me]);
+
+$pullUp = db_fetch_one($pdo, 'SELECT id FROM exercise_definitions WHERE slug = "pull_up"');
+$pullUpId = (int) ($pullUp['id'] ?? 0);
+db_execute(
+    $pdo,
+    'INSERT INTO personal_records (user_id, exercise_def_id, metric, value, achieved_at, session_id)
+     VALUES (:user, :exercise, "max_reps", 10, :achieved, NULL)',
+    [':user' => $me, ':exercise' => $pullUpId, ':achieved' => now_iso()]
+);
+$pullUpRank = null;
+foreach (wk_exercise_ranks_for_user($pdo, $me) as $rankedExercise) {
+    if ((int) $rankedExercise['id'] === $pullUpId) {
+        $pullUpRank = (array) $rankedExercise['rank'];
+        break;
+    }
+}
+$check(
+    ($pullUpRank['calculation']['method'] ?? '') === 'bodyweight_reps'
+        && abs((float) ($pullUpRank['score'] ?? 0) - 50.0) < 0.1,
+    'calistenia usa repeticiones, peso real y factor del ejercicio'
+);
+db_execute(
+    $pdo,
+    'DELETE FROM personal_records WHERE user_id = :user AND exercise_def_id = :exercise AND metric = "max_reps"',
+    [':user' => $me, ':exercise' => $pullUpId]
 );
 $chestRank = null;
 foreach (wk_muscle_ranks_for_user($pdo, $me) as $muscleRank) {
@@ -442,6 +568,16 @@ $check(
 );
 $leaderboard = wk_rank_leaderboard($pdo);
 $check((int) ($leaderboard[0]['id'] ?? 0) === $me, 'clasificación de equipo');
+db_execute($pdo, 'UPDATE users SET competitive_division = "women" WHERE id = :user', [':user' => $other]);
+$menLeaderboard = wk_rank_leaderboard($pdo, 20, 'men');
+$womenLeaderboard = wk_rank_leaderboard($pdo, 20, 'women');
+$openLeaderboard = wk_rank_leaderboard($pdo, 20, 'open');
+$check(
+    array_map(static fn(array $row): int => (int) $row['id'], $menLeaderboard) === [$me]
+        && array_map(static fn(array $row): int => (int) $row['id'], $womenLeaderboard) === [$other]
+        && count($openLeaderboard) === 2,
+    'las categorías filtran la clasificación pero no la fórmula'
+);
 
 $bronzeDefault = wk_default_rank_tiers()['bronze'];
 wk_admin_save_rank_tiers($pdo, [
@@ -864,15 +1000,40 @@ $check(
     'borrado personal conserva rutinas e historial'
 );
 
-$customSeasonId = season_admin_save($pdo, null, 'qa-summer-2032', 'QA Summer Strength', '2032-04-15', '2032-07-15', $me);
+$customSeasonId = season_admin_save($pdo, null, 'qa-summer-2032', 'QA Summer Strength', '2032-04-15', '2032-07-15', $me, 'fire', 'seasons/covers/qa.webp', '#db2777');
 $customSeason = seasons_current($pdo, '2032-05-10');
-$check($customSeasonId > 0 && (int) ($customSeason['id'] ?? 0) === $customSeasonId, 'season admin tiene prioridad en su rango');
-season_admin_save($pdo, $customSeasonId, 'qa-summer-2032', 'QA Summer Updated', '2032-04-01', '2032-07-31', $me);
+$check(
+    $customSeasonId > 0
+        && (int) ($customSeason['id'] ?? 0) === $customSeasonId
+        && (string) ($customSeason['icon_key'] ?? '') === 'fire'
+        && (string) ($customSeason['cover_path'] ?? '') === 'seasons/covers/qa.webp'
+        && (string) ($customSeason['accent_color'] ?? '') === '#db2777',
+    'season admin guarda icono, portada y color'
+);
+season_admin_save($pdo, $customSeasonId, 'qa-summer-2032', 'QA Summer Updated', '2032-04-01', '2032-07-31', $me, 'bolt', '', '#2563eb');
 $updatedSeason = db_fetch_one($pdo, 'SELECT * FROM seasons WHERE id = :id', [':id' => $customSeasonId]);
-$check((string) ($updatedSeason['name'] ?? '') === 'QA Summer Updated' && !empty($updatedSeason['updated_at']), 'season admin se edita');
+$check((string) ($updatedSeason['name'] ?? '') === 'QA Summer Updated' && (string) ($updatedSeason['icon_key'] ?? '') === 'bolt' && !empty($updatedSeason['updated_at']), 'season admin se edita');
 $check(season_admin_delete($pdo, $customSeasonId, $me), 'season admin se elimina');
 $automaticSeason = seasons_current($pdo, '2032-05-10');
 $check((string) ($automaticSeason['season_key'] ?? '') === '2032-Q2', 'season trimestral vuelve como fallback');
+db_execute($pdo, 'DELETE FROM seasons');
+seasons_automation_update($pdo, true, 6, 3, $me);
+$generatedSeasons = seasons_generate_upcoming($pdo, $me, '2033-01-01', true);
+$automaticRows = db_fetch_all($pdo, 'SELECT * FROM seasons ORDER BY start_date ASC, id ASC');
+$automaticRowsContinuous = count($automaticRows) === 3;
+for ($seasonIndex = 1; $seasonIndex < count($automaticRows); $seasonIndex++) {
+    $expectedStart = (new DateTimeImmutable((string) $automaticRows[$seasonIndex - 1]['end_date']))->modify('+1 day')->format('Y-m-d');
+    $automaticRowsContinuous = $automaticRowsContinuous && (string) $automaticRows[$seasonIndex]['start_date'] === $expectedStart;
+}
+$automaticScheduleStatus = seasons_schedule_status($pdo, '2033-01-01');
+$check(
+    (int) ($generatedSeasons['created'] ?? 0) === 3
+        && $automaticRowsContinuous
+        && count(array_filter($automaticRows, static fn(array $row): bool => (string) ($row['generation_source'] ?? '') === 'automatic')) === 3
+        && (int) ($automaticScheduleStatus['gaps'] ?? -1) === 0
+        && (int) ($automaticScheduleStatus['overlaps'] ?? -1) === 0,
+    'temporadas automaticas se crean por adelantado y sin dias vacios'
+);
 
 $victimRoutineId = wk_routine_create($pdo, $other, 'Privada Catalina');
 $victimRoutineExerciseId = wk_routine_add_exercise($pdo, $victimRoutineId, $benchId);
@@ -883,6 +1044,26 @@ $victimExerciseStillExists = db_fetch_one(
     [':id' => $victimRoutineExerciseId]
 );
 $check($removed === false && $victimExerciseStillExists !== null, 'aislamiento entre usuarios');
+
+$workoutsViewSource = (string) file_get_contents(dirname(__DIR__) . '/app/views/workouts.php');
+$workoutsCssSource = (string) file_get_contents(dirname(__DIR__) . '/public/assets/workouts.css');
+$globalCssSource = (string) file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
+$check(
+    str_contains($workoutsViewSource, 'workouts-resume-cta-label')
+        && str_contains($workoutsCssSource, 'grid-template-columns: 8px minmax(0, 1fr) 44px')
+        && str_contains($workoutsCssSource, '.workouts-active-session-progress > .goal-progress')
+        && !str_contains($globalCssSource, '.workouts-active-session-card.compact-panel'),
+    'tarjeta de sesion activa usa layout movil aislado sin parches globales'
+);
+$mainJsSource = (string) file_get_contents(dirname(__DIR__) . '/public/assets/main.js');
+$check(
+    str_contains($workoutsViewSource, 'data-clear-workout-suggestion')
+        && str_contains($workoutsViewSource, 'target_session_id=<?= $sid ?>')
+        && str_contains($workoutsCssSource, '.workouts-session-head-actions')
+        && str_contains($mainJsSource, 'draft_sets[${setId}]')
+        && str_contains($mainJsSource, 'fc.workout.session.draft.'),
+    'sesion activa conserva borradores, referencias y retorno desde la guia'
+);
 
 if ($failures !== []) {
     fwrite(STDERR, PHP_EOL . count($failures) . ' comprobaciones fallaron: ' . implode(', ', $failures) . PHP_EOL);

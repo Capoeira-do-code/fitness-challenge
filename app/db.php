@@ -100,6 +100,8 @@ function initialize_database(PDO $pdo, array $config): void
             workout_days_mask TEXT NOT NULL DEFAULT "0000000",
             workout_strict INTEGER NOT NULL DEFAULT 0,
             ideal_weight REAL,
+            height_cm REAL,
+            competitive_division TEXT NOT NULL DEFAULT "open",
             maintenance_calories REAL,
             calorie_burn_goal REAL,
             calorie_consumed_max REAL,
@@ -294,8 +296,12 @@ function initialize_database(PDO $pdo, array $config): void
             archived_at TEXT NOT NULL,
             archived_by INTEGER,
             source_settings_json TEXT,
+            restore_count INTEGER NOT NULL DEFAULT 0,
+            last_restored_at TEXT,
+            last_restored_by INTEGER,
             created_at TEXT NOT NULL,
-            FOREIGN KEY (archived_by) REFERENCES users(id) ON DELETE SET NULL
+            FOREIGN KEY (archived_by) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (last_restored_by) REFERENCES users(id) ON DELETE SET NULL
         )'
     );
 
@@ -304,6 +310,8 @@ function initialize_database(PDO $pdo, array $config): void
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT "",
+            icon_path TEXT,
+            cover_path TEXT,
             slug TEXT NOT NULL UNIQUE,
             join_mode TEXT NOT NULL DEFAULT "closed",
             visibility TEXT NOT NULL DEFAULT "visible",
@@ -474,6 +482,19 @@ function initialize_database(PDO $pdo, array $config): void
     );
 
     $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS workout_type_translations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workout_type_id INTEGER NOT NULL,
+            locale TEXT NOT NULL,
+            name TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (workout_type_id, locale),
+            FOREIGN KEY (workout_type_id) REFERENCES workout_types(id) ON DELETE CASCADE
+        )'
+    );
+
+    $pdo->exec(
         'CREATE TABLE IF NOT EXISTS daily_log_workouts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             log_id INTEGER NOT NULL,
@@ -502,6 +523,19 @@ function initialize_database(PDO $pdo, array $config): void
             updated_at TEXT NOT NULL,
             FOREIGN KEY (workout_type_id) REFERENCES workout_types(id) ON DELETE CASCADE,
             FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS workout_type_field_translations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            field_id INTEGER NOT NULL,
+            locale TEXT NOT NULL,
+            label TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (field_id, locale),
+            FOREIGN KEY (field_id) REFERENCES workout_type_fields(id) ON DELETE CASCADE
         )'
     );
 
@@ -564,6 +598,19 @@ function initialize_database(PDO $pdo, array $config): void
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS habit_definition_translations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            habit_id INTEGER NOT NULL,
+            locale TEXT NOT NULL,
+            label TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (habit_id, locale),
+            FOREIGN KEY (habit_id) REFERENCES habit_definitions(id) ON DELETE CASCADE
         )'
     );
 
@@ -787,6 +834,8 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'profile_layout_json', 'TEXT');
     ensure_column($pdo, 'users', 'profile_widgets_known', 'TEXT');
     ensure_column($pdo, 'users', 'avatar_frame', "TEXT NOT NULL DEFAULT 'none'");
+    ensure_column($pdo, 'teams', 'icon_path', 'TEXT');
+    ensure_column($pdo, 'teams', 'cover_path', 'TEXT');
     // The team whose data the user is currently looking at. Persisted so every page
     // agrees on which team is active instead of silently falling back to the first.
     ensure_column($pdo, 'users', 'active_team_id', 'INTEGER');
@@ -794,6 +843,8 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     // the visible ones, so a widget added later would stay hidden forever without this.
     ensure_column($pdo, 'users', 'team_widgets_known', 'TEXT');
     ensure_column($pdo, 'users', 'meal_calendar_view', 'TEXT NOT NULL DEFAULT "week"');
+    ensure_column($pdo, 'users', 'height_cm', 'REAL');
+    ensure_column($pdo, 'users', 'competitive_division', 'TEXT NOT NULL DEFAULT "open"');
     ensure_column($pdo, 'users', 'maintenance_calories', 'REAL');
     ensure_column($pdo, 'users', 'calorie_burn_goal', 'REAL');
     ensure_column($pdo, 'users', 'calorie_consumed_max', 'REAL');
@@ -873,6 +924,9 @@ function ensure_schema_columns(PDO $pdo, array $config): void
 
     ensure_column($pdo, 'challenge_settings', 'active', 'INTEGER NOT NULL DEFAULT 1');
     ensure_column($pdo, 'challenge_settings', 'deleted_at', 'TEXT');
+    ensure_column($pdo, 'challenge_archives', 'restore_count', 'INTEGER NOT NULL DEFAULT 0');
+    ensure_column($pdo, 'challenge_archives', 'last_restored_at', 'TEXT');
+    ensure_column($pdo, 'challenge_archives', 'last_restored_by', 'INTEGER');
 
     ensure_column($pdo, 'strike_review_requests', 'eligible_voters_json', 'TEXT NOT NULL DEFAULT "[]"');
     ensure_column($pdo, 'strike_review_requests', 'resent_count', 'INTEGER NOT NULL DEFAULT 0');
@@ -946,6 +1000,8 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_awards_team_awarded ON achievement_awards(team_id, awarded_at DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_translations_locale ON achievement_translations(locale)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_achievement_translations_unique ON achievement_translations(achievement_id, locale)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_habit_definition_translations_locale ON habit_definition_translations(locale)');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_habit_definition_translations_unique ON habit_definition_translations(habit_id, locale)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_achievement_awards_user_unique ON achievement_awards(achievement_id, user_id) WHERE user_id IS NOT NULL');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_achievement_awards_team_unique ON achievement_awards(achievement_id, team_id) WHERE team_id IS NOT NULL');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_suppressions_user ON achievement_award_suppressions(user_id)');
@@ -959,6 +1015,10 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_log_habits_log ON daily_log_habits(log_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_daily_log_workouts_log ON daily_log_workouts(log_id, sort_order)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_workout_type_fields_type ON workout_type_fields(workout_type_id, active, sort_order)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_workout_type_translations_locale ON workout_type_translations(locale)');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_workout_type_translations_unique ON workout_type_translations(workout_type_id, locale)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_workout_type_field_translations_locale ON workout_type_field_translations(locale)');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_workout_type_field_translations_unique ON workout_type_field_translations(field_id, locale)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_workout_field_values_workout ON daily_log_workout_field_values(workout_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_rules_achievement ON achievement_rules(achievement_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_login_attempts_user_ip ON login_attempts(username, ip_address, attempted_at)');
@@ -971,6 +1031,7 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_system_backups_status ON system_backups(status)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_integration_runtime_leases_until ON integration_runtime_leases(lease_until)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_challenge_archives_archived_at ON challenge_archives(archived_at DESC)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_challenge_archives_range ON challenge_archives(challenge_start, challenge_end)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_requests_target ON strike_review_requests(target_user_id, week_start, event_date)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_requests_target_status ON strike_review_requests(target_user_id, status, week_start, event_date)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_strike_review_requests_status ON strike_review_requests(status)');
@@ -1130,13 +1191,20 @@ function seed_default_achievements(PDO $pdo): void
         'steps_250k_total' => 'footprints',
         'steps_500k_total' => 'footprints',
         'steps_1m_total' => 'footprints',
+        'steps_2m_total' => 'mountain',
+        'steps_5m_total' => 'crown',
+        'steps_70k_week' => 'bolt',
         'distance_150k_total' => 'target',
         'distance_250k_total' => 'flag',
         'distance_500k_total' => 'flag',
+        'distance_1000k_total' => 'mountain',
         'distance_5k_day' => 'target',
         'workouts_25_total' => 'dumbbell',
         'workouts_50_total' => 'dumbbell',
         'workouts_100_total' => 'dumbbell',
+        'workouts_200_total' => 'medal',
+        'workouts_365_total' => 'crown',
+        'workouts_5_week' => 'flame',
         'workout_variety_3' => 'sparkles',
         'three_photo_days' => 'camera',
         'seven_photos_total' => 'camera',
@@ -1153,6 +1221,8 @@ function seed_default_achievements(PDO $pdo): void
         'chores_5_total' => 'shield-check',
         'reading_10_total' => 'sparkles',
         'reading_25_total' => 'sparkles',
+        'reading_50_total' => 'star',
+        'reading_100_total' => 'crown',
         'morning_logs_5' => 'calendar-check',
         'consistent_week_logger' => 'calendar-check',
         'duel_first_win' => 'medal',
@@ -1170,11 +1240,17 @@ function seed_default_achievements(PDO $pdo): void
         'team_training_mix' => 'dumbbell',
         'team_500k_steps_total' => 'footprints',
         'team_1m_steps_total' => 'footprints',
+        'team_2m_steps_total' => 'mountain',
+        'team_5m_steps_total' => 'crown',
+        'team_500k_steps_week' => 'bolt',
         'team_500km_total' => 'target',
         'team_1000km_total' => 'flag',
+        'team_2500km_total' => 'mountain',
         'team_10_workouts_total' => 'dumbbell',
         'team_25_workouts_total' => 'dumbbell',
         'team_50_workouts_total' => 'dumbbell',
+        'team_100_workouts_total' => 'medal',
+        'team_250_workouts_total' => 'crown',
         'team_training_variety_4' => 'sparkles',
         'team_3_challenges_created' => 'flag',
         'team_5_challenges_created' => 'flag',
@@ -1537,6 +1613,81 @@ function seed_default_achievements(PDO $pdo): void
             'es' => ['Quema 1000 de equipo', 'El equipo registro 1.000 calorias de entreno quemadas.', ''],
             'it' => ['Team burn 1000', 'Il team ha registrato 1.000 calorie allenamento bruciate.', ''],
         ]],
+        ['steps_2m_total', 'user', 'steps', [
+            'en' => ['Two Million Steps', 'Log 2,000,000 steps in total.', ''],
+            'es' => ['Dos millones de pasos', 'Registra 2.000.000 de pasos en total.', ''],
+            'it' => ['Due milioni di passi', 'Registra 2.000.000 di passi totali.', ''],
+        ]],
+        ['steps_5m_total', 'user', 'steps', [
+            'en' => ['Five Million Journey', 'Log 5,000,000 steps in total.', ''],
+            'es' => ['Viaje de cinco millones', 'Registra 5.000.000 de pasos en total.', ''],
+            'it' => ['Viaggio da cinque milioni', 'Registra 5.000.000 di passi totali.', ''],
+        ]],
+        ['steps_70k_week', 'user', 'steps', [
+            'en' => ['Seventy Thousand Week', 'Log 70,000 steps in one week.', ''],
+            'es' => ['Semana de setenta mil', 'Registra 70.000 pasos en una semana.', ''],
+            'it' => ['Settimana da settantamila', 'Registra 70.000 passi in una settimana.', ''],
+        ]],
+        ['distance_1000k_total', 'user', 'distance_km', [
+            'en' => ['One Thousand Kilometres', 'Log 1,000 km in total.', ''],
+            'es' => ['Mil kilometros', 'Registra 1.000 km en total.', ''],
+            'it' => ['Mille chilometri', 'Registra 1.000 km totali.', ''],
+        ]],
+        ['workouts_200_total', 'user', 'workouts', [
+            'en' => ['Two Hundred Sessions', 'Complete 200 workouts.', ''],
+            'es' => ['Doscientas sesiones', 'Completa 200 entrenamientos.', ''],
+            'it' => ['Duecento sessioni', 'Completa 200 allenamenti.', ''],
+        ]],
+        ['workouts_365_total', 'user', 'workouts', [
+            'en' => ['Training Year', 'Complete 365 workouts.', ''],
+            'es' => ['Un ano entrenando', 'Completa 365 entrenamientos.', ''],
+            'it' => ['Un anno di allenamento', 'Completa 365 allenamenti.', ''],
+        ]],
+        ['workouts_5_week', 'user', 'workouts', [
+            'en' => ['Five Strong Days', 'Complete 5 workouts in one week.', ''],
+            'es' => ['Cinco dias fuertes', 'Completa 5 entrenamientos en una semana.', ''],
+            'it' => ['Cinque giorni forti', 'Completa 5 allenamenti in una settimana.', ''],
+        ]],
+        ['reading_50_total', 'user', 'habit:reading', [
+            'en' => ['Fifty Reading Days', 'Complete the reading habit 50 times.', ''],
+            'es' => ['Cincuenta dias de lectura', 'Completa el habito de lectura 50 veces.', ''],
+            'it' => ['Cinquanta giorni di lettura', 'Completa l abitudine lettura 50 volte.', ''],
+        ]],
+        ['reading_100_total', 'user', 'habit:reading', [
+            'en' => ['Century Reader', 'Complete the reading habit 100 times.', ''],
+            'es' => ['Lector centenario', 'Completa el habito de lectura 100 veces.', ''],
+            'it' => ['Lettore centenario', 'Completa l abitudine lettura 100 volte.', ''],
+        ]],
+        ['team_2m_steps_total', 'team', 'steps', [
+            'en' => ['Two Million Team Steps', 'The team logs 2,000,000 steps in total.', ''],
+            'es' => ['Dos millones en equipo', 'El equipo registra 2.000.000 de pasos en total.', ''],
+            'it' => ['Due milioni in squadra', 'Il team registra 2.000.000 di passi totali.', ''],
+        ]],
+        ['team_5m_steps_total', 'team', 'steps', [
+            'en' => ['Five Million Team Steps', 'The team logs 5,000,000 steps in total.', ''],
+            'es' => ['Cinco millones en equipo', 'El equipo registra 5.000.000 de pasos en total.', ''],
+            'it' => ['Cinque milioni in squadra', 'Il team registra 5.000.000 di passi totali.', ''],
+        ]],
+        ['team_500k_steps_week', 'team', 'steps', [
+            'en' => ['Half Million Week', 'The team logs 500,000 steps in one week.', ''],
+            'es' => ['Semana de medio millon', 'El equipo registra 500.000 pasos en una semana.', ''],
+            'it' => ['Settimana da mezzo milione', 'Il team registra 500.000 passi in una settimana.', ''],
+        ]],
+        ['team_2500km_total', 'team', 'distance_km', [
+            'en' => ['Team Expedition', 'The team logs 2,500 km in total.', ''],
+            'es' => ['Expedicion de equipo', 'El equipo registra 2.500 km en total.', ''],
+            'it' => ['Spedizione del team', 'Il team registra 2.500 km totali.', ''],
+        ]],
+        ['team_100_workouts_total', 'team', 'workouts', [
+            'en' => ['One Hundred Team Workouts', 'The team completes 100 workouts.', ''],
+            'es' => ['Cien entrenos de equipo', 'El equipo completa 100 entrenamientos.', ''],
+            'it' => ['Cento workout di squadra', 'Il team completa 100 allenamenti.', ''],
+        ]],
+        ['team_250_workouts_total', 'team', 'workouts', [
+            'en' => ['Team Training Legacy', 'The team completes 250 workouts.', ''],
+            'es' => ['Legado de entrenamiento', 'El equipo completa 250 entrenamientos.', ''],
+            'it' => ['Eredita di allenamento', 'Il team completa 250 allenamenti.', ''],
+        ]],
         // Duels and competitions had no achievements at all: you could win ten duels and
         // the trophy case would not know. All six read finished rows, so none of them can
         // be unlocked without actually having competed.
@@ -1666,15 +1817,30 @@ function seed_default_achievements(PDO $pdo): void
         }
     }
 
-    $rankedAchievementTargets = [
-        'rank_bronze' => 25.0,
-        'rank_silver' => 45.0,
-        'rank_gold' => 70.0,
-        'rank_platinum' => 100.0,
-        'rank_diamond' => 140.0,
-        'rank_elite' => 180.0,
+    $defaultAchievementRules = [
+        'steps_2m_total' => ['steps', 2000000.0, 'total'],
+        'steps_5m_total' => ['steps', 5000000.0, 'total'],
+        'steps_70k_week' => ['steps', 70000.0, 'current_week'],
+        'distance_1000k_total' => ['distance_km', 1000.0, 'total'],
+        'workouts_200_total' => ['workouts', 200.0, 'total'],
+        'workouts_365_total' => ['workouts', 365.0, 'total'],
+        'workouts_5_week' => ['workouts', 5.0, 'current_week'],
+        'reading_50_total' => ['habit:reading', 50.0, 'total'],
+        'reading_100_total' => ['habit:reading', 100.0, 'total'],
+        'team_2m_steps_total' => ['steps', 2000000.0, 'total'],
+        'team_5m_steps_total' => ['steps', 5000000.0, 'total'],
+        'team_500k_steps_week' => ['steps', 500000.0, 'current_week'],
+        'team_2500km_total' => ['distance_km', 2500.0, 'total'],
+        'team_100_workouts_total' => ['workouts', 100.0, 'total'],
+        'team_250_workouts_total' => ['workouts', 250.0, 'total'],
+        'rank_bronze' => ['strength_rank', 25.0, 'total'],
+        'rank_silver' => ['strength_rank', 45.0, 'total'],
+        'rank_gold' => ['strength_rank', 70.0, 'total'],
+        'rank_platinum' => ['strength_rank', 100.0, 'total'],
+        'rank_diamond' => ['strength_rank', 140.0, 'total'],
+        'rank_elite' => ['strength_rank', 180.0, 'total'],
     ];
-    foreach ($rankedAchievementTargets as $code => $target) {
+    foreach ($defaultAchievementRules as $code => [$metricKey, $target, $window]) {
         $achievement = db_fetch_one($pdo, 'SELECT id FROM achievements WHERE code = :code', [':code' => $code]);
         $achievementId = (int) ($achievement['id'] ?? 0);
         if ($achievementId <= 0) {
@@ -1694,10 +1860,10 @@ function seed_default_achievements(PDO $pdo): void
              VALUES (:achievement_id, :metric_key, :operator, :target_value, :window, 1, :created_at, :updated_at)',
             [
                 ':achievement_id' => $achievementId,
-                ':metric_key' => 'strength_rank',
+                ':metric_key' => $metricKey,
                 ':operator' => '>=',
                 ':target_value' => $target,
-                ':window' => 'total',
+                ':window' => $window,
                 ':created_at' => $now,
                 ':updated_at' => $now,
             ]
@@ -1771,36 +1937,61 @@ function seed_workout_types_from_logs(PDO $pdo): void
             ]
         );
     }
+
+    $now = now_iso();
+    db_execute(
+        $pdo,
+        "INSERT OR IGNORE INTO workout_type_translations (workout_type_id, locale, name, created_at, updated_at)
+         SELECT id, 'en', name, :now, :now FROM workout_types",
+        [':now' => $now]
+    );
+    db_execute(
+        $pdo,
+        "INSERT OR IGNORE INTO workout_type_field_translations (field_id, locale, label, created_at, updated_at)
+         SELECT id, 'en', label, :now, :now FROM workout_type_fields",
+        [':now' => $now]
+    );
 }
 
 function seed_default_habits(PDO $pdo): void
 {
     $now = now_iso();
     $defaults = [
-        ['morning_walk', 'Walk / run', 10],
-        ['journaling', 'Journaling', 20],
-        ['evening_chores', 'Chores', 30],
-        ['reading', 'Reading', 40],
+        ['morning_walk', 'Walk / run', 10, ['en' => 'Walk / run', 'es' => 'Caminar / correr', 'it' => 'Camminata / corsa']],
+        ['journaling', 'Journaling', 20, ['en' => 'Journaling', 'es' => 'Escribir un diario', 'it' => 'Scrivere un diario']],
+        ['evening_chores', 'Chores', 30, ['en' => 'Chores', 'es' => 'Tareas del hogar', 'it' => 'Faccende domestiche']],
+        ['reading', 'Reading', 40, ['en' => 'Reading', 'es' => 'Lectura', 'it' => 'Lettura']],
     ];
 
-    foreach ($defaults as [$code, $label, $order]) {
-        $existing = db_fetch_one($pdo, 'SELECT id FROM habit_definitions WHERE code = :code', [':code' => $code]);
-        if ($existing !== null) {
+    foreach ($defaults as [$code, $label, $order, $translations]) {
+        $habit = db_fetch_one($pdo, 'SELECT id FROM habit_definitions WHERE code = :code', [':code' => $code]);
+        if ($habit === null) {
+            db_execute(
+                $pdo,
+                'INSERT INTO habit_definitions (code, label, active, sort_order, created_by, created_at, updated_at)
+                 VALUES (:code, :label, 1, :sort_order, NULL, :created_at, :updated_at)',
+                [
+                    ':code' => $code,
+                    ':label' => $label,
+                    ':sort_order' => $order,
+                    ':created_at' => $now,
+                    ':updated_at' => $now,
+                ]
+            );
+            $habit = db_fetch_one($pdo, 'SELECT id FROM habit_definitions WHERE code = :code', [':code' => $code]);
+        }
+        $habitId = (int) ($habit['id'] ?? 0);
+        if ($habitId <= 0) {
             continue;
         }
-
-        db_execute(
-            $pdo,
-            'INSERT INTO habit_definitions (code, label, active, sort_order, created_by, created_at, updated_at)
-             VALUES (:code, :label, 1, :sort_order, NULL, :created_at, :updated_at)',
-            [
-                ':code' => $code,
-                ':label' => $label,
-                ':sort_order' => $order,
-                ':created_at' => $now,
-                ':updated_at' => $now,
-            ]
-        );
+        foreach ($translations as $locale => $translatedLabel) {
+            db_execute(
+                $pdo,
+                'INSERT OR IGNORE INTO habit_definition_translations (habit_id, locale, label, created_at, updated_at)
+                 VALUES (:habit_id, :locale, :label, :created_at, :updated_at)',
+                [':habit_id' => $habitId, ':locale' => $locale, ':label' => $translatedLabel, ':created_at' => $now, ':updated_at' => $now]
+            );
+        }
     }
 }
 

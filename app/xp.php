@@ -60,13 +60,18 @@ function xp_set_action_amounts(PDO $pdo, array $input, int $actorUserId): void
     $defaults = xp_default_action_amounts();
     $out = [];
     foreach ($defaults as $key => $value) {
-        $out[$key] = isset($input[$key]) && is_numeric($input[$key]) ? max(0, (int) $input[$key]) : $value;
+        $out[$key] = isset($input[$key]) && is_numeric($input[$key]) ? max(0, min(100000, (int) $input[$key])) : $value;
     }
     set_app_setting($pdo, 'xp_amounts', (string) json_encode($out, JSON_UNESCAPED_SLASHES), $actorUserId);
 }
 
 function xp_ensure_schema(PDO $pdo): void
 {
+    static $readyConnections = [];
+    $connectionId = spl_object_id($pdo);
+    if (($readyConnections[$connectionId] ?? null) === $pdo) {
+        return;
+    }
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS xp_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,10 +79,19 @@ function xp_ensure_schema(PDO $pdo): void
             amount INTEGER NOT NULL,
             reason TEXT NOT NULL,
             unique_key TEXT,
+            note TEXT,
+            actor_user_id INTEGER,
             created_at TEXT NOT NULL,
             UNIQUE(user_id, unique_key)
         )'
     );
+    if (function_exists('ensure_column')) {
+        ensure_column($pdo, 'xp_events', 'note', 'TEXT');
+        ensure_column($pdo, 'xp_events', 'actor_user_id', 'INTEGER');
+    }
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_xp_events_created ON xp_events(created_at DESC)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_xp_events_user_created ON xp_events(user_id, created_at DESC)');
+    $readyConnections[$connectionId] = $pdo;
 }
 
 /**
@@ -128,21 +142,34 @@ function xp_grant_action(PDO $pdo, int $userId, string $action, ?string $uniqueK
  */
 function xp_adjust(PDO $pdo, int $userId, int $amount, string $note, int $actorUserId): int
 {
+    $amount = max(-100000, min(100000, $amount));
     if ($userId <= 0 || $amount === 0) {
         return 0;
     }
     xp_ensure_schema($pdo);
+    if (db_fetch_one($pdo, 'SELECT id FROM users WHERE id = :id', [':id' => $userId]) === null) {
+        return 0;
+    }
     if ($amount < 0) {
         $amount = -min(abs($amount), xp_total($pdo, $userId));
         if ($amount === 0) {
             return 0;
         }
     }
+    $note = trim($note);
+    $note = function_exists('mb_substr') ? mb_substr($note, 0, 160) : substr($note, 0, 160);
     db_execute(
         $pdo,
-        'INSERT INTO xp_events (user_id, amount, reason, unique_key, created_at)
-         VALUES (:u, :a, :r, NULL, :c)',
-        [':u' => $userId, ':a' => $amount, ':r' => $amount > 0 ? 'admin_grant' : 'admin_remove', ':c' => now_iso()]
+        'INSERT INTO xp_events (user_id, amount, reason, unique_key, note, actor_user_id, created_at)
+         VALUES (:u, :a, :r, NULL, :n, :actor, :c)',
+        [
+            ':u' => $userId,
+            ':a' => $amount,
+            ':r' => $amount > 0 ? 'admin_grant' : 'admin_remove',
+            ':n' => $note !== '' ? $note : null,
+            ':actor' => $actorUserId > 0 ? $actorUserId : null,
+            ':c' => now_iso(),
+        ]
     );
     if (function_exists('audit_log')) {
         audit_log($pdo, $actorUserId, 'xp_adjusted', 'user', (string) $userId, 'Manual XP adjustment.', null, [
@@ -210,4 +237,103 @@ function xp_level_info(int $totalXp): array
 function xp_user_level_info(PDO $pdo, int $userId): array
 {
     return xp_level_info(xp_total($pdo, $userId));
+}
+
+/**
+ * Compact user progression rows for the admin XP screen. Aggregating in one
+ * query keeps the page fast even when the community grows.
+ */
+function xp_admin_user_rows(PDO $pdo, array $users): array
+{
+    xp_ensure_schema($pdo);
+    $aggregates = [];
+    foreach (db_fetch_all(
+        $pdo,
+        'SELECT user_id,
+                COALESCE(SUM(amount), 0) AS xp_total,
+                COUNT(*) AS event_count,
+                MAX(created_at) AS last_xp_at
+         FROM xp_events
+         GROUP BY user_id'
+    ) as $row) {
+        $aggregates[(int) ($row['user_id'] ?? 0)] = $row;
+    }
+
+    $result = [];
+    foreach ($users as $user) {
+        if (!is_array($user)) {
+            continue;
+        }
+        $userId = (int) ($user['id'] ?? 0);
+        if ($userId <= 0) {
+            continue;
+        }
+        $aggregate = (array) ($aggregates[$userId] ?? []);
+        $total = max(0, (int) ($aggregate['xp_total'] ?? 0));
+        $info = xp_level_info($total);
+        $result[] = array_merge($info, [
+            'id' => $userId,
+            'display_name' => trim((string) ($user['display_name'] ?? '')),
+            'username' => trim((string) ($user['username'] ?? '')),
+            'avatar_path' => trim((string) ($user['avatar_path'] ?? '')),
+            'updated_at' => (string) ($user['updated_at'] ?? ''),
+            'active' => (int) ($user['active'] ?? 1),
+            'event_count' => (int) ($aggregate['event_count'] ?? 0),
+            'last_xp_at' => (string) ($aggregate['last_xp_at'] ?? ''),
+        ]);
+    }
+
+    usort($result, static function (array $left, array $right): int {
+        $byXp = (int) ($right['total_xp'] ?? 0) <=> (int) ($left['total_xp'] ?? 0);
+        if ($byXp !== 0) {
+            return $byXp;
+        }
+        return strcasecmp((string) ($left['display_name'] ?? ''), (string) ($right['display_name'] ?? ''));
+    });
+
+    return $result;
+}
+
+/** Lifetime usage of each automatic XP rule. */
+function xp_action_event_stats(PDO $pdo): array
+{
+    xp_ensure_schema($pdo);
+    $allowed = array_fill_keys(array_keys(xp_default_action_amounts()), true);
+    $result = [];
+    foreach (db_fetch_all(
+        $pdo,
+        'SELECT reason, COUNT(*) AS event_count, COALESCE(SUM(amount), 0) AS xp_total
+         FROM xp_events
+         GROUP BY reason'
+    ) as $row) {
+        $reason = (string) ($row['reason'] ?? '');
+        if (!isset($allowed[$reason])) {
+            continue;
+        }
+        $result[$reason] = [
+            'event_count' => (int) ($row['event_count'] ?? 0),
+            'xp_total' => (int) ($row['xp_total'] ?? 0),
+        ];
+    }
+
+    return $result;
+}
+
+/** Most recent ledger entries, including the affected user and admin actor. */
+function xp_recent_events(PDO $pdo, int $limit = 60): array
+{
+    xp_ensure_schema($pdo);
+    $limit = max(1, min(200, $limit));
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT e.id, e.user_id, e.amount, e.reason, e.note, e.actor_user_id, e.created_at,
+                u.display_name, u.username, u.avatar_path, u.updated_at,
+                actor.display_name AS actor_name
+         FROM xp_events e
+         LEFT JOIN users u ON u.id = e.user_id
+         LEFT JOIN users actor ON actor.id = e.actor_user_id
+         ORDER BY e.id DESC
+         LIMIT ' . $limit
+    );
 }

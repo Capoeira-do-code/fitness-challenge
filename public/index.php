@@ -12,7 +12,7 @@ header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
 $page = $_GET['page'] ?? null;
 if ($page === null) {
     $pathPage = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/');
-    if (in_array($pathPage, ['dashboard', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'workouts', 'social', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'season', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'competitions', 'login', 'register', 'onboarding', 'login_background'], true)) {
+    if (in_array($pathPage, ['dashboard', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'workouts', 'social', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'quests', 'season', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'competitions', 'login', 'register', 'onboarding', 'login_background'], true)) {
         $page = $pathPage;
     }
 }
@@ -30,9 +30,77 @@ if ($page === 'users') {
     $page = 'admin';
 }
 
+if ($page === 'manifest') {
+    $manifestAppName = trim((string) (app_setting($pdo, 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge')) ?? 'Fitness Challenge'));
+    if ($manifestAppName === '') {
+        $manifestAppName = 'Fitness Challenge';
+    }
+    $manifestIconPath = trim((string) (app_setting($pdo, 'app_icon_path', '') ?? ''));
+    $manifestHasCustomIcon = $manifestIconPath !== '' && resolve_media_storage_path($config, $manifestIconPath) !== null;
+    $manifestIcons = [];
+    if ($manifestHasCustomIcon) {
+        $manifestIcons[] = [
+            'src' => '/?page=app_icon',
+            'sizes' => 'any',
+            'type' => detect_media_mime_type((string) resolve_media_storage_path($config, $manifestIconPath)),
+            'purpose' => 'any',
+        ];
+    }
+    $manifestIcons[] = ['src' => '/?page=app_icon_default&size=192', 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any maskable'];
+    $manifestIcons[] = ['src' => '/?page=app_icon_default&size=512', 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any maskable'];
+    $manifest = [
+        'id' => '/',
+        'name' => $manifestAppName,
+        'short_name' => function_exists('mb_substr') ? mb_substr($manifestAppName, 0, 18) : substr($manifestAppName, 0, 18),
+        'description' => 'Fitness, habits, goals and team challenges.',
+        'start_url' => '/?page=dashboard&source=pwa',
+        'scope' => '/',
+        'display' => 'standalone',
+        'display_override' => ['window-controls-overlay', 'standalone', 'minimal-ui'],
+        'background_color' => '#080b0f',
+        'theme_color' => '#18a999',
+        'orientation' => 'any',
+        'icons' => $manifestIcons,
+    ];
+    header('Content-Type: application/manifest+json; charset=utf-8');
+    header('Cache-Control: public, max-age=300');
+    echo json_encode($manifest, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($page === 'app_icon_default') {
+    $iconSize = (int) ($_GET['size'] ?? 192);
+    $iconSize = $iconSize >= 512 ? 512 : 192;
+    if (!function_exists('imagecreatetruecolor') || !function_exists('imagepng')) {
+        redirect('/assets/app-icon.svg');
+    }
+    $icon = imagecreatetruecolor($iconSize, $iconSize);
+    $teal = imagecolorallocate($icon, 18, 161, 146);
+    $white = imagecolorallocate($icon, 255, 255, 255);
+    imagefill($icon, 0, 0, $teal);
+    imagesetthickness($icon, max(14, (int) round($iconSize * 0.09)));
+    $center = (int) round($iconSize / 2);
+    $left = (int) round($iconSize * 0.27);
+    $right = (int) round($iconSize * 0.73);
+    $shortTop = (int) round($iconSize * 0.40);
+    $shortBottom = (int) round($iconSize * 0.60);
+    $longTop = (int) round($iconSize * 0.32);
+    $longBottom = (int) round($iconSize * 0.68);
+    imageline($icon, $left, $center, $right, $center, $white);
+    imageline($icon, $left, $longTop, $left, $longBottom, $white);
+    imageline($icon, $right, $longTop, $right, $longBottom, $white);
+    imageline($icon, (int) round($iconSize * 0.16), $shortTop, (int) round($iconSize * 0.16), $shortBottom, $white);
+    imageline($icon, (int) round($iconSize * 0.84), $shortTop, (int) round($iconSize * 0.84), $shortBottom, $white);
+    header('Content-Type: image/png');
+    header('Cache-Control: public, max-age=604800');
+    imagepng($icon);
+    imagedestroy($icon);
+    exit;
+}
+
 if ($currentUser !== null
     && !empty($config['request_schedulers_enabled'])
-    && !in_array($page, ['app_icon', 'login_background', 'media', 'media_thumb', 'api_meal_calendar', 'api_gallery_recent', 'api_workout_media_search', 'api_workout_media_import'], true)
+    && !in_array($page, ['manifest', 'app_icon', 'app_icon_default', 'login_background', 'media', 'media_thumb', 'api_meal_calendar', 'api_gallery_recent', 'api_workout_media_search', 'api_workout_media_import'], true)
 ) {
     run_system_backup_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
     notion_run_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
@@ -660,11 +728,53 @@ if ($page === 'media') {
     ]);
 
     header('Content-Type: ' . $mime);
+    header('Cache-Control: private, max-age=86400');
+    header('X-Content-Type-Options: nosniff');
+    if ($filesize !== false && str_starts_with($mime, 'video/')) {
+        $fileSizeInt = (int) $filesize;
+        header('Accept-Ranges: bytes');
+        $range = trim((string) ($_SERVER['HTTP_RANGE'] ?? ''));
+        if ($range !== '' && preg_match('/^bytes=(\d*)-(\d*)$/', $range, $rangeMatch) === 1) {
+            if ($rangeMatch[1] === '' && $rangeMatch[2] !== '') {
+                $suffixLength = max(1, (int) $rangeMatch[2]);
+                $start = max(0, $fileSizeInt - $suffixLength);
+                $end = $fileSizeInt - 1;
+            } else {
+                $start = $rangeMatch[1] !== '' ? (int) $rangeMatch[1] : 0;
+                $end = $rangeMatch[2] !== '' ? (int) $rangeMatch[2] : $fileSizeInt - 1;
+            }
+            if ($start < 0 || $end < $start || $start >= $fileSizeInt) {
+                http_response_code(416);
+                header('Content-Range: bytes */' . $fileSizeInt);
+                exit;
+            }
+            $end = min($end, $fileSizeInt - 1);
+            $length = $end - $start + 1;
+            http_response_code(206);
+            header('Content-Range: bytes ' . $start . '-' . $end . '/' . $fileSizeInt);
+            header('Content-Length: ' . $length);
+            $handle = fopen($resolvedPath, 'rb');
+            if ($handle === false) {
+                http_response_code(500);
+                exit;
+            }
+            fseek($handle, $start);
+            $remaining = $length;
+            while ($remaining > 0 && !feof($handle)) {
+                $chunk = fread($handle, min(1024 * 1024, $remaining));
+                if ($chunk === false || $chunk === '') {
+                    break;
+                }
+                echo $chunk;
+                $remaining -= strlen($chunk);
+            }
+            fclose($handle);
+            exit;
+        }
+    }
     if ($filesize !== false) {
         header('Content-Length: ' . (string) $filesize);
     }
-    header('Cache-Control: private, max-age=86400');
-    header('X-Content-Type-Options: nosniff');
     readfile($resolvedPath);
     exit;
 }
@@ -719,7 +829,7 @@ if ($page === 'onboarding') {
     if (!onboarding_is_pending($currentUser)) {
         redirect('/?page=dashboard');
     }
-    $onboardingSteps = ['goals', 'profile', 'privacy', 'telegram', 'challenge', 'teams'];
+    $onboardingSteps = ['goals', 'profile', 'privacy', 'telegram', 'challenge', 'teams', 'install'];
     $savedOnboardingStep = (string) ($currentUser['onboarding_step'] ?? 'goals');
     if (!in_array($savedOnboardingStep, $onboardingSteps, true)) {
         $savedOnboardingStep = 'goals';
@@ -915,6 +1025,7 @@ if ($page === 'onboarding') {
                         request_or_join_team($pdo, $selectedTeamId, (int) $currentUser['id']);
                     }
                 }
+            } elseif ($onboardingStep === 'install') {
                 complete_user_onboarding($pdo, (int) $currentUser['id']);
                 flash_set('success', t('onboarding.completed'));
                 redirect('/?page=dashboard');
@@ -1006,12 +1117,13 @@ if ($page === 'api_workout_media_search') {
     }
     $_SESSION[$rateKey] = $now;
     try {
-        $results = media_search_query($config, $type, $query, (int) $currentUser['id'], current_locale());
+        $mediaSearchConfig = media_search_effective_config($pdo, $config);
+        $results = media_search_query($mediaSearchConfig, $type, $query, (int) $currentUser['id'], current_locale());
         json_response(['ok' => true, 'type' => $type, 'results' => $results]);
     } catch (InvalidArgumentException $e) {
         json_response(['ok' => false, 'message' => $e->getMessage()], 422);
     } catch (Throwable $e) {
-        $status = media_search_provider_available($config, $type) ? 502 : 503;
+        $status = media_search_provider_available($mediaSearchConfig ?? media_search_effective_config($pdo, $config), $type) ? 502 : 503;
         json_response(['ok' => false, 'message' => $e->getMessage()], $status);
     }
 }
@@ -1834,8 +1946,23 @@ if ($page === 'social') {
         $socialSection = '';
     }
 
+    if (is_post()) {
+        if (!csrf_verify()) {
+            flash_set('error', t('flash.csrf'));
+            redirect('/?page=social&section=team');
+        }
+        $socialAction = (string) ($_POST['action'] ?? '');
+        if ($socialAction === 'social_team_create') {
+            squads_ensure_schema($pdo);
+            $newSocialSquadId = squad_create($pdo, (int) $currentUser['id'], (string) ($_POST['name'] ?? ''));
+            flash_set($newSocialSquadId > 0 ? 'success' : 'error', $newSocialSquadId > 0 ? t('flash.squad_created') : t('flash.squad_failed'));
+        }
+        redirect('/?page=social&section=team');
+    }
+
     $socialTeams = [];
     $socialTeamMembers = [];
+    $socialTeamMembersByTeam = [];
     $socialFriends = [];
     $socialFriendRequests = [];
     $socialGalleryPreview = [];
@@ -1866,7 +1993,13 @@ if ($page === 'social') {
             }
         }
         if ($socialSection === '' && $socialTeams !== []) {
-            $socialTeamMembers = list_team_members($pdo, (int) ($socialTeams[0]['id'] ?? 0));
+            foreach ($socialTeams as $socialTeam) {
+                $socialTeamId = (int) ($socialTeam['id'] ?? 0);
+                if ($socialTeamId > 0) {
+                    $socialTeamMembersByTeam[$socialTeamId] = list_team_members($pdo, $socialTeamId);
+                }
+            }
+            $socialTeamMembers = (array) ($socialTeamMembersByTeam[(int) ($socialTeams[0]['id'] ?? 0)] ?? []);
         }
     }
     if ($socialSection === '' || $socialSection === 'community') {
@@ -1915,6 +2048,7 @@ if ($page === 'social') {
         'socialSection' => $socialSection,
         'socialTeams' => $socialTeams,
         'socialTeamMembers' => $socialTeamMembers,
+        'socialTeamMembersByTeam' => $socialTeamMembersByTeam,
         'socialFriends' => $socialFriends,
         'socialFriendRequests' => $socialFriendRequests,
         'socialGalleryPreview' => $socialGalleryPreview,
@@ -2229,6 +2363,77 @@ if ($page === 'friends') {
     $friendsAddableCount = friends_addable_count($pdo, $meId);
     $friendsAddable = friends_search_addable_users($pdo, $meId, '', 8);
 
+    // Only offer a page-level back action when this request actually came from
+    // another internal screen. This also works with the in-app navigation: its
+    // HTML request is made before pushState updates the address bar, so Referer
+    // still points at the real source screen.
+    $friendsBackUrl = '';
+    $friendsBackLabel = '';
+    $friendsReferrer = trim((string) ($_SERVER['HTTP_REFERER'] ?? ''));
+    if ($friendsReferrer !== '') {
+        $friendsReferrerParts = parse_url($friendsReferrer);
+        $friendsKnownHosts = [];
+        foreach ([$_SERVER['HTTP_HOST'] ?? '', $_SERVER['HTTP_X_FORWARDED_HOST'] ?? ''] as $friendsHostHeader) {
+            foreach (explode(',', (string) $friendsHostHeader) as $friendsHostCandidate) {
+                $friendsHostCandidate = trim($friendsHostCandidate);
+                $friendsNormalizedHost = $friendsHostCandidate !== ''
+                    ? strtolower((string) parse_url('http://' . $friendsHostCandidate, PHP_URL_HOST))
+                    : '';
+                if ($friendsNormalizedHost !== '') {
+                    $friendsKnownHosts[$friendsNormalizedHost] = true;
+                }
+            }
+        }
+
+        $friendsReferrerHost = is_array($friendsReferrerParts)
+            ? strtolower((string) ($friendsReferrerParts['host'] ?? ''))
+            : '';
+        if ($friendsReferrerHost !== '' && isset($friendsKnownHosts[$friendsReferrerHost])) {
+            $friendsReferrerPath = (string) ($friendsReferrerParts['path'] ?? '/');
+            $friendsReferrerQuery = (string) ($friendsReferrerParts['query'] ?? '');
+            $friendsReferrerParams = [];
+            parse_str($friendsReferrerQuery, $friendsReferrerParams);
+            $friendsReferrerPageParam = $friendsReferrerParams['page'] ?? '';
+            $friendsReferrerPage = is_string($friendsReferrerPageParam)
+                ? trim($friendsReferrerPageParam)
+                : '';
+            if ($friendsReferrerPage === '') {
+                $friendsReferrerPage = trim($friendsReferrerPath, '/');
+            }
+            if ($friendsReferrerPage === '') {
+                $friendsReferrerPage = 'dashboard';
+            }
+
+            $friendsBackDestinations = [
+                'dashboard' => 'nav.home',
+                'workouts' => 'nav.training_short',
+                'social' => 'nav.social',
+                'profile' => 'nav.profile',
+                'settings' => 'nav.settings',
+                'team' => 'nav.team',
+                'team_settings' => 'nav.team',
+                'analytics' => 'nav.analytics',
+                'entries' => 'entries.title',
+                'gallery' => 'gallery.title',
+                'duels' => 'duels.title',
+                'competitions' => 'competitions.title',
+                'metric' => 'metric.detail_title',
+                'notifications' => 'nav.notifications',
+                'quests' => 'quests.title',
+                'season' => 'season.title',
+                'admin' => 'nav.admin',
+                'table' => 'nav.training_short',
+                'week_editor' => 'nav.home',
+            ];
+            if ($friendsReferrerPage !== 'friends' && isset($friendsBackDestinations[$friendsReferrerPage])) {
+                $friendsBackCandidate = $friendsReferrerPath
+                    . ($friendsReferrerQuery !== '' ? '?' . $friendsReferrerQuery : '');
+                $friendsBackUrl = safe_redirect_target($friendsBackCandidate);
+                $friendsBackLabel = t($friendsBackDestinations[$friendsReferrerPage]);
+            }
+        }
+    }
+
     $friendsSettings = challenge_settings($pdo, $config);
     $friendsChallengeStart = (string) ($friendsSettings['challenge_start'] ?? to_date(null));
     $friendsChallengeEnd = (string) ($friendsSettings['challenge_end'] ?? to_date(null));
@@ -2272,6 +2477,8 @@ if ($page === 'friends') {
         'friendsAddable' => $friendsAddable,
         'friendsAddableCount' => $friendsAddableCount,
         'friendCompare' => $friendCompare,
+        'friendsBackUrl' => $friendsBackUrl,
+        'friendsBackLabel' => $friendsBackLabel,
         'config' => $config,
     ]);
 }
@@ -2335,7 +2542,7 @@ if ($page === 'duels') {
 
     render_view('duels', [
         'title' => t('duels.title'),
-        'currentPage' => 'friends',
+        'currentPage' => 'duels',
         'currentUser' => $currentUser,
         'duels' => $duelViewModels,
         'duelFriends' => friends_list($pdo, $meId),
@@ -2454,6 +2661,13 @@ if ($page === 'workouts') {
             }
 
             return '/?' . http_build_query($query);
+        };
+        $persistSessionDraft = static function () use ($pdo, $meId): void {
+            $draftSessionId = max(0, (int) ($_POST['session_id'] ?? 0));
+            $draftSets = is_array($_POST['draft_sets'] ?? null) ? $_POST['draft_sets'] : [];
+            if ($draftSessionId > 0 && $draftSets !== []) {
+                wk_session_update_draft_sets($pdo, $draftSessionId, $meId, $draftSets);
+            }
         };
         $routineMediaPayload = static function (array $existing = []) use ($config, $meId): array {
             $imagePath = trim((string) ($existing['image_path'] ?? ''));
@@ -3056,9 +3270,11 @@ if ($page === 'workouts') {
                 $startedSessionExerciseId = (int) ($startedSessionExercises[0]['id'] ?? 0);
                 redirect($sessionReturnUrl($sid, $startedSessionExerciseId));
             case 'session_add_set':
+                $persistSessionDraft();
                 wk_set_add($pdo, (int) ($_POST['session_exercise_id'] ?? 0), $meId);
                 redirect($sessionReturnUrl((int) ($_POST['session_id'] ?? 0), $returnSessionExerciseId));
             case 'session_update_set':
+                $persistSessionDraft();
                 $setDuration = '';
                 if (trim((string) ($_POST['duration_minutes'] ?? '')) !== '') {
                     $setDuration = (int) round(max(0.0, (float) $_POST['duration_minutes']) * 60);
@@ -3072,6 +3288,13 @@ if ($page === 'workouts') {
                     'distance' => $_POST['distance'] ?? '',
                     'completed' => (int) ($_POST['completed'] ?? 0),
                 ], $meId);
+                redirect($sessionReturnUrl((int) ($_POST['session_id'] ?? 0), $returnSessionExerciseId));
+            case 'session_delete_set':
+                $persistSessionDraft();
+                $setDeleted = wk_set_delete_for_user($pdo, (int) ($_POST['set_id'] ?? 0), $meId);
+                if (!$setDeleted) {
+                    flash_set('error', t('workouts.keep_one_set'));
+                }
                 redirect($sessionReturnUrl((int) ($_POST['session_id'] ?? 0), $returnSessionExerciseId));
             case 'session_add_exercise':
                 $addedSessionExerciseId = wk_session_add_exercise($pdo, (int) ($_POST['session_id'] ?? 0), (int) ($_POST['exercise_def_id'] ?? 0), $meId);
@@ -3088,6 +3311,7 @@ if ($page === 'workouts') {
                 flash_set($sessionOrderSaved ? 'success' : 'error', $sessionOrderSaved ? t('workouts.session_order_saved') : t('flash.error'));
                 redirect($sessionReturnUrl($organizeSessionId));
             case 'session_finish':
+                $persistSessionDraft();
                 wk_session_finish($pdo, (int) ($_POST['session_id'] ?? 0), $meId, (string) ($_POST['count_challenge'] ?? '1') === '1');
                 flash_set('success', t('flash.workout_saved'));
                 redirect('/?page=workouts');
@@ -3129,6 +3353,7 @@ if ($page === 'workouts') {
     $wkSession = null;
     $wkSessionExercises = [];
     $wkSessionExerciseMedia = [];
+    $wkSessionPreviousSets = [];
     $wkSessionExerciseId = 0;
     $wkExercise = null;
     $wkExerciseMedia = [];
@@ -3162,6 +3387,10 @@ if ($page === 'workouts') {
     $wkMuscleRanks = [];
     $wkOverallRank = null;
     $wkRankLeaderboard = [];
+    $wkRankProfile = [];
+    $wkRankDivision = in_array((string) ($_GET['rank_division'] ?? 'open'), ['open', 'women', 'men'], true)
+        ? (string) ($_GET['rank_division'] ?? 'open')
+        : 'open';
     $wkStats = null;
 
     if ($targetRoutineId > 0) {
@@ -3245,6 +3474,15 @@ if ($page === 'workouts') {
             static fn(array $exercise): array => array_merge($exercise, ['id' => (int) ($exercise['exercise_def_id'] ?? 0)]),
             $wkSessionExercises
         ));
+        $wkSessionPreviousSets = wk_last_completed_sets_for_exercises(
+            $pdo,
+            $meId,
+            array_map(
+                static fn(array $exercise): int => (int) ($exercise['exercise_def_id'] ?? 0),
+                $wkSessionExercises
+            ),
+            $sessionId
+        );
         $validSessionExerciseIds = array_map(
             static fn(array $exercise): int => (int) ($exercise['id'] ?? 0),
             $wkSessionExercises
@@ -3330,7 +3568,8 @@ if ($page === 'workouts') {
         $wkExerciseRanks = wk_exercise_ranks_for_user($pdo, $meId);
         $wkMuscleRanks = wk_muscle_ranks_for_user($pdo, $meId);
         $wkOverallRank = wk_overall_rank_for_user($pdo, $meId);
-        $wkRankLeaderboard = wk_rank_leaderboard($pdo, 20);
+        $wkRankProfile = wk_user_rank_profile($pdo, $meId);
+        $wkRankLeaderboard = wk_rank_leaderboard($pdo, 20, $wkRankDivision);
     }
 
     $sinceMonth = (new DateTimeImmutable('first day of this month'))->format('Y-m-d 00:00:00');
@@ -3382,6 +3621,7 @@ if ($page === 'workouts') {
         'wkSession' => $wkSession,
         'wkSessionExercises' => $wkSessionExercises,
         'wkSessionExerciseMedia' => $wkSessionExerciseMedia,
+        'wkSessionPreviousSets' => $wkSessionPreviousSets,
         'wkSessionExerciseId' => $wkSessionExerciseId,
         'wkSessionSection' => $sessionSection,
         'wkExercise' => $wkExercise,
@@ -3411,6 +3651,8 @@ if ($page === 'workouts') {
         'wkMuscleRanks' => $wkMuscleRanks,
         'wkOverallRank' => $wkOverallRank,
         'wkRankLeaderboard' => $wkRankLeaderboard,
+        'wkRankProfile' => $wkRankProfile,
+        'wkRankDivision' => $wkRankDivision,
         'wkRoutinesByDay' => wk_routines_by_day($pdo, $meId),
         'wkPlanPresets' => wk_builtin_plan_presets(),
         'wkExercises' => wk_exercises_for_user($pdo, $meId),
@@ -3535,7 +3777,10 @@ if ($page === 'settings') {
 
         if ($action === 'update_body_settings') {
             $idealWeightRaw = trim((string) ($_POST['ideal_weight'] ?? ''));
+            $heightRaw = trim((string) ($_POST['height_cm'] ?? ''));
+            $division = (string) ($_POST['competitive_division'] ?? 'open');
             $idealWeight = null;
+            $height = null;
             if ($idealWeightRaw !== '') {
                 if (!is_numeric($idealWeightRaw) || (float) $idealWeightRaw < 25 || (float) $idealWeightRaw > 400) {
                     flash_set('error', t('settings.weight_invalid'));
@@ -3543,15 +3788,33 @@ if ($page === 'settings') {
                 }
                 $idealWeight = round((float) $idealWeightRaw, 1);
             }
-            $before = db_fetch_one($pdo, 'SELECT id, ideal_weight FROM users WHERE id = :id', [':id' => (int) $currentUser['id']]);
+            if ($heightRaw !== '') {
+                if (!is_numeric($heightRaw) || (float) $heightRaw < 100 || (float) $heightRaw > 250) {
+                    flash_set('error', t('settings.height_invalid'));
+                    redirect($settingsRedirect('body'));
+                }
+                $height = round((float) $heightRaw, 1);
+            }
+            if (!in_array($division, ['open', 'women', 'men'], true)) {
+                flash_set('error', t('settings.division_invalid'));
+                redirect($settingsRedirect('body'));
+            }
+            $before = db_fetch_one($pdo, 'SELECT id, ideal_weight, height_cm, competitive_division FROM users WHERE id = :id', [':id' => (int) $currentUser['id']]);
             db_execute(
                 $pdo,
-                'UPDATE users SET ideal_weight = :ideal_weight, updated_at = :updated_at WHERE id = :id',
-                [':ideal_weight' => $idealWeight, ':updated_at' => now_iso(), ':id' => (int) $currentUser['id']]
+                'UPDATE users SET ideal_weight = :ideal_weight, height_cm = :height_cm,
+                    competitive_division = :competitive_division, updated_at = :updated_at WHERE id = :id',
+                [
+                    ':ideal_weight' => $idealWeight,
+                    ':height_cm' => $height,
+                    ':competitive_division' => $division,
+                    ':updated_at' => now_iso(),
+                    ':id' => (int) $currentUser['id'],
+                ]
             );
-            $after = db_fetch_one($pdo, 'SELECT id, ideal_weight FROM users WHERE id = :id', [':id' => (int) $currentUser['id']]);
+            $after = db_fetch_one($pdo, 'SELECT id, ideal_weight, height_cm, competitive_division FROM users WHERE id = :id', [':id' => (int) $currentUser['id']]);
             audit_log($pdo, (int) $currentUser['id'], 'body_settings_updated', 'user', (string) $currentUser['id'], 'Body settings updated.', $before, $after);
-            flash_set('success', t('settings.weight_saved'));
+            flash_set('success', t('settings.body_profile_saved'));
             redirect($settingsRedirect('body'));
         }
 
@@ -3743,6 +4006,7 @@ if ($page === 'settings') {
 
 if ($page === 'profile') {
     workouts_ensure_schema($pdo);
+    profile_custom_widgets_ensure_schema($pdo);
     $requestedProfileUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
     if ($requestedProfileUserId <= 0) {
         $requestedProfileUserId = (int) $currentUser['id'];
@@ -3846,6 +4110,11 @@ if ($page === 'profile') {
             static fn(array $profileTeam): bool => can_manage_team($pdo, $currentUser, (int) ($profileTeam['id'] ?? 0))
         ))
         : [];
+    $profileCustomWidgets = profile_custom_widgets_for_user(
+        $pdo,
+        (int) $profileUser['id'],
+        $isOwnProfile
+    );
 
     if (is_post()) {
         if (!csrf_verify()) {
@@ -4026,12 +4295,7 @@ if ($page === 'profile') {
                 redirect($profileUrl());
             }
             $before = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $profileUser['id']]);
-            $tagline = trim((string) ($_POST['profile_tagline'] ?? ''));
-            if (function_exists('mb_substr')) {
-                $tagline = mb_substr($tagline, 0, 160);
-            } else {
-                $tagline = substr($tagline, 0, 160);
-            }
+            $tagline = normalize_profile_tagline((string) ($_POST['profile_tagline'] ?? ''));
             db_execute(
                 $pdo,
                 'UPDATE users SET profile_tagline = :profile_tagline, updated_at = :updated_at WHERE id = :id',
@@ -4068,12 +4332,188 @@ if ($page === 'profile') {
             redirect($profileUrl());
         }
 
+        if (in_array($action, ['create_profile_widget', 'update_profile_widget'], true)) {
+            if (!$isOwnProfile) {
+                flash_set('error', t('flash.no_permission'));
+                redirect($profileUrl());
+            }
+
+            $widgetId = $action === 'update_profile_widget' ? (int) ($_POST['widget_id'] ?? 0) : 0;
+            $existingWidget = $widgetId > 0
+                ? profile_custom_widget_for_owner($pdo, $widgetId, (int) $currentUser['id'])
+                : null;
+            if ($action === 'update_profile_widget' && $existingWidget === null) {
+                flash_set('error', t('flash.not_found'));
+                redirect($profileUrl());
+            }
+            if ($action === 'create_profile_widget'
+                && count(profile_custom_widgets_for_user($pdo, (int) $currentUser['id'], true)) >= PROFILE_CUSTOM_WIDGET_LIMIT
+            ) {
+                flash_set('error', t('profile.widget_limit_reached', ['count' => PROFILE_CUSTOM_WIDGET_LIMIT]));
+                redirect($profileUrl());
+            }
+
+            $title = trim((string) ($_POST['widget_title'] ?? ''));
+            $title = function_exists('mb_substr') ? mb_substr($title, 0, 80) : substr($title, 0, 80);
+            $body = trim((string) ($_POST['widget_body'] ?? ''));
+            $body = function_exists('mb_substr') ? mb_substr($body, 0, 600) : substr($body, 0, 600);
+            if ($title === '') {
+                flash_set('error', t('profile.widget_title_required'));
+                redirect($profileUrl());
+            }
+
+            $widgetType = profile_custom_widget_type((string) ($_POST['widget_type'] ?? 'media'));
+            $accent = profile_custom_widget_accent((string) ($_POST['accent_color'] ?? '#7c3aed'));
+            $externalUrl = profile_custom_widget_url((string) ($_POST['external_url'] ?? ''));
+            $linkUrl = profile_custom_widget_url((string) ($_POST['link_url'] ?? ''));
+            $achievementIds = profile_custom_widget_achievement_ids($_POST['achievement_ids'] ?? []);
+            $mediaPath = trim((string) ($existingWidget['media_path'] ?? ''));
+            $mediaMime = trim((string) ($existingWidget['media_mime'] ?? ''));
+            $newMediaPath = '';
+            $oldMediaPath = $mediaPath;
+
+            try {
+                $upload = is_array($_FILES['widget_media'] ?? null) ? (array) $_FILES['widget_media'] : [];
+                $hasUpload = (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+                if ($hasUpload) {
+                    $storedMedia = save_profile_custom_widget_media($config, $upload, (int) $currentUser['id']);
+                    $mediaPath = (string) $storedMedia['path'];
+                    $mediaMime = (string) $storedMedia['mime'];
+                    $newMediaPath = $mediaPath;
+                } elseif (!empty($_POST['remove_widget_media'])) {
+                    $mediaPath = '';
+                    $mediaMime = '';
+                }
+
+                $timestamp = now_iso();
+                if ($existingWidget === null) {
+                    $maxOrderRow = db_fetch_one(
+                        $pdo,
+                        'SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM profile_custom_widgets WHERE user_id = :user_id',
+                        [':user_id' => (int) $currentUser['id']]
+                    );
+                    db_execute(
+                        $pdo,
+                        'INSERT INTO profile_custom_widgets
+                         (user_id, widget_type, title, body, media_path, media_mime, external_url, link_url, accent_color, achievement_ids_json, sort_order, is_visible, created_at, updated_at)
+                         VALUES
+                         (:user_id, :widget_type, :title, :body, :media_path, :media_mime, :external_url, :link_url, :accent_color, :achievement_ids_json, :sort_order, 1, :created_at, :updated_at)',
+                        [
+                            ':user_id' => (int) $currentUser['id'],
+                            ':widget_type' => $widgetType,
+                            ':title' => $title,
+                            ':body' => $body,
+                            ':media_path' => $mediaPath !== '' ? $mediaPath : null,
+                            ':media_mime' => $mediaMime !== '' ? $mediaMime : null,
+                            ':external_url' => $externalUrl !== '' ? $externalUrl : null,
+                            ':link_url' => $linkUrl !== '' ? $linkUrl : null,
+                            ':accent_color' => $accent,
+                            ':achievement_ids_json' => json_encode($achievementIds, JSON_UNESCAPED_SLASHES),
+                            ':sort_order' => (int) ($maxOrderRow['max_order'] ?? 0) + 1,
+                            ':created_at' => $timestamp,
+                            ':updated_at' => $timestamp,
+                        ]
+                    );
+                } else {
+                    db_execute(
+                        $pdo,
+                        'UPDATE profile_custom_widgets SET
+                            widget_type = :widget_type, title = :title, body = :body,
+                            media_path = :media_path, media_mime = :media_mime,
+                            external_url = :external_url, link_url = :link_url,
+                            accent_color = :accent_color, achievement_ids_json = :achievement_ids_json,
+                            is_visible = :is_visible, updated_at = :updated_at
+                         WHERE id = :id AND user_id = :user_id',
+                        [
+                            ':widget_type' => $widgetType,
+                            ':title' => $title,
+                            ':body' => $body,
+                            ':media_path' => $mediaPath !== '' ? $mediaPath : null,
+                            ':media_mime' => $mediaMime !== '' ? $mediaMime : null,
+                            ':external_url' => $externalUrl !== '' ? $externalUrl : null,
+                            ':link_url' => $linkUrl !== '' ? $linkUrl : null,
+                            ':accent_color' => $accent,
+                            ':achievement_ids_json' => json_encode($achievementIds, JSON_UNESCAPED_SLASHES),
+                            ':is_visible' => bool_from_form('widget_visible'),
+                            ':updated_at' => $timestamp,
+                            ':id' => (int) $existingWidget['id'],
+                            ':user_id' => (int) $currentUser['id'],
+                        ]
+                    );
+                }
+
+                if ($oldMediaPath !== '' && $oldMediaPath !== $mediaPath) {
+                    $oldMediaFile = resolve_media_storage_path($config, $oldMediaPath);
+                    if ($oldMediaFile !== null && is_file($oldMediaFile)) {
+                        @unlink($oldMediaFile);
+                    }
+                }
+                flash_set('success', t($existingWidget === null ? 'profile.widget_created' : 'profile.widget_updated'));
+            } catch (Throwable $e) {
+                if ($newMediaPath !== '') {
+                    $newMediaFile = resolve_media_storage_path($config, $newMediaPath);
+                    if ($newMediaFile !== null && is_file($newMediaFile)) {
+                        @unlink($newMediaFile);
+                    }
+                }
+                flash_set('error', $e->getMessage());
+            }
+            redirect($profileUrl());
+        }
+
+        if ($action === 'delete_profile_widget') {
+            if (!$isOwnProfile) {
+                flash_set('error', t('flash.no_permission'));
+                redirect($profileUrl());
+            }
+            $widget = profile_custom_widget_for_owner(
+                $pdo,
+                (int) ($_POST['widget_id'] ?? 0),
+                (int) $currentUser['id']
+            );
+            if ($widget === null) {
+                flash_set('error', t('flash.not_found'));
+                redirect($profileUrl());
+            }
+            db_execute(
+                $pdo,
+                'DELETE FROM profile_custom_widgets WHERE id = :id AND user_id = :user_id',
+                [':id' => (int) $widget['id'], ':user_id' => (int) $currentUser['id']]
+            );
+            $storedPath = trim((string) ($widget['media_path'] ?? ''));
+            if ($storedPath !== '') {
+                $storedFile = resolve_media_storage_path($config, $storedPath);
+                if ($storedFile !== null && is_file($storedFile)) {
+                    @unlink($storedFile);
+                }
+            }
+            $savedLayout = json_decode((string) ($profileUser['profile_layout_json'] ?? ''), true);
+            if (is_array($savedLayout)) {
+                $deletedKey = profile_custom_widget_key((int) $widget['id']);
+                $savedLayout = array_values(array_filter($savedLayout, static fn(mixed $key): bool => (string) $key !== $deletedKey));
+                db_execute(
+                    $pdo,
+                    'UPDATE users SET profile_layout_json = :layout, updated_at = :updated_at WHERE id = :id',
+                    [
+                        ':layout' => $savedLayout !== [] ? json_encode($savedLayout, JSON_UNESCAPED_SLASHES) : null,
+                        ':updated_at' => now_iso(),
+                        ':id' => (int) $currentUser['id'],
+                    ]
+                );
+            }
+            flash_set('success', t('profile.widget_deleted'));
+            redirect($profileUrl());
+        }
+
         if ($action === 'save_profile_layout') {
             if (!$isOwnProfile) {
                 flash_set('error', t('flash.no_permission'));
                 redirect($profileUrl());
             }
             $allowedProfileBlocks = ['goals', 'friends', 'teams', 'training_rank', 'training_progress', 'achievements', 'duels', 'competitions', 'setup', 'activity'];
+            foreach (profile_custom_widgets_for_user($pdo, (int) $currentUser['id'], true) as $customWidget) {
+                $allowedProfileBlocks[] = profile_custom_widget_key((int) $customWidget['id']);
+            }
             $resetProfileLayout = bool_from_form('reset_profile_layout') === 1;
             $layoutValue = null;
             if (!$resetProfileLayout) {
@@ -4900,11 +5340,14 @@ if ($page === 'profile') {
     }
 
     $profileAllWidgets = ['goals', 'friends', 'teams', 'training_rank', 'training_progress', 'achievements', 'duels', 'competitions', 'setup', 'activity'];
+    foreach ($profileCustomWidgets as $profileCustomWidget) {
+        $profileAllWidgets[] = profile_custom_widget_key((int) $profileCustomWidget['id']);
+    }
     $profileSavedWidgets = json_decode((string) ($profileUser['profile_layout_json'] ?? ''), true);
     $profileKnownWidgets = json_decode((string) ($profileUser['profile_widgets_known'] ?? ''), true);
     $profileKnownWidgets = is_array($profileKnownWidgets) ? array_values(array_map('strval', $profileKnownWidgets)) : [];
     $profileUnknownWidgets = array_values(array_diff($profileAllWidgets, $profileKnownWidgets));
-    if ($profileUnknownWidgets !== []) {
+    if ($profileUnknownWidgets !== [] && $isOwnProfile) {
         $profileLayoutUpdate = null;
         if (is_array($profileSavedWidgets) && $profileSavedWidgets !== []) {
             $profileLayoutUpdate = array_values(array_unique(array_map('strval', $profileSavedWidgets)));
@@ -4935,6 +5378,10 @@ if ($page === 'profile') {
                 ':id' => (int) $profileUser['id'],
             ]
         );
+        if ($profileLayoutUpdate !== null) {
+            $profileUser['profile_layout_json'] = json_encode($profileLayoutUpdate, JSON_UNESCAPED_SLASHES);
+        }
+        $profileUser['profile_widgets_known'] = json_encode($profileAllWidgets, JSON_UNESCAPED_SLASHES);
     }
 
     $profileTrainingUserId = (int) $profileUser['id'];
@@ -5021,6 +5468,7 @@ if ($page === 'profile') {
         'profileCompetitionsSummary' => $profileCompetitionsSummary,
         'profileTeams' => $profileTeams,
         'profileGoalTeams' => $profileGoalTeams,
+        'profileCustomWidgets' => $profileCustomWidgets,
         'profileTrainingRank' => $profileTrainingRank,
         'profileTrainingPosition' => $profileTrainingPosition,
         'profileTrainingMonth' => $profileTrainingMonth,
@@ -5187,6 +5635,34 @@ if ($page === 'achievements') {
     ]);
 }
 
+if ($page === 'quests') {
+    quests_ensure_schema($pdo);
+    $questsBoard = quests_for_user($pdo, $currentUser);
+    $questsCompletionCounts = quests_completion_counts_for_user($pdo, (int) $currentUser['id']);
+    foreach ($questsBoard as &$questRow) {
+        $history = (array) ($questsCompletionCounts[(string) ($questRow['key'] ?? '')] ?? []);
+        $questRow['completion_count'] = max(0, (int) ($history['count'] ?? 0));
+        $questRow['last_completed_at'] = (string) ($history['last_completed_at'] ?? '');
+    }
+    unset($questRow);
+    $questsLevel = (int) (xp_user_level_info($pdo, (int) $currentUser['id'])['level'] ?? 1);
+
+    render_view('quests', [
+        'title' => t('quests.title'),
+        'currentPage' => 'quests',
+        'currentUser' => $currentUser,
+        'questsBoard' => $questsBoard,
+        'questsRank' => quests_rank_for_level($questsLevel),
+        'questsLevel' => $questsLevel,
+        'questsStreak' => quests_active_streak($pdo, (int) $currentUser['id']),
+        'questsCompletionTotal' => array_sum(array_map(
+            static fn(array $history): int => max(0, (int) ($history['count'] ?? 0)),
+            $questsCompletionCounts
+        )),
+        'config' => $config,
+    ]);
+}
+
 if ($page === 'season') {
     seasons_ensure_schema($pdo);
     $season = seasons_current($pdo);
@@ -5236,6 +5712,29 @@ if ($page === 'admin') {
             redirect('/?page=admin&section=training');
         }
 
+        if ($action === 'save_media_search_credentials') {
+            try {
+                media_search_update_credentials($pdo, $_POST, (int) $currentUser['id']);
+                flash_set('success', t('admin.media_search_credentials_saved'));
+            } catch (Throwable $e) {
+                flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : t('flash.save_failed'));
+            }
+            redirect('/?page=admin&section=training#media-providers');
+        }
+
+        if ($action === 'test_media_search_provider') {
+            $provider = (string) ($_POST['provider'] ?? '');
+            $type = $provider === 'youtube' ? 'video' : 'image';
+            try {
+                $mediaSearchConfig = media_search_effective_config($pdo, $config);
+                media_search_query($mediaSearchConfig, $type, 'fitness exercise technique', (int) $currentUser['id'], current_locale());
+                flash_set('success', t('admin.media_search_test_ok', ['provider' => $provider === 'youtube' ? 'YouTube' : 'Google Images']));
+            } catch (Throwable $e) {
+                flash_set('error', t('admin.media_search_test_failed', ['error' => $e->getMessage()]));
+            }
+            redirect('/?page=admin&section=training#media-providers');
+        }
+
         if ($action === 'save_rank_tiers') {
             try {
                 wk_admin_save_rank_tiers($pdo, (array) ($_POST['tiers'] ?? []), (int) $currentUser['id']);
@@ -5247,33 +5746,87 @@ if ($page === 'admin') {
         }
 
         if ($action === 'save_season') {
+            $seasonId = (int) ($_POST['season_id'] ?? 0);
+            $existingSeason = $seasonId > 0 ? db_fetch_one($pdo, 'SELECT * FROM seasons WHERE id = :id', [':id' => $seasonId]) : null;
+            $previousCoverPath = trim((string) ($existingSeason['cover_path'] ?? ''));
+            $nextCoverPath = $previousCoverPath;
+            $createdCoverPath = '';
             try {
-                season_admin_save(
+                $seasonCoverUpload = is_array($_FILES['season_cover'] ?? null) ? (array) $_FILES['season_cover'] : [];
+                if ((int) ($seasonCoverUpload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                    $createdCoverPath = save_uploaded_image($config, $seasonCoverUpload, 'seasons/covers', 'season_' . ($seasonId > 0 ? $seasonId : 'new'));
+                    $nextCoverPath = $createdCoverPath;
+                } elseif (!empty($_POST['remove_season_cover'])) {
+                    $nextCoverPath = '';
+                }
+                $savedSeasonId = season_admin_save(
                     $pdo,
-                    (int) ($_POST['season_id'] ?? 0) > 0 ? (int) $_POST['season_id'] : null,
+                    $seasonId > 0 ? $seasonId : null,
                     (string) ($_POST['season_key'] ?? ''),
                     (string) ($_POST['season_name'] ?? ''),
                     (string) ($_POST['start_date'] ?? ''),
                     (string) ($_POST['end_date'] ?? ''),
-                    (int) $currentUser['id']
+                    (int) $currentUser['id'],
+                    (string) ($_POST['icon_key'] ?? 'trophy'),
+                    $nextCoverPath,
+                    (string) ($_POST['accent_color'] ?? '#8b5cf6'),
+                    $existingSeason !== null ? (string) ($existingSeason['generation_source'] ?? 'manual') : 'manual'
                 );
-                flash_set('success', 'Season saved.');
+                if ($previousCoverPath !== '' && $previousCoverPath !== $nextCoverPath) {
+                    $oldCoverFile = resolve_media_storage_path($config, $previousCoverPath);
+                    if ($oldCoverFile !== null && is_file($oldCoverFile)) {
+                        @unlink($oldCoverFile);
+                    }
+                }
+                flash_set('success', t('admin.season_saved'));
             } catch (Throwable $e) {
+                if ($createdCoverPath !== '') {
+                    $createdCoverFile = resolve_media_storage_path($config, $createdCoverPath);
+                    if ($createdCoverFile !== null && is_file($createdCoverFile)) {
+                        @unlink($createdCoverFile);
+                    }
+                }
                 flash_set('error', $e->getMessage());
             }
-            redirect('/?page=admin&section=training');
+            redirect('/?page=admin&section=training#season-planner');
+        }
+
+        if ($action === 'save_season_automation') {
+            try {
+                $settings = seasons_automation_update(
+                    $pdo,
+                    (string) ($_POST['season_auto_enabled'] ?? '0') === '1',
+                    (int) ($_POST['duration_weeks'] ?? 12),
+                    (int) ($_POST['ahead_count'] ?? 4),
+                    (int) $currentUser['id']
+                );
+                $generated = $settings['enabled'] ? seasons_generate_upcoming($pdo, (int) $currentUser['id'], null, true) : ['created' => 0];
+                flash_set('success', t('admin.season_automation_saved', ['count' => (int) ($generated['created'] ?? 0)]));
+            } catch (Throwable $e) {
+                flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : t('flash.save_failed'));
+            }
+            redirect('/?page=admin&section=training#season-planner');
         }
 
         if ($action === 'delete_season') {
             try {
-                if (!season_admin_delete($pdo, (int) ($_POST['season_id'] ?? 0), (int) $currentUser['id'])) {
+                $seasonId = (int) ($_POST['season_id'] ?? 0);
+                $seasonBeforeDelete = db_fetch_one($pdo, 'SELECT * FROM seasons WHERE id = :id', [':id' => $seasonId]);
+                if (!season_admin_delete($pdo, $seasonId, (int) $currentUser['id'])) {
                     throw new InvalidArgumentException('Season not found.');
                 }
-                flash_set('success', 'Season removed.');
+                $seasonCoverPath = trim((string) ($seasonBeforeDelete['cover_path'] ?? ''));
+                if ($seasonCoverPath !== '') {
+                    $seasonCoverFile = resolve_media_storage_path($config, $seasonCoverPath);
+                    if ($seasonCoverFile !== null && is_file($seasonCoverFile)) {
+                        @unlink($seasonCoverFile);
+                    }
+                }
+                flash_set('success', t('admin.season_removed'));
             } catch (Throwable $e) {
                 flash_set('error', $e->getMessage());
             }
-            redirect('/?page=admin&section=training');
+            redirect('/?page=admin&section=training#season-planner');
         }
 
         if ($action === 'save_training_exercise') {
@@ -5399,7 +5952,7 @@ if ($page === 'admin') {
         if ($action === 'update_app_name') {
             set_app_setting($pdo, 'app_name', trim((string) ($_POST['app_name'] ?? '')) ?: (string) ($config['app_name'] ?? 'Fitness Challenge Tracker'), (int) $currentUser['id']);
             flash_set('success', t('flash.app_name_updated'));
-            redirect('/?page=admin');
+            redirect('/?page=admin&section=app');
         }
 
         if ($action === 'update_penalties_feature') {
@@ -5497,43 +6050,100 @@ if ($page === 'admin') {
         }
 
         if ($action === 'update_challenge_settings') {
-            update_challenge_settings(
-                $pdo,
-                (string) ($_POST['challenge_name'] ?? ''),
-                (string) ($_POST['challenge_start'] ?? ''),
-                (string) ($_POST['challenge_end'] ?? ''),
-                (int) $currentUser['id']
-            );
-            flash_set('success', t('flash.challenge_updated'));
+            try {
+                if (bool_from_form('backup_before_update') === 1) {
+                    create_system_backup($pdo, $config, 'pre_restore', (int) $currentUser['id']);
+                    prune_system_backups($pdo, $config, max(1, (int) (system_backup_settings($pdo)['retention_count'] ?? 20)));
+                }
+                update_challenge_settings(
+                    $pdo,
+                    (string) ($_POST['challenge_name'] ?? ''),
+                    (string) ($_POST['challenge_start'] ?? ''),
+                    (string) ($_POST['challenge_end'] ?? ''),
+                    (int) $currentUser['id']
+                );
+                flash_set('success', t('flash.challenge_updated'));
+            } catch (Throwable $e) {
+                flash_set('error', t('flash.challenge_change_failed', ['error' => $e->getMessage()]));
+            }
             redirect('/?page=admin&section=challenge');
         }
 
         if ($action === 'start_new_challenge') {
-            start_new_challenge(
-                $pdo,
-                (string) ($_POST['new_challenge_name'] ?? ''),
-                (string) ($_POST['new_challenge_start'] ?? ''),
-                (string) ($_POST['new_challenge_end'] ?? ''),
-                (int) $currentUser['id']
-            );
-            flash_set('success', t('flash.challenge_started'));
+            try {
+                if (bool_from_form('backup_before_start') === 1) {
+                    create_system_backup($pdo, $config, 'pre_restore', (int) $currentUser['id']);
+                    prune_system_backups($pdo, $config, max(1, (int) (system_backup_settings($pdo)['retention_count'] ?? 20)));
+                }
+                start_new_challenge(
+                    $pdo,
+                    (string) ($_POST['new_challenge_name'] ?? ''),
+                    (string) ($_POST['new_challenge_start'] ?? ''),
+                    (string) ($_POST['new_challenge_end'] ?? ''),
+                    (int) $currentUser['id']
+                );
+                flash_set('success', t('flash.challenge_started'));
+            } catch (Throwable $e) {
+                flash_set('error', t('flash.challenge_change_failed', ['error' => $e->getMessage()]));
+            }
             redirect('/?page=admin&section=challenge');
         }
 
         if ($action === 'archive_challenge') {
-            if ((string) ($_POST['confirm_archive'] ?? '') === 'ARCHIVE') {
+            try {
+                if ((string) ($_POST['confirm_archive'] ?? '') !== 'ARCHIVE') {
+                    throw new RuntimeException(t('admin.challenge_archive_confirmation_error'));
+                }
+                if (bool_from_form('backup_before_archive') === 1) {
+                    create_system_backup($pdo, $config, 'pre_restore', (int) $currentUser['id']);
+                    prune_system_backups($pdo, $config, max(1, (int) (system_backup_settings($pdo)['retention_count'] ?? 20)));
+                }
                 archive_challenge($pdo, (int) $currentUser['id']);
                 flash_set('success', t('flash.challenge_archived'));
+            } catch (Throwable $e) {
+                flash_set('error', t('flash.challenge_change_failed', ['error' => $e->getMessage()]));
             }
             redirect('/?page=admin&section=challenge');
         }
 
         if ($action === 'reactivate_challenge') {
-            $archiveId = (int) ($_POST['archive_id'] ?? 0);
-            if ($archiveId > 0 && reactivate_challenge($pdo, $archiveId, (int) $currentUser['id'])) {
-                flash_set('success', t('flash.challenge_reactivated'));
-            } else {
-                flash_set('error', t('flash.challenge_reactivate_failed'));
+            try {
+                $archiveId = (int) ($_POST['archive_id'] ?? 0);
+                if ((string) ($_POST['confirm_restore'] ?? '') !== 'RESTORE') {
+                    throw new RuntimeException(t('admin.challenge_restore_confirmation_error'));
+                }
+                if (bool_from_form('backup_before_restore') === 1) {
+                    create_system_backup($pdo, $config, 'pre_restore', (int) $currentUser['id']);
+                    prune_system_backups($pdo, $config, max(1, (int) (system_backup_settings($pdo)['retention_count'] ?? 20)));
+                }
+                if ($archiveId <= 0 || !reactivate_challenge($pdo, $archiveId, (int) $currentUser['id'])) {
+                    throw new RuntimeException(t('flash.challenge_reactivate_failed'));
+                }
+                flash_set('success', t('flash.challenge_reactivated_safe'));
+            } catch (Throwable $e) {
+                flash_set('error', t('flash.challenge_change_failed', ['error' => $e->getMessage()]));
+            }
+            redirect('/?page=admin&section=challenge');
+        }
+
+        if ($action === 'create_challenge_backup') {
+            try {
+                $backup = create_system_backup($pdo, $config, 'manual', (int) $currentUser['id']);
+                $settings = system_backup_settings($pdo);
+                prune_system_backups($pdo, $config, max(1, (int) ($settings['retention_count'] ?? 20)));
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'backup_created',
+                    'system_backup',
+                    (string) ($backup['id'] ?? ''),
+                    'Manual backup created from challenge administration.',
+                    null,
+                    ['trigger' => 'manual', 'source' => 'challenge_admin']
+                );
+                flash_set('success', t('flash.backup_created'));
+            } catch (Throwable $e) {
+                flash_set('error', t('flash.backup_failed', ['error' => $e->getMessage()]));
             }
             redirect('/?page=admin&section=challenge');
         }
@@ -5553,13 +6163,13 @@ if ($page === 'admin') {
             } catch (Throwable $e) {
                 flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : t('admin.invite_create_failed'));
             }
-            redirect('/?page=admin&section=users');
+            redirect('/?page=admin&section=registration_links');
         }
 
         if ($action === 'revoke_registration_invite') {
             $revoked = revoke_registration_invite($pdo, (int) ($_POST['invite_id'] ?? 0), (int) $currentUser['id']);
             flash_set($revoked ? 'success' : 'error', $revoked ? t('admin.invite_revoked') : t('admin.invite_revoke_failed'));
-            redirect('/?page=admin&section=users');
+            redirect('/?page=admin&section=registration_links');
         }
 
         if ($action === 'create_user') {
@@ -5644,14 +6254,28 @@ if ($page === 'admin') {
         }
 
         if ($action === 'update_workout_type') {
-            rename_workout_type($pdo, (int) ($_POST['type_id'] ?? 0), (string) ($_POST['name'] ?? ''), bool_from_form('active') === 1, (int) $currentUser['id']);
-            flash_set('success', t('flash.workout_type_updated'));
-            redirect('/?page=admin&section=workout_types&type_id=' . (int) ($_POST['type_id'] ?? 0));
+            $typeId = (int) ($_POST['type_id'] ?? 0);
+            $typeTranslationsInput = is_array($_POST['translations'] ?? null) ? (array) $_POST['translations'] : null;
+            $typeEnglishInput = is_array($typeTranslationsInput['en'] ?? null) ? (array) $typeTranslationsInput['en'] : [];
+            try {
+                rename_workout_type($pdo, $typeId, (string) ($_POST['name'] ?? ($typeEnglishInput['name'] ?? '')), bool_from_form('active') === 1, (int) $currentUser['id'], $typeTranslationsInput);
+                flash_set('success', t('flash.workout_type_updated'));
+            } catch (Throwable $e) {
+                flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : t('flash.save_failed'));
+            }
+            redirect('/?page=admin&section=workout_types&type_id=' . $typeId);
         }
 
         if ($action === 'create_workout_type') {
-            $createdTypeId = save_workout_type_if_needed($pdo, (string) ($_POST['name'] ?? ''), (int) $currentUser['id']);
-            flash_set('success', t('flash.workout_type_updated'));
+            $typeTranslationsInput = is_array($_POST['translations'] ?? null) ? (array) $_POST['translations'] : null;
+            $typeEnglishInput = is_array($typeTranslationsInput['en'] ?? null) ? (array) $typeTranslationsInput['en'] : [];
+            $createdTypeId = null;
+            try {
+                $createdTypeId = save_workout_type_if_needed($pdo, (string) ($_POST['name'] ?? ($typeEnglishInput['name'] ?? '')), (int) $currentUser['id'], $typeTranslationsInput);
+                flash_set('success', t('flash.workout_type_updated'));
+            } catch (Throwable $e) {
+                flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : t('flash.save_failed'));
+            }
             redirect('/?page=admin&section=workout_types' . ($createdTypeId !== null ? '&type_id=' . (int) $createdTypeId : ''));
         }
 
@@ -5663,18 +6287,21 @@ if ($page === 'admin') {
 
         if ($action === 'save_workout_type_field') {
             $typeId = (int) ($_POST['type_id'] ?? 0);
+            $fieldTranslationsInput = is_array($_POST['translations'] ?? null) ? (array) $_POST['translations'] : null;
+            $fieldEnglishInput = is_array($fieldTranslationsInput['en'] ?? null) ? (array) $fieldTranslationsInput['en'] : [];
             try {
                 save_workout_type_field(
                     $pdo,
                     $typeId,
                     !empty($_POST['field_id']) ? (int) $_POST['field_id'] : null,
-                    (string) ($_POST['label'] ?? ''),
+                    (string) ($_POST['label'] ?? ($fieldEnglishInput['label'] ?? '')),
                     (string) ($_POST['input_kind'] ?? 'number'),
                     (string) ($_POST['data_key'] ?? ''),
                     bool_from_form('required') === 1,
                     bool_from_form('active') === 1,
                     (int) ($_POST['sort_order'] ?? 0),
-                    (int) $currentUser['id']
+                    (int) $currentUser['id'],
+                    $fieldTranslationsInput
                 );
                 flash_set('success', t('flash.workout_type_updated'));
             } catch (Throwable $e) {
@@ -5691,17 +6318,26 @@ if ($page === 'admin') {
         }
 
         if ($action === 'save_habit') {
-            save_habit_definition(
-                $pdo,
-                !empty($_POST['habit_id']) ? (int) $_POST['habit_id'] : null,
-                (string) ($_POST['code'] ?? ''),
-                (string) ($_POST['label'] ?? ''),
-                bool_from_form('active') === 1,
-                (int) ($_POST['sort_order'] ?? 0),
-                (int) $currentUser['id']
-            );
-            flash_set('success', t('flash.habit_saved'));
-            redirect('/?page=admin');
+            $habitId = !empty($_POST['habit_id']) ? (int) $_POST['habit_id'] : null;
+            $habitTranslationsInput = is_array($_POST['translations'] ?? null) ? (array) $_POST['translations'] : null;
+            $habitEnglishInput = is_array($habitTranslationsInput['en'] ?? null) ? (array) $habitTranslationsInput['en'] : [];
+            $habitFallbackLabel = (string) ($_POST['label'] ?? ($habitEnglishInput['label'] ?? ''));
+            try {
+                save_habit_definition(
+                    $pdo,
+                    $habitId,
+                    (string) ($_POST['code'] ?? ''),
+                    $habitFallbackLabel,
+                    bool_from_form('active') === 1,
+                    (int) ($_POST['sort_order'] ?? 0),
+                    (int) $currentUser['id'],
+                    $habitTranslationsInput
+                );
+                flash_set('success', t('flash.habit_saved'));
+            } catch (Throwable $e) {
+                flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : t('flash.save_failed'));
+            }
+            redirect('/?page=admin&section=habits' . ($habitId !== null ? '&habit_id=' . $habitId : ''));
         }
 
         if ($action === 'delete_habit') {
@@ -5711,6 +6347,7 @@ if ($page === 'admin') {
         }
 
         if ($action === 'create_achievement') {
+            $createdAchievementImagePath = '';
             try {
                 $translations = normalize_achievement_translations_input(
                     $_POST['translations'] ?? [],
@@ -5732,7 +6369,8 @@ if ($page === 'admin') {
 
                 $imagePath = null;
                 if (!empty($_FILES['image']['name'])) {
-                    $imagePath = save_uploaded_image($config, $_FILES['image'], 'achievements', 'achievement');
+                    $createdAchievementImagePath = save_uploaded_image($config, $_FILES['image'], 'achievements', 'achievement');
+                    $imagePath = $createdAchievementImagePath;
                 }
 
                 $conditionalEnabled = !empty($_POST['conditional']) || !empty($_POST['conditional_enabled']);
@@ -5771,12 +6409,20 @@ if ($page === 'admin') {
                 }
                 flash_set('success', t('flash.achievement_created'));
             } catch (Throwable $e) {
+                if ($createdAchievementImagePath !== '') {
+                    $failedImageFile = resolve_media_storage_path($config, $createdAchievementImagePath);
+                    if ($failedImageFile !== null && is_file($failedImageFile)) {
+                        @unlink($failedImageFile);
+                    }
+                }
                 flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : 'Achievement could not be created.');
             }
             redirect('/?page=admin&section=achievements');
         }
 
         if ($action === 'update_achievement') {
+            $uploadedAchievementImagePath = '';
+            $previousAchievementImagePath = '';
             try {
                 $achievementId = (int) ($_POST['achievement_id'] ?? 0);
                 if ($achievementId <= 0) {
@@ -5788,9 +6434,11 @@ if ($page === 'admin') {
                     throw new RuntimeException('Achievement not found.');
                 }
 
-                $imagePath = bool_from_form('remove_image') === 1 ? '' : (string) ($existing['image_path'] ?? '');
+                $previousAchievementImagePath = (string) ($existing['image_path'] ?? '');
+                $imagePath = bool_from_form('remove_image') === 1 ? '' : $previousAchievementImagePath;
                 if (!empty($_FILES['image']['name'])) {
-                    $imagePath = save_uploaded_image($config, $_FILES['image'], 'achievements', 'achievement');
+                    $uploadedAchievementImagePath = save_uploaded_image($config, $_FILES['image'], 'achievements', 'achievement');
+                    $imagePath = $uploadedAchievementImagePath;
                 }
                 $translations = normalize_achievement_translations_input(
                     $_POST['translations'] ?? [],
@@ -5817,8 +6465,20 @@ if ($page === 'admin') {
                     'target_value' => (float) ($_POST['target_amount'] ?? ($_POST['target_value'] ?? 1)),
                     'window' => (string) ($_POST['window'] ?? 'total'),
                 ], (int) $currentUser['id']);
+                if ($previousAchievementImagePath !== '' && $previousAchievementImagePath !== $imagePath) {
+                    $previousAchievementImageFile = resolve_media_storage_path($config, $previousAchievementImagePath);
+                    if ($previousAchievementImageFile !== null && is_file($previousAchievementImageFile)) {
+                        @unlink($previousAchievementImageFile);
+                    }
+                }
                 flash_set('success', t('flash.achievement_created'));
             } catch (Throwable $e) {
+                if ($uploadedAchievementImagePath !== '') {
+                    $failedImageFile = resolve_media_storage_path($config, $uploadedAchievementImagePath);
+                    if ($failedImageFile !== null && is_file($failedImageFile)) {
+                        @unlink($failedImageFile);
+                    }
+                }
                 flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : 'Achievement could not be updated.');
             }
             redirect('/?page=admin&section=achievements');
@@ -5893,6 +6553,12 @@ if ($page === 'admin') {
         if ($action === 'update_xp_amounts') {
             xp_set_action_amounts($pdo, (array) ($_POST['xp_amounts'] ?? []), (int) $currentUser['id']);
             flash_set('success', t('flash.xp_amounts_updated'));
+            redirect('/?page=admin&section=xp');
+        }
+
+        if ($action === 'reset_xp_amounts') {
+            xp_set_action_amounts($pdo, xp_default_action_amounts(), (int) $currentUser['id']);
+            flash_set('success', t('flash.xp_amounts_reset'));
             redirect('/?page=admin&section=xp');
         }
 
@@ -6010,6 +6676,49 @@ if ($page === 'admin') {
                 ]));
             } catch (Throwable $e) {
                 flash_set('error', t('flash.photo_thumbnails_failed', ['error' => $e->getMessage()]));
+            }
+            redirect('/?page=admin&section=backups');
+        }
+
+        if ($action === 'verify_backup') {
+            $backupId = (int) ($_POST['backup_id'] ?? 0);
+            $backup = fetch_system_backup($pdo, $backupId);
+            if ($backup === null) {
+                flash_set('error', t('flash.not_found'));
+                redirect('/?page=admin&section=backups');
+            }
+            $absolutePath = system_backup_absolute_path($config, (string) ($backup['file_path'] ?? ''));
+            if ($absolutePath === null || !is_file($absolutePath)) {
+                flash_set('error', t('flash.not_found'));
+                redirect('/?page=admin&section=backups');
+            }
+            try {
+                $manifest = validate_system_backup_archive($absolutePath);
+                mark_system_backup_restore_result($pdo, $backupId, 'verified', (int) $currentUser['id']);
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'backup_verified',
+                    'system_backup',
+                    (string) $backupId,
+                    'Backup integrity verified.',
+                    null,
+                    ['manifest_version' => (int) ($manifest['version'] ?? 1)]
+                );
+                flash_set('success', t('flash.backup_verified'));
+            } catch (Throwable $e) {
+                mark_system_backup_restore_result($pdo, $backupId, 'error', (int) $currentUser['id'], $e->getMessage());
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'backup_error',
+                    'system_backup',
+                    (string) $backupId,
+                    'Backup verification failed.',
+                    null,
+                    ['error' => $e->getMessage()]
+                );
+                flash_set('error', t('flash.backup_verify_failed', ['error' => $e->getMessage()]));
             }
             redirect('/?page=admin&section=backups');
         }
@@ -6139,31 +6848,31 @@ if ($page === 'admin') {
             } catch (Throwable $e) {
                 flash_set('error', $e->getMessage());
             }
-            redirect('/?page=admin&section=app');
+            redirect('/?page=admin&section=appearance');
         }
 
         if ($action === 'set_login_background') {
             $selectedPath = trim((string) ($_POST['login_background_path'] ?? ''));
             if ($selectedPath !== '' && !is_valid_login_background_path($config, $selectedPath)) {
                 flash_set('error', t('flash.not_found'));
-                redirect('/?page=admin&section=app');
+                redirect('/?page=admin&section=appearance');
             }
             set_app_setting($pdo, 'login_background_path', $selectedPath !== '' ? $selectedPath : null, (int) $currentUser['id']);
             flash_set('success', t('flash.login_background_updated'));
-            redirect('/?page=admin&section=app');
+            redirect('/?page=admin&section=appearance');
         }
 
         if ($action === 'clear_login_background') {
             set_app_setting($pdo, 'login_background_path', null, (int) $currentUser['id']);
             flash_set('success', t('flash.login_background_cleared'));
-            redirect('/?page=admin&section=app');
+            redirect('/?page=admin&section=appearance');
         }
 
         if ($action === 'set_login_style') {
             $style = login_style_normalize($_POST['login_style'] ?? 'split');
             set_app_setting($pdo, 'login_style', $style, (int) $currentUser['id']);
             flash_set('success', t('flash.login_style_updated'));
-            redirect('/?page=admin&section=app');
+            redirect('/?page=admin&section=appearance');
         }
 
         if ($action === 'upload_app_icon') {
@@ -6179,12 +6888,12 @@ if ($page === 'admin') {
             } catch (Throwable $e) {
                 flash_set('error', $e->getMessage());
             }
-            redirect('/?page=admin');
+            redirect('/?page=admin&section=appearance');
         }
     }
 
     $adminRequestedSection = trim((string) ($_GET['section'] ?? ''));
-    $adminRenderableSections = ['users', 'challenge', 'app', 'appearance', 'notion', 'telegram', 'backups', 'habits', 'workout_types', 'training', 'achievements', 'motivational_quotes', 'xp', 'audit'];
+    $adminRenderableSections = ['users', 'registration_links', 'challenge', 'app', 'appearance', 'notion', 'telegram', 'backups', 'habits', 'workout_types', 'training', 'achievements', 'motivational_quotes', 'xp', 'audit'];
     if (!in_array($adminRequestedSection, $adminRenderableSections, true)) {
         render_view('admin', [
             'title' => t('admin.title'),
@@ -6200,6 +6909,12 @@ if ($page === 'admin') {
     $registrationInviteUrl = trim((string) ($_SESSION['registration_invite_url'] ?? ''));
     unset($_SESSION['registration_invite_url']);
     $challengeSettings = challenge_settings($pdo, $config);
+    $challengeArchives = list_challenge_archives($pdo);
+    $challengeCurrentSummary = challenge_period_summary(
+        $pdo,
+        (string) ($challengeSettings['challenge_start'] ?? ''),
+        (string) ($challengeSettings['challenge_end'] ?? '')
+    );
     $appIconSetting = db_fetch_one(
         $pdo,
         'SELECT setting_value, updated_at FROM app_settings WHERE setting_key = :key',
@@ -6219,12 +6934,36 @@ if ($page === 'admin') {
     $systemBackups = list_system_backups($pdo, $config, 200);
     $integrationStatuses = integration_runtime_statuses($pdo);
     $workoutTypeFields = list_workout_type_fields_grouped($pdo, false);
+    $adminWorkoutTypes = list_workout_types($pdo, false);
+    $adminWorkoutTypeTranslations = fetch_workout_type_translations($pdo, array_column($adminWorkoutTypes, 'id'));
+    $adminWorkoutFieldIds = [];
+    foreach ($workoutTypeFields as $adminWorkoutFieldRows) {
+        foreach ((array) $adminWorkoutFieldRows as $adminWorkoutFieldRow) {
+            $adminWorkoutFieldIds[] = (int) ($adminWorkoutFieldRow['id'] ?? 0);
+        }
+    }
+    $adminWorkoutFieldTranslations = fetch_workout_field_translations($pdo, $adminWorkoutFieldIds);
     $loginBackgroundLibrary = list_login_background_library($config);
     $adminAchievements = list_achievements_for_admin($pdo);
     $adminTrainingExercises = wk_admin_exercises($pdo);
     $adminTrainingExerciseMedia = wk_exercise_media_map($pdo, $adminTrainingExercises);
     $adminRankTiers = db_fetch_all($pdo, 'SELECT * FROM workout_rank_tiers ORDER BY sort_order ASC, threshold ASC');
+    $adminSeasonAutomation = seasons_automation_settings($pdo);
+    if (!empty($adminSeasonAutomation['enabled'])) {
+        seasons_generate_upcoming($pdo);
+    }
     $adminSeasons = seasons_list($pdo);
+    $adminSeasonSchedule = seasons_schedule_status($pdo);
+    $adminLatestSeason = $adminSeasons !== [] ? $adminSeasons[0] : null;
+    try {
+        $adminNextSeasonStartDate = $adminLatestSeason !== null
+            ? (new DateTimeImmutable((string) ($adminLatestSeason['end_date'] ?? 'today')))->modify('+1 day')
+            : new DateTimeImmutable('today');
+    } catch (Throwable) {
+        $adminNextSeasonStartDate = new DateTimeImmutable('today');
+    }
+    $adminNextSeasonEndDate = $adminNextSeasonStartDate->modify('+' . ((int) ($adminSeasonAutomation['duration_weeks'] ?? 12) * 7 - 1) . ' days');
+    $adminMediaSearchCredentials = media_search_credentials_status($pdo, $config);
     $selectedAdminAchievementId = 0;
     $selectedAdminAchievementParam = trim((string) ($_GET['achievement_id'] ?? ''));
     if ($selectedAdminAchievementParam !== '' && ctype_digit($selectedAdminAchievementParam)) {
@@ -6284,6 +7023,8 @@ if ($page === 'admin') {
         'date_from' => ($_GET['date_from'] ?? '') !== '' ? to_date((string) $_GET['date_from']) : null,
         'date_to' => ($_GET['date_to'] ?? '') !== '' ? to_date((string) $_GET['date_to']) : null,
     ];
+    $adminHabits = list_habit_definitions($pdo, false);
+    $adminHabitTranslations = fetch_habit_translations($pdo, array_column($adminHabits, 'id'));
 
     render_view('admin', [
         'title' => t('admin.title'),
@@ -6296,9 +7037,12 @@ if ($page === 'admin') {
         'teamMembers' => list_team_members($pdo, (int) $team['id'], false),
         'joinRequests' => pending_team_join_requests($pdo, (int) $team['id']),
         'availableUsers' => list_users_not_in_active_team($pdo, (int) $team['id']),
-        'workoutTypes' => list_workout_types($pdo, false),
+        'workoutTypes' => $adminWorkoutTypes,
+        'workoutTypeTranslations' => $adminWorkoutTypeTranslations,
         'workoutTypeFields' => $workoutTypeFields,
-        'habits' => list_habit_definitions($pdo, false),
+        'workoutFieldTranslations' => $adminWorkoutFieldTranslations,
+        'habits' => $adminHabits,
+        'habitTranslations' => $adminHabitTranslations,
         'achievements' => list_achievements($pdo, true),
         'adminAchievements' => $adminAchievements,
         'adminTrainingExercises' => $adminTrainingExercises,
@@ -6306,23 +7050,21 @@ if ($page === 'admin') {
         'adminRankTiers' => $adminRankTiers,
         'adminSeasons' => $adminSeasons,
         'mediaSearchEnabled' => media_search_enabled($pdo),
-        'mediaSearchGoogleReady' => media_search_provider_available($config, 'image'),
-        'mediaSearchYoutubeReady' => media_search_provider_available($config, 'video'),
+        'mediaSearchGoogleReady' => !empty($adminMediaSearchCredentials['google_ready']),
+        'mediaSearchYoutubeReady' => !empty($adminMediaSearchCredentials['youtube_ready']),
+        'mediaSearchCredentials' => $adminMediaSearchCredentials,
+        'seasonAutomation' => $adminSeasonAutomation,
+        'seasonSchedule' => $adminSeasonSchedule,
+        'nextSeasonStart' => $adminNextSeasonStartDate->format('Y-m-d'),
+        'nextSeasonEnd' => $adminNextSeasonEndDate->format('Y-m-d'),
         'selectedAdminAchievementId' => $selectedAdminAchievementId,
         'adminAchievementStats' => $adminAchievementStats,
         'achievementAwards' => list_recent_achievement_awards($pdo, 300),
         'motivationalQuotes' => list_motivational_quotes($pdo),
         'xpAmounts' => xp_action_amounts($pdo),
-        'xpUsers' => array_map(static function (array $xpU) use ($pdo): array {
-            $total = xp_total($pdo, (int) $xpU['id']);
-            $info = xp_level_info($total);
-            return [
-                'id' => (int) $xpU['id'],
-                'display_name' => (string) ($xpU['display_name'] ?? ''),
-                'xp_total' => $total,
-                'level' => (int) $info['level'],
-            ];
-        }, array_values((array) $users)),
+        'xpUsers' => xp_admin_user_rows($pdo, array_values((array) $users)),
+        'xpActionStats' => xp_action_event_stats($pdo),
+        'xpRecentEvents' => xp_recent_events($pdo, 60),
         'appIconPath' => $appIconPath,
         'appIconVersion' => $appIconVersion,
         'appNameSetting' => app_setting($pdo, 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge Tracker')),
@@ -6341,7 +7083,8 @@ if ($page === 'admin') {
         'systemBackups' => $systemBackups,
         'integrationStatuses' => $integrationStatuses,
         'challengeSettings' => $challengeSettings,
-        'challengeArchives' => list_challenge_archives($pdo),
+        'challengeArchives' => $challengeArchives,
+        'challengeCurrentSummary' => $challengeCurrentSummary,
         'auditLogs' => fetch_audit_logs($pdo, $auditFilters, 100),
         'auditFilters' => $auditFilters,
         'config' => $config,
@@ -6394,16 +7137,81 @@ if ($page === 'team_settings') {
 
         $action = (string) ($_POST['action'] ?? '');
         if ($action === 'team_settings') {
-            update_team_settings(
-                $pdo,
-                (int) $team['id'],
-                (string) ($_POST['name'] ?? ''),
-                (string) ($_POST['description'] ?? ''),
-                (string) ($_POST['join_mode'] ?? 'closed'),
-                (string) ($_POST['visibility'] ?? 'visible'),
-                (int) $currentUser['id']
-            );
-            flash_set('success', t('flash.team_updated'));
+            $existingTeamIconPath = trim((string) ($team['icon_path'] ?? ''));
+            $existingTeamCoverPath = trim((string) ($team['cover_path'] ?? ''));
+            $nextTeamIconPath = $existingTeamIconPath;
+            $nextTeamCoverPath = $existingTeamCoverPath;
+            $createdTeamMediaPaths = [];
+            try {
+                $teamIconUpload = is_array($_FILES['team_icon'] ?? null) ? (array) $_FILES['team_icon'] : [];
+                $teamCoverUpload = is_array($_FILES['team_cover'] ?? null) ? (array) $_FILES['team_cover'] : [];
+                if ((int) ($teamIconUpload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                    $nextTeamIconPath = save_uploaded_image($config, $teamIconUpload, 'teams/icons', 'team_' . (int) $team['id'] . '_icon');
+                    $createdTeamMediaPaths[] = $nextTeamIconPath;
+                } elseif (!empty($_POST['remove_team_icon'])) {
+                    $nextTeamIconPath = '';
+                }
+                if ((int) ($teamCoverUpload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                    $nextTeamCoverPath = save_uploaded_image($config, $teamCoverUpload, 'teams/covers', 'team_' . (int) $team['id'] . '_cover');
+                    $createdTeamMediaPaths[] = $nextTeamCoverPath;
+                } elseif (!empty($_POST['remove_team_cover'])) {
+                    $nextTeamCoverPath = '';
+                }
+
+                $pdo->beginTransaction();
+                update_team_settings(
+                    $pdo,
+                    (int) $team['id'],
+                    (string) ($_POST['name'] ?? ''),
+                    (string) ($_POST['description'] ?? ''),
+                    (string) ($_POST['join_mode'] ?? 'closed'),
+                    (string) ($_POST['visibility'] ?? 'visible'),
+                    (int) $currentUser['id']
+                );
+                db_execute(
+                    $pdo,
+                    'UPDATE teams SET icon_path = :icon_path, cover_path = :cover_path, updated_at = :updated_at WHERE id = :id',
+                    [
+                        ':icon_path' => $nextTeamIconPath !== '' ? $nextTeamIconPath : null,
+                        ':cover_path' => $nextTeamCoverPath !== '' ? $nextTeamCoverPath : null,
+                        ':updated_at' => now_iso(),
+                        ':id' => (int) $team['id'],
+                    ]
+                );
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'team_identity_updated',
+                    'team',
+                    (string) $team['id'],
+                    'Team icon and cover updated.',
+                    ['icon_path' => $existingTeamIconPath, 'cover_path' => $existingTeamCoverPath],
+                    ['icon_path' => $nextTeamIconPath, 'cover_path' => $nextTeamCoverPath]
+                );
+                $pdo->commit();
+
+                foreach ([[$existingTeamIconPath, $nextTeamIconPath], [$existingTeamCoverPath, $nextTeamCoverPath]] as [$oldTeamMediaPath, $newTeamMediaPath]) {
+                    if ($oldTeamMediaPath === '' || $oldTeamMediaPath === $newTeamMediaPath) {
+                        continue;
+                    }
+                    $oldTeamMediaFile = resolve_media_storage_path($config, $oldTeamMediaPath);
+                    if ($oldTeamMediaFile !== null && is_file($oldTeamMediaFile)) {
+                        @unlink($oldTeamMediaFile);
+                    }
+                }
+                flash_set('success', t('flash.team_updated'));
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                foreach ($createdTeamMediaPaths as $createdTeamMediaPath) {
+                    $createdTeamMediaFile = resolve_media_storage_path($config, (string) $createdTeamMediaPath);
+                    if ($createdTeamMediaFile !== null && is_file($createdTeamMediaFile)) {
+                        @unlink($createdTeamMediaFile);
+                    }
+                }
+                flash_set('error', $e->getMessage());
+            }
             redirect($teamSettingsUrl((int) $team['id'], 'general'));
         }
 
@@ -7730,11 +8538,9 @@ if ($page === 'metric') {
         redirect('/?page=admin');
     }
 
-    $team = default_team($pdo);
-    $users = list_active_team_users($pdo, (int) $team['id']);
-    if ($users === []) {
-        $users = list_active_users($pdo);
-    }
+    // Metric detail is deliberately personal. Even administrators see their
+    // own values here; team comparisons belong in the dedicated social views.
+    $users = [$currentUser];
 
     $metricsByUser = compute_challenge_metrics(
         $pdo,
@@ -7743,22 +8549,15 @@ if ($page === 'metric') {
         (string) $settings['challenge_end']
     );
     $metricsByUser = apply_strike_review_overrides_to_metrics($pdo, $metricsByUser);
-    evaluate_automatic_achievements($pdo, $metricsByUser, (int) $team['id']);
 
     $metricsById = [];
     foreach ($metricsByUser as $userId => $metric) {
         $metricsById[(int) $userId] = $metric;
     }
 
-    $selectedUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
-    if (!is_admin($currentUser) && $selectedUserId !== (int) $currentUser['id']) {
-        $selectedUserId = (int) $currentUser['id'];
-    }
+    $selectedUserId = (int) $currentUser['id'];
 
     $selectedMetric = $metricsById[$selectedUserId] ?? null;
-    if ($selectedMetric === null) {
-        $selectedMetric = count($metricsByUser) > 0 ? array_values($metricsByUser)[0] : null;
-    }
     if ($selectedMetric === null) {
         flash_set('error', t('flash.no_active_users'));
         redirect('/?page=dashboard');
@@ -7767,7 +8566,7 @@ if ($page === 'metric') {
     $penaltiesEnabled = penalties_enabled($pdo);
     $allowedMetrics = [
         'steps' => t('metric.steps'),
-        'distance' => t('metric.distance_km'),
+        'distance' => t('metric.total_km'),
         'workouts' => t('metric.workouts'),
         'score' => t('metric.score'),
         'calories_consumed' => t('dashboard.calories_consumed'),
@@ -7924,8 +8723,6 @@ if ($page === 'metric') {
     if ($metricKey === 'score') {
         $seriesLabels = array_map(static fn(array $row): string => format_date_eu((string) ($row['week_start'] ?? '')), $selectedWeeklyRows);
         $seriesValues = array_map($score_for_week, $selectedWeeklyRows);
-        $seriesCount = count($seriesValues);
-        $currentValue = $seriesCount > 0 ? round(array_sum($seriesValues) / $seriesCount, 1) : 0;
     }
 
     if (in_array($metricKey, ['calories_consumed', 'calories_burned'], true)) {
@@ -7970,6 +8767,40 @@ if ($page === 'metric') {
         $currentValueSuffix = ' kcal';
     }
 
+    $scoreSnapshotView = $dashboardView === 'total' ? 'total' : $selectedWeekStart;
+    $scoreSnapshot = metric_snapshot_for_view($selectedMetric, $scoreSnapshotView);
+    $scoreBreakdown = score_breakdown_from_snapshot($selectedMetric, $scoreSnapshot);
+    if ($metricKey === 'score') {
+        // Keep the detail value identical to the dashboard. The chart remains a
+        // weekly history, but the headline is the weighted score for this view.
+        $currentValue = (float) ($scoreBreakdown['score'] ?? 0.0);
+    }
+
+    $numericSeries = array_values(array_map(static fn(mixed $value): float => (float) $value, $seriesValues));
+    $metricSummary = [
+        'average' => $numericSeries !== [] ? array_sum($numericSeries) / count($numericSeries) : 0.0,
+        'best' => $numericSeries !== [] ? max($numericSeries) : 0.0,
+        'latest' => $numericSeries !== [] ? $numericSeries[count($numericSeries) - 1] : 0.0,
+        'points' => count($numericSeries),
+    ];
+    $periodLabel = t('dashboard.current_week');
+    if ($dashboardView === 'total') {
+        $periodLabel = t('common.from_to', [
+            'start' => format_date_eu((string) ($settings['challenge_start'] ?? '')),
+            'end' => format_date_eu((string) ($settings['challenge_end'] ?? '')),
+        ]);
+    } elseif ($selectedWeekStart !== '') {
+        try {
+            $periodStart = new DateTimeImmutable($selectedWeekStart);
+            $periodLabel = t('common.from_to', [
+                'start' => format_date_eu($periodStart->format('Y-m-d')),
+                'end' => format_date_eu($periodStart->modify('+6 days')->format('Y-m-d')),
+            ]);
+        } catch (Throwable) {
+            $periodLabel = t('dashboard.current_week');
+        }
+    }
+
     $backUrl = '/?' . http_build_query([
         'page' => 'dashboard',
         'user_id' => (int) ($selectedMetric['user']['id'] ?? 0),
@@ -7978,9 +8809,8 @@ if ($page === 'metric') {
 
     render_view('metric', [
         'title' => t('metric.detail_title'),
-        'currentPage' => 'dashboard',
+        'currentPage' => 'metric',
         'currentUser' => $currentUser,
-        'users' => $users,
         'selectedMetric' => $selectedMetric,
         'metricKey' => $metricKey,
         'metricLabel' => $allowedMetrics[$metricKey],
@@ -7989,6 +8819,10 @@ if ($page === 'metric') {
         'currentValue' => $currentValue,
         'currentValueSuffix' => $currentValueSuffix,
         'chartLabel' => $chartLabel,
+        'allowedMetrics' => $allowedMetrics,
+        'metricSummary' => $metricSummary,
+        'periodLabel' => $periodLabel,
+        'scoreBreakdown' => $scoreBreakdown,
         'dashboardView' => $dashboardView,
         'weekOptions' => $weekOptions,
         'selectedWeekStart' => $selectedWeekStart,
@@ -9016,6 +9850,17 @@ if ($page === 'dashboard') {
         $calorieEndDate,
         $maintenanceCalories
     );
+    // The mobile "Today" card must never inherit the challenge/week range.
+    // A challenge can already be over while the user keeps logging normally.
+    $dashboardTodayDate = to_date(null);
+    $dashboardTodayLog = fetch_log($pdo, (int) $currentUser['id'], $dashboardTodayDate) ?? [];
+    $dashboardTodayCalorieStats = fetch_user_calorie_stats(
+        $pdo,
+        (int) $currentUser['id'],
+        $dashboardTodayDate,
+        $dashboardTodayDate,
+        ($currentUser['maintenance_calories'] ?? null) !== null ? (float) $currentUser['maintenance_calories'] : null
+    );
     $dashboardAchievementUserId = (int) ($selectedMetric['user']['id'] ?? $selectedUserId);
     if (challenge_is_active($settings)) {
         evaluate_automatic_achievements(
@@ -9193,6 +10038,9 @@ if ($page === 'dashboard') {
         'dashboardCalorieStats' => $dashboardCalorieStats,
         'dashboardCalorieRangeStart' => $calorieStartDate,
         'dashboardCalorieRangeEnd' => $calorieEndDate,
+        'dashboardTodayDate' => $dashboardTodayDate,
+        'dashboardTodayLog' => $dashboardTodayLog,
+        'dashboardTodayCalorieStats' => $dashboardTodayCalorieStats,
         'dashboardAchievements' => $dashboardAchievements,
         'motivationQuote' => random_motivation_quote_from_db($pdo, (string) ($currentUser['locale'] ?? 'en')),
         'config' => $config,

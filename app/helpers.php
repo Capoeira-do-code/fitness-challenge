@@ -7,6 +7,31 @@ function e(?string $value): string
     return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
 }
 
+function profile_tagline_max_length(): int
+{
+    return 100;
+}
+
+function normalize_profile_tagline(?string $value): string
+{
+    $tagline = trim((string) $value);
+    if ($tagline === '') {
+        return '';
+    }
+
+    // Keep the profile header to one compact message even for crafted POSTs.
+    $singleLine = preg_replace('/\s+/u', ' ', $tagline);
+    if (is_string($singleLine)) {
+        $tagline = $singleLine;
+    }
+
+    $limit = profile_tagline_max_length();
+
+    return function_exists('mb_substr')
+        ? mb_substr($tagline, 0, $limit)
+        : substr($tagline, 0, $limit);
+}
+
 function redirect(string $url): never
 {
     header('Location: ' . $url);
@@ -1176,9 +1201,16 @@ function activity_icon_svg(string $name): string
         'search' => '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
         'star' => '<path d="m12 2.8 2.85 5.78 6.38.93-4.62 4.5 1.09 6.36L12 17.37l-5.7 3 1.09-6.36-4.62-4.5 6.38-.93Z"/>',
         'plus' => '<path d="M12 5v14M5 12h14"/>',
+        'trash' => '<path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14"/><path d="M10 11v6M14 11v6"/>',
+        'chevron-left' => '<path d="m15 18-6-6 6-6"/>',
+        'chevron-right' => '<path d="m9 18 6-6-6-6"/>',
+        'play' => '<path d="m8 5 11 7-11 7Z"/>',
+        'pause' => '<path d="M9 5v14M15 5v14"/>',
+        'restart' => '<path d="M5 8V4m0 0h4M5 4a9 9 0 1 1-2 10"/>',
         'grid' => '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
         'list' => '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="5" cy="6" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="5" cy="18" r="1"/>',
         'link' => '<path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.2 1.2"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.2-1.2"/>',
+        'download' => '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/>',
         'bell' => '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>',
         'spark' => '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/>',
     ];

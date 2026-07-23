@@ -215,17 +215,23 @@ function notion_ensure_schema(PDO $pdo): void
 
 function notion_update_settings(PDO $pdo, array $input, int $actorUserId): void
 {
-    $token = trim((string) ($input['notion_token'] ?? ''));
-    // Preserve the stored token when the field is left blank (masked in the UI).
-    if ($token === '') {
-        $token = trim((string) (app_setting($pdo, 'notion_token', '') ?? ''));
+    if (array_key_exists('notion_enabled_present', $input) || array_key_exists('notion_enabled', $input)) {
+        set_app_setting($pdo, 'notion_enabled', !empty($input['notion_enabled']) ? '1' : '0', $actorUserId);
     }
 
-    set_app_setting($pdo, 'notion_enabled', !empty($input['notion_enabled']) ? '1' : '0', $actorUserId);
     // Ownership is automatic through expiring runtime leases.
     set_app_setting($pdo, 'notion_external_sync', '0', $actorUserId);
-    set_app_setting($pdo, 'notion_token', $token, $actorUserId);
-    set_app_setting($pdo, 'notion_database_id', trim((string) ($input['notion_database_id'] ?? '')), $actorUserId);
+
+    if (array_key_exists('notion_token', $input)) {
+        $token = trim((string) $input['notion_token']);
+        // Preserve the stored token when the masked field is left blank.
+        if ($token !== '') {
+            set_app_setting($pdo, 'notion_token', $token, $actorUserId);
+        }
+    }
+    if (array_key_exists('notion_database_id', $input)) {
+        set_app_setting($pdo, 'notion_database_id', trim((string) $input['notion_database_id']), $actorUserId);
+    }
     if (array_key_exists('notion_parent_page_id', $input)) {
         set_app_setting($pdo, 'notion_parent_page_id', trim((string) $input['notion_parent_page_id']), $actorUserId);
     }
@@ -236,9 +242,15 @@ function notion_update_settings(PDO $pdo, array $input, int $actorUserId): void
     if ($oauthSecret !== '') {
         set_app_setting($pdo, 'notion_oauth_client_secret', $oauthSecret, $actorUserId);
     }
-    set_app_setting($pdo, 'notion_sync_frequency', notion_normalize_frequency((string) ($input['notion_sync_frequency'] ?? 'off')), $actorUserId);
-    set_app_setting($pdo, 'notion_sync_direction', notion_normalize_direction((string) ($input['notion_sync_direction'] ?? 'push_only')), $actorUserId);
-    set_app_setting($pdo, 'notion_sync_run_time', notion_normalize_time((string) ($input['notion_sync_run_time'] ?? '03:00')), $actorUserId);
+    if (array_key_exists('notion_sync_frequency', $input)) {
+        set_app_setting($pdo, 'notion_sync_frequency', notion_normalize_frequency((string) $input['notion_sync_frequency']), $actorUserId);
+    }
+    if (array_key_exists('notion_sync_direction', $input)) {
+        set_app_setting($pdo, 'notion_sync_direction', notion_normalize_direction((string) $input['notion_sync_direction']), $actorUserId);
+    }
+    if (array_key_exists('notion_sync_run_time', $input)) {
+        set_app_setting($pdo, 'notion_sync_run_time', notion_normalize_time((string) $input['notion_sync_run_time']), $actorUserId);
+    }
 }
 
 function notion_normalize_time(string $value): string

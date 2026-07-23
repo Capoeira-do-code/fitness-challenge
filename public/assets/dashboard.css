@@ -31,3 +31,1240 @@
 @media (max-width: 360px) {
     .dashboard-setup-reminder-actions { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Compact achievement showcase on Home; the full collection lives in its submenu. */
+body[data-page="dashboard"] .dashboard-achievements-panel { overflow: hidden; }
+body[data-page="dashboard"] .dashboard-achievements-summary { display: flex; align-items: center; gap: 7px; }
+body[data-page="dashboard"] .dashboard-achievement-count { display: inline-flex; min-height: 36px; align-items: baseline; gap: 2px; padding: 6px 9px; border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--primary) 7%, var(--surface)); }
+body[data-page="dashboard"] .dashboard-achievement-count strong { color: var(--primary-dark); font-size: 0.86rem; }
+body[data-page="dashboard"] .dashboard-achievement-count small { color: var(--muted); font-size: 0.6rem; font-weight: 800; }
+body[data-page="dashboard"] .dashboard-achievement-all-link { display: inline-flex; min-height: 36px; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 12px; color: inherit; background: var(--surface-2); font-size: 0.65rem; font-weight: 850; text-decoration: none; }
+body[data-page="dashboard"] .dashboard-achievement-all-link b { color: var(--primary); font-size: 1rem; line-height: 1; }
+body[data-page="dashboard"] .dashboard-achievement-showcase { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+body[data-page="dashboard"] .dashboard-achievement-tile { position: relative; display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 8px; min-width: 0; min-height: 66px; padding: 8px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--primary) 17%, var(--line)); border-radius: 15px; color: inherit; background: linear-gradient(145deg, color-mix(in srgb, var(--primary) 7%, var(--surface)), var(--surface)); text-align: left; cursor: pointer; }
+body[data-page="dashboard"] .dashboard-achievement-tile:where(:hover, :focus-visible) { border-color: color-mix(in srgb, var(--primary) 42%, var(--line)); transform: translateY(-1px); }
+body[data-page="dashboard"] .dashboard-achievement-tile .achievement-visual { width: 48px; height: 48px; min-height: 48px; border-radius: 12px; }
+body[data-page="dashboard"] .dashboard-achievement-tile-copy { display: grid; min-width: 0; gap: 3px; padding-right: 10px; }
+body[data-page="dashboard"] .dashboard-achievement-tile-copy :is(strong, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body[data-page="dashboard"] .dashboard-achievement-tile-copy strong { font-size: 0.72rem; }
+body[data-page="dashboard"] .dashboard-achievement-tile-copy small { color: var(--muted); font-size: 0.58rem; font-weight: 700; }
+body[data-page="dashboard"] .dashboard-achievement-tile-state { position: absolute; top: 6px; right: 6px; display: grid; width: 18px; height: 18px; place-items: center; border-radius: 50%; color: #fff; background: var(--primary); font-size: 0.58rem; font-weight: 900; }
+body[data-page="dashboard"] .dashboard-achievement-empty { grid-column: 1 / -1; display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 64px; padding: 9px; border: 1px dashed var(--line); border-radius: 14px; color: inherit; text-decoration: none; }
+body[data-page="dashboard"] .dashboard-achievement-empty > span { grid-row: 1 / 3; display: grid; width: 42px; height: 42px; place-items: center; border-radius: 12px; color: var(--primary); background: color-mix(in srgb, var(--primary) 9%, var(--surface)); }
+body[data-page="dashboard"] .dashboard-achievement-empty svg { width: 20px; height: 20px; }
+body[data-page="dashboard"] .dashboard-achievement-empty strong { align-self: end; font-size: 0.72rem; }
+body[data-page="dashboard"] .dashboard-achievement-empty small { align-self: start; color: var(--muted); font-size: 0.61rem; }
+
+@media (max-width: 900px) {
+    body[data-page="dashboard"] .dashboard-achievement-showcase { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+    body[data-page="dashboard"] .dashboard-achievements-panel .panel-head { align-items: center; }
+    body[data-page="dashboard"] .dashboard-achievement-count { display: none; }
+    body[data-page="dashboard"] .dashboard-achievement-showcase { display: flex; margin-inline: -2px; padding: 2px 2px 5px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; }
+    body[data-page="dashboard"] .dashboard-achievement-showcase::-webkit-scrollbar { display: none; }
+    body[data-page="dashboard"] .dashboard-achievement-tile { flex: 0 0 min(78vw, 255px); min-height: 62px; scroll-snap-align: start; }
+    body[data-page="dashboard"] .dashboard-achievement-empty { flex: 1 0 100%; }
+}
+
+/* Home summary: identity, score and daily metrics form one responsive unit. */
+@media (max-width: 899px) {
+    body[data-page="dashboard"] .mobile-today-card {
+        gap: 8px;
+        overflow: hidden;
+        padding: 10px;
+        border-color: color-mix(in srgb, var(--primary) 20%, var(--line));
+        background:
+            radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--primary) 13%, transparent), transparent 38%),
+            var(--surface);
+    }
+
+    body[data-page="dashboard"] .mobile-today-overview {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        padding-bottom: 8px;
+        border-bottom: 1px solid color-mix(in srgb, var(--primary) 12%, var(--line));
+    }
+
+    body[data-page="dashboard"] .mobile-today-identity {
+        display: grid;
+        min-width: 0;
+        gap: 1px;
+    }
+
+    body[data-page="dashboard"] .mobile-today-identity :is(p, h1, small) { margin: 0; }
+    body[data-page="dashboard"] .mobile-today-identity p {
+        color: var(--primary-dark);
+        font-size: 0.64rem;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+    body[data-page="dashboard"] .mobile-today-identity h1 {
+        overflow: hidden;
+        font-size: clamp(1.12rem, 5.2vw, 1.42rem);
+        line-height: 1.08;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    body[data-page="dashboard"] .mobile-today-identity small {
+        display: none;
+    }
+
+    body[data-page="dashboard"] .mobile-today-score {
+        display: grid;
+        grid-template-columns: auto auto;
+        grid-template-rows: auto auto;
+        min-width: 80px;
+        min-height: 54px;
+        align-content: center;
+        align-items: baseline;
+        justify-content: center;
+        column-gap: 3px;
+        padding: 6px 8px;
+        border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--line));
+        border-radius: 14px;
+        color: inherit;
+        background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+        text-decoration: none;
+    }
+    body[data-page="dashboard"] .mobile-today-score > span {
+        grid-column: 1 / -1;
+        color: var(--muted);
+        font-size: 0.59rem;
+        font-weight: 850;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+    body[data-page="dashboard"] .mobile-today-score strong {
+        color: var(--primary-dark);
+        font-size: 1.12rem;
+        line-height: 1;
+    }
+    body[data-page="dashboard"] .mobile-today-score small { color: var(--muted); font-size: 0.61rem; font-weight: 800; }
+
+    body[data-page="dashboard"] .mobile-today-metrics {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 5px;
+    }
+    body[data-page="dashboard"] .mobile-today-metrics > a {
+        --today-metric-color: var(--primary);
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr);
+        align-items: center;
+        gap: 5px;
+        min-width: 0;
+        min-height: 50px;
+        padding: 5px;
+        border: 1px solid color-mix(in srgb, var(--today-metric-color) 18%, var(--line));
+        border-radius: 12px;
+        color: inherit;
+        background: color-mix(in srgb, var(--today-metric-color) 4%, var(--surface));
+        text-align: left;
+        text-decoration: none;
+    }
+    body[data-page="dashboard"] .mobile-today-metrics > a:last-child:nth-child(odd) { grid-column: auto; }
+    body[data-page="dashboard"] .mobile-today-metrics > a:where(:hover, :focus-visible) {
+        border-color: color-mix(in srgb, var(--today-metric-color) 42%, var(--line));
+        background: color-mix(in srgb, var(--today-metric-color) 9%, var(--surface));
+    }
+    body[data-page="dashboard"] .mobile-today-metrics > a[data-metric="steps"] { --today-metric-color: #2563eb; }
+    body[data-page="dashboard"] .mobile-today-metrics > a[data-metric="distance"] { --today-metric-color: #0891b2; }
+    body[data-page="dashboard"] .mobile-today-metrics > a[data-metric="workouts"] { --today-metric-color: #7c3aed; }
+    body[data-page="dashboard"] .mobile-today-metrics > a[data-metric="strikes"] { --today-metric-color: #dc2626; }
+    body[data-page="dashboard"] .mobile-today-metrics > a[data-metric="calories_consumed"] { --today-metric-color: #f97316; }
+    body[data-page="dashboard"] .mobile-today-metrics > a[data-metric="calories_burned"] { --today-metric-color: #eab308; }
+    body[data-page="dashboard"] .mobile-today-metric-icon {
+        display: grid;
+        width: 24px;
+        height: 24px;
+        place-items: center;
+        border-radius: 8px;
+        color: var(--today-metric-color);
+        background: color-mix(in srgb, var(--today-metric-color) 12%, var(--surface));
+    }
+    body[data-page="dashboard"] .mobile-today-metric-icon svg { width: 14px; height: 14px; }
+    body[data-page="dashboard"] .mobile-today-metric-copy { display: grid; min-width: 0; gap: 2px; }
+    body[data-page="dashboard"] .mobile-today-metric-copy strong,
+    body[data-page="dashboard"] .mobile-today-metric-copy small {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    body[data-page="dashboard"] .mobile-today-metric-copy strong { font-size: 0.75rem; line-height: 1.05; }
+    body[data-page="dashboard"] .mobile-today-metric-copy small { color: var(--muted); font-size: 0.52rem; font-weight: 750; }
+
+    body[data-page="dashboard"] a.mobile-progress-brief {
+        display: grid;
+        grid-template-columns: 34px minmax(64px, 1fr) auto auto 10px;
+        align-items: center;
+        gap: 8px;
+        min-height: 60px;
+        padding: 7px 9px;
+        color: inherit;
+        border-color: color-mix(in srgb, var(--rank-color) 24%, var(--line));
+        text-decoration: none;
+    }
+    body[data-page="dashboard"] .mobile-progress-rank-icon {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border-radius: 11px;
+        color: var(--rank-color);
+        background: color-mix(in srgb, var(--rank-color) 12%, var(--surface));
+    }
+    body[data-page="dashboard"] .mobile-progress-rank-icon svg { width: 18px; height: 18px; }
+    body[data-page="dashboard"] :is(.mobile-progress-rank-copy, .mobile-progress-rank-stat, .mobile-progress-streak) { display: grid; min-width: 0; gap: 2px; }
+    body[data-page="dashboard"] .mobile-progress-rank-copy strong { overflow: hidden; font-size: 0.76rem; text-overflow: ellipsis; white-space: nowrap; }
+    body[data-page="dashboard"] :is(.mobile-progress-rank-copy, .mobile-progress-rank-stat, .mobile-progress-streak) small { color: var(--muted); font-size: 0.55rem; font-weight: 750; line-height: 1.15; }
+    body[data-page="dashboard"] :is(.mobile-progress-rank-stat, .mobile-progress-streak) { justify-items: end; }
+    body[data-page="dashboard"] :is(.mobile-progress-rank-stat, .mobile-progress-streak) strong { font-size: 0.78rem; line-height: 1; }
+    body[data-page="dashboard"] .mobile-progress-streak { padding-left: 8px; border-left: 1px solid var(--line); }
+    body[data-page="dashboard"] .mobile-progress-chevron { color: var(--muted); font-size: 1.25rem; }
+}
+
+@media (min-width: 600px) and (max-width: 899px) {
+    body[data-page="dashboard"] .mobile-today-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    body[data-page="dashboard"] .mobile-today-metrics > a:last-child:nth-child(odd) { grid-column: auto; }
+}
+
+@media (max-width: 360px) {
+    body[data-page="dashboard"] .mobile-today-card { padding: 9px; }
+    body[data-page="dashboard"] .mobile-today-overview { gap: 8px; }
+    body[data-page="dashboard"] .mobile-today-score { min-width: 74px; padding-inline: 6px; }
+    body[data-page="dashboard"] .mobile-today-score strong { font-size: 1.02rem; }
+    body[data-page="dashboard"] .mobile-today-metrics > a { grid-template-columns: 22px minmax(0, 1fr); gap: 4px; padding: 4px; }
+    body[data-page="dashboard"] .mobile-today-metric-icon { width: 22px; height: 22px; border-radius: 7px; }
+    body[data-page="dashboard"] .mobile-progress-rank-stat small { display: none; }
+}
+
+/* Training rank: make current state, next threshold and team context distinct. */
+body[data-page="dashboard"] .dashboard-training-rank {
+    border-color: color-mix(in srgb, var(--rank-color) 22%, var(--line));
+}
+body[data-page="dashboard"] .dashboard-training-rank-heading {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+}
+body[data-page="dashboard"] .dashboard-training-rank-heading > span {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border-radius: 12px;
+    color: var(--rank-color);
+    background: color-mix(in srgb, var(--rank-color) 12%, var(--surface));
+}
+body[data-page="dashboard"] .dashboard-training-rank-heading svg { width: 20px; height: 20px; }
+body[data-page="dashboard"] .dashboard-training-rank-heading > div { display: grid; min-width: 0; gap: 2px; }
+body[data-page="dashboard"] .dashboard-training-rank-heading :is(p, h2) { margin: 0; }
+
+body[data-page="dashboard"] .dashboard-training-rank-summary {
+    grid-template-columns: 90px minmax(0, 1fr);
+    align-items: stretch;
+    gap: 8px;
+    margin-block: 8px;
+    padding: 8px;
+    border-radius: 17px;
+    background:
+        radial-gradient(circle at 0 0, color-mix(in srgb, var(--rank-color) 14%, transparent), transparent 43%),
+        color-mix(in srgb, var(--rank-color) 3%, var(--surface));
+}
+body[data-page="dashboard"] .dashboard-training-rank-emblem {
+    display: grid;
+    width: auto;
+    min-width: 0;
+    min-height: 100px;
+    aspect-ratio: auto;
+    align-content: center;
+    justify-items: center;
+    gap: 4px;
+    padding: 8px 6px;
+    border-color: color-mix(in srgb, var(--rank-color) 30%, var(--line));
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--rank-color) 9%, var(--surface));
+    box-shadow: none;
+}
+body[data-page="dashboard"] .dashboard-training-rank-mark {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border-radius: 50%;
+    color: var(--rank-color);
+    background: color-mix(in srgb, var(--rank-color) 14%, var(--surface));
+}
+body[data-page="dashboard"] .dashboard-training-rank-mark svg { width: 18px; height: 18px; }
+body[data-page="dashboard"] .dashboard-training-rank-emblem > strong {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    color: var(--ink);
+    font-size: 0.78rem;
+    line-height: 1.15;
+    text-align: center;
+}
+body[data-page="dashboard"] .dashboard-training-rank-score { display: flex; align-items: baseline; justify-content: center; gap: 3px; color: var(--muted); }
+body[data-page="dashboard"] .dashboard-training-rank-score b { color: var(--rank-color); font-size: 1.12rem; line-height: 1; }
+body[data-page="dashboard"] .dashboard-training-rank-score small { font-size: 0.52rem; line-height: 1.1; }
+
+body[data-page="dashboard"] .dashboard-training-rank-copy { align-content: center; gap: 7px; }
+body[data-page="dashboard"] .dashboard-training-rank-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+body[data-page="dashboard"] .dashboard-training-rank-status strong { min-width: 0; flex: 1 1 auto; overflow: hidden; font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
+body[data-page="dashboard"] .dashboard-training-rank-status span {
+    flex: 0 0 auto;
+    padding: 3px 6px;
+    border-radius: 999px;
+    color: var(--rank-color);
+    background: color-mix(in srgb, var(--rank-color) 10%, var(--surface));
+    font-size: 0.6rem;
+    font-weight: 900;
+}
+body[data-page="dashboard"] .dashboard-training-rank-progress { height: 9px; border: 1px solid color-mix(in srgb, var(--rank-color) 13%, var(--line)); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+body[data-page="dashboard"] .dashboard-training-rank-scale { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 0.55rem; font-weight: 750; line-height: 1.2; }
+body[data-page="dashboard"] .dashboard-training-rank-scale span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body[data-page="dashboard"] .dashboard-training-rank-scale span:first-child { flex: 1 1 46%; }
+body[data-page="dashboard"] .dashboard-training-rank-scale span:last-child { flex: 1 1 54%; text-align: right; }
+body[data-page="dashboard"] .dashboard-training-rank-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin-top: 1px; }
+body[data-page="dashboard"] .dashboard-training-rank-facts > :only-child { grid-column: 1 / -1; }
+body[data-page="dashboard"] .dashboard-training-rank-facts > :is(span, strong) {
+    display: block;
+    padding: 5px 6px;
+    border-radius: 10px;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+    font-size: 0.56rem;
+    line-height: 1.25;
+}
+body[data-page="dashboard"] .dashboard-training-rank-facts > strong { color: var(--rank-color); }
+body[data-page="dashboard"] .dashboard-training-board-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 2px 4px; }
+body[data-page="dashboard"] .dashboard-training-board-head strong { font-size: 0.69rem; }
+body[data-page="dashboard"] .dashboard-training-board-head span { display: grid; min-width: 22px; height: 22px; place-items: center; border-radius: 999px; color: var(--rank-color); background: color-mix(in srgb, var(--rank-color) 10%, var(--surface)); font-size: 0.58rem; font-weight: 900; }
+body[data-page="dashboard"] .dashboard-training-board { gap: 5px; }
+body[data-page="dashboard"] .dashboard-training-board-row { min-height: 44px; padding-block: 4px; border-color: color-mix(in srgb, var(--rank-color) 10%, var(--line)); background: color-mix(in srgb, var(--ink) 2%, transparent); }
+
+body[data-page="dashboard"]:is([data-theme="dark"], .theme-active-dark) :is(
+    .dashboard-training-rank-summary,
+    .dashboard-training-rank-emblem,
+    .dashboard-training-board-row
+) {
+    background-color: var(--surface) !important;
+    background-image: none !important;
+}
+
+@media (max-width: 420px) {
+    body[data-page="dashboard"] .dashboard-training-rank-summary { grid-template-columns: 78px minmax(0, 1fr); gap: 7px; padding: 7px; }
+    body[data-page="dashboard"] .dashboard-training-rank-emblem { width: auto; min-height: 94px; padding-inline: 4px; }
+    body[data-page="dashboard"] .dashboard-training-rank-mark { width: 29px; height: 29px; }
+    body[data-page="dashboard"] .dashboard-training-rank-emblem > strong { font-size: 0.68rem; }
+    body[data-page="dashboard"] .dashboard-training-rank-score { display: grid; justify-items: center; gap: 2px; }
+    body[data-page="dashboard"] .dashboard-training-rank-scale { font-size: 0.51rem; }
+    body[data-page="dashboard"] .dashboard-training-rank-facts > :is(span, strong) { padding: 5px 6px; font-size: 0.56rem; }
+}
+
+/* Home widgets share the same compact, remembered disclosure behaviour as the
+   workout overview. The daily summary and quick logging action stay permanent. */
+body[data-page="dashboard"] .dashboard-layout > [data-dashboard-widget] {
+    border-top: 0 !important;
+}
+
+body[data-page="dashboard"] :is(.dashboard-training-rank, .dashboard-training-progress)::after {
+    content: none !important;
+    display: none !important;
+}
+
+body[data-page="dashboard"] [data-dashboard-collapsible] {
+    display: grid;
+    align-content: start;
+    gap: 0.62rem;
+    overflow: visible !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+body[data-page="dashboard"] [data-dashboard-collapsible]::before {
+    content: none !important;
+    display: none !important;
+}
+body[data-page="dashboard"] [data-dashboard-collapsible] > .panel-head {
+    display: grid !important;
+    grid-template-columns: 38px minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 0.62rem !important;
+    min-width: 0;
+    min-height: 58px;
+    margin: 0 !important;
+    padding: 0.55rem 0.7rem !important;
+    border: 1px solid var(--ui-soft-border, var(--line));
+    border-radius: var(--ui-panel-radius, 16px);
+    background: var(--surface);
+    box-shadow: none;
+}
+body[data-page="dashboard"] [data-dashboard-collapsible] > .panel-head.is-remembered-collapsible-head {
+    cursor: pointer;
+}
+body[data-page="dashboard"] [data-dashboard-collapsible] > .panel-head.is-remembered-collapsible-head:where(:hover, :focus-within) {
+    border-color: color-mix(in srgb, var(--primary) 34%, var(--line));
+}
+body[data-page="dashboard"] .dashboard-disclosure-icon {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border-radius: 12px;
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+}
+body[data-page="dashboard"] .dashboard-disclosure-icon svg { width: 20px; height: 20px; }
+body[data-page="dashboard"] [data-dashboard-collapsible] > .panel-head > :nth-child(2) {
+    min-width: 0;
+}
+body[data-page="dashboard"] .dashboard-widget-heading {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+body[data-page="dashboard"] .dashboard-widget-heading > * {
+    margin: 0;
+}
+body[data-page="dashboard"] .dashboard-widget-heading h2 {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--ink);
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+body[data-page="dashboard"] [data-dashboard-collapsible] > .panel-head p.muted.small {
+    overflow: hidden;
+    margin: 0;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 400;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+body[data-page="dashboard"] [data-dashboard-collapsible] > :not(.panel-head):not([data-layout-card-controls]) {
+    min-width: 0;
+}
+body[data-page="dashboard"] [data-dashboard-collapsible] .dashboard-training-rank-heading {
+    grid-template-columns: minmax(0, 1fr);
+}
+body[data-page="dashboard"] [data-dashboard-collapsible] .dashboard-training-rank-heading > span {
+    display: none;
+}
+body[data-page="dashboard"] [data-dashboard-collapsible] > .dashboard-training-rank-summary {
+    margin: 0;
+}
+body[data-page="dashboard"] .dashboard-panel-head-actions {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+}
+body[data-page="dashboard"] .dashboard-panel-head-actions > :not(.dashboard-panel-collapse-toggle) {
+    min-width: 0;
+}
+body[data-page="dashboard"] .dashboard-panel-collapse-toggle {
+    display: grid;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 12px;
+    color: var(--muted);
+    background: transparent;
+    box-shadow: none;
+    cursor: pointer;
+}
+body[data-page="dashboard"] .dashboard-panel-collapse-toggle:where(:hover, :focus-visible) {
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+}
+body[data-page="dashboard"] .dashboard-panel-collapse-toggle > span {
+    font-size: 1.35rem;
+    line-height: 1;
+    transform: rotate(90deg);
+    transition: transform 160ms ease;
+}
+body[data-page="dashboard"] [data-dashboard-collapsible].is-collapsed {
+    gap: 0;
+}
+body[data-page="dashboard"] [data-dashboard-collapsible].is-collapsed > :not(.panel-head):not([data-layout-card-controls]) {
+    display: none !important;
+}
+body[data-page="dashboard"] [data-dashboard-collapsible].is-collapsed .dashboard-panel-collapse-toggle > span {
+    transform: rotate(0deg);
+}
+body[data-page="dashboard"] [data-dashboard-collapsible].is-collapsed :is(.dashboard-panel-head-actions, .dashboard-achievements-summary) > :not(.dashboard-panel-collapse-toggle) {
+    display: none;
+}
+
+/* Duels and competitions: one compact, tappable status surface instead of a
+   title row plus three disconnected metric cards. */
+body[data-page="dashboard"] .dashboard-versus-card {
+    --versus-accent: #6366f1;
+}
+body[data-page="dashboard"] .dashboard-duels-card { --versus-accent: #ef4444; }
+body[data-page="dashboard"] .dashboard-competitions-card { --versus-accent: #8b5cf6; }
+body[data-page="dashboard"] .dashboard-versus-card .dashboard-disclosure-icon {
+    color: var(--versus-accent);
+    background: color-mix(in srgb, var(--versus-accent) 12%, var(--surface));
+}
+body[data-page="dashboard"] .dashboard-versus-live {
+    display: inline-flex;
+    min-height: 30px;
+    align-items: baseline;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    color: var(--versus-accent);
+    background: color-mix(in srgb, var(--versus-accent) 10%, transparent);
+    white-space: nowrap;
+}
+body[data-page="dashboard"] .dashboard-versus-live strong {
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+}
+body[data-page="dashboard"] .dashboard-versus-live small {
+    font-size: 0.58rem;
+    font-weight: 780;
+}
+body[data-page="dashboard"] .dashboard-versus-body {
+    display: grid;
+    gap: 0.42rem;
+    padding: 0.48rem;
+    border: 1px solid color-mix(in srgb, var(--versus-accent) 18%, var(--line));
+    border-radius: 15px;
+    color: var(--ink);
+    background: color-mix(in srgb, var(--versus-accent) 3.5%, var(--surface));
+    text-decoration: none;
+    transition: border-color 150ms ease, background 150ms ease;
+}
+body[data-page="dashboard"] .dashboard-versus-body:where(:hover, :focus-visible) {
+    border-color: color-mix(in srgb, var(--versus-accent) 42%, var(--line));
+    background: color-mix(in srgb, var(--versus-accent) 7%, var(--surface));
+    outline: none;
+}
+body[data-page="dashboard"] .dashboard-versus-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--versus-accent) 13%, var(--line));
+    border-radius: 12px;
+    background: var(--surface);
+}
+body[data-page="dashboard"] .dashboard-versus-stat {
+    display: grid;
+    min-width: 0;
+    min-height: 54px;
+    place-content: center;
+    justify-items: center;
+    gap: 2px;
+    padding: 6px 4px;
+    text-align: center;
+}
+body[data-page="dashboard"] .dashboard-versus-stat + .dashboard-versus-stat {
+    border-inline-start: 1px solid color-mix(in srgb, var(--versus-accent) 11%, var(--line));
+}
+body[data-page="dashboard"] .dashboard-versus-stat strong {
+    color: var(--ink);
+    font-size: 1rem;
+    font-weight: 900;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+body[data-page="dashboard"] .dashboard-versus-stat small {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.58rem;
+    font-weight: 750;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+body[data-page="dashboard"] .dashboard-versus-stat.is-active strong { color: #3b82f6; }
+body[data-page="dashboard"] .dashboard-versus-stat.is-pending strong { color: #d18f10; }
+body[data-page="dashboard"] .dashboard-versus-stat.is-won strong { color: var(--good, #19a974); }
+body[data-page="dashboard"] .dashboard-versus-link {
+    display: inline-flex;
+    min-height: 32px;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    padding-inline: 5px;
+    color: var(--versus-accent);
+    font-size: 0.66rem;
+    font-weight: 820;
+}
+body[data-page="dashboard"] .dashboard-versus-link > span {
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+/* Season: the user's position and progress are the primary information. The
+   leaderboard remains a compact secondary comparison below it. */
+body[data-page="dashboard"] .season-widget .dashboard-disclosure-icon {
+    color: #8b5cf6;
+    background: color-mix(in srgb, #8b5cf6 12%, var(--surface));
+}
+body[data-page="dashboard"] .season-widget-overview {
+    display: grid;
+    grid-template-columns: 74px minmax(0, 1fr);
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid color-mix(in srgb, #8b5cf6 20%, var(--line));
+    border-radius: 16px;
+    background: color-mix(in srgb, #8b5cf6 4%, var(--surface));
+}
+body[data-page="dashboard"] .season-widget-position {
+    display: grid;
+    min-width: 0;
+    place-content: center;
+    justify-items: center;
+    gap: 3px;
+    padding: 8px 5px;
+    border-radius: 12px;
+    color: #8b5cf6;
+    background: color-mix(in srgb, #8b5cf6 11%, var(--surface));
+    text-align: center;
+}
+body[data-page="dashboard"] .season-widget-position small {
+    color: var(--muted);
+    font-size: 0.55rem;
+    font-weight: 750;
+}
+body[data-page="dashboard"] .season-widget-position strong {
+    font-size: 1.3rem;
+    font-weight: 900;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+body[data-page="dashboard"] .season-widget-progress {
+    display: grid;
+    min-width: 0;
+    align-content: center;
+    gap: 7px;
+    padding: 5px 4px;
+}
+body[data-page="dashboard"] .season-widget-progress-main,
+body[data-page="dashboard"] .season-widget-progress-meta {
+    display: flex;
+    min-width: 0;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 8px;
+}
+body[data-page="dashboard"] .season-widget-progress-main > span {
+    display: grid;
+    min-width: 0;
+    gap: 1px;
+}
+body[data-page="dashboard"] .season-widget-progress-main small,
+body[data-page="dashboard"] .season-widget-progress-meta small {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.58rem;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+body[data-page="dashboard"] .season-widget-progress-main strong {
+    overflow: hidden;
+    font-size: 0.9rem;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+body[data-page="dashboard"] .season-widget-progress-main > b {
+    flex: none;
+    color: #8b5cf6;
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+}
+body[data-page="dashboard"] .season-widget-progress .goal-progress { height: 7px; }
+body[data-page="dashboard"] .season-widget-progress .goal-progress > span {
+    background: linear-gradient(90deg, #6366f1, #a855f7);
+}
+body[data-page="dashboard"] .season-widget-progress-meta {
+    align-items: baseline;
+}
+body[data-page="dashboard"] .season-widget-progress-meta strong {
+    overflow: hidden;
+    color: var(--ink);
+    font-size: 0.58rem;
+    font-weight: 760;
+    text-align: end;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+body[data-page="dashboard"] .season-widget .season-board {
+    gap: 3px;
+}
+body[data-page="dashboard"] .season-widget-board-head {
+    display: flex;
+    min-height: 30px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-inline: 4px;
+}
+body[data-page="dashboard"] .season-widget-board-head strong {
+    font-size: 0.68rem;
+    font-weight: 820;
+}
+body[data-page="dashboard"] .season-widget-board-head small {
+    display: grid;
+    min-width: 24px;
+    min-height: 24px;
+    place-items: center;
+    padding-inline: 6px;
+    border-radius: 999px;
+    color: #8b5cf6;
+    background: color-mix(in srgb, #8b5cf6 10%, var(--surface));
+    font-size: 0.58rem;
+    font-weight: 850;
+}
+body[data-page="dashboard"] .season-widget .season-row {
+    min-height: 42px;
+    padding: 5px 7px;
+    border: 1px solid transparent;
+}
+body[data-page="dashboard"] .season-widget .season-row.is-me {
+    border-color: color-mix(in srgb, #8b5cf6 25%, var(--line));
+    background: color-mix(in srgb, #8b5cf6 9%, transparent);
+}
+body[data-page="dashboard"] .season-widget-footer {
+    min-width: 0;
+    padding-top: 2px;
+}
+body[data-page="dashboard"] .season-widget-footer .season-hint {
+    display: -webkit-box;
+    min-width: 0;
+    overflow: hidden;
+    margin: 0;
+    line-height: 1.3;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+body[data-page="dashboard"] .dashboard-widget-page-link {
+    display: block;
+    width: max-content;
+    max-width: 100%;
+    min-height: 44px;
+    margin: 0.65rem auto 0;
+    padding: 0.7rem 1rem;
+    border: 0;
+    border-radius: 999px;
+    color: #087451;
+    background: color-mix(in srgb, #10b981 14%, transparent);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1.2;
+    text-align: center;
+    text-decoration: none;
+    transition: color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+body[data-page="dashboard"] .dashboard-widget-page-link:where(:hover, :focus-visible) {
+    color: #065f46;
+    background: color-mix(in srgb, #10b981 23%, transparent);
+    outline: 2px solid color-mix(in srgb, #10b981 42%, transparent);
+    outline-offset: 2px;
+    transform: translateY(-1px);
+}
+body[data-page="dashboard"]:is([data-theme="dark"], .theme-active-dark) .dashboard-widget-page-link {
+    color: #6ee7b7;
+    background: color-mix(in srgb, #10b981 20%, transparent);
+}
+body[data-page="dashboard"]:is([data-theme="dark"], .theme-active-dark) .dashboard-widget-page-link:where(:hover, :focus-visible) {
+    color: #a7f3d0;
+    background: color-mix(in srgb, #10b981 30%, transparent);
+}
+body.layout-edit-active[data-page="dashboard"] .dashboard-panel-collapse-toggle {
+    display: none;
+}
+body[data-page="dashboard"]:is([data-theme="dark"], .theme-active-dark) .dashboard-panel-collapse-toggle {
+    color: var(--muted);
+    border: 0 !important;
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}
+body[data-page="dashboard"]:is([data-theme="dark"], .theme-active-dark) [data-dashboard-collapsible] > .panel-head {
+    color: var(--ink);
+    border-color: var(--line) !important;
+    background: var(--surface) !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}
+
+@media (max-width: 560px) {
+    body[data-page="dashboard"] [data-dashboard-collapsible] > .panel-head {
+        grid-template-columns: 38px minmax(0, 1fr) auto !important;
+        gap: 7px !important;
+        min-height: 58px;
+        padding: 0.5rem 0.58rem !important;
+    }
+    body[data-page="dashboard"] .dashboard-panel-head-actions {
+        max-width: 58%;
+        gap: 5px;
+    }
+    body[data-page="dashboard"] .dashboard-panel-head-actions .dashboard-panel-action,
+    body[data-page="dashboard"] .dashboard-achievement-all-link,
+    body[data-page="dashboard"] .season-countdown {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    body[data-page="dashboard"] .dashboard-versus-card .dashboard-widget-heading h2 {
+        font-size: 0.8rem;
+        line-height: 1.15;
+    }
+    body[data-page="dashboard"] :is(.quests-widget-heading, .season-widget-heading) .eyebrow {
+        font-size: 0.54rem;
+    }
+    body[data-page="dashboard"] .season-countdown {
+        max-width: 88px;
+        padding: 4px 7px;
+        font-size: 0.58rem;
+    }
+    body[data-page="dashboard"] .dashboard-versus-live {
+        padding-inline: 7px;
+    }
+    body[data-page="dashboard"] .dashboard-versus-live small {
+        display: none;
+    }
+    body[data-page="dashboard"] .dashboard-versus-body {
+        gap: 0.3rem;
+        padding: 0.4rem;
+    }
+    body[data-page="dashboard"] .dashboard-versus-stat {
+        min-height: 50px;
+    }
+    body[data-page="dashboard"] .dashboard-versus-link {
+        min-height: 28px;
+    }
+    body[data-page="dashboard"] .season-widget-overview {
+        grid-template-columns: 64px minmax(0, 1fr);
+        gap: 6px;
+        padding: 6px;
+    }
+    body[data-page="dashboard"] .season-widget-position {
+        padding-inline: 3px;
+    }
+    body[data-page="dashboard"] .season-widget-position strong {
+        font-size: 1.05rem;
+    }
+    body[data-page="dashboard"] .season-widget-progress {
+        gap: 5px;
+    }
+    body[data-page="dashboard"] .season-widget-progress-main strong {
+        font-size: 0.8rem;
+    }
+    body[data-page="dashboard"] .season-widget .season-row {
+        grid-template-columns: 1.45rem minmax(0, 1fr) minmax(38px, 0.85fr) auto;
+        min-height: 40px;
+        gap: 6px;
+        padding: 4px 6px;
+    }
+    body[data-page="dashboard"] .season-widget .season-name,
+    body[data-page="dashboard"] .season-widget .season-xp {
+        font-size: 0.7rem;
+    }
+    body[data-page="dashboard"] .season-widget .season-rank {
+        font-size: 0.64rem;
+    }
+    body[data-page="dashboard"] .season-widget-footer .season-hint {
+        font-size: 0.62rem;
+        -webkit-line-clamp: 1;
+    }
+}
+
+@media (max-width: 350px) {
+    body[data-page="dashboard"] .season-widget-progress-meta small {
+        display: none;
+    }
+    body[data-page="dashboard"] .season-widget .season-bar {
+        display: none;
+    }
+    body[data-page="dashboard"] .season-widget .season-row {
+        grid-template-columns: 1.4rem minmax(0, 1fr) auto;
+    }
+}
+
+/* Full quest catalogue. The Home widget is intentionally only a preview; this
+   page owns history, rank context and every current mission. */
+body[data-page="quests"] .quests-page-screen {
+    width: min(100%, 920px);
+    margin-inline: auto;
+}
+body[data-page="quests"] .quests-page-hero {
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid color-mix(in srgb, #10b981 22%, var(--line));
+    border-radius: 20px;
+    background: linear-gradient(135deg, color-mix(in srgb, #10b981 8%, var(--surface)), var(--surface));
+}
+body[data-page="quests"] .quests-page-hero-icon,
+body[data-page="quests"] .quests-page-group-icon,
+body[data-page="quests"] .quest-catalogue-icon,
+body[data-page="quests"] .quests-rank-mark {
+    display: grid;
+    place-items: center;
+}
+body[data-page="quests"] .quests-page-hero-icon {
+    width: 54px;
+    height: 54px;
+    border-radius: 16px;
+    color: #0d9668;
+    background: color-mix(in srgb, #10b981 13%, var(--surface));
+}
+body[data-page="quests"] .quests-page-hero-icon svg { width: 27px; height: 27px; }
+body[data-page="quests"] .quests-page-hero :is(p, h1) { margin: 0; }
+body[data-page="quests"] .quests-page-hero > div { display: grid; min-width: 0; gap: 3px; }
+body[data-page="quests"] .quests-page-hero h1 {
+    overflow: hidden;
+    font-size: 1.25rem;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+body[data-page="quests"] .quests-page-hero .muted {
+    font-size: 0.72rem;
+    line-height: 1.35;
+}
+body[data-page="quests"] .quests-page-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) repeat(2, minmax(120px, 0.72fr));
+    gap: 10px;
+}
+body[data-page="quests"] :is(.quests-rank-summary, .quests-summary-stat) {
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 17px;
+    background: var(--surface);
+}
+body[data-page="quests"] .quests-rank-summary {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    min-height: 82px;
+    padding: 10px;
+    border-color: color-mix(in srgb, #8b5cf6 24%, var(--line));
+    background: color-mix(in srgb, #8b5cf6 5%, var(--surface));
+}
+body[data-page="quests"] .quests-rank-mark {
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
+    color: #8b5cf6;
+    background: color-mix(in srgb, #8b5cf6 13%, var(--surface));
+}
+body[data-page="quests"] .quests-rank-mark svg { width: 21px; height: 21px; }
+body[data-page="quests"] .quests-rank-summary > span:nth-child(2) { display: grid; min-width: 0; gap: 1px; }
+body[data-page="quests"] .quests-rank-summary small,
+body[data-page="quests"] .quests-summary-stat small {
+    color: var(--muted);
+    font-size: 0.6rem;
+    font-weight: 720;
+}
+body[data-page="quests"] .quests-rank-summary > span strong {
+    overflow: hidden;
+    font-size: 0.86rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+body[data-page="quests"] .quests-rank-summary > b {
+    padding: 5px 7px;
+    border-radius: 999px;
+    color: #8b5cf6;
+    background: color-mix(in srgb, #8b5cf6 10%, var(--surface));
+    font-size: 0.58rem;
+    white-space: nowrap;
+}
+body[data-page="quests"] .quests-rank-summary > p {
+    grid-column: 2 / -1;
+    margin: -3px 0 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.58rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+body[data-page="quests"] .quests-summary-stat {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    align-content: center;
+    align-items: center;
+    gap: 2px 8px;
+    min-height: 82px;
+    padding: 10px;
+}
+body[data-page="quests"] .quests-summary-stat > span {
+    grid-row: 1 / span 2;
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border-radius: 11px;
+    color: #0d9668;
+    background: color-mix(in srgb, #10b981 11%, var(--surface));
+}
+body[data-page="quests"] .quests-summary-stat.is-streak > span {
+    color: #d97706;
+    background: color-mix(in srgb, #f59e0b 12%, var(--surface));
+}
+body[data-page="quests"] .quests-summary-stat svg { width: 18px; height: 18px; }
+body[data-page="quests"] .quests-summary-stat strong {
+    font-size: 1.05rem;
+    font-weight: 900;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+body[data-page="quests"] .quests-page-group {
+    display: grid;
+    gap: 10px;
+    padding: 12px !important;
+}
+body[data-page="quests"] .quests-page-group-head {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+}
+body[data-page="quests"] .quests-page-group-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    color: #0d9668;
+    background: color-mix(in srgb, #10b981 11%, var(--surface));
+}
+body[data-page="quests"] .quests-page-group-icon svg { width: 19px; height: 19px; }
+body[data-page="quests"] .quests-page-group-head > span:nth-child(2) { display: grid; min-width: 0; gap: 1px; }
+body[data-page="quests"] .quests-page-group-head :is(p, h2) { margin: 0; }
+body[data-page="quests"] .quests-page-group-head h2 { font-size: 0.94rem; }
+body[data-page="quests"] .quests-page-group-head > small {
+    padding: 5px 8px;
+    border-radius: 999px;
+    color: #0d9668;
+    background: color-mix(in srgb, #10b981 10%, var(--surface));
+    font-size: 0.62rem;
+    font-weight: 850;
+}
+body[data-page="quests"] .quests-catalogue-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+body[data-page="quests"] .quest-catalogue-card {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 9px;
+    border: 1px solid var(--line);
+    border-radius: 15px;
+    background: color-mix(in srgb, var(--ink) 2%, var(--surface));
+}
+body[data-page="quests"] .quest-catalogue-card.is-completed {
+    border-color: color-mix(in srgb, #10b981 28%, var(--line));
+    background: color-mix(in srgb, #10b981 6%, var(--surface));
+}
+body[data-page="quests"] .quest-catalogue-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 11%, var(--surface));
+}
+body[data-page="quests"] .quest-catalogue-card.is-completed .quest-catalogue-icon {
+    color: #0d9668;
+    background: color-mix(in srgb, #10b981 13%, var(--surface));
+}
+body[data-page="quests"] .quest-catalogue-icon svg { width: 20px; height: 20px; }
+body[data-page="quests"] .quest-catalogue-copy { display: grid; min-width: 0; gap: 2px; }
+body[data-page="quests"] .quest-catalogue-copy strong {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 0.76rem;
+    line-height: 1.2;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+body[data-page="quests"] .quest-catalogue-copy small {
+    color: var(--muted);
+    font-size: 0.58rem;
+    font-weight: 700;
+}
+body[data-page="quests"] .quest-completion-count {
+    display: grid;
+    min-width: 58px;
+    justify-items: center;
+    gap: 1px;
+    padding: 5px 6px;
+    border-radius: 11px;
+    color: #0d9668;
+    background: color-mix(in srgb, #10b981 10%, var(--surface));
+}
+body[data-page="quests"] .quest-completion-count strong {
+    font-size: 0.9rem;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+body[data-page="quests"] .quest-completion-count small {
+    font-size: 0.52rem;
+    font-weight: 760;
+    white-space: nowrap;
+}
+body[data-page="quests"] .quest-catalogue-progress {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+}
+body[data-page="quests"] .quest-catalogue-progress .goal-progress { height: 6px; }
+body[data-page="quests"] .quest-catalogue-progress small {
+    color: var(--muted);
+    font-size: 0.58rem;
+    font-weight: 720;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+body[data-page="quests"] .quest-catalogue-meta {
+    grid-column: 1 / -1;
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 5px;
+    border-top: 1px solid color-mix(in srgb, var(--ink) 7%, transparent);
+}
+body[data-page="quests"] .quest-catalogue-meta small {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.55rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+body[data-page="quests"] .quest-catalogue-meta b { color: #d97706; }
+
+body[data-page="quests"]:is([data-theme="dark"], .theme-active-dark) .quest-catalogue-card {
+    color: var(--ink) !important;
+    border-color: var(--line) !important;
+    background: var(--surface) !important;
+    background-image: none !important;
+}
+body[data-page="quests"]:is([data-theme="dark"], .theme-active-dark) .quest-catalogue-card.is-completed {
+    border-color: color-mix(in srgb, #10b981 34%, var(--line)) !important;
+}
+
+@media (max-width: 700px) {
+    body[data-page="quests"] .quests-page-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    body[data-page="quests"] .quests-rank-summary { grid-column: 1 / -1; }
+    body[data-page="quests"] .quests-catalogue-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 430px) {
+    body[data-page="quests"] .quests-page-screen { gap: 10px; }
+    body[data-page="quests"] .quests-page-hero {
+        grid-template-columns: 44px minmax(0, 1fr);
+        gap: 9px;
+        padding: 10px;
+        border-radius: 17px;
+    }
+    body[data-page="quests"] .quests-page-hero-icon { width: 44px; height: 44px; border-radius: 13px; }
+    body[data-page="quests"] .quests-page-hero-icon svg { width: 22px; height: 22px; }
+    body[data-page="quests"] .quests-page-hero h1 { font-size: 1rem; }
+    body[data-page="quests"] .quests-page-hero .muted {
+        display: -webkit-box;
+        overflow: hidden;
+        font-size: 0.62rem;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+    }
+    body[data-page="quests"] :is(.quests-rank-summary, .quests-summary-stat) { min-height: 72px; }
+    body[data-page="quests"] .quests-summary-stat {
+        grid-template-columns: 30px minmax(0, 1fr);
+        gap: 2px 6px;
+        padding: 8px;
+    }
+    body[data-page="quests"] .quests-summary-stat > span { width: 30px; height: 30px; }
+    body[data-page="quests"] .quests-summary-stat small { font-size: 0.54rem; }
+    body[data-page="quests"] .quests-page-group { gap: 8px; padding: 9px !important; }
+    body[data-page="quests"] .quest-catalogue-card { grid-template-columns: 38px minmax(0, 1fr) auto; gap: 7px; padding: 8px; }
+    body[data-page="quests"] .quest-catalogue-icon { width: 38px; height: 38px; }
+    body[data-page="quests"] .quest-completion-count { min-width: 52px; padding-inline: 4px; }
+}
+
+@media (max-width: 340px) {
+    body[data-page="quests"] .quests-rank-summary { grid-template-columns: 38px minmax(0, 1fr); }
+    body[data-page="quests"] .quests-rank-summary > b { display: none; }
+    body[data-page="quests"] .quests-rank-summary > p { grid-column: 2; }
+    body[data-page="quests"] .quest-catalogue-card { grid-template-columns: 36px minmax(0, 1fr); }
+    body[data-page="quests"] .quest-completion-count {
+        grid-column: 1 / -1;
+        grid-template-columns: auto auto;
+        justify-content: end;
+        justify-items: end;
+        min-width: 0;
+        padding: 4px 7px;
+    }
+}
+/* Season identity is shared by the home widget and the full leaderboard. */
+.season-widget .season-widget-identity {
+    overflow: hidden;
+    color: var(--season-accent, #8b5cf6);
+    background: color-mix(in srgb, var(--season-accent, #8b5cf6) 10%, var(--surface));
+}
+.season-widget .season-widget-identity img { width: 100%; height: 100%; object-fit: cover; }
+.season-ranking-hero {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr) auto;
+    align-items: center;
+    overflow: hidden;
+    border-color: color-mix(in srgb, var(--season-accent, #8b5cf6) 20%, var(--line));
+    background: color-mix(in srgb, var(--season-accent, #8b5cf6) 5%, var(--surface));
+}
+.season-ranking-identity { display: grid; width: 56px; height: 56px; overflow: hidden; place-items: center; border-radius: 16px; color: var(--season-accent, #8b5cf6); background: var(--surface); }
+.season-ranking-identity svg { width: 27px; height: 27px; }
+.season-ranking-identity img { width: 100%; height: 100%; object-fit: cover; }
+
+@media (max-width: 700px) {
+    .season-ranking-hero { grid-template-columns: 48px minmax(0, 1fr); align-items: center; }
+    .season-ranking-identity { width: 48px; height: 48px; border-radius: 14px; }
+    .season-ranking-hero .season-countdown { grid-column: 1 / -1; }
+}

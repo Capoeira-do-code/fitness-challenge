@@ -31,6 +31,95 @@ function media_search_set_enabled(PDO $pdo, bool $enabled, int $actorUserId): vo
     set_app_setting($pdo, 'workout_media_search_enabled', $enabled ? '1' : '0', $actorUserId);
 }
 
+/** @return array<string,mixed> */
+function media_search_effective_config(PDO $pdo, array $config): array
+{
+    $effective = $config;
+    $storedGoogleKey = trim((string) (app_setting($pdo, 'media_search_google_api_key', '') ?? ''));
+    $storedGoogleCx = trim((string) (app_setting($pdo, 'media_search_google_cx', '') ?? ''));
+    $storedYoutubeKey = trim((string) (app_setting($pdo, 'media_search_youtube_api_key', '') ?? ''));
+    if ($storedGoogleKey !== '') {
+        $effective['media_search_google_api_key'] = $storedGoogleKey;
+    }
+    if ($storedGoogleCx !== '') {
+        $effective['media_search_google_cx'] = $storedGoogleCx;
+    }
+    if ($storedYoutubeKey !== '') {
+        $effective['media_search_youtube_api_key'] = $storedYoutubeKey;
+    }
+
+    return $effective;
+}
+
+function media_search_masked_value(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+
+    return '••••••••' . substr($value, -4);
+}
+
+/** @return array<string,mixed> */
+function media_search_credentials_status(PDO $pdo, array $config): array
+{
+    $effective = media_search_effective_config($pdo, $config);
+    $googleKey = trim((string) ($effective['media_search_google_api_key'] ?? ''));
+    $googleCx = trim((string) ($effective['media_search_google_cx'] ?? ''));
+    $youtubeKey = trim((string) ($effective['media_search_youtube_api_key'] ?? ''));
+
+    return [
+        'google_ready' => $googleKey !== '' && $googleCx !== '',
+        'youtube_ready' => $youtubeKey !== '',
+        'google_key_masked' => media_search_masked_value($googleKey),
+        'google_cx_masked' => media_search_masked_value($googleCx),
+        'youtube_key_masked' => media_search_masked_value($youtubeKey),
+        'google_source' => trim((string) (app_setting($pdo, 'media_search_google_api_key', '') ?? '')) !== '' ? 'admin' : ($googleKey !== '' ? 'environment' : 'missing'),
+        'youtube_source' => trim((string) (app_setting($pdo, 'media_search_youtube_api_key', '') ?? '')) !== '' ? 'admin' : ($youtubeKey !== '' ? 'environment' : 'missing'),
+    ];
+}
+
+function media_search_update_credentials(PDO $pdo, array $input, int $actorUserId): array
+{
+    $keys = [
+        'media_search_google_api_key' => 'google_api_key',
+        'media_search_google_cx' => 'google_cx',
+        'media_search_youtube_api_key' => 'youtube_api_key',
+    ];
+    foreach ($keys as $settingKey => $inputKey) {
+        if (!empty($input['clear_' . $inputKey])) {
+            set_app_setting_silent($pdo, $settingKey, '', $actorUserId);
+            continue;
+        }
+        $value = trim((string) ($input[$inputKey] ?? ''));
+        if ($value === '') {
+            continue;
+        }
+        if (strlen($value) > 255 || preg_match('/\s/', $value) === 1) {
+            throw new InvalidArgumentException(t('admin.media_search_credentials_invalid'));
+        }
+        set_app_setting_silent($pdo, $settingKey, $value, $actorUserId);
+    }
+    $storedStatus = [
+        'google_key' => trim((string) (app_setting($pdo, 'media_search_google_api_key', '') ?? '')) !== '',
+        'google_cx' => trim((string) (app_setting($pdo, 'media_search_google_cx', '') ?? '')) !== '',
+        'youtube_key' => trim((string) (app_setting($pdo, 'media_search_youtube_api_key', '') ?? '')) !== '',
+    ];
+    audit_log(
+        $pdo,
+        $actorUserId,
+        'media_search_credentials_updated',
+        'app_setting',
+        'media_search_credentials',
+        'Media search credentials updated.',
+        null,
+        $storedStatus
+    );
+
+    return $storedStatus;
+}
+
 function media_search_provider_available(array $config, string $type): bool
 {
     if ($type === 'image') {

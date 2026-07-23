@@ -3928,30 +3928,6 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     white-space: nowrap;
 }
 
-.admin-backup-list {
-    gap: 0.6rem;
-}
-
-.backup-health-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.7rem;
-    margin-block: 1rem;
-}
-
-.backup-health-grid > div {
-    display: grid;
-    gap: 0.25rem;
-    min-width: 0;
-    padding: 0.8rem;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--surface) 94%, var(--primary) 6%);
-}
-
-.backup-health-grid small { color: var(--muted); }
-.backup-health-grid strong { overflow-wrap: anywhere; font-size: 0.78rem; }
-.backup-health-error { padding: 0.75rem; border-radius: 12px; background: color-mix(in srgb, var(--danger) 10%, var(--surface)); color: var(--danger); }
 .integration-runtime-status { display: flex; align-items: center; gap: 0.65rem; padding: 0.7rem; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); }
 .integration-runtime-status > span { width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%; background: var(--muted); }
 .integration-runtime-status.is-active > span { background: var(--positive, #16a34a); box-shadow: 0 0 0 4px color-mix(in srgb, var(--positive, #16a34a) 14%, transparent); }
@@ -3959,87 +3935,6 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
 .integration-runtime-status.is-error > span { background: var(--danger, #dc2626); box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger, #dc2626) 14%, transparent); }
 .integration-runtime-status > div { display: grid; gap: 0.12rem; }
 .integration-runtime-status small { color: var(--muted); }
-
-@media (max-width: 760px) {
-    .backup-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-.admin-backup-item {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.75rem 1rem;
-    align-items: start;
-}
-
-.admin-backup-item.is-missing {
-    border-color: rgba(223, 76, 67, 0.35);
-    background: color-mix(in srgb, #ef4444 8%, var(--surface));
-}
-
-.admin-backup-meta {
-    display: grid;
-    gap: 0.18rem;
-    min-width: 0;
-}
-
-.admin-backup-meta strong {
-    overflow-wrap: anywhere;
-}
-
-.admin-backup-meta span,
-.admin-backup-meta small {
-    font-size: 0.8rem;
-    color: var(--muted);
-}
-
-.admin-backup-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-    align-items: stretch;
-    min-width: 180px;
-}
-
-.admin-backup-actions form {
-    margin: 0;
-}
-
-.admin-backup-actions > form > .btn {
-    width: 100%;
-}
-
-.admin-backup-restore-form {
-    display: grid;
-    gap: 0.35rem;
-    padding: 0.55rem;
-    border: 1px dashed var(--line);
-    border-radius: 10px;
-}
-
-.admin-backup-restore-form label {
-    font-size: 0.76rem;
-    color: var(--muted);
-    display: grid;
-    gap: 0.25rem;
-}
-
-.admin-backup-restore-form input {
-    min-height: 44px;
-    padding: 0.45rem 0.55rem;
-    width: 100%;
-}
-
-@media (max-width: 640px) {
-    .admin-backup-item {
-        grid-template-columns: 1fr;
-    }
-    .admin-backup-actions {
-        min-width: 0;
-    }
-    .backup-settings-grid {
-        grid-template-columns: 1fr;
-    }
-}
 
 .admin-section-help {
     margin: 0.2rem 0 0;
@@ -6763,23 +6658,6 @@ body[data-theme="dark"] .training-sheet-table thead th {
     .login-brand-image {
         width: 64px;
         height: 64px;
-    }
-
-    .admin-backup-item {
-        grid-template-columns: 1fr;
-    }
-
-    .admin-backup-actions {
-        justify-items: stretch;
-    }
-
-    .admin-backup-actions .btn {
-        width: 100%;
-        justify-content: center;
-    }
-
-    .admin-backup-restore-form input {
-        max-width: none;
     }
 
     .entry-data-head {
@@ -11840,10 +11718,6 @@ body[data-theme="dark"] .flash-success {
     line-height: 1;
 }
 
-.user-menu-unread-dot {
-    display: none;
-}
-
 .gallery-page-clean {
     gap: 0.8rem;
 }
@@ -12323,6 +12197,67 @@ body.theme-active-dark .profile-current-goal-chips .is-empty {
     font-size: 0.78rem;
     font-weight: 900;
     background: linear-gradient(135deg, #dcfce7, #e0f2fe);
+}
+
+body[data-page="profile"] .profile-identity-row {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    min-height: 58px;
+    padding: 8px;
+    border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+    border-radius: 14px;
+    background: var(--surface-2);
+}
+
+body[data-page="profile"] .profile-identity-row.has-cover::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--surface) 76%, transparent), color-mix(in srgb, var(--surface) 48%, transparent) 62%, color-mix(in srgb, var(--surface) 68%, transparent));
+}
+
+body[data-page="profile"] .profile-identity-row > :not(.profile-identity-cover) {
+    position: relative;
+    z-index: 2;
+}
+
+body[data-page="profile"] .profile-identity-cover {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.82;
+    object-fit: cover;
+}
+
+body[data-page="profile"] .profile-friend-list,
+body[data-page="profile"] .profile-friend-request-list,
+body[data-page="profile"] .profile-team-list {
+    gap: 6px;
+}
+
+body[data-page="profile"] .profile-identity-row .profile-friend-avatar {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+    border: 2px solid color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+body[data-page="profile"] .profile-team-row {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    gap: 8px;
+    color: var(--ink);
+}
+
+body[data-page="profile"] .profile-team-row > span:nth-child(2) {
+    gap: 2px;
+}
+
+body[data-page="profile"] .profile-team-row .profile-team-icon {
+    border-radius: 50%;
 }
 
 .profile-friend-more {
@@ -13130,14 +13065,6 @@ body[data-theme="dark"] :where(.topbar-context[open] .topbar-context-panel,
     gap: 0.18rem;
 }
 
-.admin-backup-item {
-    padding: 0.82rem;
-}
-
-.admin-backup-actions {
-    gap: 0.44rem;
-}
-
 .notification-card {
     border-radius: 18px;
     padding: 0.82rem 0.92rem;
@@ -13252,11 +13179,6 @@ body[data-theme="dark"] :where(.topbar-context[open] .topbar-context-panel,
     .admin-achievement-spotlight-visual {
         width: 56px;
         height: 56px;
-    }
-
-    .admin-backup-actions,
-    .admin-backup-restore-form {
-        grid-template-columns: 1fr;
     }
 
     .audit-filter {
@@ -13434,27 +13356,10 @@ body[data-theme="dark"] .view-panel-section > span:first-child {
     opacity: 0;
 }
 
-.admin-thumbnail-regenerate {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.8rem;
-    padding: 0.82rem;
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.48);
-    border: 1px solid rgba(15, 23, 42, 0.08);
-}
-
 body[data-theme="dark"] .gallery-month-floating {
     color: rgba(255, 255, 255, 0.94);
     background: rgba(15, 23, 42, 0.82);
     border-color: rgba(255, 255, 255, 0.16);
-}
-
-body[data-theme="dark"] .admin-thumbnail-regenerate {
-    color: rgba(255, 255, 255, 0.92);
-    background: rgba(15, 23, 42, 0.68);
-    border-color: rgba(255, 255, 255, 0.12);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -13464,11 +13369,6 @@ body[data-theme="dark"] .admin-thumbnail-regenerate {
         border-color: rgba(255, 255, 255, 0.16);
     }
 
-    body[data-theme="auto"] .admin-thumbnail-regenerate {
-        color: rgba(255, 255, 255, 0.92);
-        background: rgba(15, 23, 42, 0.68);
-        border-color: rgba(255, 255, 255, 0.12);
-    }
 }
 
 @media (max-width: 768px) {
@@ -13550,10 +13450,6 @@ body[data-theme="dark"] .admin-thumbnail-regenerate {
         display: none !important;
     }
 
-    .admin-thumbnail-regenerate {
-        align-items: stretch;
-        flex-direction: column;
-    }
 }
 
 /* Final mobile implementation pass: compact approvals, full-bleed gallery, PJAX loader, Liquid Glass nav. */
@@ -17350,54 +17246,6 @@ a.profile-data-card-link:hover .profile-data-card-go {
 }
 
 /* ==========================================================================
-   Admin — Levels & XP compact layout, uses full desktop width (#22)
-   ========================================================================== */
-.admin-xp-forms { align-items: start; }
-.admin-xp-card {
-    padding: 1rem;
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    background: color-mix(in srgb, var(--ink) 2.5%, transparent);
-}
-.admin-xp-card h3 { margin-top: 0; }
-.xp-input-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 0.6rem;
-    align-items: end;
-}
-.xp-input-grid label {
-    display: grid;
-    gap: 0.25rem;
-    font-size: 0.8rem;
-    font-weight: 700;
-    min-width: 0;
-}
-.xp-input-grid input,
-.xp-input-grid select { width: 100%; }
-
-.xp-user-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 0.5rem;
-}
-.xp-user-grid .xp-user-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    margin: 0;
-    padding: 0.6rem 0.75rem;
-}
-.xp-user-grid .xp-user-item strong {
-    display: block;
-    font-size: 0.92rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* ==========================================================================
    Profile — customizable home layout (#15)
    ========================================================================== */
 .profile-home-block-wrap {
@@ -17597,10 +17445,166 @@ body.theme-active-dark .analytics-summary-section {
     .profile-data-card-link,
     .member-card-link,
     .status-summary-card,
+    .pwa-install-nudge,
     .to-top-btn {
         transition: none !important;
         animation: none !important;
     }
+}
+
+/* Compact install prompt: mobile only, above the bottom navigation. */
+.pwa-install-nudge {
+    display: none;
+}
+
+@media (max-width: 700px) {
+    .pwa-install-nudge {
+        position: fixed;
+        left: max(0.75rem, env(safe-area-inset-left));
+        right: max(0.75rem, env(safe-area-inset-right));
+        bottom: calc(5.5rem + env(safe-area-inset-bottom));
+        z-index: 11020;
+        display: grid;
+        grid-template-columns: 42px minmax(0, 1fr) auto 40px;
+        align-items: center;
+        gap: 0.55rem;
+        min-height: 66px;
+        padding: 0.5rem;
+        border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
+        border-radius: 18px;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        color: var(--ink);
+        box-shadow: 0 14px 36px rgba(15, 23, 42, 0.18);
+        -webkit-backdrop-filter: blur(18px) saturate(145%);
+        backdrop-filter: blur(18px) saturate(145%);
+        opacity: 0;
+        transform: translateY(12px) scale(0.98);
+        transform-origin: bottom center;
+        pointer-events: none;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .pwa-install-nudge[hidden] {
+        display: none !important;
+    }
+    .pwa-install-nudge.is-visible {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        pointer-events: auto;
+    }
+    .pwa-install-nudge-icon {
+        width: 42px;
+        height: 42px;
+        overflow: hidden;
+        border-radius: 13px;
+        background: var(--surface-soft, var(--surface));
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent);
+    }
+    .pwa-install-nudge-icon img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .pwa-install-nudge-copy {
+        display: grid;
+        min-width: 0;
+        gap: 0.1rem;
+    }
+    .pwa-install-nudge-copy strong {
+        overflow: hidden;
+        font-size: 0.76rem;
+        line-height: 1.15;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .pwa-install-nudge-copy small {
+        display: -webkit-box;
+        overflow: hidden;
+        color: var(--muted);
+        font-size: 0.64rem;
+        line-height: 1.25;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+    }
+    .pwa-install-nudge-action,
+    .pwa-install-nudge-close {
+        appearance: none;
+        -webkit-appearance: none;
+        border: 0;
+        cursor: pointer;
+        font: inherit;
+    }
+    .pwa-install-nudge-action {
+        min-height: 44px;
+        padding: 0 0.78rem;
+        border-radius: 12px;
+        background: var(--primary);
+        color: var(--primary-contrast, #fff);
+        font-size: 0.7rem;
+        font-weight: 800;
+    }
+    .pwa-install-nudge-action:disabled {
+        opacity: 0.58;
+        cursor: wait;
+    }
+    .pwa-install-nudge-close {
+        width: 40px;
+        height: 44px;
+        padding: 0;
+        border-radius: 11px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 1.35rem;
+        line-height: 1;
+    }
+    .pwa-install-nudge-close:hover,
+    .pwa-install-nudge-close:focus-visible {
+        background: color-mix(in srgb, var(--ink) 8%, transparent);
+        color: var(--ink);
+    }
+    .pwa-install-nudge.is-guidance {
+        grid-template-columns: 42px minmax(0, 1fr) 40px;
+    }
+    .pwa-install-nudge.is-guidance .pwa-install-nudge-action {
+        display: none;
+    }
+    body.mobile-keyboard-open .pwa-install-nudge,
+    body.layout-edit-active .pwa-install-nudge,
+    body:has(.app-modal.is-open) .pwa-install-nudge,
+    body:has(.app-drawer.is-open) .pwa-install-nudge,
+    body:has(nav.bottom-nav details[open]) .pwa-install-nudge,
+    body:has(.topbar .user-menu[open]) .pwa-install-nudge,
+    body:has(.topbar-context[open]) .pwa-install-nudge {
+        display: none !important;
+    }
+}
+
+@media (max-width: 359px) {
+    .pwa-install-nudge {
+        left: max(0.5rem, env(safe-area-inset-left));
+        right: max(0.5rem, env(safe-area-inset-right));
+        grid-template-columns: 38px minmax(0, 1fr) auto 40px;
+        gap: 0.38rem;
+        padding: 0.42rem;
+    }
+    .pwa-install-nudge-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 11px;
+    }
+    .pwa-install-nudge-action {
+        padding-inline: 0.58rem;
+    }
+    .pwa-install-nudge.is-guidance {
+        grid-template-columns: 38px minmax(0, 1fr) 40px;
+    }
+}
+
+body[data-theme="dark"] .pwa-install-nudge,
+body.theme-active-dark .pwa-install-nudge {
+    border-color: var(--dark-ui-border, #242424);
+    background: var(--dark-ui-surface, #090909);
+    box-shadow: none;
 }
 
 /* Back-to-top floating button (#9 — long settings/config pages) */
@@ -19247,6 +19251,18 @@ body[data-page="team"]:is([data-theme="dark"], .theme-active-dark) .team-mobile-
     background: var(--surface);
 }
 
+body[data-page="team"] .team-page-identity-hero {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+}
+body[data-page="team"] .team-page-identity-hero.has-cover::before { content: ""; position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, rgba(0, 0, 0, 0.64), rgba(0, 0, 0, 0.22) 70%, rgba(0, 0, 0, 0.46)); }
+body[data-page="team"] .team-page-cover { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: cover; }
+body[data-page="team"] .team-page-identity-hero > :not(.team-page-cover) { position: relative; z-index: 2; }
+body[data-page="team"] .team-page-icon { display: grid; place-items: center; flex: 0 0 52px; width: 52px; height: 52px; overflow: hidden; border: 3px solid color-mix(in srgb, var(--surface) 86%, transparent); border-radius: 50%; color: #fff; background: linear-gradient(145deg, var(--primary), #2563eb); font-size: 0.7rem; font-weight: 900; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.22); }
+body[data-page="team"] .team-page-icon.has-image img { width: 100%; height: 100%; object-fit: cover; }
+body[data-page="team"] .team-page-desktop-hero.has-cover .hero-copy :is(.eyebrow, h1, p) { color: #fff; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.72); }
+
 /* #2 Mobile edit layout: direct drag never actually worked on touch (the page is
    blurred behind an overlay there), so showing a grab handle was a lie. Drop the
    handle and the grab affordance below 900px — reordering happens in the
@@ -19772,52 +19788,6 @@ body.layout-edit-active .dashboard-layout > [data-dashboard-widget][hidden] {
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
-}
-
-/* #15 Workouts: one primary action, and every button says what it does. */
-.workouts-resume-banner {
-    display: flex;
-    align-items: center;
-    gap: 0.7rem;
-    padding: 0.85rem 1rem;
-    border-radius: 16px;
-    border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent);
-    background: color-mix(in srgb, var(--primary) 12%, transparent);
-    color: inherit;
-    text-decoration: none;
-}
-
-.workouts-resume-dot {
-    width: 10px;
-    height: 10px;
-    flex: 0 0 auto;
-    border-radius: 50%;
-    background: var(--primary);
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 60%, transparent);
-    animation: wkPulse 1.8s ease-out infinite;
-}
-
-@keyframes wkPulse {
-    to { box-shadow: 0 0 0 10px transparent; }
-}
-
-.workouts-resume-copy {
-    display: grid;
-    gap: 1px;
-    min-width: 0;
-    flex: 1 1 auto;
-}
-
-.workouts-resume-copy small {
-    opacity: 0.75;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.workouts-resume-go {
-    font-size: 1.1rem;
-    opacity: 0.7;
 }
 
 .workouts-start-grid {
@@ -23377,6 +23347,46 @@ body.theme-active-dark .dashboard-training-progress-grid > span {
     border-radius: 20px;
     box-shadow: none;
 }
+.team-identity-editor {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    margin: 0;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 17px;
+    background: color-mix(in srgb, var(--primary) 3%, var(--surface));
+}
+.team-identity-editor legend { padding-inline: 5px; font-size: 0.76rem; font-weight: 850; }
+.team-identity-editor > p { margin: -4px 0 0; }
+.team-identity-preview {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    min-height: 126px;
+    overflow: hidden;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: linear-gradient(145deg, color-mix(in srgb, var(--primary) 12%, var(--surface)), var(--surface-2));
+}
+.team-identity-preview.has-cover::before { content: ""; position: absolute; inset: 0; z-index: 1; background: linear-gradient(0deg, color-mix(in srgb, #000 58%, transparent), transparent 78%); }
+.team-identity-cover { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: cover; }
+.team-identity-preview > :not(.team-identity-cover) { position: relative; z-index: 2; }
+.team-identity-preview > strong { min-width: 0; overflow: hidden; color: var(--ink); font-size: 0.9rem; text-overflow: ellipsis; white-space: nowrap; }
+.team-identity-preview.has-cover > strong { color: #fff; text-shadow: 0 1px 5px rgba(0, 0, 0, 0.65); }
+.team-identity-icon { display: grid; place-items: center; flex: 0 0 54px; width: 54px; height: 54px; overflow: hidden; border: 3px solid color-mix(in srgb, var(--surface) 88%, transparent); border-radius: 50%; color: #fff; background: linear-gradient(145deg, var(--primary), #2563eb); font-size: 0.72rem; font-weight: 900; box-shadow: 0 5px 18px rgba(0, 0, 0, 0.2); }
+.team-identity-icon img { width: 100%; height: 100%; object-fit: cover; }
+.team-identity-fields label { min-width: 0; }
+.team-identity-fields input[type="file"] { width: 100%; min-width: 0; min-height: 44px; font-size: 0.68rem; }
+.team-identity-remove-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.team-identity-remove-options .check { min-height: 44px; }
+@media (max-width: 640px) {
+    .team-identity-fields.grid-inline.two { grid-template-columns: minmax(0, 1fr); }
+    .team-identity-preview { min-height: 112px; }
+}
 .settings-section-actions { display: flex; justify-content: flex-end; }
 .settings-section-actions .btn { min-width: 132px; }
 .team-member-add-form {
@@ -24217,6 +24227,22 @@ body.theme-active-dark .dashboard-training-progress-grid > span {
     .mobile-home-greeting p { color: var(--muted); font-size: 0.7rem; font-weight: 750; }
     .mobile-home-greeting h1 { font-size: var(--ui-page-title-size); line-height: 1.18; }
     .mobile-home-greeting small { color: var(--muted); font-size: var(--ui-secondary-text-size); }
+    body[data-page="team"] .team-page-identity-hero.mobile-home-greeting {
+        position: relative;
+        isolation: isolate;
+        grid-template-columns: 48px minmax(0, 1fr);
+        grid-template-rows: auto auto auto;
+        gap: 1px 10px;
+        min-height: 84px;
+        overflow: hidden;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 17px;
+        background: var(--surface);
+    }
+    body[data-page="team"] .team-page-identity-hero.mobile-home-greeting > :is(p, h1, small) { grid-column: 2; position: relative; z-index: 2; min-width: 0; }
+    body[data-page="team"] .team-page-identity-hero.mobile-home-greeting > .team-page-icon { grid-column: 1; grid-row: 1 / 4; align-self: center; }
+    body[data-page="team"] .team-page-identity-hero.mobile-home-greeting.has-cover > :is(p, h1, small) { color: #fff; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.72); }
     .workouts-hero .hero-copy h1 { font-size: var(--ui-page-title-size); line-height: 1.18; }
     .mobile-today-card,
     .mobile-progress-brief,
@@ -25364,73 +25390,1153 @@ body.theme-active-dark .layout-card-controls {
     -webkit-line-clamp: 2;
 }
 
-.workouts-active-session-card.compact-panel {
-    position: relative;
+/* Workout overview: immediate work first, everything secondary disclosed on
+   demand. This keeps the home useful even with many routines and statistics. */
+.workouts-overview-priority {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.58rem 0.72rem;
-    overflow: hidden;
-    padding: var(--ui-panel-padding);
-    border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--ui-soft-border));
-    border-radius: var(--ui-panel-radius);
-    background:
-        linear-gradient(135deg, color-mix(in srgb, var(--primary) 10%, transparent), transparent 68%),
-        var(--ui-glass-panel);
+    gap: 0.62rem;
+    min-width: 0;
 }
 
-.workouts-active-session-card .workouts-resume-banner {
-    grid-column: 1 / -1;
-    min-width: 0;
-    min-height: 52px;
-    padding: 0;
+.workouts-overview-disclosure {
+    overflow: visible;
     border: 0;
     border-radius: 0;
     background: transparent;
+    box-shadow: none;
 }
 
-.workouts-active-session-card .workouts-resume-cta {
-    flex: 0 0 auto;
-    min-height: 40px;
-    padding: 0.58rem 0.72rem;
-    border-radius: 12px;
-    color: var(--primary-contrast, #fff);
-    background: var(--primary);
-    font-size: 0.72rem;
-    font-weight: 850;
+.workouts-overview-disclosure > summary {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) 24px;
+    align-items: center;
+    gap: 0.62rem;
+    min-height: 58px;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--ui-soft-border, var(--line));
+    border-radius: var(--ui-panel-radius, 16px);
+    background: var(--surface);
+    box-shadow: none;
+    cursor: pointer;
+    list-style: none;
 }
 
-.workouts-active-session-card .workouts-resume-copy strong,
-.workouts-active-session-card .workouts-active-next strong {
+.workouts-overview-disclosure[open] > summary {
+    margin-bottom: 0.62rem;
+}
+
+.workouts-overview-disclosure > summary::-webkit-details-marker {
+    display: none;
+}
+
+.workouts-overview-disclosure > summary > span:nth-child(2) {
+    display: grid;
+    min-width: 0;
+    gap: 0.08rem;
+}
+
+.workouts-overview-disclosure > summary strong,
+.workouts-overview-disclosure > summary small {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.workouts-active-session-progress {
+.workouts-overview-disclosure > summary strong {
+    color: var(--ink);
+    font-size: 0.8rem;
+}
+
+.workouts-overview-disclosure > summary small {
+    color: var(--muted);
+    font-size: 0.66rem;
+}
+
+.workouts-overview-disclosure > summary > b {
+    color: var(--muted);
+    font-size: 1.3rem;
+    text-align: center;
+    transform: rotate(0deg);
+    transition: transform 160ms ease;
+}
+
+.workouts-overview-disclosure[open] > summary > b {
+    transform: rotate(90deg);
+}
+
+.workouts-overview-disclosure-icon {
     display: grid;
-    grid-template-columns: minmax(86px, 0.8fr) auto minmax(0, 1fr);
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border-radius: 12px;
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+}
+
+.workouts-overview-disclosure-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+.workouts-overview-disclosure-body {
+    display: grid;
+    gap: 0.62rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.workouts-tools-disclosure .workouts-section-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.42rem;
+}
+
+.workouts-tools-disclosure .workouts-section-grid > .hierarchy-nav-row {
+    min-height: 68px;
+    padding: 0.52rem;
+    border-radius: 13px;
+}
+
+.workouts-tools-disclosure .workouts-start-grid {
+    gap: 0.42rem;
+}
+
+.workouts-tools-disclosure .workouts-start-card {
+    min-height: 58px;
+    padding: 0.55rem 0.62rem;
+    border-radius: 13px;
+}
+
+.workouts-routines-disclosure-body {
+    gap: 0.34rem;
+}
+
+.workouts-routines-head-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.3rem;
+    min-width: 0;
+}
+
+.workouts-routines-head-actions .btn {
+    min-height: 36px;
+    padding: 0.38rem 0.58rem;
+    font-size: 0.67rem;
+}
+
+.workouts-routines-empty-create {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) 28px;
     align-items: center;
     gap: 0.62rem;
-    min-width: 0;
+    width: 100%;
+    min-height: 58px;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--ui-soft-border, var(--line));
+    border-radius: var(--ui-panel-radius, 16px);
+    color: var(--ink);
+    background: var(--surface);
+    box-shadow: none;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
 }
 
-.workouts-active-session-progress > span:not(.goal-progress) {
+.workouts-routines-empty-create > strong {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.8rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workouts-routines-empty-create > span:last-child {
     display: grid;
+    width: 28px;
+    height: 28px;
+    place-items: center;
+    border-radius: 9px;
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+    font-size: 1.05rem;
+    font-weight: 800;
+}
+
+.workouts-routines-empty-create:is(:hover, :focus-visible) {
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+    outline: none;
+}
+
+.workouts-routine-preview-grid {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 0.34rem;
+}
+
+.workouts-routine-preview-grid .workouts-routine-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.48rem;
+    min-height: 58px;
+    padding: 0.36rem 0.4rem 0.36rem 0.5rem;
+    overflow: visible;
+    border-radius: 12px;
+    background: var(--surface);
+    box-shadow: none;
+    transform: none;
+}
+
+.workouts-routine-preview-grid .workouts-routine-card::before {
+    width: 3px;
+    border-radius: 12px 0 0 12px;
+}
+
+.workouts-routine-preview-media {
+    position: relative;
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--routine-accent, var(--primary)) 28%, var(--line));
+    border-radius: 11px;
+    color: color-mix(in srgb, var(--routine-accent, var(--primary)) 48%, var(--ink));
+    background: color-mix(in srgb, var(--routine-accent, var(--primary)) 11%, var(--surface));
+    text-decoration: none;
+}
+
+.workouts-routine-preview-media > span:first-child svg {
+    width: 19px;
+    height: 19px;
+}
+
+.workouts-routine-preview-media img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.workouts-routine-preview-media.has-image > span {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    display: grid;
+    width: 17px;
+    height: 17px;
+    place-items: center;
+    border-radius: 50%;
+    color: #fff;
+    background: rgba(7, 13, 23, 0.72);
+    font-size: 0.46rem;
+}
+
+.workouts-routine-preview-copy {
+    display: grid;
+    gap: 0.18rem;
+    min-width: 0;
+    color: inherit;
+    text-decoration: none;
+}
+
+.workouts-routine-preview-copy > span:first-child {
+    display: flex;
+    align-items: center;
+    gap: 0.28rem;
     min-width: 0;
 }
 
-.workouts-active-session-progress small {
+.workouts-routine-preview-copy strong {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.76rem;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workouts-routine-preview-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.26rem;
+    min-width: 0;
+    overflow: hidden;
     color: var(--muted);
-    font-size: 0.6rem;
+    font-size: 0.57rem;
+    font-weight: 730;
+    line-height: 1.1;
+    white-space: nowrap;
+}
+
+.workouts-routine-preview-meta > span:first-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.workouts-routine-preview-meta i {
+    width: 6px;
+    height: 6px;
+    flex: 0 0 6px;
+    border-radius: 50%;
+    background: var(--muted);
+}
+
+.workouts-routine-preview-meta .state-active i {
+    background: var(--primary);
+}
+
+.workouts-routine-preview-meta .state-completed i {
+    background: var(--good);
+}
+
+.workouts-routine-preview-meta .state-scheduled i {
+    background: var(--warning);
+}
+
+.workouts-routine-preview-count {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.workouts-routine-preview-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.18rem;
+}
+
+.workouts-routine-preview-grid .workouts-routine-start-btn {
+    display: inline-grid;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+    padding: 0;
+    place-items: center;
+    border-radius: 10px;
+    font-size: 0.68rem;
+    line-height: 1;
+}
+
+.workouts-routine-preview-actions .kebab-menu > summary.kebab-menu-trigger {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
+    padding: 0;
+    border-color: transparent;
+}
+
+.workouts-routine-preview-more {
+    min-height: 38px;
+    margin-top: 0;
+}
+
+.workouts-overview-priority .workouts-today-card {
+    gap: 0.5rem;
+    padding: 0.68rem !important;
+    border-radius: var(--ui-panel-radius, 16px);
+    background: var(--surface) !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+.workouts-overview-priority .workouts-today-card::before {
+    display: none;
+}
+
+.workouts-overview-priority .workouts-today-picker {
+    gap: 0.5rem;
+}
+
+.workouts-overview-priority .workouts-today-routine-chips span {
+    min-height: 34px;
+    padding: 0.36rem 0.62rem;
+    font-size: 0.7rem;
+}
+
+.workouts-overview-priority .workouts-today-card.has-active-session .workouts-today-picker {
+    opacity: 0.66;
+}
+
+body[data-page="workouts"]:is([data-theme="dark"], .theme-active-dark) :is(
+    .workouts-routines-empty-create,
+    .workouts-overview-priority .workouts-today-card
+) {
+    border-color: var(--dark-ui-border, var(--line)) !important;
+    background: var(--dark-ui-surface, var(--surface)) !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}
+
+body[data-page="workouts"]:is([data-theme="dark"], .theme-active-dark) .workouts-overview-disclosure > summary {
+    border-color: var(--dark-ui-border, var(--line)) !important;
+    background: var(--dark-ui-surface, var(--surface)) !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}
+
+@media (max-width: 700px) {
+    .workouts-overview-priority {
+        gap: 0.5rem;
+    }
+
+    .workouts-overview-disclosure[open] > summary {
+        margin-bottom: 0.42rem;
+    }
+
+    .workouts-overview-disclosure-body {
+        gap: 0.42rem;
+        min-width: 0;
+    }
+
+    .workouts-overview-disclosure-body > * {
+        min-width: 0;
+    }
+
+    .workouts-tools-disclosure .workouts-section-grid {
+        display: grid;
+        grid-template-columns: none;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(122px, 38vw);
+        gap: 0.38rem;
+        margin: 0;
+        padding: 0 0.05rem 0.18rem;
+        overflow-x: auto;
+        overscroll-behavior-inline: contain;
+        scroll-snap-type: x proximity;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .workouts-tools-disclosure .workouts-section-grid::-webkit-scrollbar {
+        display: none;
+    }
+
+    .workouts-tools-disclosure .workouts-section-grid > .hierarchy-nav-row {
+        grid-template-columns: 32px minmax(0, 1fr);
+        gap: 0.4rem;
+        min-height: 54px;
+        padding: 0.4rem 0.46rem;
+        border-radius: 12px;
+        scroll-snap-align: start;
+    }
+
+    .workouts-tools-disclosure .workouts-section-grid .hierarchy-nav-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+    }
+
+    .workouts-tools-disclosure .workouts-section-grid .hierarchy-nav-icon svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .workouts-tools-disclosure .workouts-section-grid .hierarchy-nav-copy strong {
+        font-size: 0.68rem;
+    }
+
+    .workouts-tools-disclosure .workouts-section-grid .hierarchy-nav-copy small {
+        display: none;
+    }
+
+    .workouts-tools-disclosure .workouts-overview-kpi-strip {
+        border-radius: 12px;
+        box-shadow: none;
+    }
+
+    .workouts-tools-disclosure .workouts-overview-kpi-strip > span {
+        min-height: 52px;
+        padding: 0.4rem 0.48rem;
+    }
+
+    .workouts-tools-disclosure .workouts-overview-kpi-strip strong {
+        font-size: 0.92rem;
+    }
+
+    .workouts-tools-disclosure .workouts-overview-kpi-strip small {
+        font-size: 0.52rem;
+        line-height: 1.12;
+    }
+
+    .workouts-tools-disclosure .workouts-start-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.34rem;
+    }
+
+    .workouts-tools-disclosure .workouts-start-card {
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.44rem;
+        min-height: 50px;
+        padding: 0.38rem 0.44rem;
+        border-radius: 12px;
+    }
+
+    .workouts-tools-disclosure .workouts-start-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+    }
+
+    .workouts-tools-disclosure .workouts-start-icon svg {
+        width: 17px;
+        height: 17px;
+    }
+
+    .workouts-tools-disclosure .workouts-start-copy strong {
+        overflow: hidden;
+        font-size: 0.68rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .workouts-tools-disclosure .workouts-start-copy small {
+        display: none;
+    }
+
+    .workouts-tools-disclosure .workouts-start-card .btn {
+        width: auto;
+        min-height: 34px;
+        padding: 0.3rem 0.46rem;
+        border-radius: 9px;
+        font-size: 0.61rem;
+    }
+
+    .workouts-history-disclosure .workouts-overview-disclosure-body > .grid-two {
+        gap: 0.42rem;
+    }
+
+    .workouts-history-disclosure .workouts-overview-disclosure-body .panel {
+        padding: 0.62rem !important;
+        border-radius: 14px;
+        background: var(--surface) !important;
+        background-image: none !important;
+        box-shadow: none !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+
+    .workouts-history-disclosure .workouts-overview-disclosure-body .panel::before {
+        display: none;
+    }
+
+    .workouts-overview-priority .workouts-today-picker {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .workouts-overview-priority .workouts-today-picker > .btn {
+        min-height: 40px;
+    }
+
+    .workouts-routines-head-actions .btn {
+        min-height: 36px;
+    }
+
+    .workouts-routine-preview-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 430px) {
+    .workouts-routines-disclosure > summary,
+    .workouts-routines-empty-create {
+        grid-template-columns: 34px minmax(0, 1fr) 24px;
+        gap: 0.48rem;
+        min-height: 50px;
+        padding: 0.4rem 0.5rem;
+    }
+
+    .workouts-routines-disclosure .workouts-overview-disclosure-icon,
+    .workouts-routines-empty-create .workouts-overview-disclosure-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+    }
+
+    .workouts-routines-disclosure[open] > summary {
+        margin-bottom: 0.4rem;
+    }
+
+    .workouts-routines-disclosure-body {
+        gap: 0.28rem;
+    }
+
+    .workouts-tools-disclosure .workouts-section-grid {
+        grid-auto-columns: minmax(112px, 41vw);
+    }
+
+    .workouts-routines-head-actions {
+        justify-content: stretch;
+    }
+
+    .workouts-routines-head-actions .btn:first-child {
+        flex: 1 1 auto;
+    }
+
+    .workouts-overview-disclosure > summary {
+        min-height: 56px;
+        padding: 0.48rem 0.58rem;
+    }
+
+    .workouts-routines-disclosure > summary {
+        min-height: 50px;
+        padding: 0.4rem 0.5rem;
+    }
+
+    .workouts-overview-disclosure > summary small {
+        font-size: 0.62rem;
+    }
+
+    .workouts-overview-priority .workouts-today-picker {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .workouts-overview-priority .workouts-today-picker > .btn {
+        width: 100%;
+    }
+
+    .workouts-routines-head-actions .workouts-organize-routines-link {
+        width: 36px;
+        min-width: 36px;
+        padding: 0;
+        overflow: hidden;
+        font-size: 0;
+    }
+
+    .workouts-routines-head-actions .workouts-organize-routines-link::before {
+        content: "→";
+        font-size: 0.8rem;
+    }
+
+    .workouts-routine-preview-grid .workouts-routine-card {
+        grid-template-columns: 40px minmax(0, 1fr) auto;
+        gap: 0.42rem;
+        min-height: 54px;
+        padding: 0.32rem 0.32rem 0.32rem 0.46rem;
+    }
+
+    .workouts-routine-preview-media {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+    }
+
+    .workouts-routine-preview-grid .workouts-routine-start-btn {
+        width: 34px;
+        min-width: 34px;
+        height: 34px;
+        min-height: 34px;
+        border-radius: 9px;
+    }
+
+    .workouts-routine-preview-actions .kebab-menu > summary.kebab-menu-trigger {
+        width: 30px;
+        min-width: 30px;
+        height: 34px;
+        min-height: 34px;
+    }
+}
+
+@media (max-width: 350px) {
+    .workouts-routine-preview-count,
+    .workouts-routine-preview-meta > span[aria-hidden="true"] {
+        display: none;
+    }
+}
+
+/* Workout statistics: dense snapshot first, detail second. */
+.workouts-analytics-page {
+    display: grid;
+    gap: 0.72rem;
+    min-width: 0;
+}
+
+.workouts-analytics-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.48rem;
+}
+
+.workouts-analytics-kpi {
+    --analytics-tone: var(--primary);
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+    min-height: 74px;
+    padding: 0.58rem 0.64rem;
+    border: 1px solid color-mix(in srgb, var(--analytics-tone) 22%, var(--line));
+    border-radius: 15px;
+    background: var(--surface);
+}
+
+.workouts-analytics-kpi[data-tone="orange"] { --analytics-tone: #f97316; }
+.workouts-analytics-kpi[data-tone="blue"] { --analytics-tone: #3b82f6; }
+.workouts-analytics-kpi[data-tone="violet"] { --analytics-tone: #8b5cf6; }
+.workouts-analytics-kpi[data-tone="green"] { --analytics-tone: #16a34a; }
+
+.workouts-analytics-kpi-icon {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border-radius: 12px;
+    color: var(--analytics-tone);
+    background: color-mix(in srgb, var(--analytics-tone) 12%, var(--surface));
+}
+
+.workouts-analytics-kpi-icon svg {
+    width: 19px;
+    height: 19px;
+}
+
+.workouts-analytics-kpi > span:last-child {
+    display: grid;
+    gap: 0.16rem;
+    min-width: 0;
+}
+
+.workouts-analytics-kpi small {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.59rem;
     font-weight: 760;
+    line-height: 1.15;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
 }
 
-.workouts-active-session-finish {
-    align-self: center;
+.workouts-analytics-kpi strong {
+    overflow: hidden;
+    font-size: clamp(1rem, 2.2vw, 1.25rem);
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.workouts-active-session-finish .btn {
-    min-height: 40px;
+.workouts-analytics-insights {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.58rem;
+    min-width: 0;
+    padding: 0.42rem;
+    border: 1px solid color-mix(in srgb, var(--primary) 20%, var(--line));
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--primary) 4%, var(--surface));
+}
+
+.workouts-analytics-insights-head {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding-inline: 0.24rem;
+    color: var(--primary-dark);
+    font-size: 0.68rem;
+}
+
+.workouts-analytics-insights-head > span {
+    display: grid;
+    width: 26px;
+    height: 26px;
+    place-items: center;
+}
+
+.workouts-analytics-insights-head svg {
+    width: 16px;
+    height: 16px;
+}
+
+.workouts-analytics-insights .workouts-messages {
+    display: flex;
+    gap: 0.36rem;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.workouts-analytics-insights .workouts-messages::-webkit-scrollbar {
+    display: none;
+}
+
+.workouts-analytics-insights .workouts-message {
+    flex: 0 0 auto;
+    gap: 0.36rem;
+    min-height: 36px;
+    max-width: min(320px, 72vw);
+    padding: 0.3rem 0.48rem;
+    border-color: var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    font-size: 0.65rem;
+    line-height: 1.2;
+}
+
+.workouts-analytics-insights .workouts-message-icon {
+    width: 24px;
+    height: 24px;
+    flex-basis: 24px;
+}
+
+.workouts-analytics-insights .workouts-message-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.workouts-analytics-chart-panel,
+.workouts-analytics-detail-card {
+    padding: 0.72rem !important;
+    border-radius: 17px !important;
+    background: var(--surface) !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+.workouts-analytics-chart-panel::before,
+.workouts-analytics-detail-card::before {
+    display: none;
+}
+
+.workouts-analytics-panel-head {
+    align-items: center;
+    gap: 0.62rem;
+    margin: 0 0 0.58rem;
+}
+
+.workouts-analytics-panel-head :is(.eyebrow, h2) {
+    margin: 0;
+}
+
+.workouts-analytics-week-now {
+    display: inline-flex;
+    align-items: stretch;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+}
+
+.workouts-analytics-week-now > span {
+    display: grid;
+    gap: 0.08rem;
+    min-width: 92px;
+    padding: 0.34rem 0.5rem;
+}
+
+.workouts-analytics-week-now > span + span {
+    border-left: 1px solid var(--line);
+}
+
+.workouts-analytics-week-now small {
+    color: var(--muted);
+    font-size: 0.53rem;
+    font-weight: 740;
+}
+
+.workouts-analytics-week-now strong {
+    font-size: 0.68rem;
+    white-space: nowrap;
+}
+
+.workouts-analytics-chart-panel .workouts-bar-chart {
+    height: 176px;
+    padding: 0.65rem 0.45rem 0.38rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--ink) 2%, var(--surface));
+}
+
+.workouts-analytics-chart-panel .workouts-bar {
+    width: min(100%, 34px);
+    border-radius: 7px 7px 3px 3px;
+    box-shadow: none;
+}
+
+.workouts-analytics-chart-panel .workouts-bar-col.is-current .workouts-bar {
+    background: linear-gradient(180deg, #8b5cf6, var(--primary));
+}
+
+.workouts-analytics-chart-panel .workouts-bar-col.is-current .workouts-bar-label {
+    color: var(--primary-dark);
+    font-weight: 850;
+}
+
+.workouts-analytics-chart-panel .workouts-bar-sub {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.1rem;
+    font-size: 0.67rem;
+}
+
+.workouts-analytics-chart-panel .workouts-bar-sub small {
+    color: var(--muted);
+    font-size: 0.46rem;
+}
+
+.workouts-analytics-period-total {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.35rem;
+    margin-top: 0.48rem;
+}
+
+.workouts-analytics-period-total > span {
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+    padding: 0.42rem 0.5rem;
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--ink) 3%, var(--surface));
+}
+
+.workouts-analytics-period-total small {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.54rem;
+    font-weight: 740;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workouts-analytics-period-total strong {
+    overflow: hidden;
+    font-size: 0.68rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workouts-analytics-detail-grid {
+    gap: 0.52rem;
+}
+
+.workouts-analytics-frequency-list {
+    display: grid;
+    gap: 0.24rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.workouts-analytics-frequency-list li {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.46rem;
+    min-height: 38px;
+    padding: 0.3rem 0.4rem;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--ink) 3%, var(--surface));
+}
+
+.workouts-analytics-frequency-list li > span {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    place-items: center;
+    border-radius: 8px;
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 11%, var(--surface));
+    font-size: 0.57rem;
+    font-weight: 850;
+}
+
+.workouts-analytics-frequency-list li > strong {
+    overflow: hidden;
+    font-size: 0.7rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workouts-analytics-frequency-list li > b {
+    min-width: 32px;
+    padding: 0.22rem 0.36rem;
+    border-radius: 999px;
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+    font-size: 0.59rem;
+    text-align: center;
+}
+
+.workouts-analytics-detail-card .workouts-muscle-list {
+    gap: 0.42rem;
+}
+
+.workouts-analytics-detail-card .workouts-muscle-row {
+    grid-template-columns: minmax(70px, 0.8fr) minmax(70px, 1.3fr) 34px;
+    gap: 0.42rem;
+    min-height: 32px;
+}
+
+.workouts-analytics-detail-card .workouts-muscle-name {
+    font-size: 0.68rem;
+}
+
+.workouts-analytics-detail-card .workouts-muscle-pct {
+    font-size: 0.65rem;
+}
+
+.workouts-analytics-empty {
+    display: grid;
+    justify-items: center;
+    gap: 0.35rem;
+    min-height: 124px;
+    place-content: center;
+    padding: 0.7rem;
+    color: var(--muted);
+    text-align: center;
+}
+
+.workouts-analytics-empty.is-small {
+    min-height: 92px;
+}
+
+.workouts-analytics-empty > span {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    place-items: center;
+    border-radius: 11px;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+}
+
+.workouts-analytics-empty svg {
+    width: 19px;
+    height: 19px;
+}
+
+.workouts-analytics-empty p {
+    max-width: 34ch;
+    margin: 0;
+    font-size: 0.7rem;
+}
+
+@media (max-width: 700px) {
+    .workouts-analytics-page {
+        gap: 0.52rem;
+    }
+
+    .workouts-analytics-kpis {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.38rem;
+    }
+
+    .workouts-analytics-kpi {
+        grid-template-columns: 32px minmax(0, 1fr);
+        gap: 0.42rem;
+        min-height: 62px;
+        padding: 0.45rem 0.48rem;
+        border-radius: 13px;
+    }
+
+    .workouts-analytics-kpi-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+    }
+
+    .workouts-analytics-kpi-icon svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .workouts-analytics-kpi small {
+        font-size: 0.54rem;
+    }
+
+    .workouts-analytics-kpi strong {
+        font-size: 1rem;
+    }
+
+    .workouts-analytics-insights {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.3rem;
+        padding: 0.36rem;
+    }
+
+    .workouts-analytics-insights-head {
+        min-height: 28px;
+    }
+
+    .workouts-analytics-insights .workouts-message {
+        max-width: 78vw;
+    }
+
+    .workouts-analytics-chart-panel,
+    .workouts-analytics-detail-card {
+        padding: 0.58rem !important;
+        border-radius: 14px !important;
+    }
+
+    .workouts-analytics-panel-head {
+        margin-bottom: 0.45rem;
+    }
+
+    .workouts-analytics-week-now > span {
+        min-width: 0;
+        padding: 0.28rem 0.38rem;
+    }
+
+    .workouts-analytics-week-now > span:first-child small {
+        display: none;
+    }
+
+    .workouts-analytics-chart-panel .workouts-bar-chart {
+        height: 148px;
+        gap: 0.24rem;
+        padding: 0.55rem 0.18rem 0.3rem;
+        border-radius: 12px;
+    }
+
+    .workouts-analytics-chart-panel .workouts-bar-label {
+        font-size: 0.53rem;
+    }
+
+    .workouts-analytics-chart-panel .workouts-bar-sub {
+        font-size: 0.59rem;
+    }
+
+    .workouts-analytics-period-total {
+        gap: 0.25rem;
+        margin-top: 0.35rem;
+    }
+
+    .workouts-analytics-period-total > span {
+        padding: 0.34rem 0.38rem;
+    }
+
+    .workouts-analytics-detail-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.42rem;
+    }
+}
+
+@media (max-width: 390px) {
+    .workouts-analytics-week-now > span:last-child {
+        display: none;
+    }
+
+    .workouts-analytics-chart-panel .workouts-bar-sub small {
+        display: none;
+    }
+
+    .workouts-analytics-period-total > span {
+        padding-inline: 0.3rem;
+    }
 }
 
 .dashboard-ranking-panel .leaderboard-list {
@@ -25785,11 +26891,6 @@ body.theme-active-dark .layout-card-controls {
         gap: 0.42rem;
     }
 
-    .workouts-active-session-progress {
-        grid-template-columns: minmax(72px, 0.72fr) auto minmax(0, 1fr);
-        gap: 0.48rem;
-    }
-
     .quest-detail,
     .versus-details {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -25819,28 +26920,6 @@ body.theme-active-dark .layout-card-controls {
         border-inline-start: 0;
     }
 
-    .workouts-active-session-progress {
-        grid-column: 1 / -1;
-    }
-
-    .workouts-active-session-finish {
-        grid-column: 1 / -1;
-        justify-self: end;
-        margin-top: -0.2rem;
-    }
-
-    .workouts-active-session-card .workouts-resume-banner {
-        gap: 0.48rem;
-    }
-
-    .workouts-active-session-card .workouts-resume-cta {
-        display: grid;
-        min-width: 74px;
-        place-items: center;
-        padding-inline: 0.48rem;
-        text-align: center;
-    }
-
     .gallery-load-error {
         grid-template-columns: auto minmax(0, 1fr);
     }
@@ -25868,10 +26947,6 @@ body.theme-active-dark .layout-card-controls {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .workouts-active-session-card .workouts-resume-cta {
-        min-width: 64px;
-        font-size: 0.66rem;
-    }
 }
 
 /* ==========================================================================
@@ -26804,107 +27879,430 @@ body[data-page="social"] .social-dashboard-grid > .social-overview-card {
 body[data-page="social"] .social-team-overview {
     position: relative;
     overflow: hidden;
-    border-color: color-mix(in srgb, #3b82f6 30%, var(--line));
-    background:
-        radial-gradient(circle at 100% 0%, color-mix(in srgb, #3b82f6 14%, transparent), transparent 44%),
-        color-mix(in srgb, #3b82f6 4%, var(--surface));
+    border: 1px solid var(--line);
+    background: var(--surface);
+    box-shadow: var(--ui-soft-shadow);
 }
 
 body[data-page="social"] .social-team-overview::before {
-    content: "";
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 3px;
-    border-radius: 0 999px 999px 0;
-    background: linear-gradient(180deg, #4f8cff, #14a38b);
+    content: none;
 }
 
 body[data-page="social"] .social-team-overview .social-card-head {
-    align-items: flex-start;
-    padding-left: 0.1rem;
+    align-items: center;
+    padding-left: 0;
 }
 
 body[data-page="social"] .social-team-overview .social-card-head h2 {
-    margin-top: 0.1rem;
-    font-size: 1.05rem;
+    margin: 0;
+    font-size: 0.95rem;
     overflow-wrap: anywhere;
 }
 
 body[data-page="social"] .social-team-overview .social-card-head > a {
     display: inline-flex;
     align-items: center;
-    min-height: 36px;
-    padding: 0.45rem 0.68rem;
-    border: 1px solid color-mix(in srgb, #3b82f6 24%, var(--line));
-    border-radius: 999px;
-    color: color-mix(in srgb, #3b82f6 68%, var(--ink));
-    background: color-mix(in srgb, #3b82f6 8%, var(--surface));
+    min-height: 44px;
+    padding: 13px 4px 10px;
+    border: 0;
+    border-radius: 0;
+    color: var(--primary-dark);
+    background: transparent;
 }
 
-body[data-page="social"] .social-team-overview .social-featured-row {
-    grid-template-columns: 44px minmax(0, 1fr) auto;
-    min-height: 70px;
-    padding: 0.7rem;
-    border: 1px solid color-mix(in srgb, #3b82f6 20%, var(--line));
-    background: color-mix(in srgb, #3b82f6 8%, var(--surface-2));
+body[data-page="social"] .social-team-overview-list {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
 }
 
-body[data-page="social"] .social-team-overview .social-featured-row > :last-child {
-    display: block;
-    color: color-mix(in srgb, #3b82f6 72%, var(--muted));
-    font-size: 1.35rem;
-    line-height: 1;
-}
-
-body[data-page="social"] .social-team-overview .social-featured-row strong {
-    overflow: visible;
-    color: var(--ink);
-    line-height: 1.2;
-    text-overflow: clip;
-    white-space: normal;
-}
-
-body[data-page="social"] .social-team-overview .social-featured-row small {
-    display: -webkit-box;
-    margin-top: 0.16rem;
+body[data-page="social"] .social-team-summary-card {
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    min-width: 0;
     overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-height: 1.28;
+    border: 0;
+    border-radius: 15px;
+    background: var(--surface-2);
+    box-shadow: none;
 }
 
-body[data-page="social"] .social-team-overview .social-avatar-list {
-    min-height: 46px;
-    margin: -0.15rem 0 0;
-    padding-inline: 0.25rem;
+body[data-page="social"] .social-team-summary-card.has-cover::before {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--surface) 74%, transparent), color-mix(in srgb, var(--surface) 45%, transparent) 62%, color-mix(in srgb, var(--surface) 64%, transparent));
+    content: "";
 }
 
-body[data-page="social"] .social-team-overview .social-avatar-list a {
+body[data-page="social"] .social-team-summary-cover {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.9;
+    object-fit: cover;
+}
+
+body[data-page="social"] .social-team-summary-card > :not(.social-team-summary-cover) {
+    position: relative;
+    z-index: 2;
+}
+
+body[data-page="social"] .social-team-summary-identity {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) 16px;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    min-height: 62px;
+    padding: 8px 10px 6px;
+    color: inherit;
+    text-decoration: none;
+}
+
+body[data-page="social"] .social-team-summary-icon {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    overflow: hidden;
+    border: 2px solid color-mix(in srgb, var(--surface) 88%, transparent);
+    border-radius: 50%;
+    color: #fff;
+    background: linear-gradient(145deg, #2563eb, #14a38b);
+    font-size: 0.65rem;
+    font-weight: 900;
+}
+
+body[data-page="social"] .social-team-summary-icon.has-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+body[data-page="social"] .social-team-summary-identity > span:nth-child(2) {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+body[data-page="social"] .social-team-summary-identity :is(strong, small) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body[data-page="social"] .social-team-summary-identity strong { font-size: 0.78rem; }
+body[data-page="social"] .social-team-summary-identity small { color: var(--muted); font-size: 0.58rem; }
+body[data-page="social"] .social-team-summary-identity > b { color: var(--muted); font-size: 1.15rem; font-weight: 500; }
+
+body[data-page="social"] .social-team-summary-members {
+    display: flex;
+    min-width: 0;
+    min-height: 48px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 3px 10px 7px;
+    border-top: 0;
+}
+
+body[data-page="social"] .social-team-summary-members > strong {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 0.58rem;
+    white-space: nowrap;
+}
+
+body[data-page="social"] .social-team-summary-members .social-avatar-list {
+    min-width: 0;
+    min-height: 40px;
+    margin: 0;
+    padding: 0;
+}
+
+body[data-page="social"] .social-team-summary-members .social-avatar-list > * + * { margin-left: -20px; }
+
+body[data-page="social"] .social-team-summary-members .social-avatar-list > a {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
     transition: transform 0.16s ease;
 }
 
-body[data-page="social"] .social-team-overview .social-avatar-list a:hover,
-body[data-page="social"] .social-team-overview .social-avatar-list a:focus-visible {
-    z-index: 2;
+body[data-page="social"] .social-team-summary-members :is(.social-person-avatar, .social-avatar-more) {
+    width: 34px;
+    height: 34px;
+    border-width: 2px;
+    font-size: 0.58rem;
+}
+
+body[data-page="social"] .social-team-summary-members .social-avatar-list a:hover,
+body[data-page="social"] .social-team-summary-members .social-avatar-list a:focus-visible {
+    z-index: 12;
     transform: translateY(-2px);
 }
 
+body[data-page="social"] .social-competition-overview {
+    gap: 8px;
+    padding: 10px;
+    border-color: var(--line);
+    border-radius: 16px;
+    background: var(--surface);
+    box-shadow: none;
+}
+
+body[data-page="social"] .social-competition-overview .social-card-head {
+    min-height: 36px;
+    align-items: center;
+}
+
+body[data-page="social"] .social-competition-overview .social-card-head h2 {
+    margin: 0;
+    font-size: 0.86rem;
+}
+
+body[data-page="social"] .social-competition-overview .social-card-head > a {
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+    padding: 8px 3px;
+    color: var(--primary-dark);
+    font-size: 0.62rem;
+}
+
+body[data-page="social"] .social-competition-overview .social-competition-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+}
+
+body[data-page="social"] .social-competition-overview .social-competition-metrics > a {
+    --competition-stat-tone: #7c3aed;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    min-width: 0;
+    min-height: 50px;
+    place-items: center stretch;
+    align-content: center;
+    gap: 6px;
+    padding: 6px;
+    border: 0;
+    border-radius: 11px;
+    color: var(--ink);
+    background: color-mix(in srgb, var(--competition-stat-tone) 7%, var(--surface-2));
+    text-align: left;
+    text-decoration: none;
+}
+
+body[data-page="social"] .social-competition-overview .social-competition-metrics > a[data-tone="team"] { --competition-stat-tone: #2563eb; }
+body[data-page="social"] .social-competition-overview .social-competition-metrics > a[data-tone="pending"] { --competition-stat-tone: #f59e0b; }
+body[data-page="social"] .social-competition-overview .social-competition-metrics > a + a { border: 0; }
+
+body[data-page="social"] .social-competition-stat-icon {
+    display: grid;
+    width: 28px;
+    height: 28px;
+    place-items: center;
+    border-radius: 9px;
+    color: var(--competition-stat-tone);
+    background: color-mix(in srgb, var(--competition-stat-tone) 11%, var(--surface));
+}
+
+body[data-page="social"] .social-competition-stat-icon svg { width: 15px; height: 15px; }
+
+body[data-page="social"] .social-competition-stat-copy {
+    display: grid;
+    min-width: 0;
+    gap: 1px;
+}
+
+body[data-page="social"] .social-competition-stat-copy strong {
+    font-size: 0.8rem;
+    line-height: 1;
+}
+
+body[data-page="social"] .social-competition-stat-copy small {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.5rem;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body[data-page="social"] .social-circle-overview .social-people-list {
+    max-height: min(430px, 52dvh);
+    gap: 5px;
+    padding-right: 2px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+body[data-page="social"] .social-person-row {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    min-height: 62px;
+    padding: 8px;
+    border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+    border-radius: 14px;
+    background: var(--surface-2);
+}
+
+body[data-page="social"] .social-person-row::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--surface) 74%, transparent), color-mix(in srgb, var(--surface) 45%, transparent) 62%, color-mix(in srgb, var(--surface) 64%, transparent));
+}
+
+body[data-page="social"] .social-person-row:not(.has-cover)::before {
+    display: none;
+}
+
+body[data-page="social"] .social-person-row > :not(.social-person-cover) {
+    position: relative;
+    z-index: 2;
+}
+
+body[data-page="social"] .social-person-cover {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.84;
+    object-fit: cover;
+}
+
+body[data-page="social"] .social-person-row .social-person-avatar {
+    border-color: color-mix(in srgb, var(--surface) 88%, transparent);
+    box-shadow: 0 2px 9px rgba(0, 0, 0, 0.16);
+}
+
+body[data-page="social"] .social-person-copy {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+body[data-page="social"] .social-person-chevron {
+    color: var(--muted);
+    font-size: 1.25rem;
+}
+
+body[data-page="social"] .social-person-row.has-cover :is(strong, small, .social-person-chevron) {
+    text-shadow: 0 1px 5px color-mix(in srgb, var(--surface) 72%, transparent);
+}
+
+body[data-page="social"] .social-team-identity-row {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+}
+
+body[data-page="social"] .social-team-identity-row.has-cover::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--surface) 76%, transparent), color-mix(in srgb, var(--surface) 48%, transparent) 64%, color-mix(in srgb, var(--surface) 66%, transparent));
+}
+
+body[data-page="social"] .social-team-identity-row > :not(.social-team-row-cover) {
+    position: relative;
+    z-index: 2;
+}
+
+body[data-page="social"] .social-team-row-cover {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.84;
+    object-fit: cover;
+}
+
+body[data-page="social"] .social-team-list-mark.has-image,
+body[data-page="social"] .social-team-custom-icon.has-image {
+    overflow: hidden;
+    padding: 0;
+}
+
+body[data-page="social"] :is(.social-team-list-mark, .social-team-custom-icon).has-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+body[data-page="social"] .social-team-section-list > a {
+    min-height: 66px;
+    border-radius: 16px;
+}
+
+body[data-page="social"] .social-team-create-disclosure {
+    display: grid;
+    padding: 10px;
+    border: 1px solid color-mix(in srgb, #2563eb 24%, var(--line));
+    border-radius: 16px;
+    background: color-mix(in srgb, #2563eb 5%, var(--surface));
+}
+
+body[data-page="social"] .social-team-create-disclosure > summary {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    gap: 9px;
+    padding: 7px 10px;
+    border-radius: 12px;
+    color: var(--ink);
+    cursor: pointer;
+    list-style: none;
+}
+
+body[data-page="social"] .social-team-create-disclosure > summary::-webkit-details-marker { display: none; }
+body[data-page="social"] .social-team-create-disclosure > summary > :first-child { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: #2563eb; background: color-mix(in srgb, #2563eb 12%, var(--surface)); }
+body[data-page="social"] .social-team-create-disclosure > summary svg { width: 18px; height: 18px; }
+body[data-page="social"] .social-team-create-disclosure > summary strong { flex: 1; font-size: 0.76rem; }
+body[data-page="social"] .social-team-create-disclosure > summary > :last-child { font-size: 1.1rem; transition: transform 0.16s ease; }
+body[data-page="social"] .social-team-create-disclosure[open] > summary > :last-child { transform: rotate(45deg); }
+
+body[data-page="social"] .social-team-create-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 8px;
+    padding: 8px 4px 3px;
+}
+
+body[data-page="social"] .social-team-create-form label { display: grid; min-width: 0; gap: 4px; color: var(--muted); font-size: 0.65rem; font-weight: 800; }
+body[data-page="social"] .social-team-create-form input { width: 100%; min-width: 0; min-height: 44px; }
+body[data-page="social"] .social-team-create-form .btn { min-height: 44px; white-space: nowrap; }
+
 body[data-page="social"]:is([data-theme="dark"], .theme-active-dark) .social-team-overview {
-    border-color: rgba(91, 143, 249, 0.30);
-    background:
-        radial-gradient(circle at 100% 0%, rgba(59, 130, 246, 0.18), transparent 46%),
-        rgba(16, 28, 39, 0.94);
+    border-color: var(--line);
+    background: var(--surface);
 }
 
 body[data-page="social"]:is([data-theme="dark"], .theme-active-dark) .social-team-overview .social-card-head > a {
-    color: #8db6ff;
-    border-color: rgba(91, 143, 249, 0.28);
-    background: rgba(59, 130, 246, 0.10);
+    color: var(--primary);
+    border-color: transparent;
+    background: transparent;
 }
 
-body[data-page="social"]:is([data-theme="dark"], .theme-active-dark) .social-team-overview .social-featured-row {
-    border-color: rgba(91, 143, 249, 0.24);
-    background: rgba(31, 55, 78, 0.72);
+body[data-page="social"]:is([data-theme="dark"], .theme-active-dark) .social-team-summary-card {
+    border-color: transparent;
+    background: var(--surface-2);
 }
 
 body[data-page="social"]:is([data-theme="dark"], .theme-active-dark) .social-team-overview .social-person-avatar,
@@ -26935,13 +28333,29 @@ body[data-page="social"]:is([data-theme="dark"], .theme-active-dark) .social-tea
     }
 
     body[data-page="social"] .social-dashboard-grid {
+        grid-template-columns: minmax(0, 1fr);
         gap: 0.9rem;
     }
+
+    body[data-page="social"] .social-dashboard-grid > .social-overview-card { grid-column: 1; }
 
     body[data-page="social"] .social-team-overview .social-card-head > a {
         min-height: 34px;
         padding-inline: 0.58rem;
     }
+
+    body[data-page="social"] .social-team-create-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    body[data-page="social"] .social-team-create-form .btn {
+        width: 100%;
+    }
+}
+
+@media (min-width: 421px) and (max-width: 699px) {
+    body[data-page="social"] .social-dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+    body[data-page="social"] .social-dashboard-grid > .social-overview-card { grid-column: 1; }
 }
 
 /* Entries / meal — match Home's flat, near-black dark surfaces. */
@@ -27747,6 +29161,199 @@ body[data-page="profile"]:is([data-theme="dark"], .theme-active-dark) .profile-e
     }
 
     .profile-external-view .profile-friend-actions-hero[data-friend-status="none"] .btn-primary::before {
+        display: none;
+    }
+}
+
+/* External profiles use the same surfaces and card language as the owner's
+   profile. Only the relationship control stays special and compact. */
+.profile-external-view > .profile-hero {
+    display: block;
+    min-height: 132px;
+    padding: 1.05rem !important;
+    padding-right: min(18rem, 34vw) !important;
+    border-color: var(--liquid-glass-border, var(--line)) !important;
+    border-radius: var(--radius) !important;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.045)),
+        var(--liquid-glass-bg, var(--surface)) !important;
+    box-shadow:
+        var(--liquid-glass-shadow, var(--shadow)),
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.08) !important;
+    backdrop-filter: blur(var(--liquid-glass-blur, 0px)) saturate(var(--liquid-glass-saturation, 100%)) !important;
+    -webkit-backdrop-filter: blur(var(--liquid-glass-blur, 0px)) saturate(var(--liquid-glass-saturation, 100%)) !important;
+}
+
+.profile-external-view .profile-hero-actions.has-friend-actions {
+    position: absolute;
+    inset: 0.7rem 0.7rem auto auto;
+    display: inline-flex;
+    width: auto;
+    max-width: min(260px, calc(100% - 1.4rem));
+    justify-self: auto;
+}
+
+.profile-external-view .profile-friend-actions-hero {
+    display: inline-flex;
+    grid-template-columns: none;
+    width: auto;
+    max-width: 100%;
+    min-height: 40px;
+    gap: 0.3rem;
+    padding: 3px;
+    border-color: var(--liquid-glass-border, var(--line));
+    border-radius: 999px;
+    background: var(--liquid-glass-bg-strong, var(--surface)) !important;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12) !important;
+    backdrop-filter: blur(14px) saturate(145%);
+    -webkit-backdrop-filter: blur(14px) saturate(145%);
+}
+
+.profile-external-view .profile-friend-status-icon,
+.profile-external-view .profile-friend-actions-hero > .profile-friend-status small {
+    display: none;
+}
+
+.profile-external-view .profile-friend-actions-hero > .profile-friend-status {
+    min-height: 34px;
+    max-width: 100px;
+    padding: 0.3rem 0.55rem;
+    border: 0 !important;
+    color: var(--ink) !important;
+    background: transparent !important;
+}
+
+.profile-external-view .profile-friend-actions-hero > .profile-friend-status strong {
+    overflow: hidden;
+    font-size: 0.68rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.profile-external-view .profile-friend-actions-hero[data-friend-status="none"] > .profile-friend-status {
+    display: none;
+}
+
+.profile-external-view .profile-friend-action-controls {
+    width: auto;
+    gap: 0.22rem;
+}
+
+.profile-external-view .profile-friend-action-controls :is(.profile-friend-action-form, .profile-friend-hero-action) {
+    flex: 0 0 auto;
+    width: auto;
+}
+
+.profile-external-view .profile-friend-action-controls .profile-friend-action-form .btn {
+    width: auto;
+    min-width: 0;
+    min-height: 34px;
+    padding: 0.36rem 0.62rem;
+    border-radius: 999px;
+    font-size: 0.66rem;
+    box-shadow: none;
+}
+
+.profile-external-view .profile-friend-action-controls .kebab-menu > summary.kebab-menu-trigger {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    min-height: 34px;
+    padding: 0;
+    border-radius: 50%;
+}
+
+.profile-external-view .profile-home-grid > .profile-home-card {
+    border-color: var(--liquid-glass-border, var(--line)) !important;
+    border-radius: var(--radius);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.045)),
+        var(--liquid-glass-bg, var(--surface)) !important;
+    box-shadow:
+        var(--liquid-glass-shadow, var(--shadow)),
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.08) !important;
+    backdrop-filter: blur(var(--liquid-glass-blur, 0px)) saturate(var(--liquid-glass-saturation, 100%)) !important;
+    -webkit-backdrop-filter: blur(var(--liquid-glass-blur, 0px)) saturate(var(--liquid-glass-saturation, 100%)) !important;
+}
+
+.profile-external-view > .profile-hero::before,
+.profile-external-view .profile-home-grid > .profile-home-card::before {
+    content: none !important;
+    display: none !important;
+}
+
+body[data-page="profile"]:is([data-theme="dark"], .theme-active-dark) .profile-external-view :is(
+    .profile-hero,
+    .profile-home-grid > .profile-home-card,
+    .profile-friend-actions-hero,
+    .hierarchy-nav-row
+) {
+    color: var(--dark-ui-text, var(--ink));
+    border-color: var(--dark-ui-border, var(--line)) !important;
+    background: var(--dark-ui-surface, var(--surface)) !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+.profile-rank-heading-link {
+    display: grid;
+    min-width: 0;
+    gap: 0.08rem;
+    color: inherit;
+    text-decoration: none;
+}
+
+.profile-rank-heading-link:hover h2,
+.profile-rank-heading-link:focus-visible h2 {
+    color: var(--primary-dark);
+}
+
+@media (max-width: 640px) {
+    .profile-external-view > .profile-hero {
+        min-height: 0;
+        padding: 0.85rem !important;
+        padding-top: 3.55rem !important;
+        border-radius: var(--radius) !important;
+    }
+
+    .profile-external-view .profile-hero-actions.has-friend-actions {
+        inset: 0.55rem 0.55rem auto auto;
+        width: auto;
+        justify-self: auto;
+    }
+
+    .profile-external-view .profile-friend-actions-hero {
+        display: inline-flex;
+        grid-template-columns: none;
+        width: auto;
+        padding: 3px;
+    }
+
+    .profile-external-view .profile-title {
+        grid-template-columns: 64px minmax(0, 1fr);
+    }
+
+    .profile-external-view .profile-mobile-root {
+        gap: 0.6rem;
+    }
+
+    .profile-external-view .mobile-hub-section-grid {
+        grid-auto-rows: 88px;
+        gap: 8px;
+    }
+
+    .profile-external-view .mobile-hub-section-grid > .hierarchy-nav-row {
+        min-height: 88px;
+        border-radius: 16px;
+    }
+}
+
+@media (max-width: 380px) {
+    .profile-external-view .profile-friend-actions-hero > .profile-friend-status {
         display: none;
     }
 }
@@ -28935,20 +30542,128 @@ body[data-page="duels"] .duel-create-disclosure[open] > summary > span:last-chil
 body[data-page="competitions"] .competition-new-challenge-body,
 body[data-page="duels"] .duel-create-disclosure-body { margin-top: 10px; }
 
-body[data-page="duels"] .duel-create-panel { padding: 12px; }
+body[data-page="duels"] .duel-create-panel {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border-color: color-mix(in srgb, var(--primary) 22%, var(--line));
+    background: linear-gradient(145deg, color-mix(in srgb, var(--primary) 5%, var(--surface)), var(--surface) 58%);
+}
+body[data-page="duels"] .duel-create-intro { display: flex; align-items: center; min-width: 0; gap: 10px; }
+body[data-page="duels"] .duel-create-intro-icon { display: grid; flex: 0 0 42px; width: 42px; height: 42px; place-items: center; border-radius: 13px; color: var(--primary-dark); background: color-mix(in srgb, var(--primary) 13%, var(--surface)); }
+body[data-page="duels"] .duel-create-intro-icon svg { width: 21px; height: 21px; }
+body[data-page="duels"] .duel-create-intro > div { display: grid; min-width: 0; gap: 2px; }
+body[data-page="duels"] .duel-create-intro :is(h2, p) { margin: 0; }
+body[data-page="duels"] .duel-create-intro h2 { font-size: 0.98rem; }
+body[data-page="duels"] .duel-create-intro p { color: var(--muted); font-size: 0.66rem; line-height: 1.35; }
+body[data-page="duels"] .duel-add-friends-link { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 7px; min-height: 46px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 13px; color: var(--ink); background: var(--surface); font-size: 0.68rem; text-decoration: none; }
+body[data-page="duels"] .duel-add-friends-link > span:first-child { color: var(--muted); }
+body[data-page="duels"] .duel-add-friends-link > span:last-child { font-size: 1.2rem; }
 body[data-page="duels"] .duel-create-disclosure { display: grid; }
-body[data-page="duels"] .duel-create-disclosure > summary { width: 100%; justify-self: stretch; background: linear-gradient(145deg, #2563eb, #1d4ed8); box-shadow: 0 8px 18px rgba(37, 99, 235, 0.2); }
-body[data-page="duels"] .duel-create-disclosure-body > p { margin: 0 0 10px; line-height: 1.4; }
-body[data-page="duels"] .duel-create-form { margin: 0; padding: 11px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, #3b82f6 3%, var(--surface)); }
-body[data-page="duels"] .duel-create-form label { display: grid; gap: 4px; color: var(--muted); font-size: 0.66rem; font-weight: 800; }
-body[data-page="duels"] .duel-create-form :is(select, input) { width: 100%; min-height: 44px; color: var(--ink); font-size: 0.74rem; }
-body[data-page="duels"] .duel-create-form .btn { width: 100%; min-height: 44px; }
+body[data-page="duels"] .duel-create-disclosure > summary { width: auto; justify-content: center; justify-self: start; padding-inline: 11px 13px; border: 1px solid color-mix(in srgb, var(--primary) 34%, var(--line)); border-radius: 999px; color: #fff; background: linear-gradient(145deg, var(--primary), var(--primary-dark)); box-shadow: 0 7px 16px color-mix(in srgb, var(--primary) 24%, transparent); }
+body[data-page="duels"] .duel-create-disclosure > summary > span:first-child { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 50%; background: rgba(255, 255, 255, 0.15); }
+body[data-page="duels"] .duel-create-disclosure > summary > span:first-child svg { width: 15px; height: 15px; }
+body[data-page="duels"] .duel-create-disclosure > summary > strong { font-size: 0.7rem; }
+body[data-page="duels"] .duel-create-disclosure-body { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+body[data-page="duels"] .duel-create-disclosure-body > p { margin: 0 0 9px; line-height: 1.4; }
+body[data-page="duels"] .duel-create-form { gap: 11px; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface-2); }
+body[data-page="duels"] .duel-create-form-grid { display: grid; grid-template-columns: minmax(180px, 1.35fr) minmax(150px, 1fr) minmax(92px, 0.45fr); gap: 9px; }
+body[data-page="duels"] .duel-create-form label { display: grid; min-width: 0; gap: 5px; color: var(--muted); font-size: 0.64rem; font-weight: 800; }
+body[data-page="duels"] .duel-create-form :is(select, input) { width: 100%; min-width: 0; min-height: 46px; border-color: color-mix(in srgb, var(--primary) 14%, var(--line)); border-radius: 12px; color: var(--ink); background: var(--surface); font-size: 0.74rem; }
+body[data-page="duels"] .duel-create-form-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+body[data-page="duels"] .duel-create-form-actions > small { max-width: 50ch; color: var(--muted); font-size: 0.62rem; line-height: 1.35; }
+body[data-page="duels"] .duel-create-form .btn { display: inline-flex; flex: 0 0 auto; width: auto; min-height: 44px; gap: 7px; padding-inline: 14px; }
+body[data-page="duels"] .duel-create-form .btn svg { width: 16px; height: 16px; }
+
+/* Duelos owns its route identity. Keep the restored page-specific UI compact
+   and prevent long names or metric values from stretching the mobile grid. */
+body[data-page="duels"] .duels-page > .app-page-hero {
+    min-height: 68px;
+    padding: 0.65rem 0.75rem;
+    border-radius: 16px;
+    box-shadow: none;
+}
+body[data-page="duels"] .duels-page > .app-page-hero h1 { font-size: 1.08rem; }
+body[data-page="duels"] .duels-page > .app-page-hero .muted { margin-top: 0.1rem; font-size: 0.68rem; line-height: 1.3; }
+body[data-page="duels"] .duels-explainer-panel { order: 2; }
+body[data-page="duels"] .duels-explainer-panel > .panel-head { margin-bottom: 8px; }
+body[data-page="duels"] .duels-how { gap: 9px; padding: 0; border: 0; background: transparent; }
+body[data-page="duels"] .duels-columns { grid-template-columns: minmax(0, 1fr); }
+body[data-page="duels"] .duels-create-panel { order: 1; }
+body[data-page="duels"] .duels-active-panel { order: 3; }
+body[data-page="duels"] .duels-incoming-panel { order: 4; }
+body[data-page="duels"] .duels-outgoing-panel { order: 5; }
+body[data-page="duels"] .duels-col-main { grid-column: 1; }
+body[data-page="duels"] .duels-columns > .panel,
+body[data-page="duels"] .duels-page > .panel { min-width: 0; padding: 12px; }
+body[data-page="duels"] .duels-active-panel > .stack-md,
+body[data-page="duels"] .duels-outgoing-panel > .stack-md { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+body[data-page="duels"] .duel-card { min-width: 0; overflow: hidden; gap: 8px; padding: 10px; border-color: color-mix(in srgb, var(--ink) 9%, var(--line)); background: var(--surface); }
+body[data-page="duels"] .duel-card.is-active { border-color: color-mix(in srgb, var(--primary) 32%, var(--line)); background: linear-gradient(160deg, color-mix(in srgb, var(--primary) 5%, var(--surface)), var(--surface) 48%); }
+body[data-page="duels"] .duel-card.is-pending { border-style: dashed; background: color-mix(in srgb, #f59e0b 3%, var(--surface)); }
+body[data-page="duels"] .duel-vs { grid-template-columns: minmax(0, 1fr) minmax(54px, auto) minmax(0, 1fr); gap: 7px; }
+body[data-page="duels"] .duel-side { min-width: 0; padding: 6px 4px; border-radius: 13px; color: var(--ink); text-decoration: none; }
+body[data-page="duels"] .duel-side strong,
+body[data-page="duels"] .duel-value { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body[data-page="duels"] .duel-pending-status { display: inline-flex; align-items: center; justify-self: center; gap: 6px; margin: 0; padding: 5px 9px; border-radius: 999px; color: #9a6700; background: color-mix(in srgb, #f59e0b 11%, var(--surface)); font-size: 0.63rem; font-weight: 800; }
+body[data-page="duels"] .duel-pending-status > span { width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; box-shadow: 0 0 0 3px color-mix(in srgb, #f59e0b 16%, transparent); }
+body[data-page="duels"] .duel-card > .inline-form { justify-self: end; margin: 0; }
+body[data-page="duels"] .duel-card-actions .btn { min-height: 44px; padding-inline: 10px; border-radius: 10px; font-size: 0.62rem; }
+body[data-page="duels"] .duel-card > .inline-actions { margin-top: 0; }
+body[data-page="duels"] .duels-incoming-panel .inline-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+body[data-page="duels"] .duels-incoming-panel .inline-actions :is(.inline-form, .btn) { width: 100%; }
+
+@media (max-width: 430px) {
+    body[data-page="duels"] .duels-page { gap: 0.75rem; }
+    body[data-page="duels"] .duels-how { grid-template-columns: minmax(0, 1fr); }
+    body[data-page="duels"] .duels-how li { gap: 8px; }
+    body[data-page="duels"] .duels-how small { font-size: 0.68rem; }
+    body[data-page="duels"] .duel-create-disclosure > summary { width: 100%; justify-self: stretch; }
+    body[data-page="duels"] .duel-create-form-grid { grid-template-columns: minmax(0, 1fr); }
+    body[data-page="duels"] .duel-create-form-actions { align-items: stretch; flex-direction: column; }
+    body[data-page="duels"] .duel-create-form-actions > small { max-width: none; }
+    body[data-page="duels"] .duel-create-form .btn { width: 100%; justify-content: center; }
+    body[data-page="duels"] .duel-side .member-avatar { width: 42px; height: 42px; }
+    body[data-page="duels"] .duel-side strong { font-size: 0.72rem; }
+    body[data-page="duels"] .duel-value { font-size: 0.9rem; }
+    body[data-page="duels"] .duel-metric-tag { max-width: 74px; font-size: 0.58rem; overflow-wrap: anywhere; }
+    body[data-page="duels"] .duel-standing { align-items: flex-start; margin-top: 2px; padding: 7px 8px; font-size: 0.68rem; }
+    body[data-page="duels"] .versus-details { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-inline: 4px; }
+}
 
 body[data-page="friends"] .friend-discovery-panel {
     overflow: hidden;
     padding: 0;
     border-color: color-mix(in srgb, #e1306c 16%, var(--line));
     background: linear-gradient(155deg, color-mix(in srgb, #fd1d1d 3%, var(--surface)), var(--surface) 42%);
+}
+body[data-page="friends"] .friends-list-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+}
+body[data-page="friends"] .friends-list-heading {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 10px;
+}
+body[data-page="friends"] .friends-list-heading h1 {
+    min-width: 0;
+    margin: 0;
+    color: var(--ink);
+    font-size: clamp(1.02rem, 2.4vw, 1.28rem);
+    line-height: 1.12;
+}
+body[data-page="friends"] .friends-page-back {
+    flex: 0 0 auto;
+    min-height: 40px;
+}
+body[data-page="friends"] .friends-list-panel-head > .badge {
+    flex: 0 0 auto;
+    margin-left: auto;
 }
 body[data-page="friends"] .friend-discovery-head { display: flex; align-items: center; justify-content: space-between; min-width: 0; gap: 12px; padding: 14px 14px 8px; }
 body[data-page="friends"] .friend-discovery-head > div { display: grid; min-width: 0; gap: 2px; }
@@ -28978,14 +30693,159 @@ body[data-page="friends"] .friend-suggestion-row .btn { min-width: 78px; min-hei
 body[data-page="friends"] .friend-search-empty,
 body[data-page="friends"] .friend-discovery-empty { margin: 0; padding: 24px 14px; color: var(--muted); font-size: 0.7rem; text-align: center; }
 
+/* Friend bars keep identity and actions on one row, with the profile cover as context. */
+body[data-page="friends"] .mini-card.friends-row {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: 82px;
+}
+body[data-page="friends"] .friends-row-cover {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.9;
+}
+body[data-page="friends"] .friends-row.has-cover::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--surface) 72%, transparent) 0%, color-mix(in srgb, var(--surface) 42%, transparent) 54%, color-mix(in srgb, var(--surface) 62%, transparent) 100%);
+}
+body[data-page="friends"] .friends-row > :not(.friends-row-cover) {
+    position: relative;
+    z-index: 2;
+}
+body[data-page="friends"] .friends-row.has-cover .member-avatar {
+    border: 2px solid color-mix(in srgb, var(--surface) 88%, transparent);
+    box-shadow: 0 2px 9px rgba(0, 0, 0, 0.16);
+}
+body[data-page="friends"] .friends-row.has-cover :is(.friends-row-id strong, .friends-row-id small) {
+    text-shadow: 0 1px 8px color-mix(in srgb, var(--surface) 92%, transparent);
+}
+body[data-page="friends"] .friends-row-actions {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    width: auto;
+    margin: 0;
+}
+body[data-page="friends"] .friends-row-actions > .btn,
+body[data-page="friends"] .friends-row-actions .friends-action-form,
+body[data-page="friends"] .friends-row-actions .friends-action-form .btn {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
+    white-space: nowrap;
+}
+body[data-page="friends"] .friends-row-actions .friends-action-form .btn {
+    min-width: 72px;
+    padding-inline: 11px;
+}
+body[data-page="friends"] .friends-secondary-menu {
+    flex: 0 0 44px;
+}
+
+/* Comparison is one centred column. The legacy three-column rule on the row
+   was also placing its two real children in the left two thirds. */
+body[data-page="friends"] .friends-compare-panel {
+    width: min(820px, 100%);
+    margin-inline: auto;
+}
+body[data-page="friends"] .friends-compare-panel > .panel-head {
+    align-items: center;
+}
+body[data-page="friends"] .friends-compare-head,
+body[data-page="friends"] .friends-compare-lead,
+body[data-page="friends"] .friends-compare-grid {
+    width: min(700px, 100%);
+    margin-inline: auto;
+}
+body[data-page="friends"] .friends-compare-row {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+}
+body[data-page="friends"] .friends-compare-line {
+    grid-template-columns: minmax(72px, 1fr) minmax(112px, auto) minmax(72px, 1fr);
+    width: 100%;
+}
+body[data-page="friends"] .friends-compare-val {
+    min-width: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Joinable teams: compact row and an explicit, non-clickable requested state. */
+body[data-page="team"] .team-join-screen .team-join-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    min-height: 68px;
+    padding: 10px 12px;
+}
+body[data-page="team"] .team-join-card-copy {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+body[data-page="team"] .team-join-card-copy strong,
+body[data-page="team"] .team-join-card-copy span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+body[data-page="team"] .team-join-card-copy strong { font-size: 0.78rem; }
+body[data-page="team"] .team-join-card-copy span { color: var(--muted); font-size: 0.64rem; }
+body[data-page="team"] .team-join-card-action {
+    width: auto;
+    min-width: 0;
+    min-height: 44px;
+    padding-inline: 12px;
+    white-space: nowrap;
+}
+body[data-page="team"] .team-access-requested:disabled {
+    color: color-mix(in srgb, var(--primary) 78%, var(--ink));
+    border-color: color-mix(in srgb, var(--primary) 28%, var(--line));
+    background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+    opacity: 1;
+    cursor: default;
+}
+
 @media (max-width: 700px) {
     body[data-page="team"] .btn.small { min-height: 44px; }
     body[data-page="competitions"] .competition-new-challenge > summary { width: 100%; justify-self: stretch; }
     body[data-page="competitions"] .competition-new-challenge-body { margin-top: 8px; }
     body[data-page="friends"] .friend-discovery-head { padding: 12px 12px 7px; }
+    body[data-page="friends"] .friends-list-panel-head { gap: 8px; }
+    body[data-page="friends"] .friends-list-heading { gap: 7px; }
+    body[data-page="friends"] .friends-page-back { max-width: 90px; padding-inline: 9px; }
     body[data-page="friends"] .friend-search-box { margin-inline: 12px; }
     body[data-page="friends"] .friend-suggestions-head { padding-inline: 12px; }
     body[data-page="friends"] .friend-suggestion-row { min-height: 64px; padding-inline: 12px; }
     body[data-page="friends"] .friend-suggestion-profile .member-avatar { flex-basis: 42px; width: 42px; height: 42px; }
     body[data-page="friends"] .friend-suggestion-row .btn { min-width: 72px; padding-inline: 10px; }
+    body[data-page="friends"] .mini-card.friends-row { grid-template-columns: minmax(0, 1fr) auto; gap: 7px; min-height: 74px; padding: 8px; }
+    body[data-page="friends"] .friends-row-id { gap: 7px; }
+    body[data-page="friends"] .friends-row-id .member-avatar { flex: 0 0 40px; width: 40px; height: 40px; }
+    body[data-page="friends"] .friends-row-actions { justify-content: flex-end; }
+    body[data-page="friends"] .friends-compare-panel { padding-inline: 10px; }
+    body[data-page="friends"] .friends-compare-head { padding-inline: 4px; }
+    body[data-page="friends"] .friends-compare-line { grid-template-columns: minmax(58px, 1fr) minmax(92px, auto) minmax(58px, 1fr); gap: 7px; }
+    body[data-page="friends"] .friends-compare-metric { font-size: 0.66rem; white-space: normal; }
+    body[data-page="friends"] .friends-compare-val { font-size: 0.86rem; }
+    body[data-page="team"] .team-join-screen .team-join-card { grid-template-columns: minmax(0, 1fr) auto; gap: 7px; padding: 8px; }
+    body[data-page="team"] .team-join-card-action { max-width: 142px; padding-inline: 10px; overflow: hidden; font-size: 0.66rem; text-overflow: ellipsis; }
+}
+
+@media (max-width: 359px) {
+    body[data-page="friends"] .friends-row-actions .friends-action-form .btn { min-width: 64px; padding-inline: 8px; }
+    body[data-page="friends"] .friends-row-id .member-avatar { flex-basis: 38px; width: 38px; height: 38px; }
+    body[data-page="team"] .team-join-card-action { max-width: 126px; padding-inline: 8px; font-size: 0.61rem; }
 }

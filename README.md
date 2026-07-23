@@ -61,13 +61,18 @@ En `docker-compose.yml`:
 `APP_DEFAULT_LOCALE` acepta `en`, `es` o `it` (por defecto `en`).
 `HTTP_PORT` y `HTTPS_PORT` controlan los puertos publicados por Docker.
 
-La búsqueda multimedia del creador de ejercicios es opcional. Para activarla,
-habilita **Custom Search JSON API** y **YouTube Data API v3** en Google Cloud,
-crea un Programmable Search Engine con búsqueda de imágenes y configura las
-tres variables `MEDIA_SEARCH_*` anteriores. Las claves solo se usan en PHP y
-nunca se envían al navegador. Si una misma API key tiene ambas APIs habilitadas,
-`MEDIA_SEARCH_YOUTUBE_API_KEY` puede dejarse vacía fuera de Docker; PHP reutiliza
-la clave de Google. En Docker se recomienda definir ambas explícitamente.
+La búsqueda multimedia del creador de ejercicios es opcional. Puede configurarse
+desde **Admin → Entreno y ranked → Proveedores multimedia** o mediante las tres
+variables `MEDIA_SEARCH_*`. Las claves solo se usan en PHP, se muestran
+enmascaradas en administración y nunca se envían al navegador.
+
+YouTube requiere habilitar [YouTube Data API v3](https://developers.google.com/youtube/v3/getting-started).
+Google Imágenes usa [Custom Search JSON API](https://developers.google.com/custom-search/v1/overview)
+y el ID `CX` de un Programmable Search Engine con búsqueda de imágenes. Google
+cerró esta última API a nuevos clientes y exige que los clientes existentes
+migren antes del 1 de enero de 2027, por lo que actualmente solo funciona con
+proyectos existentes compatibles. Restringe siempre las claves a sus APIs según
+la [guía oficial de seguridad](https://docs.cloud.google.com/api-keys/docs/add-restrictions-api-keys).
 
 ## Usuarios iniciales
 

@@ -678,7 +678,6 @@ const saveRowAs = async (page, userId) => {
     const currentTouchTheme = await touchPage.locator('body').getAttribute('data-theme');
     if (currentTouchTheme !== 'dark') {
         await touchPage.locator('.user-menu > summary').click();
-        await touchPage.locator('[data-menu-open="user-appearance"]').click();
         await touchPage.locator('[data-theme-toggle]').click();
         await touchPage.waitForTimeout(250);
     }

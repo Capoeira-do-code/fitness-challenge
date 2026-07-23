@@ -12,6 +12,17 @@ $teamSection = (string) ($teamSection ?? '');
 if (!in_array($teamSection, ['', 'challenge', 'leaderboard', 'members', 'stats', 'achievements'], true)) {
     $teamSection = '';
 }
+$teamIconPath = trim((string) ($team['icon_path'] ?? ''));
+$teamCoverPath = trim((string) ($team['cover_path'] ?? ''));
+$teamIconUrl = $teamIconPath !== '' ? media_thumbnail_url($teamIconPath, 192) : '';
+$teamCoverUrl = $teamCoverPath !== '' ? media_thumbnail_url($teamCoverPath, 1280) : '';
+$renderTeamIdentityIcon = static function (string $className) use ($team, $teamIconUrl): void {
+    if ($teamIconUrl !== '') {
+        ?><span class="<?= e($className) ?> has-image"><img src="<?= e($teamIconUrl) ?>" alt="<?= e((string) ($team['name'] ?? t('nav.team'))) ?>"></span><?php
+    } else {
+        ?><span class="<?= e($className) ?>" aria-hidden="true"><?= e(initials_for((string) ($team['name'] ?? t('nav.team')))) ?></span><?php
+    }
+};
 $penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
 $isPenaltyRelatedItem = static function (array $item): bool {
     $type = strtolower(trim((string) ($item['target_type'] ?? $item['type'] ?? $item['metric'] ?? '')));
@@ -214,7 +225,7 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
 <section class="screen stack-lg team-hierarchy-screen" data-team-section="<?= e($teamSection) ?>">
     <?php if ($teamSection === ''): ?>
         <div class="team-mobile-root">
-            <header class="mobile-home-greeting"><p><?= e(t('nav.team')) ?></p><h1><?= e((string) ($team['name'] ?? t('nav.team'))) ?></h1><small><?= e((string) (($team['description'] ?? '') !== '' ? $team['description'] : t('team.subtitle'))) ?></small></header>
+            <header class="mobile-home-greeting team-page-identity-hero<?= $teamCoverUrl !== '' ? ' has-cover' : '' ?>"><?php if ($teamCoverUrl !== ''): ?><img class="team-page-cover" src="<?= e($teamCoverUrl) ?>" alt=""><?php endif; ?><?php $renderTeamIdentityIcon('team-page-icon'); ?><p><?= e(t('nav.team')) ?></p><h1><?= e((string) ($team['name'] ?? t('nav.team'))) ?></h1><small><?= e((string) (($team['description'] ?? '') !== '' ? $team['description'] : t('team.subtitle'))) ?></small></header>
             <nav class="hierarchy-nav-list mobile-hub-section-grid" aria-label="<?= e(t('nav.team')) ?>">
                 <?php foreach ([
                     'challenge' => ['target', t('team.mobile_challenge'), t('team.mobile_challenge_hint'), count($goals), 'orange'],
@@ -232,7 +243,9 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
     <?php endif; ?>
     <div class="team-desktop-root">
     <?php if ($teamSection === ''): ?><header class="mobile-widget-feed-head"><div><p><?= e(t('dashboard.visible_widgets')) ?></p><h2><?= e(t('nav.team')) ?></h2></div><a href="<?= e($teamMobileEditLayoutUrl) ?>"><?= e(t('team.edit_layout')) ?></a></header><?php endif; ?>
-    <div class="hero-panel">
+    <div class="hero-panel team-page-identity-hero team-page-desktop-hero<?= $teamCoverUrl !== '' ? ' has-cover' : '' ?>">
+        <?php if ($teamCoverUrl !== ''): ?><img class="team-page-cover" src="<?= e($teamCoverUrl) ?>" alt=""><?php endif; ?>
+        <?php $renderTeamIdentityIcon('team-page-icon'); ?>
         <div class="hero-copy">
             <p class="eyebrow"><?= e(t('nav.team')) ?></p>
             <h1><?= e((string) $team['name']) ?></h1>
@@ -240,6 +253,7 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
         </div>
         <div class="team-hero-actions inline-actions-mini">
             <?php if (($joinableTeams ?? []) !== []): ?>
+                <?php $joinableActionCount = count(array_filter((array) $joinableTeams, static fn(array $joinableTeam): bool => (string) ($joinableTeam['request_status'] ?? '') !== 'pending')); ?>
                 <details class="team-join-more">
                     <summary class="btn btn-ghost small"><?= e(t('team.join_another')) ?></summary>
                     <form method="post" action="/?page=team" class="team-join-more-form">
@@ -248,10 +262,11 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                         <select name="team_id" required>
                             <option value=""><?= e(t('team.select_team')) ?></option>
                             <?php foreach ($joinableTeams as $jt): ?>
-                                <option value="<?= (int) $jt['id'] ?>"><?= e((string) $jt['name']) ?></option>
+                                <?php $joinRequestPending = (string) ($jt['request_status'] ?? '') === 'pending'; ?>
+                                <option value="<?= (int) $jt['id'] ?>"<?= $joinRequestPending ? ' disabled' : '' ?>><?= e((string) $jt['name']) ?><?= $joinRequestPending ? ' · ' . e(t('team.access_requested')) : '' ?></option>
                             <?php endforeach; ?>
                         </select>
-                        <button class="btn small btn-primary" type="submit"><?= e(t('team.join_team')) ?></button>
+                        <button class="btn small <?= $joinableActionCount > 0 ? 'btn-primary' : 'btn-ghost team-access-requested' ?>" type="<?= $joinableActionCount > 0 ? 'submit' : 'button' ?>"<?= $joinableActionCount > 0 ? '' : ' disabled aria-disabled="true"' ?>><?= e($joinableActionCount > 0 ? t('team.join_team') : t('team.access_requested')) ?></button>
                     </form>
                 </details>
             <?php endif; ?>

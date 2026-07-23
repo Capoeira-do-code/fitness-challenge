@@ -41,6 +41,7 @@ const routes = [
     ['workouts', '/?page=workouts'],
     ['workouts-stats', '/?page=workouts&view=stats'],
     ['achievements', '/?page=achievements'],
+    ['quests', '/?page=quests'],
     ['challenges', '/?page=challenges'],
     ['settings', '/?page=settings'],
     ['settings-notifications', '/?page=settings&view=notifications'],

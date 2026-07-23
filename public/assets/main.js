@@ -1,3 +1,15 @@
+// Capture Chromium's one-shot install event before the onboarding UI initializes.
+window.__fitnessPwaInstallPrompt = window.__fitnessPwaInstallPrompt || null;
+window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    window.__fitnessPwaInstallPrompt = event;
+    window.dispatchEvent(new CustomEvent('fitness:pwa-install-ready'));
+});
+window.addEventListener('appinstalled', () => {
+    window.__fitnessPwaInstallPrompt = null;
+    window.dispatchEvent(new CustomEvent('fitness:pwa-installed'));
+});
+
 (() => {
     const rows = document.querySelectorAll('tbody tr');
     rows.forEach((row, idx) => {
@@ -2785,7 +2797,126 @@
         });
     };
 
+    const initAdminBackups = () => {
+        document.querySelectorAll('.admin-backups-page').forEach((page) => {
+            if (!(page instanceof HTMLElement) || page.dataset.backupsReady === '1') {
+                return;
+            }
+            const search = page.querySelector('[data-backup-search]');
+            const status = page.querySelector('[data-backup-status-filter]');
+            const rows = Array.from(page.querySelectorAll('[data-backup-row]'));
+            const empty = page.querySelector('[data-backup-empty]');
+            const filterRows = () => {
+                const query = search instanceof HTMLInputElement ? search.value.trim().toLocaleLowerCase() : '';
+                const selected = status instanceof HTMLSelectElement ? status.value : 'all';
+                let visible = 0;
+                rows.forEach((row) => {
+                    if (!(row instanceof HTMLElement)) return;
+                    const matchesSearch = query === '' || String(row.dataset.backupSearchValue || '').includes(query);
+                    const rowStatus = String(row.dataset.backupStatus || 'created');
+                    const matchesStatus = selected === 'all' || rowStatus === selected;
+                    row.hidden = !(matchesSearch && matchesStatus);
+                    if (!row.hidden) visible += 1;
+                });
+                if (empty instanceof HTMLElement) empty.hidden = visible !== 0;
+            };
+            if (search instanceof HTMLInputElement) search.addEventListener('input', filterRows);
+            if (status instanceof HTMLSelectElement) status.addEventListener('change', filterRows);
+
+            const optionMenus = Array.from(page.querySelectorAll('.admin-backups-row-options'));
+            optionMenus.forEach((menu) => {
+                menu.addEventListener('toggle', () => {
+                    if (!(menu instanceof HTMLDetailsElement) || !menu.open) return;
+                    optionMenus.forEach((otherMenu) => {
+                        if (otherMenu instanceof HTMLDetailsElement && otherMenu !== menu) otherMenu.open = false;
+                    });
+                });
+            });
+            page.dataset.backupsReady = '1';
+        });
+        if (document.documentElement.dataset.backupMenusReady !== '1') {
+            document.addEventListener('click', (event) => {
+                document.querySelectorAll('.admin-backups-row-options[open]').forEach((menu) => {
+                    if (menu instanceof HTMLDetailsElement && event.target instanceof Node && !menu.contains(event.target)) {
+                        menu.open = false;
+                    }
+                });
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.key !== 'Escape') return;
+                document.querySelectorAll('.admin-backups-row-options[open]').forEach((menu) => {
+                    if (menu instanceof HTMLDetailsElement) menu.open = false;
+                });
+            });
+            document.documentElement.dataset.backupMenusReady = '1';
+        }
+    };
+
+    const initAdminXp = () => {
+        document.querySelectorAll('[data-xp-user-search]').forEach((searchInput) => {
+            if (!(searchInput instanceof HTMLInputElement) || searchInput.dataset.xpSearchReady === '1') {
+                return;
+            }
+            const section = searchInput.closest('.admin-xp-ranking-section');
+            const rows = section ? Array.from(section.querySelectorAll('[data-xp-user-row]')) : [];
+            const empty = section ? section.querySelector('[data-xp-user-empty]') : null;
+            const filterUsers = () => {
+                const query = searchInput.value.trim().toLocaleLowerCase();
+                let visible = 0;
+                rows.forEach((row) => {
+                    if (!(row instanceof HTMLElement)) return;
+                    const matches = query === '' || String(row.dataset.xpUserSearchValue || '').includes(query);
+                    row.hidden = !matches;
+                    if (matches) visible += 1;
+                });
+                if (empty instanceof HTMLElement) empty.hidden = visible !== 0;
+            };
+            searchInput.addEventListener('input', filterUsers);
+            searchInput.dataset.xpSearchReady = '1';
+        });
+
+        document.querySelectorAll('[data-xp-quick-amount]').forEach((button) => {
+            if (!(button instanceof HTMLButtonElement) || button.dataset.xpQuickReady === '1') {
+                return;
+            }
+            button.addEventListener('click', () => {
+                const form = button.closest('form');
+                const amount = form ? form.querySelector('[data-xp-adjust-amount]') : null;
+                if (!(amount instanceof HTMLInputElement)) return;
+                amount.value = String(Number(button.dataset.xpQuickAmount || 0));
+                amount.focus();
+                amount.select();
+            });
+            button.dataset.xpQuickReady = '1';
+        });
+    };
+
     const initAdminAchievementFields = () => {
+        document.querySelectorAll('[data-achievement-search]').forEach((searchInput) => {
+            if (!(searchInput instanceof HTMLInputElement) || searchInput.dataset.achievementSearchReady === '1') {
+                return;
+            }
+            const list = document.querySelector('[data-achievement-list]');
+            if (!(list instanceof HTMLElement)) {
+                return;
+            }
+            const rows = Array.from(list.querySelectorAll('[data-achievement-row]'));
+            const empty = list.querySelector('[data-achievement-no-results]');
+            const filterRows = () => {
+                const query = searchInput.value.trim().toLocaleLowerCase();
+                let visible = 0;
+                rows.forEach((row) => {
+                    if (!(row instanceof HTMLElement)) return;
+                    const matches = query === '' || String(row.dataset.achievementSearchValue || '').includes(query);
+                    row.hidden = !matches;
+                    if (matches) visible += 1;
+                });
+                if (empty instanceof HTMLElement) empty.hidden = visible !== 0;
+            };
+            searchInput.addEventListener('input', filterRows);
+            searchInput.dataset.achievementSearchReady = '1';
+        });
+
         const forms = document.querySelectorAll('[data-achievement-form]');
         if (forms.length === 0) {
             return;
@@ -2839,6 +2970,44 @@
             }
 
             updateConditional();
+
+            const imageInput = form.querySelector('[data-achievement-image-input]');
+            const imagePreview = form.querySelector('[data-achievement-image-preview]');
+            const iconPreview = form.querySelector('[data-achievement-icon-preview]');
+            const removeImage = form.querySelector('[data-achievement-remove-image]');
+            if (imageInput instanceof HTMLInputElement
+                && imagePreview instanceof HTMLImageElement
+                && imageInput.dataset.achievementImageReady !== '1') {
+                imageInput.addEventListener('change', () => {
+                    const selectedFile = imageInput.files && imageInput.files[0] ? imageInput.files[0] : null;
+                    if (!selectedFile || !selectedFile.type.startsWith('image/')) return;
+                    const reader = new FileReader();
+                    reader.addEventListener('load', () => {
+                        imagePreview.src = String(reader.result || '');
+                        imagePreview.hidden = false;
+                        if (iconPreview instanceof HTMLElement) iconPreview.hidden = true;
+                    });
+                    reader.readAsDataURL(selectedFile);
+                });
+                imageInput.dataset.achievementImageReady = '1';
+            }
+            if (removeImage instanceof HTMLInputElement && removeImage.dataset.achievementRemoveReady !== '1') {
+                removeImage.addEventListener('change', () => {
+                    if (imagePreview instanceof HTMLImageElement) imagePreview.hidden = removeImage.checked;
+                    if (iconPreview instanceof HTMLElement) iconPreview.hidden = !removeImage.checked;
+                });
+                removeImage.dataset.achievementRemoveReady = '1';
+            }
+            form.querySelectorAll('input[name="icon_key"]').forEach((iconInput) => {
+                if (!(iconInput instanceof HTMLInputElement) || iconInput.dataset.achievementIconReady === '1') return;
+                iconInput.addEventListener('change', () => {
+                    if (!iconInput.checked || !(iconPreview instanceof HTMLElement)) return;
+                    const option = iconInput.closest('.achievement-icon-option');
+                    const svg = option?.querySelector('svg');
+                    if (svg instanceof SVGElement) iconPreview.replaceChildren(svg.cloneNode(true));
+                });
+                iconInput.dataset.achievementIconReady = '1';
+            });
         };
 
         forms.forEach((form) => bindForm(form));
@@ -5544,6 +5713,108 @@
         container.hidden = false;
     };
 
+    const persistedUiStateKey = (kind, name) => {
+        const userScope = String(document.body?.dataset.uiUser || '0');
+        return `fitness-challenge:ui:v1:${userScope}:${kind}:${name}`;
+    };
+
+    const readPersistedUiState = (kind, name) => {
+        if (!name) return null;
+        try {
+            const value = window.localStorage.getItem(persistedUiStateKey(kind, name));
+            return value === '1' || value === '0' ? value : null;
+        } catch (_) {
+            return null;
+        }
+    };
+
+    const writePersistedUiState = (kind, name, expanded) => {
+        if (!name) return;
+        try {
+            window.localStorage.setItem(persistedUiStateKey(kind, name), expanded ? '1' : '0');
+        } catch (_) {
+            // Private browsing or a restrictive storage policy must never break UI controls.
+        }
+    };
+
+    const initPersistentDisclosures = () => {
+        document.querySelectorAll('details[data-persist-disclosure]').forEach((details) => {
+            if (!(details instanceof HTMLDetailsElement) || details.dataset.persistDisclosureReady === '1') {
+                return;
+            }
+            const name = String(details.dataset.persistDisclosure || '').trim();
+            const saved = readPersistedUiState('disclosure', name);
+            if (saved !== null) {
+                details.open = saved === '1';
+            }
+            details.dataset.persistDisclosureReady = '1';
+            details.addEventListener('toggle', () => {
+                writePersistedUiState('disclosure', name, details.open);
+            });
+        });
+    };
+
+    const initRememberedPanelDisclosures = ({ panelSelector, stateDataKey, headerSelector, toggleSelector }) => {
+        document.querySelectorAll(panelSelector).forEach((panel) => {
+            if (!(panel instanceof HTMLElement) || panel.dataset.rememberedPanelReady === '1') {
+                return;
+            }
+            const toggle = panel.querySelector(toggleSelector);
+            const header = panel.querySelector(headerSelector);
+            if (!(toggle instanceof HTMLButtonElement) || !(header instanceof HTMLElement)) {
+                return;
+            }
+
+            const name = String(panel.dataset[stateDataKey] || '').trim();
+            const saved = readPersistedUiState('disclosure', name);
+            let expanded = saved === null ? true : saved === '1';
+            const render = () => {
+                const effectiveExpanded = document.body.classList.contains('layout-edit-active') || expanded;
+                panel.classList.toggle('is-collapsed', !effectiveExpanded);
+                toggle.setAttribute('aria-expanded', effectiveExpanded ? 'true' : 'false');
+                const label = effectiveExpanded
+                    ? String(toggle.dataset.labelCollapse || '')
+                    : String(toggle.dataset.labelExpand || '');
+                toggle.setAttribute('aria-label', label);
+                toggle.title = label;
+            };
+            const toggleExpanded = () => {
+                if (document.body.classList.contains('layout-edit-active')) {
+                    return;
+                }
+                expanded = !expanded;
+                writePersistedUiState('disclosure', name, expanded);
+                render();
+            };
+
+            panel.dataset.rememberedPanelReady = '1';
+            header.classList.add('is-remembered-collapsible-head');
+            toggle.addEventListener('click', toggleExpanded);
+            header.addEventListener('click', (event) => {
+                const target = event.target instanceof Element ? event.target : null;
+                if (target?.closest('a, button, input, select, textarea, summary, [role="button"]')) {
+                    return;
+                }
+                toggleExpanded();
+            });
+            render();
+        });
+    };
+
+    const initDashboardPanelDisclosures = () => initRememberedPanelDisclosures({
+        panelSelector: '[data-dashboard-collapsible]',
+        stateDataKey: 'dashboardCollapsible',
+        headerSelector: ':scope > .panel-head',
+        toggleSelector: ':scope > .panel-head [data-dashboard-panel-toggle]',
+    });
+
+    const initProfilePanelDisclosures = () => initRememberedPanelDisclosures({
+        panelSelector: '[data-profile-collapsible]',
+        stateDataKey: 'profileCollapsible',
+        headerSelector: ':scope > :is(.profile-home-card-head, .panel-head)',
+        toggleSelector: ':scope > :is(.profile-home-card-head, .panel-head) [data-profile-panel-toggle]',
+    });
+
     const initCollapsibleLists = () => {
         document.querySelectorAll('[data-collapsible-list]').forEach((list) => {
             if (!(list instanceof HTMLElement)) {
@@ -5561,7 +5832,12 @@
                 ? Number(list.dataset.mobileCount || 4)
                 : Number(list.dataset.desktopCount || 6);
             const hasOverflow = items.length > limit;
-            let expanded = list.dataset.collapsibleExpanded === '1';
+            const persistenceName = String(list.dataset.persistCollapsible || '').trim();
+            const savedState = readPersistedUiState('collapsible', persistenceName);
+            let expanded = savedState !== null
+                ? savedState === '1'
+                : list.dataset.collapsibleExpanded === '1';
+            list.dataset.collapsibleExpanded = expanded ? '1' : '0';
             const render = () => {
                 items.forEach((item, index) => {
                     if (item instanceof HTMLElement) {
@@ -5578,6 +5854,24 @@
                 list.dataset.collapsibleReady = '1';
                 toggle.addEventListener('click', () => {
                     expanded = !expanded;
+                    list.dataset.collapsibleExpanded = expanded ? '1' : '0';
+                    writePersistedUiState('collapsible', persistenceName, expanded);
+                    render();
+                    if (persistenceName !== '') {
+                        document.querySelectorAll('[data-persist-collapsible]').forEach((peer) => {
+                            if (peer !== list && peer.dataset.persistCollapsible === persistenceName) {
+                                peer.dataset.collapsibleExpanded = expanded ? '1' : '0';
+                                peer.dispatchEvent(new CustomEvent('fc:persisted-collapse', {
+                                    detail: { expanded },
+                                }));
+                            }
+                        });
+                    }
+                });
+                list.addEventListener('fc:persisted-collapse', (event) => {
+                    expanded = event instanceof CustomEvent
+                        ? Boolean(event.detail?.expanded)
+                        : list.dataset.collapsibleExpanded === '1';
                     list.dataset.collapsibleExpanded = expanded ? '1' : '0';
                     render();
                 });
@@ -5603,11 +5897,16 @@
         safeInit(initFlashNotifications);
         safeInit(initThemeToggle);
         safeInit(initContextualBack);
+        safeInit(initPersistentDisclosures);
+        safeInit(initDashboardPanelDisclosures);
+        safeInit(initProfilePanelDisclosures);
         safeInit(initCollapsibleLists);
         safeInit(initWorkoutHubTabs);
         safeInit(initWorkoutLibraryFilters);
         safeInit(initWorkoutRoutinePicker);
         safeInit(initSpaNavigation);
+        safeInit(initAdminBackups);
+        safeInit(initAdminXp);
         safeInit(initAdminAchievementFields);
         safeInit(initAchievementInfoModal);
         safeInit(initAchievementDeleteModal);
@@ -5642,6 +5941,37 @@
     } else {
         runPageHydration(true);
     }
+})();
+
+/* Compact character counters for constrained profile fields. */
+(function () {
+    function initCharacterCounters(root) {
+        var scope = root && root.querySelectorAll ? root : document;
+        scope.querySelectorAll('[data-character-count-input]').forEach(function (input) {
+            if (input.dataset.characterCountReady === '1') {
+                return;
+            }
+            input.dataset.characterCountReady = '1';
+            var field = input.closest('label') || input.parentElement;
+            var counter = field ? field.querySelector('[data-character-count]') : null;
+            if (!counter) {
+                return;
+            }
+            var refresh = function () {
+                counter.textContent = Array.from(input.value || '').length.toString();
+            };
+            input.addEventListener('input', refresh);
+            refresh();
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () { initCharacterCounters(document); });
+    } else {
+        initCharacterCounters(document);
+    }
+    document.addEventListener('pjax:loaded', function () { initCharacterCounters(document); });
+    document.addEventListener('fc:afterPageSwap', function () { initCharacterCounters(document); });
 })();
 
 /* Registration invite helpers and local onboarding image previews. */
@@ -5703,6 +6033,40 @@
                     button.textContent = originalLabel;
                 }, 1800);
             });
+        });
+    }
+
+    function initAdminUserSearch() {
+        document.querySelectorAll('[data-admin-user-search]').forEach(function (input) {
+            if (!(input instanceof HTMLInputElement) || input.dataset.adminUserSearchReady === '1') {
+                return;
+            }
+            var section = input.closest('[data-spa-section="users"]');
+            var list = section ? section.querySelector('[data-admin-users-list]') : null;
+            var empty = section ? section.querySelector('[data-admin-users-empty]') : null;
+            if (!(list instanceof HTMLElement)) {
+                return;
+            }
+            input.dataset.adminUserSearchReady = '1';
+            var rows = Array.from(list.querySelectorAll('[data-admin-user-row]'));
+            var normalize = function (value) {
+                return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
+            };
+            var update = function () {
+                var query = normalize(input.value.trim());
+                var visible = 0;
+                rows.forEach(function (row) {
+                    var matches = query === '' || normalize(row.dataset.adminUserSearchValue).includes(query);
+                    row.hidden = !matches;
+                    if (matches) visible += 1;
+                });
+                if (empty instanceof HTMLElement) {
+                    empty.hidden = visible !== 0;
+                }
+            };
+            input.addEventListener('input', update);
+            input.addEventListener('search', update);
+            update();
         });
     }
 
@@ -5847,13 +6211,104 @@
         });
     }
 
+    function initPwaInstallReminder() {
+        document.querySelectorAll('[data-pwa-install-reminder]').forEach(function (root) {
+            if (!(root instanceof HTMLElement) || root.dataset.pwaInstallReady === '1') {
+                return;
+            }
+            root.dataset.pwaInstallReady = '1';
+            var userAgent = navigator.userAgent || '';
+            var ios = /iPad|iPhone|iPod/i.test(userAgent)
+                || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            var android = /Android/i.test(userAgent);
+            var standaloneQuery = window.matchMedia('(display-mode: standalone)');
+            var installButton = root.querySelector('[data-pwa-install-button]');
+            var status = root.querySelector('[data-pwa-install-status] b');
+            var done = root.querySelector('[data-pwa-install-done]');
+            var instructions = Array.from(root.querySelectorAll('[data-pwa-install-instructions]'));
+            var urlInput = root.querySelector('[data-pwa-install-url]');
+            var copyButton = root.querySelector('[data-pwa-copy-url]');
+
+            if (urlInput instanceof HTMLInputElement) {
+                urlInput.value = location.origin;
+            }
+
+            var isInstalled = function () {
+                return standaloneQuery.matches || window.navigator.standalone === true;
+            };
+            var sync = function () {
+                var installed = isInstalled();
+                var promptReady = !!window.__fitnessPwaInstallPrompt;
+                root.classList.toggle('is-installed', installed);
+                instructions.forEach(function (panel) {
+                    if (!(panel instanceof HTMLElement)) return;
+                    var kind = panel.dataset.pwaInstallInstructions || '';
+                    panel.hidden = installed || (ios ? kind !== 'ios' : (android ? kind !== 'android' : kind !== 'desktop'));
+                });
+                if (done instanceof HTMLElement) done.hidden = !installed;
+                if (installButton instanceof HTMLButtonElement) {
+                    installButton.hidden = installed || !promptReady;
+                }
+                if (status instanceof HTMLElement) {
+                    status.textContent = installed
+                        ? (root.dataset.installInstalledLabel || status.textContent)
+                        : (promptReady ? (root.dataset.installReadyLabel || status.textContent) : (root.dataset.installDefaultLabel || status.textContent));
+                }
+            };
+
+            if (installButton instanceof HTMLButtonElement) {
+                installButton.addEventListener('click', async function () {
+                    var prompt = window.__fitnessPwaInstallPrompt;
+                    if (!prompt || typeof prompt.prompt !== 'function') return;
+                    installButton.disabled = true;
+                    try {
+                        await prompt.prompt();
+                        await prompt.userChoice;
+                        window.__fitnessPwaInstallPrompt = null;
+                    } catch (error) {
+                        // The manual Android instructions remain visible as fallback.
+                    } finally {
+                        installButton.disabled = false;
+                        sync();
+                    }
+                });
+            }
+
+            if (copyButton instanceof HTMLButtonElement && urlInput instanceof HTMLInputElement) {
+                copyButton.addEventListener('click', async function () {
+                    var copied = false;
+                    if (navigator.clipboard && window.isSecureContext) {
+                        try {
+                            await navigator.clipboard.writeText(urlInput.value);
+                            copied = true;
+                        } catch (error) {
+                            copied = false;
+                        }
+                    }
+                    if (!copied) copied = fallbackCopy(urlInput);
+                    if (!copied) return;
+                    var original = copyButton.dataset.copyLabel || copyButton.textContent;
+                    copyButton.textContent = copyButton.dataset.copiedLabel || original;
+                    window.setTimeout(function () { copyButton.textContent = original; }, 1800);
+                });
+            }
+
+            window.addEventListener('fitness:pwa-install-ready', sync);
+            window.addEventListener('fitness:pwa-installed', sync);
+            if (typeof standaloneQuery.addEventListener === 'function') standaloneQuery.addEventListener('change', sync);
+            sync();
+        });
+    }
+
     function init() {
         initInviteCopy();
+        initAdminUserSearch();
         initOnboardingImagePreviews();
         initOnboardingOptionalGoals();
         initEuropeanDateInputs();
         initOptionalPrimaryGoalSelectors();
         initPrivacyDataControls();
+        initPwaInstallReminder();
     }
 
     if (document.readyState === 'loading') {
@@ -5863,6 +6318,155 @@
     }
     document.addEventListener('pjax:loaded', init);
     document.addEventListener('fc:afterPageSwap', init);
+})();
+
+/* One-time, device-local PWA install nudge for the authenticated mobile shell. */
+(function () {
+    'use strict';
+
+    var DISMISSED_KEY = 'fitness:pwa-install-nudge-dismissed:v1';
+    var standaloneQuery = window.matchMedia('(display-mode: standalone)');
+    var userAgent = navigator.userAgent || '';
+    var isIos = /iPad|iPhone|iPod/i.test(userAgent)
+        || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    var isAndroid = /Android/i.test(userAgent);
+
+    function storageGet() {
+        try {
+            return window.localStorage.getItem(DISMISSED_KEY) === '1';
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function storageSet() {
+        try {
+            window.localStorage.setItem(DISMISSED_KEY, '1');
+        } catch (error) {
+            // Storage may be unavailable in a private or restricted browser.
+        }
+    }
+
+    function isInstalled() {
+        return standaloneQuery.matches || window.navigator.standalone === true;
+    }
+
+    function isMobileViewport() {
+        return window.matchMedia('(max-width: 700px)').matches;
+    }
+
+    function hideNudge(root, persist) {
+        if (!(root instanceof HTMLElement)) return;
+        if (persist) storageSet();
+        root.classList.remove('is-visible');
+        window.setTimeout(function () {
+            if (!root.classList.contains('is-visible')) root.hidden = true;
+        }, 210);
+    }
+
+    function revealNudge(root) {
+        if (!(root instanceof HTMLElement) || storageGet() || isInstalled() || !isMobileViewport()) return;
+        root.hidden = false;
+        window.requestAnimationFrame(function () {
+            window.requestAnimationFrame(function () {
+                if (!storageGet() && !isInstalled() && isMobileViewport()) root.classList.add('is-visible');
+            });
+        });
+    }
+
+    function showManualGuidance(root) {
+        var hint = root.querySelector('[data-pwa-nudge-hint]');
+        var guidance = isIos ? root.dataset.iosHint : root.dataset.androidHint;
+        if (hint instanceof HTMLElement && guidance) hint.textContent = guidance;
+        root.classList.add('is-guidance');
+        if (hint instanceof HTMLElement) {
+            hint.setAttribute('tabindex', '-1');
+            hint.focus({ preventScroll: true });
+        }
+    }
+
+    function initPwaInstallNudge() {
+        document.querySelectorAll('[data-pwa-install-nudge]').forEach(function (root) {
+            if (!(root instanceof HTMLElement)) return;
+
+            if (storageGet() || isInstalled()) {
+                root.hidden = true;
+                root.classList.remove('is-visible');
+                return;
+            }
+
+            if (root.dataset.pwaNudgeReady === '1') {
+                if (isMobileViewport()) revealNudge(root);
+                return;
+            }
+            root.dataset.pwaNudgeReady = '1';
+
+            var hint = root.querySelector('[data-pwa-nudge-hint]');
+            var installButton = root.querySelector('[data-pwa-nudge-install]');
+            var closeButton = root.querySelector('[data-pwa-nudge-close]');
+            if (hint instanceof HTMLElement) {
+                if (isIos && root.dataset.iosHint) hint.textContent = root.dataset.iosHint;
+                if (isAndroid && root.dataset.androidHint) hint.textContent = root.dataset.androidHint;
+            }
+
+            if (closeButton instanceof HTMLButtonElement) {
+                closeButton.addEventListener('click', function () {
+                    hideNudge(root, true);
+                });
+            }
+
+            if (installButton instanceof HTMLButtonElement) {
+                installButton.addEventListener('click', async function () {
+                    var prompt = window.__fitnessPwaInstallPrompt;
+                    if (!prompt || typeof prompt.prompt !== 'function') {
+                        showManualGuidance(root);
+                        return;
+                    }
+
+                    installButton.disabled = true;
+                    try {
+                        await prompt.prompt();
+                        var choice = await prompt.userChoice;
+                        window.__fitnessPwaInstallPrompt = null;
+                        if (choice && choice.outcome === 'accepted') {
+                            hideNudge(root, false);
+                        } else {
+                            showManualGuidance(root);
+                        }
+                    } catch (error) {
+                        showManualGuidance(root);
+                    } finally {
+                        installButton.disabled = false;
+                    }
+                });
+            }
+
+            window.setTimeout(function () { revealNudge(root); }, 1100);
+        });
+    }
+
+    function hideAllInstalledNudges() {
+        document.querySelectorAll('[data-pwa-install-nudge]').forEach(function (root) {
+            hideNudge(root, false);
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPwaInstallNudge);
+    } else {
+        initPwaInstallNudge();
+    }
+    document.addEventListener('pjax:loaded', initPwaInstallNudge);
+    document.addEventListener('fc:afterPageSwap', initPwaInstallNudge);
+    window.addEventListener('fitness:pwa-install-ready', initPwaInstallNudge);
+    window.addEventListener('fitness:pwa-installed', hideAllInstalledNudges);
+    window.addEventListener('resize', initPwaInstallNudge, { passive: true });
+    if (typeof standaloneQuery.addEventListener === 'function') {
+        standaloneQuery.addEventListener('change', function () {
+            if (isInstalled()) hideAllInstalledNudges();
+            else initPwaInstallNudge();
+        });
+    }
 })();
 
 /* Friend discovery: debounced, server-approved Instagram-style suggestions. */
@@ -6462,6 +7066,40 @@
 
     // Expose for programmatic use elsewhere
     window.AppOverlay = { open: openOverlay, close: closeOverlay };
+})();
+
+// Profile showcase editor. Event delegation keeps it working after in-app navigation.
+(() => {
+    const syncAchievementLimit = (form) => {
+        if (!(form instanceof HTMLFormElement)) return;
+        const choices = Array.from(form.querySelectorAll('input[name="achievement_ids[]"]'));
+        const checked = choices.filter((choice) => choice instanceof HTMLInputElement && choice.checked).length;
+        choices.forEach((choice) => {
+            if (!(choice instanceof HTMLInputElement)) return;
+            choice.disabled = !choice.checked && checked >= 6;
+        });
+    };
+
+    document.addEventListener('change', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+        const form = target.closest('[data-profile-widget-form]');
+        if (!(form instanceof HTMLFormElement)) return;
+        if (target.matches('[data-profile-widget-type]')) {
+            form.dataset.widgetType = target.value;
+        }
+        if (target.matches('input[name="achievement_ids[]"]')) {
+            syncAchievementLimit(form);
+        }
+    });
+
+    document.addEventListener('click', (event) => {
+        const opener = event.target instanceof Element ? event.target.closest('[data-app-modal-open^="profile-widget-"]') : null;
+        if (!opener) return;
+        const id = opener.getAttribute('data-app-modal-open');
+        const form = id ? document.getElementById(id)?.querySelector('[data-profile-widget-form]') : null;
+        if (form instanceof HTMLFormElement) syncAchievementLimit(form);
+    });
 })();
 
 /* ==========================================================================
@@ -8925,7 +9563,11 @@
             if (status instanceof HTMLElement) status.textContent = mode === 'idle' ? labels.readyHint : formatClock(remaining);
             if (toggle instanceof HTMLButtonElement) toggle.setAttribute('aria-label', buttonLabel);
             if (toggleLabel instanceof HTMLElement) toggleLabel.textContent = buttonLabel;
-            if (toggleIcon instanceof HTMLElement) toggleIcon.textContent = mode === 'running' ? 'Ⅱ' : (mode === 'complete' ? '↻' : '▶');
+            if (toggleIcon instanceof HTMLElement) {
+                toggleIcon.dataset.iconState = mode === 'running'
+                    ? 'pause'
+                    : (mode === 'complete' ? 'restart' : 'play');
+            }
             if (skip instanceof HTMLButtonElement) {
                 skip.hidden = mode === 'idle';
                 skip.textContent = mode === 'complete' ? labels.close : labels.skip;
@@ -9055,6 +9697,127 @@
     };
 
     const init = () => document.querySelectorAll('[data-workout-rest-timer]').forEach(initTimer);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+    document.addEventListener('fc:afterPageSwap', init);
+})();
+
+/* Active workout draft: every redirecting action carries all visible sets.
+   A tiny sessionStorage fallback also keeps typed progress when the user opens
+   an exercise guide and returns with the browser or in-page back control. */
+(() => {
+    'use strict';
+
+    const storageKey = (sessionId) => `fc.workout.session.draft.${sessionId}`;
+    const setIdForForm = (form) => form.querySelector('input[name="set_id"]')?.value || '';
+    const editableNames = ['reps', 'weight', 'duration_minutes', 'duration_seconds', 'distance'];
+
+    const readStoredDraft = (sessionId) => {
+        try {
+            const parsed = JSON.parse(sessionStorage.getItem(storageKey(sessionId)) || '{}');
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (_) {
+            return {};
+        }
+    };
+
+    const storeInput = (form, input) => {
+        const sessionId = form.dataset.sessionId || '';
+        const setId = setIdForForm(form);
+        if (!sessionId || !setId || !editableNames.includes(input.name)) return;
+        const draft = readStoredDraft(sessionId);
+        draft[setId] = draft[setId] && typeof draft[setId] === 'object' ? draft[setId] : {};
+        draft[setId][input.name] = input.value;
+        try {
+            sessionStorage.setItem(storageKey(sessionId), JSON.stringify(draft));
+        } catch (_) {
+            // The server-side batch save remains the source of truth.
+        }
+    };
+
+    const appendSessionDraft = (submitForm) => {
+        const sessionId = submitForm.dataset.sessionId
+            || submitForm.querySelector('input[name="session_id"]')?.value
+            || '';
+        if (!sessionId) return;
+        submitForm.querySelectorAll('[data-workout-draft-mirror]').forEach((field) => field.remove());
+        document.querySelectorAll(`[data-workout-set-form][data-session-id="${CSS.escape(sessionId)}"]`).forEach((setForm) => {
+            if (!(setForm instanceof HTMLFormElement)) return;
+            const setId = setIdForForm(setForm);
+            if (!setId) return;
+            editableNames.forEach((name) => {
+                const source = setForm.elements.namedItem(name);
+                if (!(source instanceof HTMLInputElement)) return;
+                const mirror = document.createElement('input');
+                mirror.type = 'hidden';
+                mirror.name = `draft_sets[${setId}][${name}]`;
+                mirror.value = source.value;
+                mirror.dataset.workoutDraftMirror = '1';
+                submitForm.append(mirror);
+            });
+            const toggle = setForm.querySelector('[data-workout-set-toggle]');
+            const completed = toggle instanceof HTMLElement && toggle.dataset.nextCompleted === '0' ? '1' : '0';
+            const completedMirror = document.createElement('input');
+            completedMirror.type = 'hidden';
+            completedMirror.name = `draft_sets[${setId}][completed]`;
+            completedMirror.value = completed;
+            completedMirror.dataset.workoutDraftMirror = '1';
+            submitForm.append(completedMirror);
+        });
+        try {
+            sessionStorage.removeItem(storageKey(sessionId));
+        } catch (_) {
+            // Ignore storage restrictions; the POST still contains the draft.
+        }
+    };
+
+    const init = () => {
+        document.querySelectorAll('[data-workout-set-form]').forEach((form) => {
+            if (!(form instanceof HTMLFormElement) || form.dataset.workoutDraftReady === '1') return;
+            form.dataset.workoutDraftReady = '1';
+            const sessionId = form.dataset.sessionId || '';
+            const setId = setIdForForm(form);
+            const stored = sessionId && setId ? readStoredDraft(sessionId)[setId] : null;
+            editableNames.forEach((name) => {
+                const input = form.elements.namedItem(name);
+                if (!(input instanceof HTMLInputElement)) return;
+                if (stored && Object.prototype.hasOwnProperty.call(stored, name)) {
+                    input.value = String(stored[name] ?? '');
+                    delete input.dataset.clearWorkoutSuggestion;
+                }
+                input.addEventListener('focus', () => {
+                    if (input.dataset.clearWorkoutSuggestion !== '1') return;
+                    input.value = '';
+                    delete input.dataset.clearWorkoutSuggestion;
+                    storeInput(form, input);
+                }, { once: true });
+                input.addEventListener('input', () => {
+                    delete input.dataset.clearWorkoutSuggestion;
+                    storeInput(form, input);
+                });
+            });
+            form.addEventListener('submit', () => appendSessionDraft(form));
+        });
+        document.querySelectorAll('[data-workout-session-action]').forEach((form) => {
+            if (!(form instanceof HTMLFormElement) || form.dataset.workoutDraftActionReady === '1') return;
+            form.dataset.workoutDraftActionReady = '1';
+            form.addEventListener('submit', () => appendSessionDraft(form));
+        });
+        document.querySelectorAll('[data-workout-session-end]').forEach((form) => {
+            if (!(form instanceof HTMLFormElement) || form.dataset.workoutDraftEndReady === '1') return;
+            form.dataset.workoutDraftEndReady = '1';
+            form.addEventListener('submit', () => {
+                const sessionId = form.dataset.sessionId || '';
+                if (!sessionId) return;
+                try {
+                    sessionStorage.removeItem(storageKey(sessionId));
+                } catch (_) {
+                    // Nothing else to clean up.
+                }
+            });
+        });
+    };
+
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
     else init();
     document.addEventListener('fc:afterPageSwap', init);

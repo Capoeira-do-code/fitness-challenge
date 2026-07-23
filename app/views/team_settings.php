@@ -13,6 +13,10 @@ $availableUsers = array_values((array) ($availableUsers ?? []));
 $joinRequests = array_values((array) ($joinRequests ?? []));
 $activeMembers = array_values(array_filter($teamMembers, static fn(array $member): bool => (int) ($member['active'] ?? 0) === 1));
 $activeMemberCount = count($activeMembers);
+$teamIconPath = trim((string) ($team['icon_path'] ?? ''));
+$teamCoverPath = trim((string) ($team['cover_path'] ?? ''));
+$teamIconUrl = $teamIconPath !== '' ? media_thumbnail_url($teamIconPath, 192) : '';
+$teamCoverUrl = $teamCoverPath !== '' ? media_thumbnail_url($teamCoverPath, 1280) : '';
 
 $teamSettingsSections = [
     'general' => [
@@ -79,9 +83,30 @@ $activeSettingsMeta = $teamSettingsSections[$teamSettingsSection] ?? null;
     <?php elseif ($teamSettingsSection === 'general'): ?>
         <article class="panel team-settings-section-card">
             <div class="panel-head"><div><p class="eyebrow"><?= e(t('team.configure')) ?></p><h2><?= e(t('team.settings_general')) ?></h2></div></div>
-            <form method="post" action="<?= e($teamSettingsUrl('general')) ?>" class="stack">
+            <form method="post" action="<?= e($teamSettingsUrl('general')) ?>" class="stack" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="team_settings">
+                <fieldset class="team-identity-editor">
+                    <legend><?= e(t('team.identity')) ?></legend>
+                    <p class="muted small"><?= e(t('team.identity_hint')) ?></p>
+                    <div class="team-identity-preview<?= $teamCoverUrl !== '' ? ' has-cover' : '' ?>">
+                        <?php if ($teamCoverUrl !== ''): ?><img class="team-identity-cover" src="<?= e($teamCoverUrl) ?>" alt=""><?php endif; ?>
+                        <span class="team-identity-icon">
+                            <?php if ($teamIconUrl !== ''): ?><img src="<?= e($teamIconUrl) ?>" alt=""><?php else: ?><?= e(initials_for((string) ($team['name'] ?? t('nav.team')))) ?><?php endif; ?>
+                        </span>
+                        <strong><?= e((string) ($team['name'] ?? '')) ?></strong>
+                    </div>
+                    <div class="team-identity-fields grid-inline two">
+                        <label><span><?= e(t('team.icon')) ?></span><input type="file" name="team_icon" accept="image/jpeg,image/png,image/webp"></label>
+                        <label><span><?= e(t('team.cover')) ?></span><input type="file" name="team_cover" accept="image/jpeg,image/png,image/webp"></label>
+                    </div>
+                    <?php if ($teamIconUrl !== '' || $teamCoverUrl !== ''): ?>
+                        <div class="team-identity-remove-options">
+                            <?php if ($teamIconUrl !== ''): ?><label class="check"><input type="checkbox" name="remove_team_icon" value="1"><?= e(t('team.remove_icon')) ?></label><?php endif; ?>
+                            <?php if ($teamCoverUrl !== ''): ?><label class="check"><input type="checkbox" name="remove_team_cover" value="1"><?= e(t('team.remove_cover')) ?></label><?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+                </fieldset>
                 <label><?= e(t('team.name')) ?><input type="text" name="name" value="<?= e((string) $team['name']) ?>" required></label>
                 <label><?= e(t('team.description')) ?><textarea name="description" rows="4" placeholder="<?= e(t('team.description_placeholder')) ?>"><?= e((string) ($team['description'] ?? '')) ?></textarea></label>
                 <div class="grid-inline two">

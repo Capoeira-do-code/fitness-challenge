@@ -96,7 +96,9 @@ function duels_create(PDO $pdo, int $challengerId, int $opponentId, string $metr
     if (!array_key_exists($metric, duels_metrics())) {
         return false;
     }
-    if (function_exists('friends_status') && friends_status($pdo, $challengerId, $opponentId) !== 'friends') {
+    // The selector only contains accepted friends, but the domain rule must not
+    // depend on the browser payload: forged requests are rejected here too.
+    if (friends_status($pdo, $challengerId, $opponentId) !== 'friends') {
         return false;
     }
     $days = max(DUEL_MIN_DAYS, min(DUEL_MAX_DAYS, $days));

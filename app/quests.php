@@ -264,6 +264,42 @@ function quests_for_user(PDO $pdo, array $user): array
     return $board;
 }
 
+/**
+ * Lifetime completion totals per quest. A completion is one finished period,
+ * so repeating a daily or weekly mission increases its own counter once.
+ *
+ * @return array<string,array{count:int,last_completed_at:string}>
+ */
+function quests_completion_counts_for_user(PDO $pdo, int $userId): array
+{
+    quests_ensure_schema($pdo);
+    if ($userId <= 0) {
+        return [];
+    }
+
+    $counts = [];
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT quest_key, COUNT(*) AS completion_count, MAX(completed_at) AS last_completed_at
+         FROM user_quests
+         WHERE user_id = :user_id AND completed_at IS NOT NULL
+         GROUP BY quest_key',
+        [':user_id' => $userId]
+    );
+    foreach ($rows as $row) {
+        $questKey = trim((string) ($row['quest_key'] ?? ''));
+        if ($questKey === '') {
+            continue;
+        }
+        $counts[$questKey] = [
+            'count' => max(0, (int) ($row['completion_count'] ?? 0)),
+            'last_completed_at' => (string) ($row['last_completed_at'] ?? ''),
+        ];
+    }
+
+    return $counts;
+}
+
 /* ---------------------------------------------------------------------------
  * Ranks & streaks
  * ------------------------------------------------------------------------- */
@@ -566,6 +602,177 @@ function seasons_ensure_schema(PDO $pdo): void
         )'
     );
     ensure_column($pdo, 'seasons', 'updated_at', 'TEXT');
+    ensure_column($pdo, 'seasons', 'icon_key', 'TEXT NOT NULL DEFAULT "trophy"');
+    ensure_column($pdo, 'seasons', 'cover_path', 'TEXT');
+    ensure_column($pdo, 'seasons', 'accent_color', 'TEXT NOT NULL DEFAULT "#8b5cf6"');
+    ensure_column($pdo, 'seasons', 'generation_source', 'TEXT NOT NULL DEFAULT "manual"');
+    $pdo->exec(
+        "UPDATE seasons
+         SET generation_source = 'automatic'
+         WHERE generation_source = 'manual'
+           AND LENGTH(season_key) = 7
+           AND SUBSTR(season_key, 5, 2) = '-Q'
+           AND SUBSTR(season_key, 7, 1) IN ('1', '2', '3', '4')
+           AND SUBSTR(season_key, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'"
+    );
+}
+
+/** @return array<string,string> */
+function season_icon_options(): array
+{
+    return [
+        'trophy' => 'Trophy',
+        'spark' => 'Spark',
+        'fire' => 'Fire',
+        'bolt' => 'Energy',
+        'target' => 'Target',
+        'dumbbell' => 'Strength',
+        'run' => 'Running',
+        'star' => 'Star',
+    ];
+}
+
+function season_normalize_icon_key(mixed $value): string
+{
+    $key = strtolower(trim((string) $value));
+
+    return array_key_exists($key, season_icon_options()) ? $key : 'trophy';
+}
+
+function season_normalize_accent_color(mixed $value): string
+{
+    $color = strtolower(trim((string) $value));
+
+    return preg_match('/^#[0-9a-f]{6}$/', $color) === 1 ? $color : '#8b5cf6';
+}
+
+/** @return array{enabled:bool,duration_weeks:int,ahead_count:int} */
+function seasons_automation_settings(PDO $pdo): array
+{
+    $enabled = in_array(strtolower(trim((string) (app_setting($pdo, 'season_auto_enabled', '0') ?? '0'))), ['1', 'true', 'yes', 'on'], true);
+
+    return [
+        'enabled' => $enabled,
+        'duration_weeks' => max(4, min(26, (int) (app_setting($pdo, 'season_auto_duration_weeks', '12') ?? 12))),
+        'ahead_count' => max(1, min(8, (int) (app_setting($pdo, 'season_auto_ahead_count', '4') ?? 4))),
+    ];
+}
+
+function seasons_automation_update(PDO $pdo, bool $enabled, int $durationWeeks, int $aheadCount, int $actorUserId): array
+{
+    $durationWeeks = max(4, min(26, $durationWeeks));
+    $aheadCount = max(1, min(8, $aheadCount));
+    set_app_setting($pdo, 'season_auto_enabled', $enabled ? '1' : '0', $actorUserId);
+    set_app_setting($pdo, 'season_auto_duration_weeks', (string) $durationWeeks, $actorUserId);
+    set_app_setting($pdo, 'season_auto_ahead_count', (string) $aheadCount, $actorUserId);
+
+    return seasons_automation_settings($pdo);
+}
+
+/** @return array{created:int,rows:array<int,array<string,mixed>>} */
+function seasons_generate_upcoming(PDO $pdo, ?int $actorUserId = null, ?string $referenceDate = null, bool $force = false): array
+{
+    seasons_ensure_schema($pdo);
+    $settings = seasons_automation_settings($pdo);
+    if (!$force && !$settings['enabled']) {
+        return ['created' => 0, 'rows' => []];
+    }
+
+    try {
+        $today = new DateTimeImmutable($referenceDate ?? 'today');
+    } catch (Throwable) {
+        $today = new DateTimeImmutable('today');
+    }
+    $todayKey = $today->format('Y-m-d');
+    $futureCount = (int) (db_fetch_one($pdo, 'SELECT COUNT(*) AS total FROM seasons WHERE end_date >= :today', [':today' => $todayKey])['total'] ?? 0);
+    $needed = max(0, (int) $settings['ahead_count'] - $futureCount);
+    if ($needed === 0) {
+        return ['created' => 0, 'rows' => []];
+    }
+
+    $latest = db_fetch_one($pdo, 'SELECT * FROM seasons ORDER BY end_date DESC, id DESC LIMIT 1');
+    try {
+        $start = $latest !== null
+            ? (new DateTimeImmutable((string) $latest['end_date']))->modify('+1 day')
+            : $today;
+    } catch (Throwable) {
+        $start = $today;
+    }
+    if ($start < $today->modify('-2 years')) {
+        $start = $today;
+    }
+
+    $automaticCount = (int) (db_fetch_one($pdo, 'SELECT COUNT(*) AS total FROM seasons WHERE generation_source = "automatic"')['total'] ?? 0);
+    $icons = array_keys(season_icon_options());
+    $colors = ['#8b5cf6', '#2563eb', '#059669', '#ea580c', '#db2777', '#0891b2'];
+    $createdRows = [];
+    for ($offset = 0; $offset < $needed; $offset++) {
+        $sequence = $automaticCount + $offset + 1;
+        $end = $start->modify('+' . ((int) $settings['duration_weeks'] * 7 - 1) . ' days');
+        $key = 'auto-' . $start->format('Ymd');
+        $name = t('season.auto_name', ['n' => $sequence]);
+        $icon = $icons[($sequence - 1) % count($icons)];
+        $color = $colors[($sequence - 1) % count($colors)];
+        $id = season_admin_save(
+            $pdo,
+            null,
+            $key,
+            $name,
+            $start->format('Y-m-d'),
+            $end->format('Y-m-d'),
+            (int) ($actorUserId ?? 0),
+            $icon,
+            '',
+            $color,
+            'automatic'
+        );
+        $row = db_fetch_one($pdo, 'SELECT * FROM seasons WHERE id = :id', [':id' => $id]);
+        if ($row !== null) {
+            $createdRows[] = $row;
+        }
+        $start = $end->modify('+1 day');
+    }
+
+    return ['created' => count($createdRows), 'rows' => $createdRows];
+}
+
+/** @return array{current:?array,next:?array,gaps:int,overlaps:int} */
+function seasons_schedule_status(PDO $pdo, ?string $referenceDate = null): array
+{
+    seasons_ensure_schema($pdo);
+    $today = to_date($referenceDate, to_date(null));
+    $rows = db_fetch_all($pdo, 'SELECT * FROM seasons ORDER BY start_date ASC, end_date ASC, id ASC');
+    $current = null;
+    $next = null;
+    $gaps = 0;
+    $overlaps = 0;
+    $previousEnd = null;
+    foreach ($rows as $row) {
+        $start = (string) ($row['start_date'] ?? '');
+        $end = (string) ($row['end_date'] ?? '');
+        if ($start <= $today && $end >= $today) {
+            $current = $row;
+        } elseif ($start > $today && ($next === null || $start < (string) $next['start_date'])) {
+            $next = $row;
+        }
+        if ($previousEnd !== null) {
+            try {
+                $expected = (new DateTimeImmutable($previousEnd))->modify('+1 day')->format('Y-m-d');
+                if ($start < $expected) {
+                    $overlaps++;
+                } elseif ($start > $expected) {
+                    $gaps++;
+                }
+            } catch (Throwable) {
+                $gaps++;
+            }
+        }
+        if ($previousEnd === null || $end > $previousEnd) {
+            $previousEnd = $end;
+        }
+    }
+
+    return ['current' => $current, 'next' => $next, 'gaps' => $gaps, 'overlaps' => $overlaps];
 }
 
 /** @return array<int,array<string,mixed>> */
@@ -580,7 +787,19 @@ function seasons_list(PDO $pdo): array
     );
 }
 
-function season_admin_save(PDO $pdo, ?int $seasonId, string $key, string $name, string $startDate, string $endDate, int $actorUserId): int
+function season_admin_save(
+    PDO $pdo,
+    ?int $seasonId,
+    string $key,
+    string $name,
+    string $startDate,
+    string $endDate,
+    int $actorUserId,
+    mixed $iconKey = 'trophy',
+    string $coverPath = '',
+    mixed $accentColor = '#8b5cf6',
+    ?string $generationSource = null
+): int
 {
     seasons_ensure_schema($pdo);
     $key = trim($key);
@@ -588,8 +807,14 @@ function season_admin_save(PDO $pdo, ?int $seasonId, string $key, string $name, 
     if ($key === '' || preg_match('/^[a-z0-9_-]+$/i', $key) !== 1) {
         throw new InvalidArgumentException('Season key may only contain letters, numbers, hyphens and underscores.');
     }
+    if (strlen($key) > 80) {
+        throw new InvalidArgumentException('Season key is too long.');
+    }
     if ($name === '') {
         throw new InvalidArgumentException('Season name is required.');
+    }
+    if ((function_exists('mb_strlen') ? mb_strlen($name) : strlen($name)) > 100) {
+        throw new InvalidArgumentException('Season name is too long.');
     }
     $parseDate = static function (string $value): ?DateTimeImmutable {
         $value = trim($value);
@@ -623,28 +848,64 @@ function season_admin_save(PDO $pdo, ?int $seasonId, string $key, string $name, 
     if ($duplicate !== null) {
         throw new InvalidArgumentException('That season key is already in use.');
     }
+    $iconKey = season_normalize_icon_key($iconKey);
+    $coverPath = trim($coverPath);
+    if ($coverPath !== '') {
+        $normalizedCover = normalize_media_reference($coverPath);
+        if ((string) ($normalizedCover['kind'] ?? '') !== 'media') {
+            throw new InvalidArgumentException('Season cover path is invalid.');
+        }
+        $coverPath = (string) ($normalizedCover['normalized'] ?? '');
+    }
+    $accentColor = season_normalize_accent_color($accentColor);
+    $generationSource = in_array($generationSource, ['manual', 'automatic'], true)
+        ? $generationSource
+        : (string) ($existing['generation_source'] ?? 'manual');
     $now = now_iso();
     if ($existing !== null) {
         db_execute(
             $pdo,
             'UPDATE seasons
-             SET season_key = :key, name = :name, start_date = :start, end_date = :end, updated_at = :now
+             SET season_key = :key, name = :name, start_date = :start, end_date = :end,
+                 icon_key = :icon_key, cover_path = :cover_path, accent_color = :accent_color,
+                 generation_source = :generation_source, updated_at = :now
              WHERE id = :id',
-            [':key' => $key, ':name' => $name, ':start' => $startDate, ':end' => $endDate, ':now' => $now, ':id' => (int) $existing['id']]
+            [
+                ':key' => $key,
+                ':name' => $name,
+                ':start' => $startDate,
+                ':end' => $endDate,
+                ':icon_key' => $iconKey,
+                ':cover_path' => $coverPath !== '' ? $coverPath : null,
+                ':accent_color' => $accentColor,
+                ':generation_source' => $generationSource,
+                ':now' => $now,
+                ':id' => (int) $existing['id'],
+            ]
         );
-        audit_log($pdo, $actorUserId, 'season_updated', 'season', (string) $existing['id'], 'Season updated.', audit_snapshot($existing), audit_snapshot(db_fetch_one($pdo, 'SELECT * FROM seasons WHERE id = :id', [':id' => (int) $existing['id']])));
+        audit_log($pdo, $actorUserId > 0 ? $actorUserId : null, 'season_updated', 'season', (string) $existing['id'], 'Season updated.', audit_snapshot($existing), audit_snapshot(db_fetch_one($pdo, 'SELECT * FROM seasons WHERE id = :id', [':id' => (int) $existing['id']])));
 
         return (int) $existing['id'];
     }
 
     db_execute(
         $pdo,
-        'INSERT INTO seasons (season_key, name, start_date, end_date, created_at, updated_at)
-         VALUES (:key, :name, :start, :end, :now, :now)',
-        [':key' => $key, ':name' => $name, ':start' => $startDate, ':end' => $endDate, ':now' => $now]
+        'INSERT INTO seasons (season_key, name, start_date, end_date, icon_key, cover_path, accent_color, generation_source, created_at, updated_at)
+         VALUES (:key, :name, :start, :end, :icon_key, :cover_path, :accent_color, :generation_source, :now, :now)',
+        [
+            ':key' => $key,
+            ':name' => $name,
+            ':start' => $startDate,
+            ':end' => $endDate,
+            ':icon_key' => $iconKey,
+            ':cover_path' => $coverPath !== '' ? $coverPath : null,
+            ':accent_color' => $accentColor,
+            ':generation_source' => $generationSource,
+            ':now' => $now,
+        ]
     );
     $createdId = (int) $pdo->lastInsertId();
-    audit_log($pdo, $actorUserId, 'season_created', 'season', (string) $createdId, 'Season created.', null, audit_snapshot(db_fetch_one($pdo, 'SELECT * FROM seasons WHERE id = :id', [':id' => $createdId])));
+    audit_log($pdo, $actorUserId > 0 ? $actorUserId : null, 'season_created', 'season', (string) $createdId, 'Season created.', null, audit_snapshot(db_fetch_one($pdo, 'SELECT * FROM seasons WHERE id = :id', [':id' => $createdId])));
 
     return $createdId;
 }
@@ -671,6 +932,10 @@ function season_admin_delete(PDO $pdo, int $seasonId, int $actorUserId): bool
 function seasons_current(PDO $pdo, ?string $date = null): array
 {
     seasons_ensure_schema($pdo);
+
+    if ($date === null && seasons_automation_settings($pdo)['enabled']) {
+        seasons_generate_upcoming($pdo);
+    }
 
     try {
         $dt = new DateTimeImmutable($date ?? 'today');
@@ -706,8 +971,8 @@ function seasons_current(PDO $pdo, ?string $date = null): array
 
     db_execute(
         $pdo,
-        'INSERT OR IGNORE INTO seasons (season_key, name, start_date, end_date, created_at, updated_at)
-         VALUES (:k, :n, :s, :e, :now, :now)',
+        'INSERT OR IGNORE INTO seasons (season_key, name, start_date, end_date, icon_key, cover_path, accent_color, generation_source, created_at, updated_at)
+         VALUES (:k, :n, :s, :e, "trophy", NULL, "#8b5cf6", "automatic", :now, :now)',
         [
             ':k' => $key,
             ':n' => t('season.name', ['q' => $quarter, 'y' => $year]),

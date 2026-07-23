@@ -8,6 +8,8 @@ $friendsOutgoing = is_array($friendsOutgoing ?? null) ? array_values((array) $fr
 $friendsAddable = is_array($friendsAddable ?? null) ? array_values((array) $friendsAddable) : [];
 $friendsAddableCount = max(0, (int) ($friendsAddableCount ?? count($friendsAddable)));
 $friendCompare = is_array($friendCompare ?? null) ? (array) $friendCompare : null;
+$friendsBackUrl = trim((string) ($friendsBackUrl ?? ''));
+$friendsBackLabel = trim((string) ($friendsBackLabel ?? ''));
 
 $friendProfileUrl = static function (array $user): string {
     return '/?' . http_build_query([
@@ -58,6 +60,10 @@ $friendAvatar = static function (array $user): void {
         echo '<span class="' . e($classes . ' member-avatar-initials') . '">' . e(initials_for((string) ($user['display_name'] ?? '?'))) . '</span>';
     }
 };
+$friendCoverUrl = static function (array $user): string {
+    $path = trim((string) ($user['profile_cover_path'] ?? ''));
+    return $path !== '' ? media_thumbnail_url($path, 720) : '';
+};
 
 $compareMetricRows = [
     ['key' => 'steps', 'label' => t('metric.steps'), 'higher' => true, 'fmt' => 'int'],
@@ -77,49 +83,37 @@ $fmtVal = static function (string $fmt, $v): string {
 };
 ?>
 <section class="screen stack-lg friends-screen">
-    <div class="hero-panel app-page-hero friends-hero">
-        <div class="hero-copy hero-copy-page-title">
-            <p class="eyebrow"><?= e(t('friends.eyebrow')) ?></p>
-            <h1><?= e(t('friends.title')) ?></h1>
-            <p class="muted"><?= e(t('friends.subtitle')) ?></p>
+    <article class="panel friends-panel friends-list-panel">
+        <div class="panel-head friends-list-panel-head">
+            <div class="friends-list-heading">
+                <?php if ($friendsBackUrl !== '' && $friendsBackLabel !== ''): ?>
+                    <a class="hierarchy-back destination-back friends-page-back" href="<?= e($friendsBackUrl) ?>" data-spa-history aria-label="<?= e(t('common.back')) ?>: <?= e($friendsBackLabel) ?>"><span aria-hidden="true">&larr;</span><strong><?= e($friendsBackLabel) ?></strong></a>
+                <?php endif; ?>
+                <h1 data-navigation-focus tabindex="-1"><?= e(t('friends.your_friends')) ?></h1>
+            </div>
+            <span class="badge" aria-label="<?= count($friendsList) ?> <?= e(t('friends.count_label')) ?>"><?= count($friendsList) ?></span>
         </div>
-        <span class="badge"><?= count($friendsList) ?> <?= e(t('friends.count_label')) ?></span>
-    </div>
-
-    <article class="panel friends-panel friend-discovery-panel" data-friend-discovery data-friend-search-endpoint="/?page=api_friend_search" data-friend-csrf="<?= e(csrf_token()) ?>" data-friend-add-label="<?= e(t('friends.add')) ?>" data-friend-empty-label="<?= e(t('friends.no_search_results')) ?>">
-        <div class="friend-discovery-head">
-            <div><p class="eyebrow"><?= e(t('friends.discover')) ?></p><h2><?= e(t('friends.add_title')) ?></h2><p><?= e(t('friends.search_hint')) ?></p></div>
-            <span class="badge"><?= $friendsAddableCount ?></span>
-        </div>
-        <?php if ($friendsAddableCount === 0): ?>
-            <p class="muted friend-discovery-empty"><?= e(t('friends.add_none')) ?></p>
+        <?php if ($friendsList === []): ?>
+            <p class="muted"><?= e(t('friends.none')) ?></p>
         <?php else: ?>
-            <label class="friend-search-box">
-                <span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg></span>
-                <span class="sr-only"><?= e(t('friends.search_placeholder')) ?></span>
-                <input type="search" autocomplete="off" inputmode="search" placeholder="<?= e(t('friends.search_placeholder')) ?>" data-friend-search>
-            </label>
-            <div class="friend-suggestions-head"><strong><?= e(t('friends.suggestions')) ?></strong><small><?= e(t('friends.search_tip')) ?></small></div>
-            <div class="friend-suggestion-list" data-friend-suggestion-list>
-                <?php foreach ($friendsAddable as $candidate): ?>
-                    <?php
-                    $candidateName = (string) ($candidate['display_name'] ?? $candidate['username'] ?? '');
-                    $candidateUsername = (string) ($candidate['username'] ?? '');
-                    ?>
-                    <div class="friend-suggestion-row" data-friend-candidate data-friend-search-value="<?= e($candidateName . ' @' . $candidateUsername) ?>">
-                        <a class="friend-suggestion-profile" href="<?= e($friendProfileUrl($candidate)) ?>" data-spa-link>
-                            <?php $friendAvatar($candidate); ?>
-                            <span><strong><?= e($candidateName) ?></strong><small>@<?= e($candidateUsername) ?></small></span>
+            <div class="card-list">
+                <?php foreach ($friendsList as $friend): ?>
+                    <?php $rowCoverUrl = $friendCoverUrl($friend); ?>
+                    <div class="mini-card friends-row<?= $rowCoverUrl !== '' ? ' has-cover' : '' ?>">
+                        <?php if ($rowCoverUrl !== ''): ?><img class="friends-row-cover" src="<?= e($rowCoverUrl) ?>" alt="" loading="lazy" aria-hidden="true"><?php endif; ?>
+                        <a class="friends-row-id" href="<?= e($friendProfileUrl($friend)) ?>" data-spa-link>
+                            <?php $friendAvatar($friend); ?>
+                            <span>
+                                <strong><?= e((string) ($friend['display_name'] ?? '')) ?></strong>
+                                <small class="muted">@<?= e((string) ($friend['username'] ?? '')) ?></small>
+                            </span>
                         </a>
-                        <form method="post" action="/?page=friends" class="inline-form">
-                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                            <input type="hidden" name="action" value="friend_request">
-                            <input type="hidden" name="user_id" value="<?= (int) ($candidate['id'] ?? 0) ?>">
-                            <button class="btn btn-primary small" type="submit"><?= e(t('friends.add')) ?></button>
-                        </form>
+                        <div class="inline-actions friends-row-actions">
+                            <a class="btn btn-primary small" href="/?page=friends&compare=<?= (int) $friend['id'] ?>" data-spa-link><?= e(t('friends.compare')) ?></a>
+                            <?php $friendSecondaryMenu('friend_remove', (int) $friend['id'], t('friends.remove'), true); ?>
+                        </div>
                     </div>
                 <?php endforeach; ?>
-                <p class="friend-search-empty" data-friend-search-empty hidden><?= e(t('friends.no_search_results')) ?></p>
             </div>
         <?php endif; ?>
     </article>
@@ -227,7 +221,9 @@ $fmtVal = static function (string $fmt, $v): string {
             <div class="panel-head"><h2><?= e(t('friends.incoming')) ?></h2><span class="badge"><?= count($friendsIncoming) ?></span></div>
             <div class="card-list">
                 <?php foreach ($friendsIncoming as $req): ?>
-                    <div class="mini-card friends-row">
+                    <?php $rowCoverUrl = $friendCoverUrl($req); ?>
+                    <div class="mini-card friends-row<?= $rowCoverUrl !== '' ? ' has-cover' : '' ?>">
+                        <?php if ($rowCoverUrl !== ''): ?><img class="friends-row-cover" src="<?= e($rowCoverUrl) ?>" alt="" loading="lazy" aria-hidden="true"><?php endif; ?>
                         <a class="friends-row-id" href="<?= e($friendProfileUrl($req)) ?>" data-spa-link>
                             <?php $friendAvatar($req); ?>
                             <span>
@@ -245,37 +241,14 @@ $fmtVal = static function (string $fmt, $v): string {
         </article>
     <?php endif; ?>
 
-    <article class="panel friends-panel">
-        <div class="panel-head"><h2><?= e(t('friends.your_friends')) ?></h2><span class="badge"><?= count($friendsList) ?></span></div>
-        <?php if ($friendsList === []): ?>
-            <p class="muted"><?= e(t('friends.none')) ?></p>
-        <?php else: ?>
-            <div class="card-list">
-                <?php foreach ($friendsList as $friend): ?>
-                    <div class="mini-card friends-row">
-                        <a class="friends-row-id" href="<?= e($friendProfileUrl($friend)) ?>" data-spa-link>
-                            <?php $friendAvatar($friend); ?>
-                            <span>
-                                <strong><?= e((string) ($friend['display_name'] ?? '')) ?></strong>
-                                <small class="muted">@<?= e((string) ($friend['username'] ?? '')) ?></small>
-                            </span>
-                        </a>
-                        <div class="inline-actions friends-row-actions">
-                            <a class="btn btn-primary small" href="/?page=friends&compare=<?= (int) $friend['id'] ?>" data-spa-link><?= e(t('friends.compare')) ?></a>
-                            <?php $friendSecondaryMenu('friend_remove', (int) $friend['id'], t('friends.remove'), true); ?>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
-    </article>
-
     <?php if ($friendsOutgoing !== []): ?>
         <article class="panel friends-panel">
             <div class="panel-head"><h2><?= e(t('friends.outgoing')) ?></h2><span class="badge"><?= count($friendsOutgoing) ?></span></div>
             <div class="card-list">
                 <?php foreach ($friendsOutgoing as $req): ?>
-                    <div class="mini-card friends-row">
+                    <?php $rowCoverUrl = $friendCoverUrl($req); ?>
+                    <div class="mini-card friends-row<?= $rowCoverUrl !== '' ? ' has-cover' : '' ?>">
+                        <?php if ($rowCoverUrl !== ''): ?><img class="friends-row-cover" src="<?= e($rowCoverUrl) ?>" alt="" loading="lazy" aria-hidden="true"><?php endif; ?>
                         <a class="friends-row-id" href="<?= e($friendProfileUrl($req)) ?>" data-spa-link>
                             <?php $friendAvatar($req); ?>
                             <span>
@@ -291,5 +264,43 @@ $fmtVal = static function (string $fmt, $v): string {
             </div>
         </article>
     <?php endif; ?>
+
+    <article class="panel friends-panel friend-discovery-panel" data-friend-discovery data-friend-search-endpoint="/?page=api_friend_search" data-friend-csrf="<?= e(csrf_token()) ?>" data-friend-add-label="<?= e(t('friends.add')) ?>" data-friend-empty-label="<?= e(t('friends.no_search_results')) ?>">
+        <div class="friend-discovery-head">
+            <div><p class="eyebrow"><?= e(t('friends.discover')) ?></p><h2><?= e(t('friends.add_title')) ?></h2><p><?= e(t('friends.search_hint')) ?></p></div>
+            <span class="badge"><?= $friendsAddableCount ?></span>
+        </div>
+        <?php if ($friendsAddableCount === 0): ?>
+            <p class="muted friend-discovery-empty"><?= e(t('friends.add_none')) ?></p>
+        <?php else: ?>
+            <label class="friend-search-box" role="search">
+                <span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg></span>
+                <span class="sr-only"><?= e(t('friends.search_placeholder')) ?></span>
+                <input type="search" name="friend_directory_search" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="search" enterkeyhint="search" aria-autocomplete="list" placeholder="<?= e(t('friends.search_placeholder')) ?>" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-protonpass-ignore="true" data-form-type="other" data-friend-search>
+            </label>
+            <div class="friend-suggestions-head"><strong><?= e(t('friends.suggestions')) ?></strong><small><?= e(t('friends.search_tip')) ?></small></div>
+            <div class="friend-suggestion-list" data-friend-suggestion-list>
+                <?php foreach ($friendsAddable as $candidate): ?>
+                    <?php
+                    $candidateName = (string) ($candidate['display_name'] ?? $candidate['username'] ?? '');
+                    $candidateUsername = (string) ($candidate['username'] ?? '');
+                    ?>
+                    <div class="friend-suggestion-row" data-friend-candidate data-friend-search-value="<?= e($candidateName . ' @' . $candidateUsername) ?>">
+                        <a class="friend-suggestion-profile" href="<?= e($friendProfileUrl($candidate)) ?>" data-spa-link>
+                            <?php $friendAvatar($candidate); ?>
+                            <span><strong><?= e($candidateName) ?></strong><small>@<?= e($candidateUsername) ?></small></span>
+                        </a>
+                        <form method="post" action="/?page=friends" class="inline-form">
+                            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                            <input type="hidden" name="action" value="friend_request">
+                            <input type="hidden" name="user_id" value="<?= (int) ($candidate['id'] ?? 0) ?>">
+                            <button class="btn btn-primary small" type="submit"><?= e(t('friends.add')) ?></button>
+                        </form>
+                    </div>
+                <?php endforeach; ?>
+                <p class="friend-search-empty" data-friend-search-empty hidden><?= e(t('friends.no_search_results')) ?></p>
+            </div>
+        <?php endif; ?>
+    </article>
 
 </section>

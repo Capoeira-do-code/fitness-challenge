@@ -63,9 +63,20 @@ const login = async (page) => {
         })));
         ensure(lockedProgress.every((row) => row.width < 100), 'Inicio no conserva logros al 100 % como bloqueados', JSON.stringify(lockedProgress));
 
-        const seasonStats = page.locator('[data-dashboard-widget="season"] .season-widget-summary > span');
-        ensure(await seasonStats.count() === 3, 'Temporada resume XP, posición y siguiente hito');
+        ensure(await page.locator('[data-dashboard-widget="season"] .season-widget-overview').count() === 1,
+            'Temporada agrupa posición, XP y avance en un resumen');
+        ensure(await page.locator('[data-dashboard-widget="season"] .season-widget-position').count() === 1,
+            'Temporada destaca la posición actual');
         ensure(await page.locator('[data-dashboard-widget="season"] [role="progressbar"]').count() === 1, 'Temporada expone progreso accesible');
+        ensure(await page.locator('[data-dashboard-widget="season"] .inline-list-toggle').count() === 0,
+            'Temporada no usa Ver menos dentro del widget');
+        ensure(await page.locator('[data-dashboard-widget="season"] a[href="/?page=season"]').count() === 1,
+            'Temporada abre la clasificación completa desde su CTA');
+
+        const versusCards = page.locator('.dashboard-versus-card');
+        ensure(await versusCards.count() === 2, 'Inicio muestra duelos y competiciones como tarjetas propias');
+        ensure(await page.locator('.dashboard-versus-card .dashboard-versus-stat').count() === 6,
+            'Duelos y competiciones resumen activo, pendiente y ganado');
 
         const firstQuestToggle = page.locator('[data-quest-detail-toggle]').first();
         ensure(await firstQuestToggle.count() === 1, 'Misiones ofrecen detalle interactivo');
@@ -73,6 +84,19 @@ const login = async (page) => {
         await page.keyboard.press('Enter');
         ensure(await firstQuestToggle.getAttribute('aria-expanded') === 'true', 'Detalle de misión funciona con teclado');
         ensure(await firstQuestToggle.locator('xpath=ancestor::li[1]').locator('[data-quest-detail]').isVisible(), 'Detalle de misión muestra estado, periodo y recompensa');
+        ensure(await page.locator('[data-dashboard-widget="quests"] .inline-list-toggle').count() === 0,
+            'Misiones no usa Ver menos dentro del widget');
+        ensure(await page.locator('[data-dashboard-widget="quests"] a[href="/?page=quests"]').count() === 1,
+            'Misiones enlaza su catálogo completo');
+
+        await page.goto(`${BASE}/?page=quests`, { waitUntil: 'networkidle' });
+        const questCatalogueCards = page.locator('.quest-catalogue-card');
+        ensure(await questCatalogueCards.count() === 6, 'Catálogo muestra todas las misiones');
+        ensure(await page.locator('.quest-catalogue-card .quest-completion-count').count() === await questCatalogueCards.count(),
+            'Cada misión muestra cuántas veces se ha completado');
+        ensure(await overflow(page) <= 1, 'Catálogo de misiones sin desbordamiento a 320 px', `${await overflow(page)}px`);
+
+        await page.goto(`${BASE}/?page=dashboard`, { waitUntil: 'networkidle' });
 
         await page.evaluate(() => {
             const long = 'Nombre de misión extraordinariamente largo con contexto de entrenamiento semanal y progreso acumulado '.repeat(3);

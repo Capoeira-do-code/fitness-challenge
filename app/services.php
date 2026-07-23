@@ -1084,6 +1084,7 @@ function fetch_log_workouts_for_logs(PDO $pdo, array $logs): array
         $logPlaceholders[] = $key;
         $params[$key] = $logId;
     }
+    $params[':workout_locale'] = current_locale();
 
     $rows = db_fetch_all(
         $pdo,
@@ -1092,9 +1093,11 @@ function fetch_log_workouts_for_logs(PDO $pdo, array $logs): array
                 dlw.workout_type_id,
                 dlw.workout_type,
                 dlw.sort_order,
-                wt.name AS workout_type_name
+                COALESCE(NULLIF(wtt_local.name, ""), NULLIF(wtt_en.name, ""), wt.name) AS workout_type_name
          FROM daily_log_workouts dlw
          LEFT JOIN workout_types wt ON wt.id = dlw.workout_type_id
+         LEFT JOIN workout_type_translations wtt_local ON wtt_local.workout_type_id = wt.id AND wtt_local.locale = :workout_locale
+         LEFT JOIN workout_type_translations wtt_en ON wtt_en.workout_type_id = wt.id AND wtt_en.locale = "en"
          WHERE dlw.log_id IN (' . implode(',', $logPlaceholders) . ')
          ORDER BY dlw.log_id ASC, dlw.sort_order ASC, dlw.id ASC',
         $params
@@ -1116,12 +1119,17 @@ function fetch_log_workouts_for_logs(PDO $pdo, array $logs): array
             $fieldPlaceholders[] = $key;
             $fieldParams[$key] = $workoutId;
         }
+        $fieldParams[':field_locale'] = current_locale();
         $fieldRows = db_fetch_all(
             $pdo,
-            'SELECT workout_id, field_id, field_label, data_key, value_text, value_number
-             FROM daily_log_workout_field_values
-             WHERE workout_id IN (' . implode(',', $fieldPlaceholders) . ')
-             ORDER BY id ASC',
+            'SELECT dlwfv.workout_id, dlwfv.field_id,
+                    COALESCE(NULLIF(wtft_local.label, ""), NULLIF(wtft_en.label, ""), dlwfv.field_label) AS field_label,
+                    dlwfv.data_key, dlwfv.value_text, dlwfv.value_number
+             FROM daily_log_workout_field_values dlwfv
+             LEFT JOIN workout_type_field_translations wtft_local ON wtft_local.field_id = dlwfv.field_id AND wtft_local.locale = :field_locale
+             LEFT JOIN workout_type_field_translations wtft_en ON wtft_en.field_id = dlwfv.field_id AND wtft_en.locale = "en"
+             WHERE dlwfv.workout_id IN (' . implode(',', $fieldPlaceholders) . ')
+             ORDER BY dlwfv.id ASC',
             $fieldParams
         );
         foreach ($fieldRows as $fieldRow) {
@@ -1151,9 +1159,14 @@ function fetch_log_workouts_for_logs(PDO $pdo, array $logs): array
             $legacyPlaceholders[] = $key;
             $legacyParams[$key] = $typeId;
         }
+        $legacyParams[':legacy_locale'] = current_locale();
         $legacyRows = db_fetch_all(
             $pdo,
-            'SELECT id, name FROM workout_types WHERE id IN (' . implode(',', $legacyPlaceholders) . ')',
+            'SELECT wt.id, COALESCE(NULLIF(wtt_local.name, ""), NULLIF(wtt_en.name, ""), wt.name) AS name
+             FROM workout_types wt
+             LEFT JOIN workout_type_translations wtt_local ON wtt_local.workout_type_id = wt.id AND wtt_local.locale = :legacy_locale
+             LEFT JOIN workout_type_translations wtt_en ON wtt_en.workout_type_id = wt.id AND wtt_en.locale = "en"
+             WHERE wt.id IN (' . implode(',', $legacyPlaceholders) . ')',
             $legacyParams
         );
         foreach ($legacyRows as $legacyRow) {
@@ -1168,9 +1181,9 @@ function fetch_log_workouts_for_logs(PDO $pdo, array $logs): array
             continue;
         }
         $workoutTypeId = !empty($row['workout_type_id']) ? (int) $row['workout_type_id'] : null;
-        $workoutType = trim((string) ($row['workout_type'] ?? ''));
+        $workoutType = $workoutTypeId !== null ? trim((string) ($row['workout_type_name'] ?? '')) : '';
         if ($workoutType === '') {
-            $workoutType = trim((string) ($row['workout_type_name'] ?? ''));
+            $workoutType = trim((string) ($row['workout_type'] ?? ''));
         }
         if ($workoutType === '') {
             $workoutType = 'Workout';
@@ -1295,22 +1308,130 @@ function fetch_log(PDO $pdo, int $userId, string $date): ?array
     return $log;
 }
 
-function list_habit_definitions(PDO $pdo, bool $activeOnly = true): array
+function habit_supported_locales(): array
 {
-    $where = $activeOnly ? 'WHERE active = 1' : '';
+    if (defined('SUPPORTED_LOCALES')) {
+        $locales = constant('SUPPORTED_LOCALES');
+        if (is_array($locales) && $locales !== []) {
+            return array_values(array_filter(array_map('strval', $locales)));
+        }
+    }
 
-    return db_fetch_all($pdo, 'SELECT * FROM habit_definitions ' . $where . ' ORDER BY active DESC, sort_order ASC, label ASC');
+    return ['en', 'es', 'it'];
+}
+
+function normalize_habit_translations_input(mixed $rawTranslations, string $fallbackLabel): array
+{
+    $incoming = is_array($rawTranslations) ? $rawTranslations : [];
+    $fallbackLabel = trim($fallbackLabel);
+    $translations = [];
+    foreach (habit_supported_locales() as $locale) {
+        $row = is_array($incoming[$locale] ?? null) ? (array) $incoming[$locale] : [];
+        $label = trim((string) ($row['label'] ?? ''));
+        if ($locale === 'en' && $label === '') {
+            $label = $fallbackLabel;
+        }
+        $translations[$locale] = ['label' => $label];
+    }
+    if (trim((string) ($translations['en']['label'] ?? '')) === '') {
+        throw new InvalidArgumentException(t('admin.habit_name_required'));
+    }
+
+    return $translations;
+}
+
+function save_habit_translations(PDO $pdo, int $habitId, array $translations): void
+{
+    if ($habitId <= 0) {
+        return;
+    }
+    $now = now_iso();
+    foreach (habit_supported_locales() as $locale) {
+        $row = is_array($translations[$locale] ?? null) ? (array) $translations[$locale] : [];
+        $label = trim((string) ($row['label'] ?? ''));
+        if ($label === '') {
+            db_execute(
+                $pdo,
+                'DELETE FROM habit_definition_translations WHERE habit_id = :habit_id AND locale = :locale',
+                [':habit_id' => $habitId, ':locale' => $locale]
+            );
+            continue;
+        }
+        db_execute(
+            $pdo,
+            'INSERT INTO habit_definition_translations (habit_id, locale, label, created_at, updated_at)
+             VALUES (:habit_id, :locale, :label, :created_at, :updated_at)
+             ON CONFLICT(habit_id, locale) DO UPDATE SET label = excluded.label, updated_at = excluded.updated_at',
+            [':habit_id' => $habitId, ':locale' => $locale, ':label' => $label, ':created_at' => $now, ':updated_at' => $now]
+        );
+    }
+}
+
+function fetch_habit_translations(PDO $pdo, array $habitIds): array
+{
+    $ids = array_values(array_unique(array_filter(array_map('intval', $habitIds), static fn(int $id): bool => $id > 0)));
+    if ($ids === []) {
+        return [];
+    }
+    $params = [];
+    $placeholders = [];
+    foreach ($ids as $index => $id) {
+        $key = ':habit_id_' . $index;
+        $placeholders[] = $key;
+        $params[$key] = $id;
+    }
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT habit_id, locale, label FROM habit_definition_translations WHERE habit_id IN (' . implode(',', $placeholders) . ')',
+        $params
+    );
+    $grouped = [];
+    foreach ($rows as $row) {
+        $habitId = (int) ($row['habit_id'] ?? 0);
+        $locale = normalize_locale((string) ($row['locale'] ?? 'en'), 'en');
+        if ($habitId <= 0) {
+            continue;
+        }
+        $grouped[$habitId][$locale] = ['label' => (string) ($row['label'] ?? '')];
+    }
+
+    return $grouped;
+}
+
+function list_habit_definitions(PDO $pdo, bool $activeOnly = true, ?string $locale = null): array
+{
+    $where = $activeOnly ? 'WHERE hd.active = 1' : '';
+    $locale = normalize_locale($locale ?? current_locale(), 'en');
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT hd.id, hd.code, hd.label AS base_label, hd.active, hd.sort_order,
+                hd.created_by, hd.created_at, hd.updated_at,
+                COALESCE(NULLIF(localized.label, ""), NULLIF(english.label, ""), hd.label) AS label
+         FROM habit_definitions hd
+         LEFT JOIN habit_definition_translations localized ON localized.habit_id = hd.id AND localized.locale = :locale
+         LEFT JOIN habit_definition_translations english ON english.habit_id = hd.id AND english.locale = "en"
+         ' . $where . '
+         ORDER BY hd.active DESC, hd.sort_order ASC,
+                  COALESCE(NULLIF(localized.label, ""), NULLIF(english.label, ""), hd.label) COLLATE NOCASE ASC',
+        [':locale' => $locale]
+    );
 }
 
 function fetch_log_habit_values(PDO $pdo, int $logId): array
 {
     $rows = db_fetch_all(
         $pdo,
-        'SELECT hd.code, hd.id, hd.label, COALESCE(dlh.value, 0) AS value
+        'SELECT hd.code, hd.id,
+                COALESCE(NULLIF(localized.label, ""), NULLIF(english.label, ""), hd.label) AS label,
+                COALESCE(dlh.value, 0) AS value
          FROM habit_definitions hd
          LEFT JOIN daily_log_habits dlh ON dlh.habit_id = hd.id AND dlh.log_id = :log_id
-         ORDER BY hd.sort_order ASC, hd.label ASC',
-        [':log_id' => $logId]
+         LEFT JOIN habit_definition_translations localized ON localized.habit_id = hd.id AND localized.locale = :locale
+         LEFT JOIN habit_definition_translations english ON english.habit_id = hd.id AND english.locale = "en"
+         ORDER BY hd.sort_order ASC,
+                  COALESCE(NULLIF(localized.label, ""), NULLIF(english.label, ""), hd.label) COLLATE NOCASE ASC',
+        [':log_id' => $logId, ':locale' => current_locale()]
     );
 
     $values = [];
@@ -1356,15 +1477,27 @@ function sync_log_habits(PDO $pdo, int $logId, array $values): void
     }
 }
 
-function save_habit_definition(PDO $pdo, ?int $habitId, string $code, string $label, bool $active, int $sortOrder, int $actorUserId): void
+function save_habit_definition(PDO $pdo, ?int $habitId, string $code, string $label, bool $active, int $sortOrder, int $actorUserId, mixed $rawTranslations = null): void
 {
     $code = preg_replace('/[^a-z0-9_]+/', '_', strtolower(trim($code))) ?: '';
     $label = trim($label);
-    if ($code === '' || $label === '') {
-        return;
+    $translations = is_array($rawTranslations) ? normalize_habit_translations_input($rawTranslations, $label) : null;
+    if ($translations !== null) {
+        $label = trim((string) ($translations['en']['label'] ?? $label));
+    }
+    if ($code === '') {
+        throw new InvalidArgumentException(t('admin.habit_code_required'));
+    }
+    if ($label === '') {
+        throw new InvalidArgumentException(t('admin.habit_name_required'));
     }
 
     $before = $habitId !== null ? db_fetch_one($pdo, 'SELECT * FROM habit_definitions WHERE id = :id', [':id' => $habitId]) : null;
+    if ($before !== null) {
+        // The code is referenced by goals and historical imports; labels are
+        // editable, but this internal identifier must remain stable.
+        $code = (string) $before['code'];
+    }
     $now = now_iso();
     if ($before === null) {
         db_execute(
@@ -1374,6 +1507,9 @@ function save_habit_definition(PDO $pdo, ?int $habitId, string $code, string $la
             [':code' => $code, ':label' => $label, ':active' => $active ? 1 : 0, ':sort_order' => $sortOrder, ':created_by' => $actorUserId, ':created_at' => $now, ':updated_at' => $now]
         );
         $after = db_fetch_one($pdo, 'SELECT * FROM habit_definitions WHERE code = :code', [':code' => $code]);
+        if ($translations !== null) {
+            save_habit_translations($pdo, (int) ($after['id'] ?? 0), $translations);
+        }
         audit_log($pdo, $actorUserId, 'habit_created', 'habit_definition', (string) ($after['id'] ?? ''), 'Habit definition created.', null, audit_snapshot($after));
         return;
     }
@@ -1383,6 +1519,9 @@ function save_habit_definition(PDO $pdo, ?int $habitId, string $code, string $la
         'UPDATE habit_definitions SET code = :code, label = :label, active = :active, sort_order = :sort_order, updated_at = :updated_at WHERE id = :id',
         [':code' => $code, ':label' => $label, ':active' => $active ? 1 : 0, ':sort_order' => $sortOrder, ':updated_at' => $now, ':id' => $habitId]
     );
+    if ($translations !== null) {
+        save_habit_translations($pdo, $habitId, $translations);
+    }
     $after = db_fetch_one($pdo, 'SELECT * FROM habit_definitions WHERE id = :id', [':id' => $habitId]);
     audit_log($pdo, $actorUserId, 'habit_updated', 'habit_definition', (string) $habitId, 'Habit definition updated.', audit_snapshot($before), audit_snapshot($after));
 }
@@ -2841,7 +2980,7 @@ function create_user(PDO $pdo, array $payload): void
             ':primary_goal_type' => $payload['primary_goal_type'] ?? 'steps',
             ':primary_goal_value' => $payload['primary_goal_value'] ?? null,
             ':onboarding_status' => ($payload['onboarding_status'] ?? 'complete') === 'pending' ? 'pending' : 'complete',
-            ':onboarding_step' => in_array((string) ($payload['onboarding_step'] ?? 'goals'), ['goals', 'profile', 'privacy', 'telegram', 'challenge', 'teams'], true)
+            ':onboarding_step' => in_array((string) ($payload['onboarding_step'] ?? 'goals'), ['goals', 'profile', 'privacy', 'telegram', 'challenge', 'teams', 'install'], true)
                 ? (string) ($payload['onboarding_step'] ?? 'goals')
                 : 'goals',
             ':onboarding_completed_at' => ($payload['onboarding_status'] ?? 'complete') === 'pending' ? null : $now,
@@ -3105,7 +3244,7 @@ function onboarding_is_pending(array $user): bool
 
 function set_user_onboarding_step(PDO $pdo, int $userId, string $step): void
 {
-    if (!in_array($step, ['goals', 'profile', 'privacy', 'telegram', 'challenge', 'teams'], true)) {
+    if (!in_array($step, ['goals', 'profile', 'privacy', 'telegram', 'challenge', 'teams', 'install'], true)) {
         return;
     }
     db_execute(
@@ -3252,7 +3391,10 @@ function create_motivational_quote(PDO $pdo, string $quoteText, int $actorUserId
 {
     $quoteText = trim($quoteText);
     if ($quoteText === '') {
-        throw new InvalidArgumentException('Motivational quote is required.');
+        throw new InvalidArgumentException(t('admin.quote_required'));
+    }
+    if (mb_strlen($quoteText) > 280) {
+        throw new InvalidArgumentException(t('admin.quote_too_long'));
     }
     ensure_motivational_quote_schema($pdo);
 
@@ -3281,7 +3423,10 @@ function update_motivational_quote(PDO $pdo, int $quoteId, string $quoteText, st
 {
     $quoteText = trim($quoteText);
     if ($quoteId <= 0 || $quoteText === '') {
-        throw new InvalidArgumentException('Motivational quote is required.');
+        throw new InvalidArgumentException(t('admin.quote_required'));
+    }
+    if (mb_strlen($quoteText) > 280) {
+        throw new InvalidArgumentException(t('admin.quote_too_long'));
     }
     ensure_motivational_quote_schema($pdo);
     $before = db_fetch_one($pdo, 'SELECT * FROM motivational_quotes WHERE id = :id', [':id' => $quoteId]);
@@ -4996,29 +5141,192 @@ function auto_complete_user_goals(PDO $pdo, int $userId, string $startDate, stri
     return $completedCount;
 }
 
-function list_workout_types(PDO $pdo, bool $activeOnly = true): array
+function workout_type_supported_locales(): array
 {
-    $where = $activeOnly ? 'WHERE active = 1' : '';
-
-    return db_fetch_all($pdo, 'SELECT * FROM workout_types ' . $where . ' ORDER BY active DESC, LOWER(name) ASC');
+    return habit_supported_locales();
 }
 
-function list_workout_type_fields(PDO $pdo, ?int $workoutTypeId = null, bool $activeOnly = true): array
+function normalize_workout_type_translations_input(mixed $rawTranslations, string $fallbackName): array
+{
+    $incoming = is_array($rawTranslations) ? $rawTranslations : [];
+    $translations = [];
+    foreach (workout_type_supported_locales() as $locale) {
+        $row = is_array($incoming[$locale] ?? null) ? (array) $incoming[$locale] : [];
+        $name = trim((string) ($row['name'] ?? ''));
+        if ($locale === 'en' && $name === '') {
+            $name = trim($fallbackName);
+        }
+        if (mb_strlen($name) > 120) {
+            throw new InvalidArgumentException(t('admin.workout_type_name_too_long'));
+        }
+        $translations[$locale] = ['name' => $name];
+    }
+    if (trim((string) ($translations['en']['name'] ?? '')) === '') {
+        throw new InvalidArgumentException(t('admin.workout_type_name_required'));
+    }
+
+    return $translations;
+}
+
+function normalize_workout_field_translations_input(mixed $rawTranslations, string $fallbackLabel): array
+{
+    $incoming = is_array($rawTranslations) ? $rawTranslations : [];
+    $translations = [];
+    foreach (workout_type_supported_locales() as $locale) {
+        $row = is_array($incoming[$locale] ?? null) ? (array) $incoming[$locale] : [];
+        $label = trim((string) ($row['label'] ?? ''));
+        if ($locale === 'en' && $label === '') {
+            $label = trim($fallbackLabel);
+        }
+        if (mb_strlen($label) > 100) {
+            throw new InvalidArgumentException(t('admin.workout_field_label_too_long'));
+        }
+        $translations[$locale] = ['label' => $label];
+    }
+    if (trim((string) ($translations['en']['label'] ?? '')) === '') {
+        throw new InvalidArgumentException(t('admin.workout_field_label_required'));
+    }
+
+    return $translations;
+}
+
+function save_workout_type_translations(PDO $pdo, int $workoutTypeId, array $translations): void
+{
+    if ($workoutTypeId <= 0) {
+        return;
+    }
+    $now = now_iso();
+    foreach (workout_type_supported_locales() as $locale) {
+        $row = is_array($translations[$locale] ?? null) ? (array) $translations[$locale] : [];
+        $name = trim((string) ($row['name'] ?? ''));
+        if ($name === '') {
+            db_execute($pdo, 'DELETE FROM workout_type_translations WHERE workout_type_id = :id AND locale = :locale', [':id' => $workoutTypeId, ':locale' => $locale]);
+            continue;
+        }
+        db_execute(
+            $pdo,
+            'INSERT INTO workout_type_translations (workout_type_id, locale, name, created_at, updated_at)
+             VALUES (:id, :locale, :name, :created_at, :updated_at)
+             ON CONFLICT(workout_type_id, locale) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at',
+            [':id' => $workoutTypeId, ':locale' => $locale, ':name' => $name, ':created_at' => $now, ':updated_at' => $now]
+        );
+    }
+}
+
+function save_workout_field_translations(PDO $pdo, int $fieldId, array $translations): void
+{
+    if ($fieldId <= 0) {
+        return;
+    }
+    $now = now_iso();
+    foreach (workout_type_supported_locales() as $locale) {
+        $row = is_array($translations[$locale] ?? null) ? (array) $translations[$locale] : [];
+        $label = trim((string) ($row['label'] ?? ''));
+        if ($label === '') {
+            db_execute($pdo, 'DELETE FROM workout_type_field_translations WHERE field_id = :id AND locale = :locale', [':id' => $fieldId, ':locale' => $locale]);
+            continue;
+        }
+        db_execute(
+            $pdo,
+            'INSERT INTO workout_type_field_translations (field_id, locale, label, created_at, updated_at)
+             VALUES (:id, :locale, :label, :created_at, :updated_at)
+             ON CONFLICT(field_id, locale) DO UPDATE SET label = excluded.label, updated_at = excluded.updated_at',
+            [':id' => $fieldId, ':locale' => $locale, ':label' => $label, ':created_at' => $now, ':updated_at' => $now]
+        );
+    }
+}
+
+function fetch_workout_type_translations(PDO $pdo, array $typeIds): array
+{
+    $ids = array_values(array_unique(array_filter(array_map('intval', $typeIds), static fn(int $id): bool => $id > 0)));
+    if ($ids === []) {
+        return [];
+    }
+    $params = [];
+    $placeholders = [];
+    foreach ($ids as $index => $id) {
+        $key = ':type_id_' . $index;
+        $placeholders[] = $key;
+        $params[$key] = $id;
+    }
+    $rows = db_fetch_all($pdo, 'SELECT workout_type_id, locale, name FROM workout_type_translations WHERE workout_type_id IN (' . implode(',', $placeholders) . ')', $params);
+    $grouped = [];
+    foreach ($rows as $row) {
+        $id = (int) ($row['workout_type_id'] ?? 0);
+        if ($id > 0) {
+            $grouped[$id][normalize_locale((string) ($row['locale'] ?? 'en'), 'en')] = ['name' => (string) ($row['name'] ?? '')];
+        }
+    }
+    return $grouped;
+}
+
+function fetch_workout_field_translations(PDO $pdo, array $fieldIds): array
+{
+    $ids = array_values(array_unique(array_filter(array_map('intval', $fieldIds), static fn(int $id): bool => $id > 0)));
+    if ($ids === []) {
+        return [];
+    }
+    $params = [];
+    $placeholders = [];
+    foreach ($ids as $index => $id) {
+        $key = ':field_id_' . $index;
+        $placeholders[] = $key;
+        $params[$key] = $id;
+    }
+    $rows = db_fetch_all($pdo, 'SELECT field_id, locale, label FROM workout_type_field_translations WHERE field_id IN (' . implode(',', $placeholders) . ')', $params);
+    $grouped = [];
+    foreach ($rows as $row) {
+        $id = (int) ($row['field_id'] ?? 0);
+        if ($id > 0) {
+            $grouped[$id][normalize_locale((string) ($row['locale'] ?? 'en'), 'en')] = ['label' => (string) ($row['label'] ?? '')];
+        }
+    }
+    return $grouped;
+}
+
+function list_workout_types(PDO $pdo, bool $activeOnly = true, ?string $locale = null): array
+{
+    $where = $activeOnly ? 'WHERE wt.active = 1' : '';
+    $locale = normalize_locale($locale ?? current_locale(), 'en');
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT wt.id, wt.name AS base_name, wt.active, wt.created_by, wt.created_at, wt.updated_at,
+                COALESCE(NULLIF(localized.name, ""), NULLIF(english.name, ""), wt.name) AS name
+         FROM workout_types wt
+         LEFT JOIN workout_type_translations localized ON localized.workout_type_id = wt.id AND localized.locale = :locale
+         LEFT JOIN workout_type_translations english ON english.workout_type_id = wt.id AND english.locale = "en"
+         ' . $where . '
+         ORDER BY wt.active DESC, LOWER(COALESCE(NULLIF(localized.name, ""), NULLIF(english.name, ""), wt.name)) ASC',
+        [':locale' => $locale]
+    );
+}
+
+function list_workout_type_fields(PDO $pdo, ?int $workoutTypeId = null, bool $activeOnly = true, ?string $locale = null): array
 {
     $conditions = [];
     $params = [];
     if ($workoutTypeId !== null && $workoutTypeId > 0) {
-        $conditions[] = 'workout_type_id = :workout_type_id';
+        $conditions[] = 'wtf.workout_type_id = :workout_type_id';
         $params[':workout_type_id'] = $workoutTypeId;
     }
     if ($activeOnly) {
-        $conditions[] = 'active = 1';
+        $conditions[] = 'wtf.active = 1';
     }
+    $locale = normalize_locale($locale ?? current_locale(), 'en');
+    $params[':locale'] = $locale;
     $where = $conditions !== [] ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
     return db_fetch_all(
         $pdo,
-        'SELECT * FROM workout_type_fields ' . $where . ' ORDER BY workout_type_id ASC, active DESC, sort_order ASC, id ASC',
+        'SELECT wtf.id, wtf.workout_type_id, wtf.label AS base_label, wtf.input_kind, wtf.data_key,
+                wtf.required, wtf.active, wtf.sort_order, wtf.created_by, wtf.created_at, wtf.updated_at,
+                COALESCE(NULLIF(localized.label, ""), NULLIF(english.label, ""), wtf.label) AS label
+         FROM workout_type_fields wtf
+         LEFT JOIN workout_type_field_translations localized ON localized.field_id = wtf.id AND localized.locale = :locale
+         LEFT JOIN workout_type_field_translations english ON english.field_id = wtf.id AND english.locale = "en"
+         ' . $where . '
+         ORDER BY wtf.workout_type_id ASC, wtf.active DESC, wtf.sort_order ASC, wtf.id ASC',
         $params
     );
 }
@@ -5050,15 +5358,20 @@ function save_workout_type_field(
     bool $required,
     bool $active,
     int $sortOrder,
-    int $actorUserId
+    int $actorUserId,
+    mixed $rawTranslations = null
 ): void {
     $workoutType = db_fetch_one($pdo, 'SELECT * FROM workout_types WHERE id = :id', [':id' => $workoutTypeId]);
     if ($workoutType === null) {
         throw new InvalidArgumentException('Workout type not found.');
     }
     $label = trim($label);
+    $translations = is_array($rawTranslations) ? normalize_workout_field_translations_input($rawTranslations, $label) : null;
+    if ($translations !== null) {
+        $label = trim((string) ($translations['en']['label'] ?? $label));
+    }
     if ($label === '') {
-        throw new InvalidArgumentException('Field label is required.');
+        throw new InvalidArgumentException(t('admin.workout_field_label_required'));
     }
     $inputKind = normalize_workout_field_input_kind($inputKind);
     $dataKey = normalize_workout_field_data_key($dataKey);
@@ -5095,6 +5408,9 @@ function save_workout_type_field(
                 ':id' => $fieldId,
             ]
         );
+        if ($translations !== null) {
+            save_workout_field_translations($pdo, $fieldId, $translations);
+        }
         $after = db_fetch_one($pdo, 'SELECT * FROM workout_type_fields WHERE id = :id', [':id' => $fieldId]);
         audit_log($pdo, $actorUserId, 'workout_type_field_updated', 'workout_type_field', (string) $fieldId, 'Workout type field updated.', audit_snapshot($before), audit_snapshot($after));
         return;
@@ -5121,6 +5437,9 @@ function save_workout_type_field(
         ]
     );
     $created = db_fetch_one($pdo, 'SELECT * FROM workout_type_fields WHERE id = last_insert_rowid()');
+    if ($translations !== null) {
+        save_workout_field_translations($pdo, (int) ($created['id'] ?? 0), $translations);
+    }
     audit_log($pdo, $actorUserId, 'workout_type_field_created', 'workout_type_field', (string) ($created['id'] ?? ''), 'Workout type field created.', null, audit_snapshot($created));
 }
 
@@ -5135,9 +5454,13 @@ function delete_workout_type_field(PDO $pdo, int $fieldId, int $actorUserId): vo
     audit_log($pdo, $actorUserId, 'workout_type_field_deactivated', 'workout_type_field', (string) $fieldId, 'Workout type field deactivated.', audit_snapshot($before), audit_snapshot($after));
 }
 
-function save_workout_type_if_needed(PDO $pdo, string $name, ?int $actorUserId = null): ?int
+function save_workout_type_if_needed(PDO $pdo, string $name, ?int $actorUserId = null, mixed $rawTranslations = null): ?int
 {
     $name = trim($name);
+    $translations = is_array($rawTranslations) ? normalize_workout_type_translations_input($rawTranslations, $name) : null;
+    if ($translations !== null) {
+        $name = trim((string) ($translations['en']['name'] ?? $name));
+    }
     if ($name === '') {
         return null;
     }
@@ -5152,6 +5475,9 @@ function save_workout_type_if_needed(PDO $pdo, string $name, ?int $actorUserId =
             );
             $after = db_fetch_one($pdo, 'SELECT * FROM workout_types WHERE id = :id', [':id' => (int) $existing['id']]);
             audit_log($pdo, $actorUserId, 'workout_type_reactivated', 'workout_type', (string) $existing['id'], 'Workout type reactivated from daily log.', audit_snapshot($existing), audit_snapshot($after));
+        }
+        if ($translations !== null) {
+            save_workout_type_translations($pdo, (int) $existing['id'], $translations);
         }
         return (int) $existing['id'];
     }
@@ -5168,6 +5494,9 @@ function save_workout_type_if_needed(PDO $pdo, string $name, ?int $actorUserId =
         ]
     );
     $created = db_fetch_one($pdo, 'SELECT * FROM workout_types WHERE LOWER(name) = LOWER(:name)', [':name' => $name]);
+    if ($translations !== null) {
+        save_workout_type_translations($pdo, (int) ($created['id'] ?? 0), $translations);
+    }
     audit_log($pdo, $actorUserId, 'workout_type_created', 'workout_type', (string) ($created['id'] ?? ''), 'Workout type created from daily log.', null, audit_snapshot($created));
 
     return $created !== null ? (int) $created['id'] : null;
@@ -5185,11 +5514,15 @@ function deactivate_workout_type(PDO $pdo, int $typeId, int $actorUserId): void
     audit_log($pdo, $actorUserId, 'workout_type_deactivated', 'workout_type', (string) $typeId, 'Workout type deactivated.', audit_snapshot($before), audit_snapshot($after));
 }
 
-function rename_workout_type(PDO $pdo, int $typeId, string $name, bool $active, int $actorUserId): void
+function rename_workout_type(PDO $pdo, int $typeId, string $name, bool $active, int $actorUserId, mixed $rawTranslations = null): void
 {
     $name = trim($name);
+    $translations = is_array($rawTranslations) ? normalize_workout_type_translations_input($rawTranslations, $name) : null;
+    if ($translations !== null) {
+        $name = trim((string) ($translations['en']['name'] ?? $name));
+    }
     if ($name === '') {
-        return;
+        throw new InvalidArgumentException(t('admin.workout_type_name_required'));
     }
     $before = db_fetch_one($pdo, 'SELECT * FROM workout_types WHERE id = :id', [':id' => $typeId]);
     if ($before === null) {
@@ -5201,6 +5534,9 @@ function rename_workout_type(PDO $pdo, int $typeId, string $name, bool $active, 
         'UPDATE workout_types SET name = :name, active = :active, updated_at = :updated_at WHERE id = :id',
         [':name' => $name, ':active' => $active ? 1 : 0, ':updated_at' => now_iso(), ':id' => $typeId]
     );
+    if ($translations !== null) {
+        save_workout_type_translations($pdo, $typeId, $translations);
+    }
     $after = db_fetch_one($pdo, 'SELECT * FROM workout_types WHERE id = :id', [':id' => $typeId]);
     audit_log($pdo, $actorUserId, 'workout_type_updated', 'workout_type', (string) $typeId, 'Workout type updated.', audit_snapshot($before), audit_snapshot($after));
 }
@@ -5340,13 +5676,86 @@ function list_challenge_archives(PDO $pdo): array
 {
     backfill_challenge_archives_from_audit($pdo);
 
-    return db_fetch_all(
+    $rows = db_fetch_all(
         $pdo,
-        'SELECT ca.*, u.display_name AS archived_by_name
+        'SELECT ca.*, u.display_name AS archived_by_name, restored.display_name AS last_restored_by_name
          FROM challenge_archives ca
          LEFT JOIN users u ON u.id = ca.archived_by
+         LEFT JOIN users restored ON restored.id = ca.last_restored_by
          ORDER BY ca.archived_at DESC, ca.id DESC'
     );
+
+    foreach ($rows as &$row) {
+        $row['summary'] = challenge_period_summary(
+            $pdo,
+            (string) ($row['challenge_start'] ?? ''),
+            (string) ($row['challenge_end'] ?? '')
+        );
+    }
+    unset($row);
+
+    return $rows;
+}
+
+function challenge_period_summary(PDO $pdo, string $startDate, string $endDate): array
+{
+    $start = to_date($startDate);
+    $end = to_date($endDate, $start);
+    if ($end < $start) {
+        [$start, $end] = [$end, $start];
+    }
+
+    $logSummary = db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS entries,
+                COUNT(DISTINCT user_id) AS members,
+                COALESCE(SUM(steps), 0) AS steps,
+                COALESCE(SUM(COALESCE(base_distance_km, distance_km, 0)), 0) AS distance_km
+         FROM daily_logs
+         WHERE log_date BETWEEN :start AND :end',
+        [':start' => $start, ':end' => $end]
+    ) ?? [];
+    $workoutSummary = db_fetch_one(
+        $pdo,
+        'SELECT COALESCE(SUM(
+                    CASE
+                        WHEN COALESCE(workouts.workout_count, 0) > 0 THEN workouts.workout_count
+                        ELSE (CASE WHEN dl.workout_done = 1 THEN 1 ELSE 0 END)
+                           + (CASE WHEN dl.extra_workout = 1 THEN 1 ELSE 0 END)
+                    END
+                ), 0) AS workouts
+         FROM daily_logs dl
+         LEFT JOIN (
+             SELECT log_id, COUNT(*) AS workout_count
+             FROM daily_log_workouts
+             GROUP BY log_id
+         ) workouts ON workouts.log_id = dl.id
+         WHERE dl.log_date BETWEEN :start AND :end',
+        [':start' => $start, ':end' => $end]
+    ) ?? [];
+    $photoSummary = db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS photos FROM photo_entries WHERE log_date BETWEEN :start AND :end',
+        [':start' => $start, ':end' => $end]
+    ) ?? [];
+
+    try {
+        $days = (new DateTimeImmutable($start))->diff(new DateTimeImmutable($end))->days + 1;
+    } catch (Throwable) {
+        $days = 1;
+    }
+
+    return [
+        'start' => $start,
+        'end' => $end,
+        'days' => max(1, (int) $days),
+        'entries' => (int) ($logSummary['entries'] ?? 0),
+        'members' => (int) ($logSummary['members'] ?? 0),
+        'steps' => (int) ($logSummary['steps'] ?? 0),
+        'distance_km' => round((float) ($logSummary['distance_km'] ?? 0), 2),
+        'workouts' => (int) ($workoutSummary['workouts'] ?? 0),
+        'photos' => (int) ($photoSummary['photos'] ?? 0),
+    ];
 }
 
 function archive_challenge(PDO $pdo, int $actorUserId): void
@@ -5394,31 +5803,64 @@ function reactivate_challenge(PDO $pdo, int $archiveId, int $actorUserId): bool
         return false;
     }
 
-    $current = db_fetch_one($pdo, 'SELECT * FROM challenge_settings WHERE id = 1');
-    if ($current !== null && (int) ($current['active'] ?? 1) === 1 && empty($current['deleted_at'])) {
-        archive_challenge($pdo, $actorUserId);
+    $startedTransaction = !$pdo->inTransaction();
+    if ($startedTransaction) {
+        $pdo->beginTransaction();
     }
 
-    update_challenge_settings(
-        $pdo,
-        (string) ($archive['challenge_name'] ?? 'Fitness Challenge'),
-        (string) ($archive['challenge_start'] ?? to_date(null)),
-        (string) ($archive['challenge_end'] ?? to_date(null)),
-        $actorUserId
-    );
+    try {
+        $current = db_fetch_one($pdo, 'SELECT * FROM challenge_settings WHERE id = 1');
+        $isAlreadyCurrent = $current !== null
+            && (int) ($current['active'] ?? 1) === 1
+            && empty($current['deleted_at'])
+            && (string) ($current['challenge_name'] ?? '') === (string) ($archive['challenge_name'] ?? '')
+            && (string) ($current['challenge_start'] ?? '') === (string) ($archive['challenge_start'] ?? '')
+            && (string) ($current['challenge_end'] ?? '') === (string) ($archive['challenge_end'] ?? '');
 
-    db_execute($pdo, 'DELETE FROM challenge_archives WHERE id = :id', [':id' => $archiveId]);
+        if (!$isAlreadyCurrent && $current !== null && (int) ($current['active'] ?? 1) === 1 && empty($current['deleted_at'])) {
+            archive_challenge($pdo, $actorUserId);
+        }
 
-    audit_log(
-        $pdo,
-        $actorUserId,
-        'challenge_reactivated',
-        'challenge_settings',
-        '1',
-        'Challenge reactivated from archive.',
-        audit_snapshot($archive),
-        audit_snapshot(db_fetch_one($pdo, 'SELECT * FROM challenge_settings WHERE id = 1'))
-    );
+        if (!$isAlreadyCurrent) {
+            update_challenge_settings(
+                $pdo,
+                (string) ($archive['challenge_name'] ?? 'Fitness Challenge'),
+                (string) ($archive['challenge_start'] ?? to_date(null)),
+                (string) ($archive['challenge_end'] ?? to_date(null)),
+                $actorUserId
+            );
+        }
+
+        db_execute(
+            $pdo,
+            'UPDATE challenge_archives
+             SET restore_count = restore_count + 1,
+                 last_restored_at = :last_restored_at,
+                 last_restored_by = :last_restored_by
+             WHERE id = :id',
+            [':last_restored_at' => now_iso(), ':last_restored_by' => $actorUserId, ':id' => $archiveId]
+        );
+
+        audit_log(
+            $pdo,
+            $actorUserId,
+            'challenge_reactivated',
+            'challenge_settings',
+            '1',
+            $isAlreadyCurrent ? 'Challenge archive was already active.' : 'Challenge reactivated from archive.',
+            audit_snapshot($archive),
+            audit_snapshot(db_fetch_one($pdo, 'SELECT * FROM challenge_settings WHERE id = 1'))
+        );
+
+        if ($startedTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $e) {
+        if ($startedTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
 
     return true;
 }
@@ -5642,8 +6084,7 @@ function list_achievements_for_admin(PDO $pdo): array
              ORDER BY rr.id DESC
              LIMIT 1
           )
-          WHERE a.active = 1
-          ORDER BY a.created_at DESC, a.name ASC'
+          ORDER BY a.active DESC, a.created_at DESC, a.name ASC'
     ));
 }
 
@@ -9598,7 +10039,7 @@ function integration_runtime_lease_is_active(PDO $pdo, string $service): bool
 
 function integration_runtime_redact_error(PDO $pdo, string $message): string
 {
-    foreach (['telegram_bot_token', 'notion_token', 'notion_oauth_client_secret'] as $settingKey) {
+    foreach (['telegram_bot_token', 'notion_token', 'notion_oauth_client_secret', 'media_search_google_api_key', 'media_search_youtube_api_key'] as $settingKey) {
         $secret = trim((string) (app_setting($pdo, $settingKey, '') ?? ''));
         if ($secret !== '') {
             $message = str_replace($secret, '[redacted]', $message);

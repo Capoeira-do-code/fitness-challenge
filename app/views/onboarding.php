@@ -5,7 +5,7 @@ declare(strict_types=1);
 $step = (string) ($onboardingStep ?? 'goals');
 $stepIndex = (int) ($onboardingStepIndex ?? 0);
 $furthestStepIndex = max($stepIndex, (int) ($onboardingFurthestIndex ?? $stepIndex));
-$steps = (array) ($onboardingSteps ?? ['goals', 'profile', 'privacy', 'telegram', 'challenge', 'teams']);
+$steps = (array) ($onboardingSteps ?? ['goals', 'profile', 'privacy', 'telegram', 'challenge', 'teams', 'install']);
 $totalSteps = count($steps);
 $profileAvatarUrl = avatar_url($currentUser);
 $profileCoverPath = trim((string) ($currentUser['profile_cover_path'] ?? ''));
@@ -47,6 +47,13 @@ $onboardingChallengeTypeCandidate = (string) ($onboardingGoal['target_type'] ?? 
 $onboardingChallengeType = in_array($onboardingChallengeTypeCandidate, ['steps', 'km', 'workouts'], true)
     ? $onboardingChallengeTypeCandidate
     : 'steps';
+$onboardingInstallUrl = request_app_base_url();
+$onboardingAppName = trim((string) (app_setting($GLOBALS['pdo'], 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge')) ?? 'Fitness Challenge'));
+$onboardingAppName = $onboardingAppName !== '' ? $onboardingAppName : 'Fitness Challenge';
+$onboardingAppIconPath = trim((string) (app_setting($GLOBALS['pdo'], 'app_icon_path', '') ?? ''));
+$onboardingAppIconUrl = $onboardingAppIconPath !== '' && resolve_media_storage_path((array) $config, $onboardingAppIconPath) !== null
+    ? '/?page=app_icon'
+    : '/?page=app_icon_default&size=192';
 try {
     $defaultChallengeDate = (new DateTimeImmutable('+30 days'))->format('Y-m-d');
 } catch (Throwable) {
@@ -81,7 +88,7 @@ try {
 
     <article class="onboarding-card onboarding-card-<?= e($step) ?>">
         <div class="onboarding-step-copy">
-            <span class="onboarding-step-icon" aria-hidden="true"><?= activity_icon_svg(match ($step) { 'profile' => 'image', 'privacy' => 'shield', 'telegram' => 'bell', 'challenge' => 'target', 'teams' => 'users', default => 'analytics' }) ?></span>
+            <span class="onboarding-step-icon" aria-hidden="true"><?= activity_icon_svg(match ($step) { 'profile' => 'image', 'privacy' => 'shield', 'telegram' => 'bell', 'challenge' => 'target', 'teams' => 'users', 'install' => 'plus', default => 'analytics' }) ?></span>
             <div><p class="eyebrow"><?= e(t('onboarding.step_count', ['current' => $stepIndex + 1, 'total' => $totalSteps])) ?></p><h2><?= e(t('onboarding.' . $step . '_title')) ?></h2><p><?= e(t('onboarding.' . $step . '_hint')) ?></p></div>
         </div>
 
@@ -233,11 +240,46 @@ try {
                     </div>
                     <p class="onboarding-team-note"><?= e(t('onboarding.teams_multiple_hint')) ?></p>
                 <?php endif; ?>
+            <?php elseif ($step === 'install'): ?>
+                <div class="onboarding-install" data-pwa-install-reminder data-install-default-label="<?= e(t('onboarding.install_not_installed')) ?>" data-install-ready-label="<?= e(t('onboarding.install_ready')) ?>" data-install-installed-label="<?= e(t('onboarding.install_installed')) ?>">
+                    <section class="onboarding-install-hero">
+                        <div class="onboarding-install-phone" aria-hidden="true">
+                            <span class="onboarding-install-phone-speaker"></span>
+                            <span class="onboarding-install-app-icon"><img src="<?= e($onboardingAppIconUrl) ?>" alt=""></span>
+                            <span class="onboarding-install-app-name"><?= e($onboardingAppName) ?></span>
+                            <span class="onboarding-install-app-bars"><i></i><i></i><i></i></span>
+                        </div>
+                        <div class="onboarding-install-copy">
+                            <span class="onboarding-install-status" data-pwa-install-status><i aria-hidden="true"></i><b><?= e(t('onboarding.install_not_installed')) ?></b></span>
+                            <h3><?= e(t('onboarding.install_app_title')) ?></h3>
+                            <p><?= e(t('onboarding.install_app_hint')) ?></p>
+                            <button class="btn btn-primary onboarding-install-native" type="button" data-pwa-install-button hidden><span aria-hidden="true">＋</span><?= e(t('onboarding.install_now')) ?></button>
+                        </div>
+                    </section>
+
+                    <section class="onboarding-install-instructions" data-pwa-install-instructions="ios" hidden>
+                        <div class="onboarding-install-instruction-head"><span aria-hidden="true"></span><div><strong><?= e(t('onboarding.install_ios_title')) ?></strong><small><?= e(t('onboarding.install_ios_hint')) ?></small></div></div>
+                        <ol><li><b>1</b><span><?= e(t('onboarding.install_ios_step_share')) ?></span><i aria-hidden="true">□↑</i></li><li><b>2</b><span><?= e(t('onboarding.install_ios_step_home')) ?></span><i aria-hidden="true">＋</i></li><li><b>3</b><span><?= e(t('onboarding.install_ios_step_confirm')) ?></span><i aria-hidden="true">✓</i></li></ol>
+                    </section>
+
+                    <section class="onboarding-install-instructions" data-pwa-install-instructions="android" hidden>
+                        <div class="onboarding-install-instruction-head"><span aria-hidden="true"><?= activity_icon_svg('plus') ?></span><div><strong><?= e(t('onboarding.install_android_title')) ?></strong><small><?= e(t('onboarding.install_android_hint')) ?></small></div></div>
+                        <ol><li><b>1</b><span><?= e(t('onboarding.install_android_step_menu')) ?></span><i aria-hidden="true">⋮</i></li><li><b>2</b><span><?= e(t('onboarding.install_android_step_install')) ?></span><i aria-hidden="true">＋</i></li></ol>
+                    </section>
+
+                    <section class="onboarding-install-instructions onboarding-install-desktop" data-pwa-install-instructions="desktop" hidden>
+                        <div class="onboarding-install-instruction-head"><span aria-hidden="true"><?= activity_icon_svg('link') ?></span><div><strong><?= e(t('onboarding.install_phone_title')) ?></strong><small><?= e(t('onboarding.install_phone_hint')) ?></small></div></div>
+                        <div class="onboarding-install-url"><input type="text" readonly value="<?= e($onboardingInstallUrl) ?>" data-pwa-install-url><button type="button" data-pwa-copy-url data-copy-label="<?= e(t('admin.invite_copy')) ?>" data-copied-label="<?= e(t('admin.invite_copied')) ?>"><?= e(t('admin.invite_copy')) ?></button></div>
+                    </section>
+
+                    <section class="onboarding-install-done" data-pwa-install-done hidden><span aria-hidden="true"><?= activity_icon_svg('check') ?></span><div><strong><?= e(t('onboarding.install_done_title')) ?></strong><small><?= e(t('onboarding.install_done_hint')) ?></small></div></section>
+                    <p class="onboarding-install-note"><span aria-hidden="true"><?= activity_icon_svg('spark') ?></span><?= e(t('onboarding.install_optional_hint')) ?></p>
+                </div>
             <?php endif; ?>
 
             <div class="onboarding-actions">
-                <button class="btn btn-ghost" type="submit" name="action" value="skip_onboarding_step" formnovalidate><?= e($step === 'teams' ? t('onboarding.no_team') : t('onboarding.do_later')) ?></button>
-                <button class="btn btn-primary" type="submit" name="action" value="save_onboarding_step"><?= e($step === 'teams' ? t('onboarding.finish') : t('common.continue')) ?></button>
+                <button class="btn btn-ghost" type="submit" name="action" value="skip_onboarding_step" formnovalidate><?= e($step === 'teams' ? t('onboarding.no_team') : ($step === 'install' ? t('onboarding.install_not_now') : t('onboarding.do_later'))) ?></button>
+                <button class="btn btn-primary" type="submit" name="action" value="save_onboarding_step"><?= e($step === 'install' ? t('onboarding.finish') : t('common.continue')) ?></button>
             </div>
             <p class="onboarding-later-note"><?= e(t('onboarding.later_note')) ?></p>
         </form>

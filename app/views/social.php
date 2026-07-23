@@ -5,6 +5,7 @@ declare(strict_types=1);
 $section = (string) ($socialSection ?? '');
 $teams = array_values((array) ($socialTeams ?? []));
 $teamMembers = array_values((array) ($socialTeamMembers ?? []));
+$teamMembersByTeam = is_array($socialTeamMembersByTeam ?? null) ? (array) $socialTeamMembersByTeam : [];
 $friends = array_values((array) ($socialFriends ?? []));
 $friendRequests = array_values((array) ($socialFriendRequests ?? []));
 $duels = (array) ($socialDuelsSummary ?? []);
@@ -38,6 +39,23 @@ $avatar = static function (array $person, string $class = ''): void {
         ?><img class="<?= e($className) ?>" src="<?= e($url) ?>" alt="<?= e($name) ?>" loading="lazy"><?php
     } else {
         ?><span class="<?= e($className) ?>" aria-label="<?= e($name) ?>"><?= e(initials_for($name)) ?></span><?php
+    }
+};
+$coverUrl = static function (array $person): string {
+    $path = trim((string) ($person['profile_cover_path'] ?? ''));
+    return $path !== '' ? media_thumbnail_url($path, 720) : '';
+};
+$teamMediaUrl = static function (array $team, string $field): string {
+    $path = trim((string) ($team[$field] ?? ''));
+    return $path !== '' ? media_thumbnail_url($path, $field === 'icon_path' ? 160 : 720) : '';
+};
+$teamIcon = static function (array $team, string $class = 'social-team-list-mark') use ($teamMediaUrl): void {
+    $name = (string) ($team['name'] ?? t('nav.team'));
+    $url = $teamMediaUrl($team, 'icon_path');
+    if ($url !== '') {
+        ?><span class="<?= e($class) ?> has-image"><img src="<?= e($url) ?>" alt="<?= e($name) ?>" loading="lazy"></span><?php
+    } else {
+        ?><span class="<?= e($class) ?>" aria-hidden="true"><?= e(initials_for($name)) ?></span><?php
     }
 };
 
@@ -78,44 +96,49 @@ $row = static function (string $href, string $icon, string $title, string $descr
         </nav>
 
         <div class="social-dashboard-grid">
-            <?php $primaryTeam = $teams[0] ?? null; ?>
             <article class="social-overview-card compact-panel glass-panel social-team-overview">
-                <div class="social-card-head"><div><p class="eyebrow"><?= e(t('social_hub.your_team')) ?></p><h2><?= e(is_array($primaryTeam) ? (string) ($primaryTeam['name'] ?? t('social_hub.teams')) : t('social_hub.teams')) ?></h2></div><a href="/?page=social&amp;section=team"><?= e(t('common.view_all')) ?></a></div>
-                <?php if ($teamCount > 1): ?>
-                    <div class="social-team-list">
+                <div class="social-card-head"><div><h2><?= e(t('social_hub.teams')) ?></h2></div><a href="/?page=social&amp;section=team"><?= e(t('common.view_all')) ?></a></div>
+                <?php if ($teams !== []): ?>
+                    <div class="social-team-overview-list">
                         <?php foreach ($teams as $socialTeam): ?>
-                            <a href="/?page=team&amp;team_id=<?= (int) ($socialTeam['id'] ?? 0) ?>">
-                                <span class="social-team-list-mark" aria-hidden="true"><?= e(initials_for((string) ($socialTeam['name'] ?? t('nav.team')))) ?></span>
-                                <span><strong><?= e((string) ($socialTeam['name'] ?? '')) ?></strong><small><?= e(t('social_hub.members_count', ['count' => (string) ((int) ($socialTeam['member_count'] ?? 0))])) ?></small></span>
-                                <span aria-hidden="true">&rsaquo;</span>
-                            </a>
+                            <?php
+                            $socialTeamId = (int) ($socialTeam['id'] ?? 0);
+                            $socialTeamMembers = array_values((array) ($teamMembersByTeam[$socialTeamId] ?? ($socialTeamId === (int) ($teams[0]['id'] ?? 0) ? $teamMembers : [])));
+                            $socialTeamMemberCount = max(count($socialTeamMembers), (int) ($socialTeam['member_count'] ?? 0));
+                            $socialTeamMemberLabel = t($socialTeamMemberCount === 1 ? 'social_hub.member_count_one' : 'social_hub.members_count', ['count' => $socialTeamMemberCount]);
+                            $socialTeamCoverUrl = $teamMediaUrl($socialTeam, 'cover_path');
+                            $visibleSocialTeamMembers = array_slice($socialTeamMembers, 0, 6);
+                            ?>
+                            <article class="social-team-summary-card<?= $socialTeamCoverUrl !== '' ? ' has-cover' : '' ?>">
+                                <?php if ($socialTeamCoverUrl !== ''): ?><img class="social-team-summary-cover" src="<?= e($socialTeamCoverUrl) ?>" alt="" loading="lazy" aria-hidden="true"><?php endif; ?>
+                                <a class="social-team-summary-identity" href="/?page=team&amp;team_id=<?= $socialTeamId ?>" data-spa-link>
+                                    <?php $teamIcon($socialTeam, 'social-team-summary-icon'); ?>
+                                    <span><strong><?= e((string) ($socialTeam['name'] ?? '')) ?></strong><small><?= e(t('common.open')) ?></small></span>
+                                    <b aria-hidden="true">&rsaquo;</b>
+                                </a>
+                                <footer class="social-team-summary-members">
+                                    <div class="social-avatar-list" aria-label="<?= e(t('team.members')) ?>">
+                                        <?php foreach ($visibleSocialTeamMembers as $member): ?>
+                                            <a href="/?page=profile&amp;user_id=<?= (int) ($member['user_id'] ?? 0) ?>&amp;back=social" title="<?= e((string) ($member['display_name'] ?? '')) ?>" data-spa-link><?php $avatar($member); ?></a>
+                                        <?php endforeach; ?>
+                                        <?php if ($socialTeamMemberCount > count($visibleSocialTeamMembers)): ?><span class="social-avatar-more" aria-label="<?= e(t('social_hub.more_members', ['count' => $socialTeamMemberCount - count($visibleSocialTeamMembers)])) ?>">+<?= $socialTeamMemberCount - count($visibleSocialTeamMembers) ?></span><?php endif; ?>
+                                    </div>
+                                    <strong><?= e($socialTeamMemberLabel) ?></strong>
+                                </footer>
+                            </article>
                         <?php endforeach; ?>
                     </div>
-                <?php elseif (is_array($primaryTeam)): ?>
-                    <a class="social-featured-row" href="/?page=team&amp;team_id=<?= (int) ($primaryTeam['id'] ?? 0) ?>">
-                        <span class="social-featured-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span>
-                        <span><strong><?= e(t('social_hub.members_count', ['count' => (string) ((int) ($primaryTeam['member_count'] ?? count($teamMembers)))])) ?></strong><small><?= e(t('social_hub.team_hint')) ?></small></span>
-                        <span aria-hidden="true">&rsaquo;</span>
-                    </a>
-                    <?php if ($teamMembers !== []): ?>
-                        <div class="social-avatar-list" aria-label="<?= e(t('team.members')) ?>">
-                            <?php foreach (array_slice($teamMembers, 0, 4) as $member): ?>
-                                <a href="/?page=profile&amp;user_id=<?= (int) ($member['user_id'] ?? 0) ?>&amp;back=social" title="<?= e((string) ($member['display_name'] ?? '')) ?>"><?php $avatar($member); ?></a>
-                            <?php endforeach; ?>
-                            <?php if (count($teamMembers) > 4): ?><span class="social-avatar-more">+<?= count($teamMembers) - 4 ?></span><?php endif; ?>
-                        </div>
-                    <?php endif; ?>
                 <?php else: ?>
                     <div class="social-inline-empty"><span aria-hidden="true"><?= activity_icon_svg('users') ?></span><p><?= e(t('social_hub.team_empty')) ?></p><a href="/?page=team"><?= e(t('common.open')) ?></a></div>
                 <?php endif; ?>
             </article>
 
             <article class="social-overview-card compact-panel glass-panel social-competition-overview">
-                <div class="social-card-head"><div><p class="eyebrow"><?= e(t('social_hub.competition_status')) ?></p><h2><?= e(t('social_hub.section_competition')) ?></h2></div><a href="/?page=social&amp;section=competition"><?= e(t('common.view_all')) ?></a></div>
+                <div class="social-card-head"><div><h2><?= e(t('social_hub.section_competition')) ?></h2></div><a href="/?page=social&amp;section=competition"><?= e(t('common.view_all')) ?></a></div>
                 <div class="social-competition-metrics">
-                    <a href="/?page=duels"><strong><?= (int) ($duels['active'] ?? 0) ?></strong><small><?= e(t('duels.active')) ?></small></a>
-                    <a href="/?page=competitions"><strong><?= (int) ($competitions['active'] ?? 0) ?></strong><small><?= e(t('competitions.active')) ?></small></a>
-                    <a href="/?page=social&amp;section=competition"><strong><?= $competitionPending ?></strong><small><?= e(t('common.pending')) ?></small></a>
+                    <a href="/?page=duels" data-tone="duel"><span class="social-competition-stat-icon" aria-hidden="true"><?= activity_icon_svg('sword') ?></span><span class="social-competition-stat-copy"><strong><?= (int) ($duels['active'] ?? 0) ?></strong><small><?= e(t('social_hub.duels_short')) ?></small></span></a>
+                    <a href="/?page=competitions" data-tone="team"><span class="social-competition-stat-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><span class="social-competition-stat-copy"><strong><?= (int) ($competitions['active'] ?? 0) ?></strong><small><?= e(t('social_hub.competitions_short')) ?></small></span></a>
+                    <a href="/?page=social&amp;section=competition" data-tone="pending"><span class="social-competition-stat-icon" aria-hidden="true"><?= activity_icon_svg('bell') ?></span><span class="social-competition-stat-copy"><strong><?= $competitionPending ?></strong><small><?= e(t('common.pending')) ?></small></span></a>
                 </div>
             </article>
 
@@ -137,8 +160,14 @@ $row = static function (string $href, string $icon, string $title, string $descr
                 <div class="social-card-head"><div><p class="eyebrow"><?= e(t('social_hub.your_circle')) ?></p><h2><?= e(t('nav.friends')) ?></h2></div><?php if ($friendRequests !== []): ?><a class="social-request-badge" href="/?page=friends"><?= count($friendRequests) ?> <?= e(t('social_hub.requests')) ?></a><?php else: ?><a href="/?page=friends"><?= e(t('common.view_all')) ?></a><?php endif; ?></div>
                 <?php if ($friends !== []): ?>
                     <div class="social-people-list">
-                        <?php foreach (array_slice($friends, 0, 3) as $friend): ?>
-                            <a href="/?page=profile&amp;user_id=<?= (int) ($friend['id'] ?? 0) ?>&amp;back=social"><?php $avatar($friend); ?><span><strong><?= e((string) ($friend['display_name'] ?? '')) ?></strong><small>@<?= e((string) ($friend['username'] ?? '')) ?></small></span><span aria-hidden="true">&rsaquo;</span></a>
+                        <?php foreach ($friends as $friend): ?>
+                            <?php $friendCoverUrl = $coverUrl($friend); ?>
+                            <a class="social-person-row<?= $friendCoverUrl !== '' ? ' has-cover' : '' ?>" href="/?page=profile&amp;user_id=<?= (int) ($friend['id'] ?? 0) ?>&amp;back=social">
+                                <?php $avatar($friend); ?>
+                                <span class="social-person-copy"><strong><?= e((string) ($friend['display_name'] ?? '')) ?></strong><small>@<?= e((string) ($friend['username'] ?? '')) ?></small></span>
+                                <span class="social-person-chevron" aria-hidden="true">&rsaquo;</span>
+                                <?php if ($friendCoverUrl !== ''): ?><img class="social-person-cover" src="<?= e($friendCoverUrl) ?>" alt="" loading="lazy" aria-hidden="true"><?php endif; ?>
+                            </a>
                         <?php endforeach; ?>
                     </div>
                 <?php else: ?>
@@ -164,18 +193,34 @@ $row = static function (string $href, string $icon, string $title, string $descr
             </article>
         </div>
     <?php elseif ($section === 'team'): ?>
+        <details class="social-team-create-disclosure">
+            <summary><span aria-hidden="true"><?= activity_icon_svg('users') ?></span><strong><?= e(t('competitions.create_team')) ?></strong><span aria-hidden="true">+</span></summary>
+            <form method="post" action="/?page=social&amp;section=team" class="social-team-create-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="social_team_create">
+                <label><span><?= e(t('competitions.team_name')) ?></span><input type="text" name="name" maxlength="60" autocomplete="off" required></label>
+                <button class="btn btn-primary" type="submit"><?= e(t('competitions.create')) ?></button>
+            </form>
+        </details>
+        <?php if ($teams !== []): ?>
+            <div class="social-team-list social-team-section-list">
+                <?php foreach ($teams as $socialTeam): ?>
+                    <?php $socialTeamCoverUrl = $teamMediaUrl($socialTeam, 'cover_path'); ?>
+                    <a class="social-team-identity-row<?= $socialTeamCoverUrl !== '' ? ' has-cover' : '' ?>" href="/?page=team&amp;team_id=<?= (int) ($socialTeam['id'] ?? 0) ?>">
+                        <?php $teamIcon($socialTeam); ?>
+                        <span><strong><?= e((string) ($socialTeam['name'] ?? '')) ?></strong><small><?= e(t('social_hub.members_count', ['count' => (string) ((int) ($socialTeam['member_count'] ?? 0))])) ?></small></span>
+                        <span aria-hidden="true">&rsaquo;</span>
+                        <?php if ($socialTeamCoverUrl !== ''): ?><img class="social-team-row-cover" src="<?= e($socialTeamCoverUrl) ?>" alt="" loading="lazy" aria-hidden="true"><?php endif; ?>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
         <nav class="hierarchy-nav-list" aria-label="<?= e(t('social_hub.section_team')) ?>">
-            <?php foreach ($teams as $socialTeam): ?>
-                <?php $row('/?page=team&team_id=' . (int) ($socialTeam['id'] ?? 0), 'users', (string) ($socialTeam['name'] ?? t('nav.team')), t('social_hub.members_count', ['count' => (string) ((int) ($socialTeam['member_count'] ?? 0))]), '', 'blue'); ?>
-            <?php endforeach; ?>
             <?php if ($teams === []): ?>
                 <?php $row('/?page=team', 'users', t('nav.team'), t('social_hub.team_empty')); ?>
             <?php endif; ?>
             <?php $challengeTeamId = (int) (($teams[0] ?? [])['id'] ?? 0); ?>
             <?php $row($challengeTeamId > 0 ? '/?page=team&team_id=' . $challengeTeamId . '&section=challenge' : '/?page=challenges', 'target', t('team.mobile_challenge'), t('social_hub.challenges_hint'), '', 'orange'); ?>
-            <?php if (!empty($socialCanManageTeam)): ?>
-                <?php $row('/?page=team_settings&team_id=' . (int) ($socialManageableTeamId ?? 0), 'sliders', t('team.settings'), t('social_hub.team_settings_hint')); ?>
-            <?php endif; ?>
         </nav>
     <?php elseif ($section === 'community'): ?>
         <?php if ($galleryPreview !== []): ?>

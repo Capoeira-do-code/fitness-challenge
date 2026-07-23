@@ -44,6 +44,7 @@ require_once __DIR__ . '/i18n.php';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/services.php';
+require_once __DIR__ . '/profile_widgets.php';
 require_once __DIR__ . '/media_search.php';
 require_once __DIR__ . '/challenge.php';
 require_once __DIR__ . '/notion.php';
@@ -75,6 +76,7 @@ if (PHP_SAPI !== 'cli') {
 
 $pdo = db_connect($config);
 privacy_ensure_schema($pdo);
+profile_custom_widgets_ensure_schema($pdo);
 // Social achievements are evaluated from several routes, including dashboard
 // and team. Their backing tables must exist before route-level work starts.
 friends_ensure_schema($pdo);

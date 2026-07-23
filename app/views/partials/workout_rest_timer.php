@@ -35,7 +35,11 @@ $restTimerClock = sprintf('%02d:%02d', $restTimerMinutes, $restTimerSeconds);
         <small data-rest-timer-status aria-live="polite"><?= e(t('workouts.rest_ready_hint')) ?></small>
     </div>
     <button class="btn btn-primary workouts-rest-timer-toggle" type="button" data-rest-timer-toggle aria-label="<?= e(t('workouts.rest_start')) ?>">
-        <span aria-hidden="true" data-rest-timer-icon>&#9654;</span>
+        <span class="workouts-rest-timer-control-icon" aria-hidden="true" data-rest-timer-icon data-icon-state="play">
+            <span data-rest-icon="play"><?= activity_icon_svg('play') ?></span>
+            <span data-rest-icon="pause"><?= activity_icon_svg('pause') ?></span>
+            <span data-rest-icon="restart"><?= activity_icon_svg('restart') ?></span>
+        </span>
         <span data-rest-timer-toggle-label><?= e(t('workouts.rest_start')) ?></span>
     </button>
     <div class="workouts-rest-timer-actions">

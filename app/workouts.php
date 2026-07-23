@@ -2491,9 +2491,197 @@ function wk_set_update(PDO $pdo, int $setId, array $fields, ?int $userId = null)
     return db_execute($pdo, 'UPDATE workout_sets SET ' . implode(', ', $sets) . ' WHERE id = :id', $params);
 }
 
+/**
+ * Persist every visible set before a session action redirects the browser.
+ *
+ * @param array<int|string,array<string,mixed>> $draftSets
+ */
+function wk_session_update_draft_sets(PDO $pdo, int $sessionId, int $userId, array $draftSets): int
+{
+    if ($sessionId <= 0 || $draftSets === []) {
+        return 0;
+    }
+    $session = wk_session_get($pdo, $sessionId, $userId);
+    if ($session === null || (string) ($session['status'] ?? '') !== 'active') {
+        return 0;
+    }
+
+    $ownedRows = db_fetch_all(
+        $pdo,
+        'SELECT ws.id
+         FROM workout_sets ws
+         JOIN session_exercises se ON se.id = ws.session_exercise_id
+         WHERE se.session_id = :session',
+        [':session' => $sessionId]
+    );
+    $ownedIds = array_fill_keys(array_map(
+        static fn(array $row): int => (int) ($row['id'] ?? 0),
+        $ownedRows
+    ), true);
+    $updated = 0;
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        foreach ($draftSets as $rawSetId => $draft) {
+            $setId = (int) $rawSetId;
+            if ($setId <= 0 || !isset($ownedIds[$setId]) || !is_array($draft)) {
+                continue;
+            }
+            $duration = '';
+            if (trim((string) ($draft['duration_minutes'] ?? '')) !== '') {
+                $duration = (int) round(max(0.0, (float) $draft['duration_minutes']) * 60);
+            } elseif (trim((string) ($draft['duration_seconds'] ?? '')) !== '') {
+                $duration = max(0, (int) $draft['duration_seconds']);
+            }
+            $fields = [
+                'reps' => $draft['reps'] ?? '',
+                'weight' => $draft['weight'] ?? '',
+                'duration' => $duration,
+                'distance' => $draft['distance'] ?? '',
+                'completed' => (int) ($draft['completed'] ?? 0),
+            ];
+            if (wk_set_update($pdo, $setId, $fields)) {
+                $updated++;
+            }
+        }
+        db_execute(
+            $pdo,
+            'UPDATE workout_sessions SET updated_at = :now WHERE id = :session AND user_id = :user',
+            [':now' => now_iso(), ':session' => $sessionId, ':user' => $userId]
+        );
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+
+    return $updated;
+}
+
+/**
+ * Return the sets from the most recent completed session for each exercise.
+ *
+ * @param array<int,int|string> $exerciseDefIds
+ * @return array<int,array<int,array<string,mixed>>>
+ */
+function wk_last_completed_sets_for_exercises(
+    PDO $pdo,
+    int $userId,
+    array $exerciseDefIds,
+    int $excludeSessionId = 0
+): array {
+    $ids = array_values(array_unique(array_filter(array_map('intval', $exerciseDefIds), static fn(int $id): bool => $id > 0)));
+    if ($ids === []) {
+        return [];
+    }
+    $params = [':user' => $userId, ':excluded' => $excludeSessionId];
+    $placeholders = [];
+    foreach ($ids as $index => $id) {
+        $key = ':exercise_' . $index;
+        $placeholders[] = $key;
+        $params[$key] = $id;
+    }
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT se.exercise_def_id, s.id AS session_id, ws.set_index,
+                ws.reps, ws.weight, ws.duration, ws.distance
+         FROM workout_sessions s
+         JOIN session_exercises se ON se.session_id = s.id
+         JOIN workout_sets ws ON ws.session_exercise_id = se.id
+         WHERE s.user_id = :user
+           AND s.status = \'completed\'
+           AND s.id != :excluded
+           AND ws.completed = 1
+           AND se.exercise_def_id IN (' . implode(', ', $placeholders) . ')
+         ORDER BY se.exercise_def_id ASC,
+                  COALESCE(s.ended_at, s.started_at) DESC,
+                  s.id DESC,
+                  ws.set_index ASC,
+                  ws.id ASC',
+        $params
+    );
+
+    $result = [];
+    $latestSessionByExercise = [];
+    foreach ($rows as $row) {
+        $exerciseId = (int) ($row['exercise_def_id'] ?? 0);
+        $rowSessionId = (int) ($row['session_id'] ?? 0);
+        if (!isset($latestSessionByExercise[$exerciseId])) {
+            $latestSessionByExercise[$exerciseId] = $rowSessionId;
+        }
+        if ($latestSessionByExercise[$exerciseId] !== $rowSessionId) {
+            continue;
+        }
+        $result[$exerciseId][(int) ($row['set_index'] ?? 1)] = $row;
+    }
+
+    return $result;
+}
+
 function wk_set_delete(PDO $pdo, int $setId): bool
 {
     return db_execute($pdo, 'DELETE FROM workout_sets WHERE id = :id', [':id' => $setId]);
+}
+
+function wk_set_delete_for_user(PDO $pdo, int $setId, int $userId): bool
+{
+    $row = db_fetch_one(
+        $pdo,
+        'SELECT ws.id, ws.session_exercise_id
+         FROM workout_sets ws
+         JOIN session_exercises se ON se.id = ws.session_exercise_id
+         JOIN workout_sessions s ON s.id = se.session_id
+         WHERE ws.id = :set_id AND s.user_id = :user_id AND s.status = \'active\'',
+        [':set_id' => $setId, ':user_id' => $userId]
+    );
+    if ($row === null) {
+        return false;
+    }
+    $sessionExerciseId = (int) ($row['session_exercise_id'] ?? 0);
+    $setCount = db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS total FROM workout_sets WHERE session_exercise_id = :session_exercise',
+        [':session_exercise' => $sessionExerciseId]
+    );
+    if ((int) ($setCount['total'] ?? 0) <= 1) {
+        return false;
+    }
+
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        db_execute($pdo, 'DELETE FROM workout_sets WHERE id = :id', [':id' => $setId]);
+        $remaining = db_fetch_all(
+            $pdo,
+            'SELECT id FROM workout_sets WHERE session_exercise_id = :session_exercise ORDER BY set_index ASC, id ASC',
+            [':session_exercise' => $sessionExerciseId]
+        );
+        foreach ($remaining as $index => $remainingSet) {
+            db_execute(
+                $pdo,
+                'UPDATE workout_sets SET set_index = :set_index WHERE id = :id',
+                [':set_index' => $index + 1, ':id' => (int) ($remainingSet['id'] ?? 0)]
+            );
+        }
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+
+    return true;
 }
 
 /** Finish a session: mark completed, compute volume, refresh PRs. */
@@ -2753,22 +2941,62 @@ function wk_rank_from_score(float $score): array
     ];
 }
 
-function wk_user_bodyweight(PDO $pdo, int $userId): ?float
+/**
+ * Latest measured bodyweight. Target weight is intentionally excluded: using a
+ * goal as if it were a measurement would make the competitive score editable.
+ *
+ * @return array{weight:float,log_date:string,recent:bool,max_age_days:int}|null
+ */
+function wk_user_bodyweight_record(PDO $pdo, int $userId, int $maxAgeDays = 180): ?array
 {
     $row = db_fetch_one(
         $pdo,
-        'SELECT weight FROM daily_logs
+        'SELECT weight, log_date FROM daily_logs
          WHERE user_id = :u AND weight IS NOT NULL AND weight > 0
+           AND log_date <= date("now", "localtime")
          ORDER BY log_date DESC, id DESC LIMIT 1',
         [':u' => $userId]
     );
-    if ($row !== null && (float) ($row['weight'] ?? 0) > 0) {
-        return (float) $row['weight'];
+    if ($row === null || (float) ($row['weight'] ?? 0) <= 0) {
+        return null;
     }
-    $user = db_fetch_one($pdo, 'SELECT ideal_weight FROM users WHERE id = :u', [':u' => $userId]);
-    $ideal = (float) ($user['ideal_weight'] ?? 0);
 
-    return $ideal > 0 ? $ideal : null;
+    $logDate = trim((string) ($row['log_date'] ?? ''));
+    $cutoff = (new DateTimeImmutable('today'))->modify('-' . max(1, $maxAgeDays) . ' days')->format('Y-m-d');
+
+    return [
+        'weight' => (float) $row['weight'],
+        'log_date' => $logDate,
+        'recent' => $logDate !== '' && $logDate >= $cutoff,
+        'max_age_days' => max(1, $maxAgeDays),
+    ];
+}
+
+function wk_user_bodyweight(PDO $pdo, int $userId): ?float
+{
+    $record = wk_user_bodyweight_record($pdo, $userId);
+
+    return $record !== null && $record['recent'] ? $record['weight'] : null;
+}
+
+/** @return array{bodyweight:?float,bodyweight_date:?string,bodyweight_recent:bool,height_cm:?float,division:string} */
+function wk_user_rank_profile(PDO $pdo, int $userId): array
+{
+    $user = db_fetch_one($pdo, 'SELECT height_cm, competitive_division FROM users WHERE id = :u', [':u' => $userId]) ?? [];
+    $record = wk_user_bodyweight_record($pdo, $userId);
+    $division = (string) ($user['competitive_division'] ?? 'open');
+    if (!in_array($division, ['open', 'women', 'men'], true)) {
+        $division = 'open';
+    }
+    $height = (float) ($user['height_cm'] ?? 0);
+
+    return [
+        'bodyweight' => $record !== null ? (float) $record['weight'] : null,
+        'bodyweight_date' => $record !== null ? (string) $record['log_date'] : null,
+        'bodyweight_recent' => $record !== null && (bool) $record['recent'],
+        'height_cm' => $height > 0 ? $height : null,
+        'division' => $division,
+    ];
 }
 
 /** @return array<int,array<string,mixed>> */
@@ -2785,7 +3013,8 @@ function wk_exercise_ranks_for_user(PDO $pdo, int $userId): array
     foreach ($records as $record) {
         $byExercise[(int) $record['exercise_def_id']][(string) $record['metric']] = (float) $record['value'];
     }
-    $bodyweight = wk_user_bodyweight($pdo, $userId);
+    $weightRecord = wk_user_bodyweight_record($pdo, $userId);
+    $bodyweight = $weightRecord !== null && $weightRecord['recent'] ? (float) $weightRecord['weight'] : null;
     $result = [];
     foreach (wk_exercises_for_user($pdo, $userId) as $exercise) {
         $id = (int) $exercise['id'];
@@ -2798,24 +3027,56 @@ function wk_exercise_ranks_for_user(PDO $pdo, int $userId): array
         $metric = '';
         $value = 0.0;
         $requiresWeight = false;
+        $calculation = [
+            'method' => 'none',
+            'bodyweight' => $bodyweight,
+            'bodyweight_date' => $weightRecord['log_date'] ?? null,
+            'reference_weight' => 75.0,
+            'factor' => $factor,
+            'adjustment' => null,
+            'effective_load' => null,
+            'base_score' => null,
+        ];
         if ($rankable && $estOneRm > 0) {
             $metric = 'est_1rm';
             $value = $estOneRm;
             if ($bodyweight !== null && $bodyweight > 0) {
-                $score = ($estOneRm / ($bodyweight * $factor)) * 100;
+                $isBodyweight = (string) ($exercise['exercise_type'] ?? '') === 'bodyweight';
+                $effectiveLoad = $isBodyweight ? $bodyweight + $estOneRm : $estOneRm;
+                $adjustment = pow($bodyweight / 75.0, 1.0 / 3.0);
+                $baseScore = ($effectiveLoad / ($bodyweight * $factor)) * 100.0;
+                $score = min(220.0, $baseScore * $adjustment);
+                $calculation = array_merge($calculation, [
+                    'method' => $isBodyweight ? 'bodyweight_load' : 'allometric_1rm',
+                    'adjustment' => $adjustment,
+                    'effective_load' => $effectiveLoad,
+                    'base_score' => $baseScore,
+                ]);
             } else {
                 $requiresWeight = true;
             }
         } elseif ($rankable && $maxReps > 0 && in_array((string) ($exercise['exercise_type'] ?? ''), ['bodyweight', 'isometric'], true)) {
             $metric = 'max_reps';
             $value = $maxReps;
-            $score = min(220.0, $maxReps * 5.0);
+            if ($bodyweight !== null && $bodyweight > 0) {
+                $adjustment = pow($bodyweight / 75.0, 1.0 / 3.0);
+                $baseScore = ($maxReps * 5.0) / $factor;
+                $score = min(220.0, $baseScore * $adjustment);
+                $calculation = array_merge($calculation, [
+                    'method' => 'bodyweight_reps',
+                    'adjustment' => $adjustment,
+                    'base_score' => $baseScore,
+                ]);
+            } else {
+                $requiresWeight = true;
+            }
         }
         $exercise['rank'] = array_merge(wk_rank_from_score($score), [
             'metric' => $metric,
             'value' => $value,
             'requires_weight' => $requiresWeight,
             'rankable' => $rankable,
+            'calculation' => $calculation,
         ]);
         $result[] = $exercise;
     }
@@ -2881,9 +3142,22 @@ function wk_overall_rank_for_user(PDO $pdo, int $userId): array
 }
 
 /** @return array<int,array<string,mixed>> */
-function wk_rank_leaderboard(PDO $pdo, int $limit = 20): array
+function wk_rank_leaderboard(PDO $pdo, int $limit = 20, string $division = 'open'): array
 {
-    $users = db_fetch_all($pdo, 'SELECT id, display_name, username, avatar_path FROM users WHERE active = 1 ORDER BY display_name COLLATE NOCASE ASC');
+    $division = in_array($division, ['open', 'women', 'men'], true) ? $division : 'open';
+    $params = [];
+    $divisionSql = '';
+    if ($division !== 'open') {
+        $divisionSql = ' AND competitive_division = :division';
+        $params[':division'] = $division;
+    }
+    $users = db_fetch_all(
+        $pdo,
+        'SELECT id, display_name, username, avatar_path
+         FROM users WHERE active = 1' . $divisionSql . '
+         ORDER BY display_name COLLATE NOCASE ASC',
+        $params
+    );
     $rows = [];
     foreach ($users as $user) {
         $user['rank'] = wk_overall_rank_for_user($pdo, (int) $user['id']);

@@ -32,6 +32,7 @@ const routes = [
     ['entreno', 'workouts'],
     ['equipo', 'team'],
     ['logros', 'achievements'],
+    ['misiones', 'quests'],
     ['retos', 'challenges'],
     ['ajustes', 'settings'],
     ['notificaciones', 'notifications'],

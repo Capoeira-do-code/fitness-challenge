@@ -194,10 +194,15 @@ if ($settingsView === 'avatar') {
                 <input type="hidden" name="action" value="update_body_settings">
                 <div class="settings-group-head">
                     <span class="settings-group-icon" aria-hidden="true"><?= activity_icon_svg('sliders') ?></span>
-                    <div><h2><?= e(t('settings.weight_goal_title')) ?></h2><p class="muted small"><?= e(t('settings.weight_goal_hint')) ?></p></div>
+                    <div><h2><?= e(t('settings.body_profile_title')) ?></h2><p class="muted small"><?= e(t('settings.body_profile_hint')) ?></p></div>
                 </div>
-                <div class="settings-weight-goal-editor">
+                <div class="settings-body-profile-grid">
                     <label><span><?= e(t('metric.ideal_weight')) ?></span><span class="settings-weight-goal-input"><input type="number" name="ideal_weight" min="25" max="400" step="0.1" inputmode="decimal" value="<?= e((string) ($currentUser['ideal_weight'] ?? '')) ?>"><span aria-hidden="true">kg</span></span></label>
+                    <label><span><?= e(t('settings.height_cm')) ?></span><span class="settings-weight-goal-input"><input type="number" name="height_cm" min="100" max="250" step="0.1" inputmode="decimal" value="<?= e((string) ($currentUser['height_cm'] ?? '')) ?>"><span aria-hidden="true">cm</span></span></label>
+                    <label><span><?= e(t('settings.competitive_division')) ?></span><select name="competitive_division"><option value="open"<?= (string) ($currentUser['competitive_division'] ?? 'open') === 'open' ? ' selected' : '' ?>><?= e(t('workouts.rank_division_open')) ?></option><option value="women"<?= (string) ($currentUser['competitive_division'] ?? '') === 'women' ? ' selected' : '' ?>><?= e(t('workouts.rank_division_women')) ?></option><option value="men"<?= (string) ($currentUser['competitive_division'] ?? '') === 'men' ? ' selected' : '' ?>><?= e(t('workouts.rank_division_men')) ?></option></select></label>
+                </div>
+                <p class="settings-body-profile-note muted small"><?= e(t('settings.body_profile_privacy')) ?></p>
+                <div class="settings-body-profile-actions">
                     <button class="btn btn-primary" type="submit"><span aria-hidden="true"><?= activity_icon_svg('check') ?></span><strong><?= e(t('common.save')) ?></strong></button>
                 </div>
             </form>

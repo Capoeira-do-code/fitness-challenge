@@ -12,9 +12,13 @@ $seasonUserXpValue = (int) ($seasonUserXp ?? 0);
 $seasonUserPositionValue = ($seasonUserPosition ?? null) !== null ? (int) $seasonUserPosition : null;
 $seasonXpGap = max(0, $seasonTopXp - $seasonUserXpValue);
 $seasonUserProgress = $seasonTopXp > 0 ? min(100, (int) round(($seasonUserXpValue / $seasonTopXp) * 100)) : 0;
+$seasonCoverUrl = trim((string) ($season['cover_path'] ?? '')) !== '' ? media_url((string) $season['cover_path']) : '';
+$seasonIconKey = season_normalize_icon_key($season['icon_key'] ?? 'trophy');
+$seasonAccentColor = season_normalize_accent_color($season['accent_color'] ?? '#8b5cf6');
 ?>
 <section class="screen stack-lg season-ranking-page">
-    <header class="season-ranking-hero">
+    <header class="season-ranking-hero<?= $seasonCoverUrl !== '' ? ' has-season-cover' : '' ?>" style="--season-accent: <?= e($seasonAccentColor) ?>">
+        <span class="season-ranking-identity" aria-hidden="true"><?php if ($seasonCoverUrl !== ''): ?><img src="<?= e($seasonCoverUrl) ?>" alt=""><?php else: ?><?= activity_icon_svg($seasonIconKey) ?><?php endif; ?></span>
         <div>
             <p class="eyebrow"><?= e(t('season.title')) ?></p>
             <h1><?= e((string) ($season['name'] ?? t('season.leaderboard'))) ?></h1>

@@ -13,6 +13,7 @@ $contextualBackFallbacks = [
     'competitions' => '/?page=social',
     'gallery' => '/?page=social',
     'notifications' => '/?page=dashboard&section=alerts',
+    'quests' => '/?page=dashboard&section=rewards',
     'season' => '/?page=dashboard&section=rewards',
     'settings' => '/?page=profile',
     'week_editor' => '/?page=dashboard&section=history',
@@ -24,6 +25,7 @@ $contextualBackDestinationKeys = [
     'competitions' => 'nav.social',
     'gallery' => 'nav.social',
     'notifications' => 'dashboard.mobile_alerts',
+    'quests' => 'dashboard.mobile_rewards',
     'season' => 'dashboard.mobile_rewards',
     'settings' => 'nav.profile',
     'week_editor' => 'dashboard.mobile_history',
@@ -66,7 +68,9 @@ $pageStylesAssetFile = match ($currentPage) {
     'profile' => 'profile.css',
     'team' => 'team.css',
     'admin' => 'admin.css',
-    'dashboard' => 'dashboard.css',
+    'dashboard', 'quests', 'season' => 'dashboard.css',
+    'metric' => 'metric.css',
+    'achievements' => 'achievements.css',
     'entries' => 'entries.css',
     'settings' => 'settings.css',
     'register', 'onboarding' => 'onboarding.css',
@@ -138,7 +142,7 @@ if (!in_array($themeMode, ['auto', 'light', 'dark'], true)) {
 }
 $penaltiesEnabledForLayout = $loggedIn ? penalties_enabled($GLOBALS['pdo']) : false;
 $isNavActive = static function (string $pageKey) use ($currentPage): bool {
-    if ($pageKey === 'dashboard' && $currentPage === 'season') {
+    if ($pageKey === 'dashboard' && in_array($currentPage, ['metric', 'season'], true)) {
         return true;
     }
     if ($pageKey === 'calendar') {
@@ -200,11 +204,14 @@ $renderQuickActionIcon = static function (string $mode): string {
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="<?= e($appName) ?>">
+    <meta name="theme-color" content="#18a999">
+    <link rel="manifest" href="/?page=manifest">
     <?php if ($appIconWebUrl !== ''): ?>
         <link rel="icon" href="<?= e($appIconWebUrl) ?>">
         <link rel="apple-touch-icon" sizes="180x180" href="<?= e($appIconWebUrl) ?>">
     <?php else: ?>
         <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2318a999'/%3E%3Cpath d='M14 25v14m-7-9v4m43-9v14m7-9v4M14 32h36' fill='none' stroke='white' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
+        <link rel="apple-touch-icon" sizes="192x192" href="/?page=app_icon_default&amp;size=192">
     <?php endif; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -255,7 +262,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     $bodyStyle = "--login-bg-image:url('" . e($loginBackgroundUrl) . "');";
 }
 ?>
-<body data-page="<?= e((string) $currentPage) ?>" data-theme="<?= e($themeMode) ?>" data-penalties-enabled="<?= $penaltiesEnabledForLayout ? '1' : '0' ?>" data-layout-drag-label="<?= e(t('layout.drag_widget')) ?>" data-layout-remove-label="<?= e(t('layout.remove_widget')) ?>" data-layout-add-label="<?= e(t('layout.add_widget')) ?>" data-layout-visible-label="<?= e(t('layout.visible_widget')) ?>"<?= $bodyClasses !== [] ? ' class="' . e(implode(' ', $bodyClasses)) . '"' : '' ?><?= $bodyStyle !== '' ? ' style="' . $bodyStyle . '"' : '' ?>>
+<body data-page="<?= e((string) $currentPage) ?>" data-theme="<?= e($themeMode) ?>" data-ui-user="<?= $loggedIn ? (int) ($currentUser['id'] ?? 0) : 0 ?>" data-penalties-enabled="<?= $penaltiesEnabledForLayout ? '1' : '0' ?>" data-layout-drag-label="<?= e(t('layout.drag_widget')) ?>" data-layout-remove-label="<?= e(t('layout.remove_widget')) ?>" data-layout-add-label="<?= e(t('layout.add_widget')) ?>" data-layout-visible-label="<?= e(t('layout.visible_widget')) ?>"<?= $bodyClasses !== [] ? ' class="' . e(implode(' ', $bodyClasses)) . '"' : '' ?><?= $bodyStyle !== '' ? ' style="' . $bodyStyle . '"' : '' ?>>
 <?php if ($loggedIn && !$minimalAppShell): ?>
     <header class="topbar">
         <a class="brand" href="/?page=dashboard">
@@ -349,9 +356,6 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                     <?php else: ?>
                         <span class="<?= e(trim($currentUserFrameClass)) ?>"><?= e(initials_for((string) $currentUser['display_name'])) ?></span>
                     <?php endif; ?>
-                    <?php if ($unreadNotificationsCount > 0): ?>
-                        <span class="user-menu-unread-badge" data-notification-badge aria-label="<?= e(t('nav.notifications')) ?>: <?= (int) $unreadNotificationsCount ?>"><?= (int) min(99, $unreadNotificationsCount) ?></span>
-                    <?php endif; ?>
                 </summary>
                 <nav class="user-menu-panel" aria-label="<?= e(t('nav.user_menu', ['name' => (string) $currentUser['display_name']])) ?>" data-menu-stack>
                     <div class="user-menu-view<?= is_admin($currentUser) ? ' has-admin-item' : '' ?>" data-menu-view="main">
@@ -366,27 +370,17 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                     <?php endif; ?>
                     <a class="user-menu-link" href="/?page=profile"<?= $currentPage === 'profile' ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('user') ?></span><span><?= e(t('nav.profile')) ?></span></a>
                     <a class="user-menu-link" href="/?page=workouts"<?= $currentPage === 'workouts' ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span><span><?= e(t('nav.workouts')) ?></span></a>
-                    <button type="button" class="user-menu-nav-button" data-menu-open="user-community" aria-haspopup="menu"><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span><span><?= e(t('menu.community')) ?></span><span aria-hidden="true">&rsaquo;</span></button>
+                    <a class="user-menu-link" href="/?page=friends"<?= $currentPage === 'friends' ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span><span><?= e(t('nav.friends')) ?></span></a>
                     <a class="user-menu-link" href="/?page=settings"<?= $currentPage === 'settings' ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('sliders') ?></span><span><?= e(t('nav.settings')) ?></span></a>
-                    <button type="button" class="user-menu-nav-button" data-menu-open="user-appearance" aria-haspopup="menu"><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('spark') ?></span><span><?= e(t('menu.appearance')) ?></span><span aria-hidden="true">&rsaquo;</span></button>
+                    <button type="button" class="user-menu-theme-toggle" data-theme-toggle data-csrf="<?= e(csrf_token()) ?>" data-label-dark="<?= e(t('nav.theme_toggle_dark')) ?>" data-label-light="<?= e(t('nav.theme_toggle_light')) ?>" aria-pressed="<?= $themeMode === 'dark' ? 'true' : 'false' ?>">
+                        <span class="theme-toggle-icon theme-toggle-icon-sun" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg></span>
+                        <span class="theme-toggle-icon theme-toggle-icon-moon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></span>
+                        <span class="theme-toggle-label" data-theme-toggle-label><?= e($themeMode === 'dark' ? t('nav.theme_toggle_light') : t('nav.theme_toggle_dark')) ?></span>
+                    </button>
                     <?php if (is_admin($currentUser)): ?>
                         <a class="user-menu-link" href="/?page=admin"<?= $currentPage === 'admin' ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('shield') ?></span><span><?= e(t('nav.admin')) ?></span></a>
                     <?php endif; ?>
                     <a class="user-menu-link user-menu-logout" href="/?page=logout"><span class="user-menu-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></span><span><?= e(t('nav.logout')) ?></span></a>
-                    </div>
-                    <div class="user-menu-view" data-menu-view="user-community" hidden>
-                        <div class="user-menu-subhead"><button class="menu-destination-back" type="button" data-menu-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('menu.main')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('menu.main')) ?></strong></button><strong><?= e(t('menu.community')) ?></strong><button type="button" data-menu-close aria-label="<?= e(t('menu.close')) ?>">&times;</button></div>
-                        <a class="user-menu-link" href="/?page=friends"<?= $currentPage === 'friends' ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span><span><?= e(t('nav.friends')) ?></span></a>
-                        <a class="user-menu-link" href="/?page=duels"<?= $currentPage === 'duels' ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('sword') ?></span><span><?= e(t('nav.duels')) ?></span></a>
-                    </div>
-                    <div class="user-menu-view" data-menu-view="user-appearance" hidden>
-                        <div class="user-menu-subhead"><button class="menu-destination-back" type="button" data-menu-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('menu.main')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('menu.main')) ?></strong></button><strong><?= e(t('menu.appearance')) ?></strong><button type="button" data-menu-close aria-label="<?= e(t('menu.close')) ?>">&times;</button></div>
-                        <button type="button" class="user-menu-theme-toggle" data-theme-toggle data-csrf="<?= e(csrf_token()) ?>" data-label-dark="<?= e(t('nav.theme_toggle_dark')) ?>" data-label-light="<?= e(t('nav.theme_toggle_light')) ?>" aria-pressed="<?= $themeMode === 'dark' ? 'true' : 'false' ?>">
-                            <span class="theme-toggle-icon theme-toggle-icon-sun" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg></span>
-                            <span class="theme-toggle-icon theme-toggle-icon-moon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></span>
-                            <span class="theme-toggle-label" data-theme-toggle-label><?= e($themeMode === 'dark' ? t('nav.theme_toggle_light') : t('nav.theme_toggle_dark')) ?></span>
-                        </button>
-                        <a class="user-menu-link" href="/?page=settings&view=avatar#avatar"><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('image') ?></span><span><?= e(t('settings.change_avatar')) ?></span></a>
                     </div>
                 </nav>
             </details>
@@ -482,6 +476,12 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
 <?php endif; ?>
 
 <?php if ($loggedIn && !$minimalAppShell): ?>
+    <aside class="pwa-install-nudge" data-pwa-install-nudge data-ios-hint="<?= e(t('pwa.nudge_ios')) ?>" data-android-hint="<?= e(t('pwa.nudge_android')) ?>" hidden role="region" aria-labelledby="pwa-install-nudge-title">
+        <span class="pwa-install-nudge-icon" aria-hidden="true"><img src="<?= e($appIconWebUrl !== '' ? $appIconWebUrl : '/?page=app_icon_default&size=192') ?>" alt=""></span>
+        <span class="pwa-install-nudge-copy"><strong id="pwa-install-nudge-title"><?= e(t('pwa.nudge_title')) ?></strong><small data-pwa-nudge-hint><?= e(t('pwa.nudge_hint')) ?></small></span>
+        <button class="pwa-install-nudge-action" type="button" data-pwa-nudge-install><?= e(t('pwa.nudge_action')) ?></button>
+        <button class="pwa-install-nudge-close" type="button" data-pwa-nudge-close aria-label="<?= e(t('pwa.nudge_close')) ?>">&times;</button>
+    </aside>
     <button type="button" class="to-top-btn" data-to-top hidden aria-label="<?= e(t('common.back_to_top')) ?>">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
     </button>

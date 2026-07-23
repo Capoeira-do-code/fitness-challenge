@@ -26,6 +26,7 @@ $profileTrainingRecords = is_array($profileTrainingRecords ?? null) ? array_valu
 $profileTrainingMuscles = is_array($profileTrainingMuscles ?? null) ? array_values((array) $profileTrainingMuscles) : [];
 $profileTeamsList = is_array($profileTeams ?? null) ? array_values((array) $profileTeams) : [];
 $profileGoalTeamsList = is_array($profileGoalTeams ?? null) ? array_values((array) $profileGoalTeams) : [];
+$profileCustomWidgets = is_array($profileCustomWidgets ?? null) ? array_values((array) $profileCustomWidgets) : [];
 $profileDataAccess = is_array($profileDataAccess ?? null) ? $profileDataAccess : array_fill_keys(PRIVACY_DATA_KEYS, true);
 $canViewProfileWorkouts = $isOwnProfile || !empty($profileDataAccess['workouts']);
 $canViewProfilePerformance = $isOwnProfile || (!empty($profileDataAccess['steps']) && !empty($profileDataAccess['distance']) && !empty($profileDataAccess['workouts']));
@@ -66,7 +67,8 @@ if (!$penaltiesEnabled) {
     $userAchievements = array_values(array_filter((array) ($userAchievements ?? []), static fn(array $achievement): bool => !$isPenaltyRelatedProfileItem($achievement)));
 }
 $primaryGoalsSpec = trim((string) ($profileUser['primary_goals_spec'] ?? ''));
-$profileTagline = trim((string) ($profileUser['profile_tagline'] ?? ''));
+$profileTaglineLimit = profile_tagline_max_length();
+$profileTagline = normalize_profile_tagline((string) ($profileUser['profile_tagline'] ?? ''));
 $profileHeroMessage = $profileTagline !== '' ? $profileTagline : (string) t('profile.subtitle');
 $profileCoverPath = trim((string) ($profileUser['profile_cover_path'] ?? ''));
 $profileCoverUrl = '';
@@ -95,6 +97,23 @@ $profileUrl = static function (string $section = '', array $extra = []) use ($pr
 
     return '/?' . http_build_query($query);
 };
+$profileCollapseStateKey = static fn(string $block): string => 'profile.' . (int) ($profileUser['id'] ?? 0) . '.' . $block;
+$profileCollapseControl = static function (): string {
+    $collapseLabel = t('profile.show_less');
+    $expandLabel = t('profile.show_more');
+
+    return '<button class="profile-panel-collapse-toggle" type="button" data-profile-panel-toggle'
+        . ' data-label-collapse="' . e($collapseLabel) . '" data-label-expand="' . e($expandLabel) . '"'
+        . ' aria-expanded="true" aria-label="' . e($collapseLabel) . '" title="' . e($collapseLabel) . '">'
+        . '<span aria-hidden="true">&rsaquo;</span></button>';
+};
+$profileAchievementById = [];
+foreach ((array) ($userAchievements ?? []) as $profileAchievement) {
+    $profileAchievementId = (int) ($profileAchievement['achievement_id'] ?? $profileAchievement['id'] ?? 0);
+    if ($profileAchievementId > 0) {
+        $profileAchievementById[$profileAchievementId] = $profileAchievement;
+    }
+}
 
 // #15 — customizable Profile home layout. Order comes from the profile owner's
 // saved arrangement; default (no saved layout) keeps the original DOM order.
@@ -113,6 +132,16 @@ $profileLayoutLabels = [
     'setup' => t('profile.current_config'),
     'activity' => t('profile.recent_activity'),
 ];
+foreach ($profileCustomWidgets as $profileCustomWidget) {
+    if (!$isOwnProfile && empty($profileCustomWidget['is_visible'])) {
+        continue;
+    }
+    $profileCustomWidgetKey = profile_custom_widget_key((int) ($profileCustomWidget['id'] ?? 0));
+    $profileLayoutBlocks[] = $profileCustomWidgetKey;
+    $profileLayoutLabels[$profileCustomWidgetKey] = t('profile.widget_label', [
+        'title' => (string) ($profileCustomWidget['title'] ?? t('profile.widget_default_title')),
+    ]);
+}
 $profileSavedLayout = json_decode((string) ($profileUser['profile_layout_json'] ?? ''), true);
 $profileBlockOrder = [];
 $profileOrderIndex = 0;
@@ -164,6 +193,20 @@ $profileFriendAvatar = static function (array $user): void {
     }
 
     echo '<span class="profile-friend-avatar initials">' . e(initials_for($name !== '' ? $name : '?')) . '</span>';
+};
+$profileIdentityMediaUrl = static function (array $item, string $field): string {
+    $path = trim((string) ($item[$field] ?? ''));
+    $width = in_array($field, ['icon_path', 'avatar_path'], true) ? 160 : 720;
+    return $path !== '' ? media_thumbnail_url($path, $width) : '';
+};
+$profileTeamIcon = static function (array $team) use ($profileIdentityMediaUrl): void {
+    $name = (string) ($team['name'] ?? t('nav.team'));
+    $iconUrl = $profileIdentityMediaUrl($team, 'icon_path');
+    if ($iconUrl !== '') {
+        echo '<img class="profile-friend-avatar profile-team-icon" src="' . e($iconUrl) . '" alt="' . e($name) . '">';
+        return;
+    }
+    echo '<span class="profile-friend-avatar profile-team-icon initials">' . e(initials_for($name)) . '</span>';
 };
 $profileFriendActionForm = static function (string $action, int $userId, string $label, string $btnClass, string $contextClass = '') use ($profileUrl): void {
     ?>
@@ -747,7 +790,8 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
             <div class="hero-copy">
                 <p class="eyebrow"><?= e(t('nav.profile')) ?></p>
                 <h1><?= e((string) $profileUser['display_name']) ?></h1>
-                <p class="muted">@<?= e((string) $profileUser['username']) ?> &middot; <?= e($profileHeroMessage) ?><?php if (!$isOwnProfile): ?> &middot; <?= e(t('profile.read_only')) ?><?php endif; ?></p>
+                <p class="muted profile-hero-meta">@<?= e((string) $profileUser['username']) ?><?php if (!$isOwnProfile): ?> &middot; <?= e(t('profile.read_only')) ?><?php endif; ?></p>
+                <p class="profile-hero-message" title="<?= e($profileHeroMessage) ?>"><?= e($profileHeroMessage) ?></p>
                 <?php
                 $xp = (array) ($profileXp ?? []);
                 $profileLevel = max(1, (int) ($xp['level'] ?? 1));
@@ -819,6 +863,9 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                                 'label' => t('profile.edit_cover'),
                                 'attrs' => ['data-app-modal-open' => 'profile-cover-modal'],
                             ], [
+                                'label' => t('profile.add_widget'),
+                                'attrs' => ['data-app-modal-open' => 'profile-widget-create-modal'],
+                            ], [
                                 'label' => t('profile.customize_layout'),
                                 'href' => $profileUrl('', ['layout_edit' => '1']),
                             ]],
@@ -844,11 +891,13 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
 
     <?php if ($activeSection === ''): ?>
         <div class="profile-mobile-root">
-            <div class="hierarchy-status-strip">
-                <span><strong><?= count($profileActiveGoalCards) ?></strong><small><?= e(t('goals.personal')) ?></small></span>
-                <span><strong><?= count((array) ($userAchievements ?? [])) ?></strong><small><?= e(t('profile.achievements')) ?></small></span>
-                <span><strong><?= count($profileFriends) ?></strong><small><?= e(t('nav.friends')) ?></small></span>
-            </div>
+            <?php if ($isOwnProfile): ?>
+                <div class="hierarchy-status-strip">
+                    <span><strong><?= count($profileActiveGoalCards) ?></strong><small><?= e(t('goals.personal')) ?></small></span>
+                    <span><strong><?= count((array) ($userAchievements ?? [])) ?></strong><small><?= e(t('profile.achievements')) ?></small></span>
+                    <span><strong><?= count($profileFriends) ?></strong><small><?= e(t('nav.friends')) ?></small></span>
+                </div>
+            <?php endif; ?>
             <nav class="hierarchy-nav-list mobile-hub-section-grid" aria-label="<?= e(t('nav.profile')) ?>">
                 <a class="hierarchy-nav-row" data-tone="orange" href="<?= e($profileUrl('goals')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('profile.mobile_goals')) ?></strong><small><?= e(t('profile.mobile_goals_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count($profileActiveGoalCards) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
                 <a class="hierarchy-nav-row" data-tone="blue" href="<?= e($profileUrl('training')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.training_short')) ?></strong><small><?= e(t('profile.mobile_training_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= e(t('workouts.rank_' . $profileTrainingRankKey)) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
@@ -945,13 +994,14 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
     <?php endif; ?>
 
     <?php if ($isOwnProfile): ?>
-        <article class="panel profile-data-overview compact-panel glass-panel<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-home-extra <?= $activeSection !== '' ? 'hidden' : '' ?>>
+        <article class="panel profile-data-overview compact-panel glass-panel<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-home-extra data-profile-collapsible="<?= e($profileCollapseStateKey('data-overview')) ?>" <?= $activeSection !== '' ? 'hidden' : '' ?>>
         <div class="panel-head">
             <div>
                 <p class="eyebrow"><?= e(t('profile.my_data')) ?></p>
                 <h2><?= e(t('profile.my_data')) ?></h2>
                 <p class="muted small"><?= e(t('profile.my_data_subtitle')) ?> <?= e($profileSelectedChallengeRangeLabel) ?></p>
             </div>
+            <?= $profileCollapseControl() ?>
         </div>
         <div class="profile-data-grid">
             <?php foreach ($profileDataCards as $card): ?>
@@ -1008,7 +1058,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                     </div>
                 </div>
 
-                <details class="dashboard-layout-visibility" open>
+                <details class="dashboard-layout-visibility" data-persist-disclosure="<?= e($profileCollapseStateKey('layout-visibility')) ?>" open>
                     <summary><?= e(t('dashboard.visible_widgets')) ?></summary>
                     <div class="team-layout-editor-list dashboard-layout-editor-list" data-profile-layout-list>
                         <?php foreach ($profileOrderedBlocks as $idx => $blk): ?>
@@ -1031,9 +1081,9 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         </div>
     <?php endif; ?>
 
-    <?php if ($activeSection === ''): ?><header class="mobile-widget-feed-head"><div><p><?= e(t('dashboard.visible_widgets')) ?></p><h2><?= e(t('nav.profile')) ?></h2></div><?php if ($isOwnProfile): ?><a href="<?= e($profileUrl('', ['layout_edit' => '1'])) ?>"><?= e(t('profile.customize_layout')) ?></a><?php endif; ?></header><?php endif; ?>
+    <?php if ($activeSection === ''): ?><header class="mobile-widget-feed-head profile-widget-feed-head"><div><p><?= e(t('dashboard.visible_widgets')) ?></p><h2><?= e(t('nav.profile')) ?></h2></div><?php if ($isOwnProfile): ?><div class="profile-widget-feed-actions"><button type="button" data-app-modal-open="profile-widget-create-modal"><?= e(t('profile.add_widget_short')) ?></button><a href="<?= e($profileUrl('', ['layout_edit' => '1'])) ?>"><?= e(t('profile.customize_layout')) ?></a></div><?php endif; ?></header><?php endif; ?>
     <section class="profile-home-grid<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-main <?= $activeSection !== '' ? 'hidden' : '' ?>>
-        <article class="panel profile-home-card profile-home-goals compact-panel glass-panel" data-profile-block="goals" style="<?= e($profileBlockStyle('goals')) ?>">
+        <article class="panel profile-home-card profile-home-goals compact-panel glass-panel" data-profile-block="goals" data-profile-collapsible="<?= e($profileCollapseStateKey('goals')) ?>" style="<?= e($profileBlockStyle('goals')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow"><?= count($profileActiveGoalCards) ?> <?= e(t('profile.active_goals_suffix')) ?> · <?= count($profileCompletedGoalCards) ?> <?= e(t('settings.completed_goals')) ?></p>
@@ -1046,6 +1096,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                     <?php else: ?>
                         <a class="btn btn-ghost small" href="<?= e($profileUrl('goals')) ?>" data-spa-link><?= e(t('common.view_all')) ?></a>
                     <?php endif; ?>
+                    <?= $profileCollapseControl() ?>
                 </div>
             </div>
             <?php if ($profileActiveGoalCards !== []): ?>
@@ -1075,7 +1126,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
             <?php endif; ?>
         </article>
 
-        <article class="panel profile-home-card profile-friends-card compact-panel glass-panel" data-profile-block="friends" style="<?= e($profileBlockStyle('friends')) ?>">
+        <article class="panel profile-home-card profile-friends-card compact-panel glass-panel" data-profile-block="friends" data-profile-collapsible="<?= e($profileCollapseStateKey('friends')) ?>" style="<?= e($profileBlockStyle('friends')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow">
@@ -1086,18 +1137,15 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                     </p>
                     <h2><?= e($isOwnProfile ? t('friends.your_friends') : t('profile.friends_of', ['name' => (string) ($profileUser['display_name'] ?? '')])) ?></h2>
                 </div>
-                <div class="inline-actions-mini">
-                    <?php if (!$isOwnProfile): ?>
-                        <span class="profile-friend-status compact"><?= e($profileFriendStatusText) ?></span>
-                    <?php endif; ?>
-                </div>
+                <?= $profileCollapseControl() ?>
             </div>
 
             <?php if ($isOwnProfile && $profileFriendIncomingPreview !== []): ?>
                 <div class="profile-friend-request-list">
                     <strong><?= e(t('friends.incoming')) ?></strong>
                     <?php foreach ($profileFriendIncomingPreview as $requester): ?>
-                        <div class="profile-friend-row">
+                        <?php $profileRequesterCoverUrl = $profileIdentityMediaUrl($requester, 'profile_cover_path'); ?>
+                        <div class="profile-friend-row profile-identity-row<?= $profileRequesterCoverUrl !== '' ? ' has-cover' : '' ?>">
                             <a class="profile-friend-id" href="/?page=profile&amp;user_id=<?= (int) ($requester['id'] ?? 0) ?>" data-spa-link>
                                 <?php $profileFriendAvatar($requester); ?>
                                 <span>
@@ -1108,6 +1156,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                                 <div class="profile-friend-actions">
                                     <?php $renderProfileFriendActions('pending_in', (int) ($requester['id'] ?? 0), 'profile-friend-card-action'); ?>
                                 </div>
+                            <?php if ($profileRequesterCoverUrl !== ''): ?><img class="profile-identity-cover" src="<?= e($profileRequesterCoverUrl) ?>" alt="" loading="lazy" aria-hidden="true"><?php endif; ?>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -1118,7 +1167,8 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
             <?php else: ?>
                 <div class="profile-friend-list">
                     <?php foreach ($profileFriendPreview as $friend): ?>
-                        <div class="profile-friend-row">
+                        <?php $profileFriendCoverUrl = $profileIdentityMediaUrl($friend, 'profile_cover_path'); ?>
+                        <div class="profile-friend-row profile-identity-row<?= $profileFriendCoverUrl !== '' ? ' has-cover' : '' ?>">
                             <a class="profile-friend-id" href="/?page=profile&amp;user_id=<?= (int) ($friend['id'] ?? 0) ?>" data-spa-link>
                                 <?php $profileFriendAvatar($friend); ?>
                                 <span>
@@ -1131,6 +1181,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                                     <?php $renderProfileFriendActions('friends', (int) ($friend['id'] ?? 0), 'profile-friend-card-action'); ?>
                                 </div>
                             <?php endif; ?>
+                            <?php if ($profileFriendCoverUrl !== ''): ?><img class="profile-identity-cover" src="<?= e($profileFriendCoverUrl) ?>" alt="" loading="lazy" aria-hidden="true"><?php endif; ?>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -1141,20 +1192,22 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
 
         </article>
 
-        <article class="panel profile-home-card profile-teams-card compact-panel glass-panel" data-profile-block="teams" style="<?= e($profileBlockStyle('teams')) ?>">
+        <article class="panel profile-home-card profile-teams-card compact-panel glass-panel" data-profile-block="teams" data-profile-collapsible="<?= e($profileCollapseStateKey('teams')) ?>" style="<?= e($profileBlockStyle('teams')) ?>">
             <div class="profile-home-card-head">
                 <div><p class="eyebrow"><?= count($profileTeamsList) ?></p><h2><?= e(t('social_hub.teams')) ?></h2></div>
-                <?php if ($isOwnProfile): ?><a class="btn btn-ghost small" href="/?page=social&amp;section=team"><?= e(t('common.view_all')) ?></a><?php endif; ?>
+                <div class="profile-panel-head-actions"><?php if ($isOwnProfile): ?><a class="btn btn-ghost small" href="/?page=social&amp;section=team"><?= e(t('common.view_all')) ?></a><?php endif; ?><?= $profileCollapseControl() ?></div>
             </div>
             <?php if ($profileTeamsList === []): ?>
                 <p class="muted small"><?= e(t('social_hub.team_empty')) ?></p>
             <?php else: ?>
                 <div class="profile-team-list">
                     <?php foreach ($profileTeamsList as $profileTeamItem): ?>
-                        <a class="profile-team-row" href="/?page=team&amp;team_id=<?= (int) ($profileTeamItem['id'] ?? 0) ?>">
-                            <span class="profile-team-row-mark" aria-hidden="true"><?= e(initials_for((string) ($profileTeamItem['name'] ?? t('nav.team')))) ?></span>
-                            <span><strong><?= e((string) ($profileTeamItem['name'] ?? '')) ?></strong><small><?= e(t('nav.team')) ?></small></span>
+                        <?php $profileTeamCoverUrl = $profileIdentityMediaUrl($profileTeamItem, 'cover_path'); ?>
+                        <a class="profile-team-row profile-identity-row<?= $profileTeamCoverUrl !== '' ? ' has-cover' : '' ?>" href="/?page=team&amp;team_id=<?= (int) ($profileTeamItem['id'] ?? 0) ?>">
+                            <?php $profileTeamIcon($profileTeamItem); ?>
+                            <span><strong><?= e((string) ($profileTeamItem['name'] ?? '')) ?></strong><small><?= e(t('social_hub.members_count', ['count' => (string) ((int) ($profileTeamItem['member_count'] ?? 0))])) ?></small></span>
                             <span class="settings-chevron" aria-hidden="true">&rsaquo;</span>
+                            <?php if ($profileTeamCoverUrl !== ''): ?><img class="profile-identity-cover" src="<?= e($profileTeamCoverUrl) ?>" alt="" loading="lazy" aria-hidden="true"><?php endif; ?>
                         </a>
                     <?php endforeach; ?>
                 </div>
@@ -1162,15 +1215,13 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         </article>
 
         <?php if ($canViewProfileWorkouts): ?>
-        <article class="panel profile-home-card profile-training-rank-card compact-panel glass-panel" data-profile-block="training_rank" data-rank="<?= e($profileTrainingRankKey) ?>" style="<?= e($profileBlockStyle('training_rank')) ?>; --rank-color: <?= e((string) ($profileTrainingRank['color'] ?? '#64748b')) ?>">
+        <article class="panel profile-home-card profile-training-rank-card compact-panel glass-panel" data-profile-block="training_rank" data-profile-collapsible="<?= e($profileCollapseStateKey('training-rank')) ?>" data-rank="<?= e($profileTrainingRankKey) ?>" style="<?= e($profileBlockStyle('training_rank')) ?>; --rank-color: <?= e((string) ($profileTrainingRank['color'] ?? '#64748b')) ?>">
             <div class="profile-home-card-head">
-                <div>
+                <a class="profile-rank-heading-link" href="/?page=workouts&amp;view=ranks" aria-label="<?= e(t('workouts.overall_rank')) ?>: <?= e(t('common.view_all')) ?>">
                     <p class="eyebrow"><?= e(t('workouts.overall_rank')) ?></p>
                     <h2><?= e(t('dashboard.training_rank_title')) ?></h2>
-                </div>
-                <?php if ($isOwnProfile): ?>
-                    <a class="btn btn-ghost small" href="/?page=workouts&amp;view=ranks"><?= e(t('common.view_all')) ?></a>
-                <?php endif; ?>
+                </a>
+                <div class="profile-panel-head-actions"><a class="btn btn-ghost small" href="/?page=workouts&amp;view=ranks"><?= e(t('common.view_all')) ?></a><?= $profileCollapseControl() ?></div>
             </div>
             <div class="profile-training-rank-main">
                 <span class="profile-training-rank-emblem">
@@ -1202,15 +1253,13 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
             <?php endif; ?>
         </article>
 
-        <article class="panel profile-home-card profile-training-progress-card compact-panel glass-panel" data-profile-block="training_progress" style="<?= e($profileBlockStyle('training_progress')) ?>">
+        <article class="panel profile-home-card profile-training-progress-card compact-panel glass-panel" data-profile-block="training_progress" data-profile-collapsible="<?= e($profileCollapseStateKey('training-progress')) ?>" style="<?= e($profileBlockStyle('training_progress')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow"><?= e(t('workouts.this_month')) ?></p>
                     <h2><?= e(t('dashboard.training_progress_title')) ?></h2>
                 </div>
-                <?php if ($isOwnProfile): ?>
-                    <a class="btn btn-ghost small" href="/?page=workouts&amp;view=stats"><?= e(t('common.view_all')) ?></a>
-                <?php endif; ?>
+                <div class="profile-panel-head-actions"><?php if ($isOwnProfile): ?><a class="btn btn-ghost small" href="/?page=workouts&amp;view=stats"><?= e(t('common.view_all')) ?></a><?php endif; ?><?= $profileCollapseControl() ?></div>
             </div>
             <div class="profile-training-stat-grid compact-metrics-row glass-panel">
                 <span><small><?= e(t('workouts.stat_sessions')) ?></small><strong><?= (int) ($profileTrainingMonth['sessions'] ?? 0) ?></strong></span>
@@ -1233,27 +1282,96 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         </article>
         <?php endif; ?>
 
-        <article class="panel profile-home-card compact-panel glass-panel" data-profile-block="achievements" style="<?= e($profileBlockStyle('achievements')) ?>">
+        <article class="panel profile-home-card profile-home-achievements compact-panel glass-panel" data-profile-block="achievements" data-profile-collapsible="<?= e($profileCollapseStateKey('achievements')) ?>" style="<?= e($profileBlockStyle('achievements')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow"><?= e((string) $achievementCount) ?> <?= e(t('profile.unlocked_suffix')) ?></p>
                     <h2><?= e(t('profile.achievements')) ?></h2>
                 </div>
-                <a class="btn btn-ghost small" href="<?= e($profileUrl('achievements')) ?>" data-spa-link><?= e(t('common.view_all')) ?></a>
+                <div class="profile-panel-head-actions"><a class="profile-achievement-preview-link" href="<?= e($profileUrl('achievements')) ?>" data-spa-link><span><?= e(t('common.view_all')) ?></span><b aria-hidden="true">›</b></a><?= $profileCollapseControl() ?></div>
             </div>
             <?php if ($latestAchievements === []): ?>
                 <p class="muted"><?= e(t('achievements.empty')) ?></p>
             <?php else: ?>
-                <div class="profile-home-list">
+                <div class="profile-achievement-preview-list">
                     <?php foreach ($latestAchievements as $achievement): ?>
-                        <div>
-                            <strong><?= e((string) ($achievement['name'] ?? '')) ?></strong>
-                            <span><?= e(!empty($achievement['awarded_at']) ? format_date_eu((string) $achievement['awarded_at']) : (string) ($achievement['description'] ?? '')) ?></span>
-                        </div>
+                        <button type="button" class="profile-achievement-preview-item" <?= achievement_modal_attrs($achievement) ?>>
+                            <?= achievement_visual_html($achievement, 'achievement-visual') ?>
+                            <span><strong><?= e((string) ($achievement['name'] ?? '')) ?></strong><small><?= e(!empty($achievement['awarded_at']) ? format_date_eu((string) $achievement['awarded_at']) : (string) ($achievement['description'] ?? '')) ?></small></span>
+                        </button>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
         </article>
+
+        <?php foreach ($profileCustomWidgets as $profileCustomWidget): ?>
+            <?php
+            if (!$isOwnProfile && empty($profileCustomWidget['is_visible'])) {
+                continue;
+            }
+            $customWidgetId = (int) ($profileCustomWidget['id'] ?? 0);
+            $customWidgetKey = profile_custom_widget_key($customWidgetId);
+            $customWidgetType = profile_custom_widget_type((string) ($profileCustomWidget['widget_type'] ?? 'media'));
+            $customWidgetMediaPath = trim((string) ($profileCustomWidget['media_path'] ?? ''));
+            $customWidgetMediaUrl = $customWidgetMediaPath !== '' ? media_url($customWidgetMediaPath, $profileCustomWidget['updated_at'] ?? null) : '';
+            $customWidgetMediaMime = strtolower(trim((string) ($profileCustomWidget['media_mime'] ?? '')));
+            $customWidgetExternalUrl = profile_custom_widget_url((string) ($profileCustomWidget['external_url'] ?? ''));
+            $customWidgetEmbedUrl = profile_custom_widget_video_embed($customWidgetExternalUrl);
+            $customWidgetExternalIsImage = $customWidgetExternalUrl !== '' && preg_match('/\.(?:gif|png|jpe?g|webp)(?:[?#].*)?$/i', $customWidgetExternalUrl) === 1;
+            $customWidgetExternalIsVideo = $customWidgetExternalUrl !== '' && preg_match('/\.(?:mp4|webm|mov)(?:[?#].*)?$/i', $customWidgetExternalUrl) === 1;
+            $customWidgetAchievementIds = profile_custom_widget_achievement_ids((string) ($profileCustomWidget['achievement_ids_json'] ?? ''));
+            if ($customWidgetType === 'achievements' && $customWidgetAchievementIds === []) {
+                $customWidgetAchievementIds = array_slice(array_keys($profileAchievementById), 0, PROFILE_CUSTOM_WIDGET_ACHIEVEMENT_LIMIT);
+            }
+            ?>
+            <article class="panel profile-home-card profile-custom-showcase glass-panel<?= empty($profileCustomWidget['is_visible']) ? ' is-owner-hidden' : '' ?>" data-profile-block="<?= e($customWidgetKey) ?>" data-profile-collapsible="<?= e($profileCollapseStateKey($customWidgetKey)) ?>" style="<?= e($profileBlockStyle($customWidgetKey)) ?>--showcase-accent:<?= e(profile_custom_widget_accent((string) ($profileCustomWidget['accent_color'] ?? ''))) ?>;">
+                <div class="profile-home-card-head profile-showcase-head">
+                    <div>
+                        <p class="eyebrow"><?= e(t('profile.widget_type_' . $customWidgetType)) ?><?php if ($isOwnProfile && empty($profileCustomWidget['is_visible'])): ?> · <?= e(t('profile.widget_hidden')) ?><?php endif; ?></p>
+                        <h2><?= e((string) ($profileCustomWidget['title'] ?? '')) ?></h2>
+                    </div>
+                    <div class="profile-panel-head-actions"><?php if ($isOwnProfile): ?><button class="profile-showcase-edit" type="button" data-app-modal-open="profile-widget-edit-modal-<?= $customWidgetId ?>" aria-label="<?= e(t('profile.edit_widget')) ?>" title="<?= e(t('profile.edit_widget')) ?>"><?= activity_icon_svg('sliders') ?></button><?php endif; ?><?= $profileCollapseControl() ?></div>
+                </div>
+
+                <?php if (trim((string) ($profileCustomWidget['body'] ?? '')) !== ''): ?>
+                    <p class="profile-showcase-body"><?= nl2br(e((string) $profileCustomWidget['body'])) ?></p>
+                <?php endif; ?>
+
+                <?php if ($customWidgetType === 'achievements'): ?>
+                    <div class="profile-showcase-achievements" aria-label="<?= e(t('profile.achievements')) ?>">
+                        <?php foreach ($customWidgetAchievementIds as $achievementId): ?>
+                            <?php if (!isset($profileAchievementById[$achievementId])) { continue; } $showcaseAchievement = $profileAchievementById[$achievementId]; ?>
+                            <button type="button" class="profile-showcase-achievement" <?= achievement_modal_attrs($showcaseAchievement) ?>>
+                                <?= achievement_visual_html($showcaseAchievement, 'achievement-visual') ?>
+                                <span><strong><?= e((string) ($showcaseAchievement['name'] ?? '')) ?></strong><small><?= e(!empty($showcaseAchievement['awarded_at']) ? format_date_eu((string) $showcaseAchievement['awarded_at']) : t('achievements.unlocked')) ?></small></span>
+                            </button>
+                        <?php endforeach; ?>
+                        <?php if (array_intersect($customWidgetAchievementIds, array_keys($profileAchievementById)) === []): ?>
+                            <p class="muted panel-inline-empty"><?= e(t('profile.widget_no_achievements')) ?></p>
+                        <?php endif; ?>
+                    </div>
+                <?php else: ?>
+                    <?php if ($customWidgetMediaUrl !== '' && str_starts_with($customWidgetMediaMime, 'image/')): ?>
+                        <div class="profile-showcase-media"><img src="<?= e($customWidgetMediaUrl) ?>" alt="<?= e((string) ($profileCustomWidget['title'] ?? '')) ?>" loading="lazy"></div>
+                    <?php elseif ($customWidgetMediaUrl !== '' && str_starts_with($customWidgetMediaMime, 'video/')): ?>
+                        <div class="profile-showcase-media"><video src="<?= e($customWidgetMediaUrl) ?>" controls playsinline preload="metadata"></video></div>
+                    <?php elseif ($customWidgetEmbedUrl !== ''): ?>
+                        <div class="profile-showcase-media profile-showcase-video"><iframe src="<?= e($customWidgetEmbedUrl) ?>" title="<?= e((string) ($profileCustomWidget['title'] ?? '')) ?>" loading="lazy" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
+                    <?php elseif ($customWidgetExternalIsImage): ?>
+                        <div class="profile-showcase-media"><img src="<?= e($customWidgetExternalUrl) ?>" alt="<?= e((string) ($profileCustomWidget['title'] ?? '')) ?>" loading="lazy" referrerpolicy="no-referrer"></div>
+                    <?php elseif ($customWidgetExternalIsVideo): ?>
+                        <div class="profile-showcase-media"><video src="<?= e($customWidgetExternalUrl) ?>" controls playsinline preload="metadata"></video></div>
+                    <?php elseif ($customWidgetExternalUrl !== ''): ?>
+                        <a class="profile-showcase-external" href="<?= e($customWidgetExternalUrl) ?>" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">↗</span><strong><?= e(t('profile.widget_open_media')) ?></strong></a>
+                    <?php endif; ?>
+                <?php endif; ?>
+
+                <?php $customWidgetLinkUrl = profile_custom_widget_url((string) ($profileCustomWidget['link_url'] ?? '')); ?>
+                <?php if ($customWidgetLinkUrl !== ''): ?>
+                    <a class="profile-showcase-link" href="<?= e($customWidgetLinkUrl) ?>" target="_blank" rel="noopener noreferrer"><?= e(t('profile.widget_visit_link')) ?> <span aria-hidden="true">↗</span></a>
+                <?php endif; ?>
+            </article>
+        <?php endforeach; ?>
 
         <?php if ($isOwnProfile): ?>
             <div class="profile-home-block-wrap" data-profile-block="duels" style="<?= e($profileBlockStyle('duels')) ?>">
@@ -1293,15 +1411,13 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         <?php endif; ?>
 
         <?php if ($isOwnProfile): ?>
-        <article class="panel profile-home-card profile-current-setup-card compact-panel glass-panel" data-profile-block="setup" style="<?= e($profileBlockStyle('setup')) ?>">
+        <article class="panel profile-home-card profile-current-setup-card compact-panel glass-panel" data-profile-block="setup" data-profile-collapsible="<?= e($profileCollapseStateKey('setup')) ?>" style="<?= e($profileBlockStyle('setup')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow"><?= e(t('profile.current_config')) ?></p>
                     <h2><?= e(t('profile.current_config')) ?></h2>
                 </div>
-                <?php if ($canEditProfile): ?>
-                    <a class="btn btn-ghost small" href="<?= e($profileUrl('config', ['edit' => 1])) ?>" data-spa-link><?= e(t('common.edit')) ?></a>
-                <?php endif; ?>
+                <div class="profile-panel-head-actions"><?php if ($canEditProfile): ?><a class="btn btn-ghost small" href="<?= e($profileUrl('config', ['edit' => 1])) ?>" data-spa-link><?= e(t('common.edit')) ?></a><?php endif; ?><?= $profileCollapseControl() ?></div>
             </div>
             <div class="profile-current-primary">
                 <span><?= e(t('settings.primary_goal')) ?></span>
@@ -1331,7 +1447,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                 <?php endforeach; ?>
             </dl>
             <?php if ($profileSetupMoreRows !== []): ?>
-                <details class="profile-setup-more">
+                <details class="profile-setup-more" data-persist-disclosure="<?= e($profileCollapseStateKey('setup-more')) ?>">
                     <summary><span><?= e(t('profile.show_more')) ?></span><span><?= e(t('profile.show_less')) ?></span></summary>
                     <dl class="profile-home-facts">
                         <?php foreach ($profileSetupMoreRows as $row): ?>
@@ -1345,13 +1461,13 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
             <?php endif; ?>
         </article>
 
-        <article class="panel profile-home-card compact-panel glass-panel" data-profile-block="activity" style="<?= e($profileBlockStyle('activity')) ?>">
+        <article class="panel profile-home-card compact-panel glass-panel" data-profile-block="activity" data-profile-collapsible="<?= e($profileCollapseStateKey('activity')) ?>" style="<?= e($profileBlockStyle('activity')) ?>">
             <div class="profile-home-card-head">
                 <div>
                     <p class="eyebrow"><?= e((string) $activityCount) ?> events</p>
                     <h2><?= e(t('profile.recent_activity')) ?></h2>
                 </div>
-                <a class="btn btn-ghost small" href="<?= e($profileUrl('activity')) ?>" data-spa-link><?= e(t('common.view_all')) ?></a>
+                <div class="profile-panel-head-actions"><a class="btn btn-ghost small" href="<?= e($profileUrl('activity')) ?>" data-spa-link><?= e(t('common.view_all')) ?></a><?= $profileCollapseControl() ?></div>
             </div>
             <?php
             $humanActivity = [];
@@ -1648,7 +1764,11 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
             <a class="hierarchy-back destination-back profile-section-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.profile')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.profile')) ?></strong></a>
             <div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.achievements')) ?></h2></div>
         </div>
-        <div class="achievement-grid achievement-grid-collapsible" data-achievement-grid>
+        <div class="profile-achievement-collection-summary">
+            <span><strong><?= count((array) ($userAchievements ?? [])) ?></strong><small><?= e(t('achievements.unlocked')) ?></small></span>
+            <p><?= e(t('profile.achievement_collection_hint')) ?></p>
+        </div>
+        <div class="achievement-grid profile-achievement-collection" data-achievement-grid>
             <?php if (($userAchievements ?? []) === []): ?>
                 <p class="muted"><?= e(t('achievements.empty')) ?></p>
             <?php else: ?>
@@ -1670,9 +1790,6 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                     </article>
                 <?php endforeach; ?>
             <?php endif; ?>
-        </div>
-        <div class="achievement-toggle-wrap">
-            <a class="btn btn-ghost small achievement-toggle-btn" href="<?= e($profileAchievementsUrl) ?>"><?= e(t('common.view_all')) ?></a>
         </div>
     </article>
 
@@ -1948,7 +2065,8 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
             <input type="hidden" name="action" value="update_profile_tagline">
             <label class="profile-tagline-field">
                 <span><?= e(t('profile.custom_message')) ?></span>
-                <input type="text" name="profile_tagline" maxlength="160" value="<?= e($profileTagline) ?>" placeholder="<?= e(t('profile.subtitle')) ?>" autofocus>
+                <input id="profile-tagline-input" type="text" name="profile_tagline" maxlength="<?= $profileTaglineLimit ?>" value="<?= e($profileTagline) ?>" placeholder="<?= e(t('profile.subtitle')) ?>" aria-describedby="profile-tagline-counter" data-character-count-input autofocus>
+                <small id="profile-tagline-counter" class="profile-tagline-counter" aria-live="polite"><span data-character-count><?= function_exists('mb_strlen') ? mb_strlen($profileTagline) : strlen($profileTagline) ?></span> / <?= $profileTaglineLimit ?></small>
             </label>
             <div class="profile-tagline-actions">
                 <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
@@ -1963,6 +2081,96 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
 <?php endif; ?>
 
 <?php if (!empty($isOwnProfile)): ?>
+<?php
+$renderProfileWidgetForm = static function (?array $widget = null) use ($profileUrl, $profileAchievementById): void {
+    $isEdit = $widget !== null;
+    $widgetId = (int) ($widget['id'] ?? 0);
+    $widgetType = profile_custom_widget_type((string) ($widget['widget_type'] ?? 'media'));
+    $selectedAchievementIds = profile_custom_widget_achievement_ids((string) ($widget['achievement_ids_json'] ?? ''));
+    $accent = profile_custom_widget_accent((string) ($widget['accent_color'] ?? '#7c3aed'));
+    $accentOptions = ['#7c3aed', '#2563eb', '#0891b2', '#059669', '#ea580c', '#e11d48'];
+    ?>
+    <form method="post" action="<?= e($profileUrl()) ?>" enctype="multipart/form-data" class="profile-widget-form" data-profile-widget-form data-widget-type="<?= e($widgetType) ?>">
+        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+        <input type="hidden" name="action" value="<?= $isEdit ? 'update_profile_widget' : 'create_profile_widget' ?>">
+        <?php if ($isEdit): ?><input type="hidden" name="widget_id" value="<?= $widgetId ?>"><?php endif; ?>
+
+        <div class="profile-widget-form-grid">
+            <label class="profile-widget-title-field"><span><?= e(t('profile.widget_title')) ?></span><input type="text" name="widget_title" maxlength="80" value="<?= e((string) ($widget['title'] ?? '')) ?>" placeholder="<?= e(t('profile.widget_title_placeholder')) ?>" required autofocus></label>
+            <label><span><?= e(t('profile.widget_type')) ?></span><select name="widget_type" data-profile-widget-type>
+                <option value="media"<?= $widgetType === 'media' ? ' selected' : '' ?>><?= e(t('profile.widget_type_media')) ?></option>
+                <option value="text"<?= $widgetType === 'text' ? ' selected' : '' ?>><?= e(t('profile.widget_type_text')) ?></option>
+                <option value="achievements"<?= $widgetType === 'achievements' ? ' selected' : '' ?>><?= e(t('profile.widget_type_achievements')) ?></option>
+            </select></label>
+        </div>
+
+        <label><span><?= e(t('profile.widget_description')) ?></span><textarea name="widget_body" maxlength="600" rows="3" placeholder="<?= e(t('profile.widget_description_placeholder')) ?>"><?= e((string) ($widget['body'] ?? '')) ?></textarea></label>
+
+        <section class="profile-widget-media-fields" data-profile-widget-fields="media">
+            <div class="profile-widget-source-grid">
+                <label class="profile-widget-upload"><span><?= e(t('profile.widget_upload')) ?></span><input type="file" name="widget_media" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"><small><?= e(t('profile.widget_upload_hint')) ?></small></label>
+                <span class="profile-widget-or"><?= e(t('common.or')) ?></span>
+                <label><span><?= e(t('profile.widget_external_url')) ?></span><input type="url" name="external_url" maxlength="1000" value="<?= e((string) ($widget['external_url'] ?? '')) ?>" inputmode="url" placeholder="https://youtube.com/..."><small><?= e(t('profile.widget_external_hint')) ?></small></label>
+            </div>
+            <?php if ($isEdit && trim((string) ($widget['media_path'] ?? '')) !== ''): ?>
+                <label class="profile-widget-remove-media"><input type="checkbox" name="remove_widget_media" value="1"><span><?= e(t('profile.widget_remove_media')) ?></span></label>
+            <?php endif; ?>
+        </section>
+
+        <section class="profile-widget-achievement-fields" data-profile-widget-fields="achievements">
+            <div class="profile-widget-field-head"><span><?= e(t('profile.widget_choose_achievements')) ?></span><small><?= e(t('profile.widget_choose_achievements_hint', ['count' => PROFILE_CUSTOM_WIDGET_ACHIEVEMENT_LIMIT])) ?></small></div>
+            <div class="profile-widget-achievement-picker">
+                <?php foreach ($profileAchievementById as $achievementId => $achievement): ?>
+                    <label class="profile-widget-achievement-option">
+                        <input type="checkbox" name="achievement_ids[]" value="<?= (int) $achievementId ?>" <?= in_array((int) $achievementId, $selectedAchievementIds, true) ? 'checked' : '' ?>>
+                        <?= achievement_visual_html($achievement, 'achievement-visual') ?>
+                        <span><strong><?= e((string) ($achievement['name'] ?? '')) ?></strong><small><?= e(t('achievements.unlocked')) ?></small></span>
+                    </label>
+                <?php endforeach; ?>
+                <?php if ($profileAchievementById === []): ?><p class="muted panel-inline-empty"><?= e(t('profile.widget_no_achievements')) ?></p><?php endif; ?>
+            </div>
+        </section>
+
+        <div class="profile-widget-form-grid profile-widget-footer-fields">
+            <label><span><?= e(t('profile.widget_link')) ?></span><input type="url" name="link_url" maxlength="1000" value="<?= e((string) ($widget['link_url'] ?? '')) ?>" inputmode="url" placeholder="https://..."></label>
+            <fieldset class="profile-widget-accent"><legend><?= e(t('profile.widget_accent')) ?></legend><div>
+                <?php foreach ($accentOptions as $accentOption): ?><label style="--accent-option:<?= e($accentOption) ?>"><input type="radio" name="accent_color" value="<?= e($accentOption) ?>" <?= $accent === $accentOption ? 'checked' : '' ?>><span aria-label="<?= e($accentOption) ?>"></span></label><?php endforeach; ?>
+            </div></fieldset>
+        </div>
+
+        <?php if ($isEdit): ?><label class="profile-widget-visible"><input type="checkbox" name="widget_visible" value="1" <?= !empty($widget['is_visible']) ? 'checked' : '' ?>><span><strong><?= e(t('profile.widget_visible')) ?></strong><small><?= e(t('profile.widget_visible_hint')) ?></small></span></label><?php endif; ?>
+
+        <div class="profile-widget-form-actions">
+            <button class="btn btn-ghost" type="button" data-app-modal-close><?= e(t('common.cancel')) ?></button>
+            <button class="btn btn-primary" type="submit"><?= e($isEdit ? t('common.save') : t('profile.add_widget')) ?></button>
+        </div>
+    </form>
+    <?php if ($isEdit): ?>
+        <form method="post" action="<?= e($profileUrl()) ?>" class="profile-widget-delete" onsubmit="return confirm('<?= e(t('profile.widget_delete_confirm')) ?>')">
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="delete_profile_widget">
+            <input type="hidden" name="widget_id" value="<?= $widgetId ?>">
+            <button type="submit"><?= e(t('profile.delete_widget')) ?></button>
+        </form>
+    <?php endif; ?>
+    <?php
+};
+?>
+<div class="app-modal profile-widget-modal" id="profile-widget-create-modal" hidden role="dialog" aria-modal="true" aria-labelledby="profile-widget-create-title">
+    <div class="app-modal-card">
+        <div class="app-modal-head"><div><p class="eyebrow"><?= e(t('profile.showcase')) ?></p><h2 id="profile-widget-create-title"><?= e(t('profile.add_widget')) ?></h2><small><?= e(t('profile.widget_create_hint')) ?></small></div><button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.cancel')) ?>">&times;</button></div>
+        <?php $renderProfileWidgetForm(); ?>
+    </div>
+</div>
+<?php foreach ($profileCustomWidgets as $editableProfileWidget): ?>
+    <div class="app-modal profile-widget-modal" id="profile-widget-edit-modal-<?= (int) $editableProfileWidget['id'] ?>" hidden role="dialog" aria-modal="true" aria-labelledby="profile-widget-edit-title-<?= (int) $editableProfileWidget['id'] ?>">
+        <div class="app-modal-card">
+            <div class="app-modal-head"><div><p class="eyebrow"><?= e(t('profile.showcase')) ?></p><h2 id="profile-widget-edit-title-<?= (int) $editableProfileWidget['id'] ?>"><?= e(t('profile.edit_widget')) ?></h2></div><button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.cancel')) ?>">&times;</button></div>
+            <?php $renderProfileWidgetForm($editableProfileWidget); ?>
+        </div>
+    </div>
+<?php endforeach; ?>
+
 <div class="app-modal" id="profile-avatar-modal" hidden role="dialog" aria-modal="true" aria-labelledby="profile-avatar-modal-title">
     <div class="app-modal-card">
         <div class="app-modal-head">

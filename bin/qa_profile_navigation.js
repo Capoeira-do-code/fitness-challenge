@@ -277,6 +277,18 @@ const profileState = (page) => page.evaluate(() => {
             && adminState.visibleSections.length === 1 && adminState.visibleSections[0] === 'users',
         JSON.stringify(adminState));
 
+        await page.locator('[data-spa-section="users"] .admin-users-registration-link').click();
+        await page.waitForURL((url) => url.searchParams.get('section') === 'registration_links');
+        await page.waitForLoadState('networkidle');
+        const registrationLinksState = await page.evaluate(() => ({
+            visible: document.querySelectorAll('[data-spa-section="registration_links"]:not([hidden])').length,
+            backToUsers: Boolean(document.querySelector('.hierarchy-page-header a[href*="section=users"]')),
+            usersMixedIn: Boolean(document.querySelector('[data-spa-section="registration_links"] [data-admin-users-list]')),
+        }));
+        check('Enlaces de registro abre una página independiente y vuelve a Usuarios',
+            registrationLinksState.visible === 1 && registrationLinksState.backToUsers && !registrationLinksState.usersMixedIn,
+            JSON.stringify(registrationLinksState));
+
         await page.goto(`${BASE}/?page=admin&group=experience`, { waitUntil: 'networkidle' });
         await page.locator('[data-spa-page="admin"] [data-spa-main] a[href*="section=appearance"]').click();
         await page.waitForURL((url) => url.searchParams.get('section') === 'appearance');
