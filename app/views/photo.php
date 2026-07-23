@@ -13,7 +13,7 @@ $ownerName = (string) ($photo['display_name'] ?? t('common.user'));
 $photoCategory = (string) ($photo['category'] ?? 'other');
 $photoCanDelete = (bool) ($canDeletePhoto ?? false);
 $photoCanEdit = (bool) ($canEditPhoto ?? false);
-$backUrl = '/?page=entries&mode=meal&date=' . rawurlencode($photoLogDate);
+$backUrl = '/?page=entries&mode=nutrition&date=' . rawurlencode($photoLogDate);
 $categoryLabels = [
     'breakfast' => t('entries.breakfast'),
     'lunch' => t('entries.lunch'),

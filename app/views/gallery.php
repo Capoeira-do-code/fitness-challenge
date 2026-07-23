@@ -100,7 +100,7 @@ ob_start();
                 <div class="view-panel-section">
                     <span class="view-panel-label"><?= e(t('common.actions')) ?></span>
                     <div class="calendar-view-actions">
-                        <a class="btn btn-primary btn-block" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
+                        <a class="btn btn-primary btn-block" href="/?page=entries&mode=nutrition&date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
                         <a class="btn btn-ghost btn-block" href="/?page=entries&mode=calendar&calendar_view=month&user_id=<?= $selectedUserId ?>"><?= e(t('entries.open_calendar')) ?></a>
                     </div>
                 </div>
@@ -114,7 +114,7 @@ $topbarControls = ob_get_clean();
 <section class="screen gallery-page gallery-page-clean">
     <header class="gallery-page-header">
         <div><p class="eyebrow"><?= e(t('gallery.eyebrow')) ?></p><h1><?= e(t('gallery.title')) ?></h1></div>
-        <a class="btn btn-primary small" href="/?page=entries&amp;mode=meal&amp;date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
+        <a class="btn btn-primary small" href="/?page=entries&amp;mode=nutrition&amp;date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
     </header>
     <?php if ($galleryView === 'calendar'): ?>
         <article class="panel entries-calendar-panel gallery-calendar-panel" data-meal-calendar-root data-calendar-page="gallery" data-user-id="<?= $selectedUserId ?>" data-include-photos="0">
@@ -184,7 +184,7 @@ $topbarControls = ob_get_clean();
                     }
                     $calendarDayUrl = $previewPhotoId > 0
                         ? '/?page=photo&photo_id=' . $previewPhotoId
-                        : '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey);
+                        : '/?page=entries&mode=nutrition&date=' . rawurlencode((string) $dateKey);
                     ?>
                     <a class="entries-calendar-day<?= $hasLog ? ' has-log' : '' ?><?= (string) $dateKey === $selectedDate ? ' is-selected' : '' ?><?= $isToday ? ' is-today' : '' ?>"
                        href="<?= e($calendarDayUrl) ?>"
@@ -193,7 +193,7 @@ $topbarControls = ob_get_clean();
                        data-cal-day="<?= e((string) $dateKey) ?>"
                        data-cal-count="<?= $photoCount ?>"
                        data-cal-label="<?= e(format_date_eu((string) $dateKey)) ?>"
-                       data-cal-all="<?= e('/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey)) ?>">
+                       data-cal-all="<?= e('/?page=entries&mode=nutrition&date=' . rawurlencode((string) $dateKey)) ?>">
                         <article>
                             <strong><?= e($calendarDayLabel) ?></strong>
                             <span class="gallery-cal-dot" aria-hidden="true"></span>
@@ -217,7 +217,7 @@ $topbarControls = ob_get_clean();
             <span class="empty-state-icon" aria-hidden="true"><?= activity_icon_svg('image') ?></span>
             <strong><?= e(t('gallery.empty_title')) ?></strong>
             <p><?= e(t('gallery.empty_body')) ?></p>
-            <a class="btn btn-primary" href="/?page=entries&mode=meal"><?= e(t('entries.create_entry')) ?></a>
+            <a class="btn btn-primary" href="/?page=entries&mode=nutrition"><?= e(t('entries.create_entry')) ?></a>
         </div>
     <?php else: ?>
         <div

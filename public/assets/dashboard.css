@@ -420,15 +420,9 @@ body[data-page="dashboard"] [data-dashboard-collapsible] > .panel-head.is-rememb
     border-color: color-mix(in srgb, var(--primary) 34%, var(--line));
 }
 body[data-page="dashboard"] .dashboard-disclosure-icon {
-    display: grid;
-    width: 38px;
-    height: 38px;
-    place-items: center;
-    border-radius: 12px;
     color: var(--primary-dark);
     background: color-mix(in srgb, var(--primary) 12%, var(--surface));
 }
-body[data-page="dashboard"] .dashboard-disclosure-icon svg { width: 20px; height: 20px; }
 body[data-page="dashboard"] [data-dashboard-collapsible] > .panel-head > :nth-child(2) {
     min-width: 0;
 }
@@ -520,6 +514,128 @@ body[data-page="dashboard"] [data-dashboard-collapsible].is-collapsed .dashboard
 }
 body[data-page="dashboard"] [data-dashboard-collapsible].is-collapsed :is(.dashboard-panel-head-actions, .dashboard-achievements-summary) > :not(.dashboard-panel-collapse-toggle) {
     display: none;
+}
+
+/* Keep the rank disclosure visually continuous and leave its actions enough
+   intrinsic width for localized labels such as "Ver todos". */
+body[data-page="dashboard"] .dashboard-training-rank[data-dashboard-collapsible] {
+    gap: 0;
+    overflow: hidden !important;
+    border: 1px solid color-mix(in srgb, var(--rank-color) 22%, var(--line)) !important;
+    border-radius: var(--ui-panel-radius, 16px) !important;
+    background: var(--surface) !important;
+}
+body[data-page="dashboard"] .dashboard-training-rank[data-dashboard-collapsible] > .panel-head {
+    border: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--rank-color) 16%, var(--line));
+    border-radius: 0;
+    background: transparent;
+}
+body[data-page="dashboard"] .dashboard-training-rank.is-collapsed > .panel-head {
+    border-bottom-color: transparent;
+}
+body[data-page="dashboard"] .dashboard-training-rank .dashboard-panel-head-actions {
+    max-width: none;
+    overflow: visible;
+}
+body[data-page="dashboard"] .dashboard-training-rank .dashboard-panel-action {
+    flex: 0 0 auto;
+    min-width: max-content;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+}
+body[data-page="dashboard"] .dashboard-training-rank > .dashboard-training-rank-summary {
+    margin: 0;
+    padding: 0.7rem;
+    border-radius: 0;
+    background: var(--surface);
+}
+body[data-page="dashboard"] .dashboard-training-rank > .dashboard-training-board-head {
+    margin: 0;
+    padding: 0 0.7rem 0.35rem;
+    background: var(--surface);
+}
+body[data-page="dashboard"] .dashboard-training-rank > .dashboard-training-board {
+    padding: 0 0.7rem 0.7rem;
+    background: var(--surface);
+}
+
+/* The remaining remembered disclosures use one continuous surface as well.
+   Their inner cards keep their own accent tint, while the panel supplies the
+   white base below them and enough intrinsic room for localized actions. */
+body[data-page="dashboard"] :is(
+    .dashboard-training-progress,
+    .quests-widget,
+    .season-widget,
+    .dashboard-achievement-progress-panel,
+    .dashboard-duels-card,
+    .dashboard-competitions-card,
+    .dashboard-ranking-panel,
+    .dashboard-weekly-history
+)[data-dashboard-collapsible] {
+    gap: 0;
+    overflow: hidden !important;
+    border: 1px solid var(--ui-soft-border, var(--line)) !important;
+    border-radius: var(--ui-panel-radius, 16px) !important;
+    background: var(--surface) !important;
+}
+body[data-page="dashboard"] :is(
+    .dashboard-training-progress,
+    .quests-widget,
+    .season-widget,
+    .dashboard-achievement-progress-panel,
+    .dashboard-duels-card,
+    .dashboard-competitions-card,
+    .dashboard-ranking-panel,
+    .dashboard-weekly-history
+)[data-dashboard-collapsible] > .panel-head {
+    border: 0;
+    border-bottom: 1px solid var(--ui-soft-border, var(--line));
+    border-radius: 0;
+    background: transparent;
+}
+body[data-page="dashboard"] :is(
+    .dashboard-training-progress,
+    .quests-widget,
+    .season-widget,
+    .dashboard-achievement-progress-panel,
+    .dashboard-duels-card,
+    .dashboard-competitions-card,
+    .dashboard-ranking-panel,
+    .dashboard-weekly-history
+)[data-dashboard-collapsible].is-collapsed > .panel-head {
+    border-bottom-color: transparent;
+}
+body[data-page="dashboard"] :is(
+    .dashboard-training-progress,
+    .quests-widget,
+    .season-widget,
+    .dashboard-achievement-progress-panel,
+    .dashboard-duels-card,
+    .dashboard-competitions-card,
+    .dashboard-ranking-panel,
+    .dashboard-weekly-history
+) .dashboard-panel-head-actions {
+    max-width: none;
+    overflow: visible;
+}
+body[data-page="dashboard"] :is(
+    .dashboard-training-progress,
+    .quests-widget,
+    .season-widget,
+    .dashboard-achievement-progress-panel,
+    .dashboard-duels-card,
+    .dashboard-competitions-card,
+    .dashboard-ranking-panel,
+    .dashboard-weekly-history
+) .dashboard-panel-head-actions > :not(.dashboard-panel-collapse-toggle) {
+    flex: 0 0 auto;
+    min-width: max-content;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
 }
 
 /* Duels and competitions: one compact, tappable status surface instead of a

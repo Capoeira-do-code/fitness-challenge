@@ -102,7 +102,7 @@ $profileCollapseControl = static function (): string {
     $collapseLabel = t('profile.show_less');
     $expandLabel = t('profile.show_more');
 
-    return '<button class="profile-panel-collapse-toggle" type="button" data-profile-panel-toggle'
+    return '<button class="profile-panel-collapse-toggle dashboard-panel-collapse-toggle" type="button" data-profile-panel-toggle'
         . ' data-label-collapse="' . e($collapseLabel) . '" data-label-expand="' . e($expandLabel) . '"'
         . ' aria-expanded="true" aria-label="' . e($collapseLabel) . '" title="' . e($collapseLabel) . '">'
         . '<span aria-hidden="true">&rsaquo;</span></button>';
@@ -996,6 +996,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
     <?php if ($isOwnProfile): ?>
         <article class="panel profile-data-overview compact-panel glass-panel<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-home-extra data-profile-collapsible="<?= e($profileCollapseStateKey('data-overview')) ?>" <?= $activeSection !== '' ? 'hidden' : '' ?>>
         <div class="panel-head">
+            <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('list') ?></span>
             <div>
                 <p class="eyebrow"><?= e(t('profile.my_data')) ?></p>
                 <h2><?= e(t('profile.my_data')) ?></h2>
@@ -1085,6 +1086,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
     <section class="profile-home-grid<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-main <?= $activeSection !== '' ? 'hidden' : '' ?>>
         <article class="panel profile-home-card profile-home-goals compact-panel glass-panel" data-profile-block="goals" data-profile-collapsible="<?= e($profileCollapseStateKey('goals')) ?>" style="<?= e($profileBlockStyle('goals')) ?>">
             <div class="profile-home-card-head">
+                <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span>
                 <div>
                     <p class="eyebrow"><?= count($profileActiveGoalCards) ?> <?= e(t('profile.active_goals_suffix')) ?> · <?= count($profileCompletedGoalCards) ?> <?= e(t('settings.completed_goals')) ?></p>
                     <h2><?= e(t('goals.personal')) ?></h2>
@@ -1128,6 +1130,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
 
         <article class="panel profile-home-card profile-friends-card compact-panel glass-panel" data-profile-block="friends" data-profile-collapsible="<?= e($profileCollapseStateKey('friends')) ?>" style="<?= e($profileBlockStyle('friends')) ?>">
             <div class="profile-home-card-head">
+                <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span>
                 <div>
                     <p class="eyebrow">
                         <?= e((string) $profileFriendCount) ?> <?= e(t('friends.count_label')) ?>
@@ -1194,6 +1197,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
 
         <article class="panel profile-home-card profile-teams-card compact-panel glass-panel" data-profile-block="teams" data-profile-collapsible="<?= e($profileCollapseStateKey('teams')) ?>" style="<?= e($profileBlockStyle('teams')) ?>">
             <div class="profile-home-card-head">
+                <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span>
                 <div><p class="eyebrow"><?= count($profileTeamsList) ?></p><h2><?= e(t('social_hub.teams')) ?></h2></div>
                 <div class="profile-panel-head-actions"><?php if ($isOwnProfile): ?><a class="btn btn-ghost small" href="/?page=social&amp;section=team"><?= e(t('common.view_all')) ?></a><?php endif; ?><?= $profileCollapseControl() ?></div>
             </div>
@@ -1217,6 +1221,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         <?php if ($canViewProfileWorkouts): ?>
         <article class="panel profile-home-card profile-training-rank-card compact-panel glass-panel" data-profile-block="training_rank" data-profile-collapsible="<?= e($profileCollapseStateKey('training-rank')) ?>" data-rank="<?= e($profileTrainingRankKey) ?>" style="<?= e($profileBlockStyle('training_rank')) ?>; --rank-color: <?= e((string) ($profileTrainingRank['color'] ?? '#64748b')) ?>">
             <div class="profile-home-card-head">
+                <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span>
                 <a class="profile-rank-heading-link" href="/?page=workouts&amp;view=ranks" aria-label="<?= e(t('workouts.overall_rank')) ?>: <?= e(t('common.view_all')) ?>">
                     <p class="eyebrow"><?= e(t('workouts.overall_rank')) ?></p>
                     <h2><?= e(t('dashboard.training_rank_title')) ?></h2>
@@ -1255,6 +1260,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
 
         <article class="panel profile-home-card profile-training-progress-card compact-panel glass-panel" data-profile-block="training_progress" data-profile-collapsible="<?= e($profileCollapseStateKey('training-progress')) ?>" style="<?= e($profileBlockStyle('training_progress')) ?>">
             <div class="profile-home-card-head">
+                <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
                 <div>
                     <p class="eyebrow"><?= e(t('workouts.this_month')) ?></p>
                     <h2><?= e(t('dashboard.training_progress_title')) ?></h2>
@@ -1284,6 +1290,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
 
         <article class="panel profile-home-card profile-home-achievements compact-panel glass-panel" data-profile-block="achievements" data-profile-collapsible="<?= e($profileCollapseStateKey('achievements')) ?>" style="<?= e($profileBlockStyle('achievements')) ?>">
             <div class="profile-home-card-head">
+                <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span>
                 <div>
                     <p class="eyebrow"><?= e((string) $achievementCount) ?> <?= e(t('profile.unlocked_suffix')) ?></p>
                     <h2><?= e(t('profile.achievements')) ?></h2>
@@ -1326,6 +1333,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
             ?>
             <article class="panel profile-home-card profile-custom-showcase glass-panel<?= empty($profileCustomWidget['is_visible']) ? ' is-owner-hidden' : '' ?>" data-profile-block="<?= e($customWidgetKey) ?>" data-profile-collapsible="<?= e($profileCollapseStateKey($customWidgetKey)) ?>" style="<?= e($profileBlockStyle($customWidgetKey)) ?>--showcase-accent:<?= e(profile_custom_widget_accent((string) ($profileCustomWidget['accent_color'] ?? ''))) ?>;">
                 <div class="profile-home-card-head profile-showcase-head">
+                    <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('spark') ?></span>
                     <div>
                         <p class="eyebrow"><?= e(t('profile.widget_type_' . $customWidgetType)) ?><?php if ($isOwnProfile && empty($profileCustomWidget['is_visible'])): ?> · <?= e(t('profile.widget_hidden')) ?><?php endif; ?></p>
                         <h2><?= e((string) ($profileCustomWidget['title'] ?? '')) ?></h2>
@@ -1374,45 +1382,53 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         <?php endforeach; ?>
 
         <?php if ($isOwnProfile): ?>
-            <div class="profile-home-block-wrap" data-profile-block="duels" style="<?= e($profileBlockStyle('duels')) ?>">
             <?php
-            $pDuels = (array) ($profileDuelsSummary ?? []);
-            echo render_status_summary_card(
-                t('nav.duels'),
-                t('nav.duels'),
-                [
-                    ['label' => t('common.active'), 'value' => (int) ($pDuels['active'] ?? 0), 'tone' => 'active'],
-                    ['label' => t('common.pending'), 'value' => (int) ($pDuels['pending'] ?? 0), 'tone' => 'pending'],
-                    ['label' => t('common.won'), 'value' => (int) ($pDuels['won'] ?? 0), 'tone' => 'won'],
+            $profileStatusDisclosures = [
+                'duels' => [
+                    'title' => t('nav.duels'),
+                    'icon' => 'sword',
+                    'href' => '/?page=duels',
+                    'summary' => (array) ($profileDuelsSummary ?? []),
                 ],
-                '/?page=duels',
-                t('common.view_all'),
-                'profile-home-card'
-            );
-            ?>
-            </div>
-            <div class="profile-home-block-wrap" data-profile-block="competitions" style="<?= e($profileBlockStyle('competitions')) ?>">
-            <?php
-            $pComps = (array) ($profileCompetitionsSummary ?? []);
-            echo render_status_summary_card(
-                t('nav.competitions'),
-                t('nav.competitions'),
-                [
-                    ['label' => t('common.active'), 'value' => (int) ($pComps['active'] ?? 0), 'tone' => 'active'],
-                    ['label' => t('common.pending'), 'value' => (int) ($pComps['pending'] ?? 0), 'tone' => 'pending'],
-                    ['label' => t('common.won'), 'value' => (int) ($pComps['won'] ?? 0), 'tone' => 'won'],
+                'competitions' => [
+                    'title' => t('nav.competitions'),
+                    'icon' => 'trophy',
+                    'href' => '/?page=competitions',
+                    'summary' => (array) ($profileCompetitionsSummary ?? []),
                 ],
-                '/?page=competitions',
-                t('common.view_all'),
-                'profile-home-card'
-            );
+            ];
             ?>
-            </div>
+            <?php foreach ($profileStatusDisclosures as $profileStatusKey => $profileStatusDisclosure): ?>
+                <?php
+                $profileStatusSummary = (array) ($profileStatusDisclosure['summary'] ?? []);
+                $profileStatusStats = [
+                    ['label' => t('common.active'), 'value' => (int) ($profileStatusSummary['active'] ?? 0), 'tone' => 'active'],
+                    ['label' => t('common.pending'), 'value' => (int) ($profileStatusSummary['pending'] ?? 0), 'tone' => 'pending'],
+                    ['label' => t('common.won'), 'value' => (int) ($profileStatusSummary['won'] ?? 0), 'tone' => 'won'],
+                ];
+                ?>
+                <article class="panel status-summary-card profile-home-card compact-panel glass-panel" data-profile-block="<?= e((string) $profileStatusKey) ?>" data-profile-collapsible="<?= e($profileCollapseStateKey((string) $profileStatusKey)) ?>" style="<?= e($profileBlockStyle((string) $profileStatusKey)) ?>">
+                    <div class="profile-home-card-head">
+                        <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg((string) ($profileStatusDisclosure['icon'] ?? 'spark')) ?></span>
+                        <div><p class="eyebrow"><?= e((string) ($profileStatusDisclosure['title'] ?? '')) ?></p><h2><?= e((string) ($profileStatusDisclosure['title'] ?? '')) ?></h2></div>
+                        <div class="profile-panel-head-actions"><a class="btn btn-ghost small" href="<?= e((string) ($profileStatusDisclosure['href'] ?? '')) ?>"><?= e(t('common.view_all')) ?></a><?= $profileCollapseControl() ?></div>
+                    </div>
+                    <div class="status-summary-stats">
+                        <?php foreach ($profileStatusStats as $profileStatusStat): ?>
+                            <div class="status-summary-stat is-<?= e((string) $profileStatusStat['tone']) ?>">
+                                <span class="status-summary-value"><?= e((string) $profileStatusStat['value']) ?></span>
+                                <span class="status-summary-label"><?= e((string) $profileStatusStat['label']) ?></span>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </article>
+            <?php endforeach; ?>
         <?php endif; ?>
 
         <?php if ($isOwnProfile): ?>
         <article class="panel profile-home-card profile-current-setup-card compact-panel glass-panel" data-profile-block="setup" data-profile-collapsible="<?= e($profileCollapseStateKey('setup')) ?>" style="<?= e($profileBlockStyle('setup')) ?>">
             <div class="profile-home-card-head">
+                <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('sliders') ?></span>
                 <div>
                     <p class="eyebrow"><?= e(t('profile.current_config')) ?></p>
                     <h2><?= e(t('profile.current_config')) ?></h2>
@@ -1463,6 +1479,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
 
         <article class="panel profile-home-card compact-panel glass-panel" data-profile-block="activity" data-profile-collapsible="<?= e($profileCollapseStateKey('activity')) ?>" style="<?= e($profileBlockStyle('activity')) ?>">
             <div class="profile-home-card-head">
+                <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('spark') ?></span>
                 <div>
                     <p class="eyebrow"><?= e((string) $activityCount) ?> events</p>
                     <h2><?= e(t('profile.recent_activity')) ?></h2>

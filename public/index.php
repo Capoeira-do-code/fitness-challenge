@@ -12,12 +12,19 @@ header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
 $page = $_GET['page'] ?? null;
 if ($page === null) {
     $pathPage = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/');
-    if (in_array($pathPage, ['dashboard', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'workouts', 'social', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'quests', 'season', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'competitions', 'login', 'register', 'onboarding', 'login_background'], true)) {
+    if (in_array($pathPage, ['dashboard', 'dashboard_panel_state', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'workouts', 'social', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'quests', 'season', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'competitions', 'login', 'register', 'onboarding', 'login_background'], true)) {
         $page = $pathPage;
     }
 }
 $currentUser = current_user($pdo);
 set_current_locale(resolve_locale($config, $currentUser));
+$setupRequired = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === 0;
+if ($setupRequired && !in_array($page, ['setup', 'manifest', 'app_icon_default'], true)) {
+    $page = 'setup';
+}
+if (!$setupRequired && $page === 'setup') {
+    redirect($currentUser !== null ? '/?page=dashboard' : '/?page=login');
+}
 if ($currentUser !== null && (string) ($currentUser['role'] ?? '') === 'admin') {
     remember_detected_app_base_url($pdo, (int) ($currentUser['id'] ?? 0));
 }
@@ -100,7 +107,7 @@ if ($page === 'app_icon_default') {
 
 if ($currentUser !== null
     && !empty($config['request_schedulers_enabled'])
-    && !in_array($page, ['manifest', 'app_icon', 'app_icon_default', 'login_background', 'media', 'media_thumb', 'api_meal_calendar', 'api_gallery_recent', 'api_workout_media_search', 'api_workout_media_import'], true)
+    && !in_array($page, ['manifest', 'app_icon', 'app_icon_default', 'login_background', 'media', 'media_thumb', 'dashboard_panel_state', 'api_meal_calendar', 'api_gallery_recent', 'api_workout_media_search', 'api_workout_media_import'], true)
 ) {
     run_system_backup_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
     notion_run_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
@@ -223,6 +230,37 @@ if ($page === 'set_theme') {
     json_response(['ok' => true, 'theme_mode' => $theme]);
 }
 
+if ($page === 'dashboard_panel_state') {
+    if (!is_post()) {
+        json_response(['ok' => false, 'error' => 'method_not_allowed'], 405);
+    }
+    if ($currentUser === null) {
+        json_response(['ok' => false, 'error' => 'unauthorized'], 401);
+    }
+    if (!csrf_verify()) {
+        json_response(['ok' => false, 'error' => 'csrf'], 419);
+    }
+
+    $panelKey = trim((string) ($_POST['panel_key'] ?? ''));
+    $expandedValue = (string) ($_POST['expanded'] ?? '');
+    if (!in_array($expandedValue, ['0', '1'], true)) {
+        json_response(['ok' => false, 'error' => 'invalid_state'], 422);
+    }
+
+    try {
+        $expanded = $expandedValue === '1';
+        save_dashboard_panel_preference($pdo, (int) $currentUser['id'], $panelKey, $expanded);
+    } catch (InvalidArgumentException) {
+        json_response(['ok' => false, 'error' => 'invalid_panel'], 422);
+    }
+
+    json_response([
+        'ok' => true,
+        'panel_key' => $panelKey,
+        'expanded' => $expanded,
+    ]);
+}
+
 if ($page === 'notion_oauth_callback') {
     if ($currentUser === null || !is_admin($currentUser)) {
         flash_set('error', t('flash.no_permission'));
@@ -265,6 +303,164 @@ if ($page === 'logout') {
     }
     flash_set('success', $logoutMessage);
     redirect('/?page=login');
+}
+
+if ($page === 'setup') {
+    $setupError = '';
+    $setupValues = [
+        'app_name' => trim((string) ($_POST['app_name'] ?? ($config['app_name'] ?? 'Fitness Challenge'))),
+        'challenge_name' => trim((string) ($_POST['challenge_name'] ?? 'Mi reto fitness')),
+        'team_name' => trim((string) ($_POST['team_name'] ?? 'Mi equipo')),
+        'display_name' => trim((string) ($_POST['display_name'] ?? '')),
+        'username' => trim((string) ($_POST['username'] ?? 'admin')),
+        'locale' => normalize_locale((string) ($_POST['locale'] ?? config_default_locale($config)), config_default_locale($config)),
+        'challenge_start' => trim((string) ($_POST['challenge_start'] ?? date('Y-m-d'))),
+        'challenge_end' => trim((string) ($_POST['challenge_end'] ?? date('Y-m-d', strtotime('+90 days')))),
+    ];
+
+    if (is_post()) {
+        $password = (string) ($_POST['password'] ?? '');
+        $passwordConfirm = (string) ($_POST['password_confirm'] ?? '');
+        $usernameLength = function_exists('mb_strlen') ? mb_strlen($setupValues['username']) : strlen($setupValues['username']);
+        $displayNameLength = function_exists('mb_strlen') ? mb_strlen($setupValues['display_name']) : strlen($setupValues['display_name']);
+
+        if (!csrf_verify()) {
+            $setupError = t('flash.csrf');
+        } elseif ($setupValues['app_name'] === '' || $setupValues['challenge_name'] === '' || $setupValues['team_name'] === '') {
+            $setupError = 'Completa todos los ajustes del sitio.';
+        } elseif ($setupValues['display_name'] === '' || $displayNameLength > 80) {
+            $setupError = 'Indica un nombre visible de hasta 80 caracteres.';
+        } elseif ($usernameLength < 3 || $usernameLength > 40 || preg_match('/^[A-Za-z0-9._-]+$/', $setupValues['username']) !== 1) {
+            $setupError = 'El usuario debe tener entre 3 y 40 caracteres y solo puede usar letras, números, punto, guion y guion bajo.';
+        } elseif (strlen($password) < 10) {
+            $setupError = 'La contraseña debe tener al menos 10 caracteres.';
+        } elseif (!preg_match('/[A-Za-z]/', $password) || !preg_match('/\d/', $password)) {
+            $setupError = 'La contraseña debe incluir al menos una letra y un número.';
+        } elseif ($password !== $passwordConfirm) {
+            $setupError = t('flash.password_mismatch');
+        } elseif (date_input_to_iso($setupValues['challenge_start']) === null || date_input_to_iso($setupValues['challenge_end']) === null) {
+            $setupError = 'Las fechas del reto no son válidas.';
+        } elseif ($setupValues['challenge_end'] < $setupValues['challenge_start']) {
+            $setupError = 'La fecha final del reto debe ser posterior a la fecha inicial.';
+        } else {
+            try {
+                $pdo->exec('BEGIN IMMEDIATE');
+                if ((int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() !== 0) {
+                    throw new RuntimeException('La instalación ya ha sido configurada.');
+                }
+
+                $now = now_iso();
+                db_execute(
+                    $pdo,
+                    'INSERT INTO users (
+                        username, password_hash, display_name, role, locale,
+                        onboarding_status, onboarding_completed_at, active, created_at, updated_at
+                     ) VALUES (
+                        :username, :password_hash, :display_name, "admin", :locale,
+                        "complete", :completed_at, 1, :created_at, :updated_at
+                     )',
+                    [
+                        ':username' => $setupValues['username'],
+                        ':password_hash' => password_hash($password, PASSWORD_DEFAULT),
+                        ':display_name' => $setupValues['display_name'],
+                        ':locale' => $setupValues['locale'],
+                        ':completed_at' => $now,
+                        ':created_at' => $now,
+                        ':updated_at' => $now,
+                    ]
+                );
+                $adminId = (int) $pdo->lastInsertId();
+
+                db_execute(
+                    $pdo,
+                    'INSERT INTO app_settings (setting_key, setting_value, updated_by, updated_at)
+                     VALUES ("app_name", :value, :updated_by, :updated_at)
+                     ON CONFLICT(setting_key) DO UPDATE SET
+                        setting_value = excluded.setting_value,
+                        updated_by = excluded.updated_by,
+                        updated_at = excluded.updated_at',
+                    [
+                        ':value' => $setupValues['app_name'],
+                        ':updated_by' => $adminId,
+                        ':updated_at' => $now,
+                    ]
+                );
+                db_execute(
+                    $pdo,
+                    'UPDATE challenge_settings
+                     SET challenge_name = :name, challenge_start = :start, challenge_end = :end, updated_at = :updated_at
+                     WHERE id = 1',
+                    [
+                        ':name' => $setupValues['challenge_name'],
+                        ':start' => $setupValues['challenge_start'],
+                        ':end' => $setupValues['challenge_end'],
+                        ':updated_at' => $now,
+                    ]
+                );
+
+                $team = db_fetch_one($pdo, 'SELECT id FROM teams WHERE slug = "main"');
+                if ($team === null) {
+                    db_execute(
+                        $pdo,
+                        'INSERT INTO teams (name, description, slug, active, created_at, updated_at)
+                         VALUES (:name, "", "main", 1, :created_at, :updated_at)',
+                        [':name' => $setupValues['team_name'], ':created_at' => $now, ':updated_at' => $now]
+                    );
+                    $teamId = (int) $pdo->lastInsertId();
+                } else {
+                    $teamId = (int) $team['id'];
+                    db_execute($pdo, 'UPDATE teams SET name = :name, updated_at = :updated_at WHERE id = :id', [
+                        ':name' => $setupValues['team_name'], ':updated_at' => $now, ':id' => $teamId,
+                    ]);
+                }
+                db_execute(
+                    $pdo,
+                    'INSERT INTO team_memberships (team_id, user_id, role, active, joined_at, created_at, updated_at)
+                     VALUES (:team_id, :user_id, "owner", 1, :joined_at, :created_at, :updated_at)',
+                    [
+                        ':team_id' => $teamId, ':user_id' => $adminId, ':joined_at' => $now,
+                        ':created_at' => $now, ':updated_at' => $now,
+                    ]
+                );
+                db_execute(
+                    $pdo,
+                    'INSERT INTO team_membership_periods (team_id, user_id, joined_at, created_at, updated_at)
+                     VALUES (:team_id, :user_id, :joined_at, :created_at, :updated_at)',
+                    [
+                        ':team_id' => $teamId, ':user_id' => $adminId, ':joined_at' => $now,
+                        ':created_at' => $now, ':updated_at' => $now,
+                    ]
+                );
+                db_execute($pdo, 'UPDATE users SET active_team_id = :team_id WHERE id = :id', [
+                    ':team_id' => $teamId, ':id' => $adminId,
+                ]);
+                $pdo->commit();
+
+                persist_session_locale($setupValues['locale']);
+                set_current_locale($setupValues['locale']);
+                if (!login_user($pdo, $setupValues['username'], $password)) {
+                    throw new RuntimeException('La cuenta se creó, pero no se pudo iniciar sesión automáticamente.');
+                }
+                flash_set('success', 'Instalación completada. Ya puedes administrar tu sitio.');
+                redirect('/?page=dashboard');
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $setupError = $e->getMessage() !== '' ? $e->getMessage() : 'No se pudo completar la instalación.';
+            }
+        }
+    }
+
+    set_current_locale($setupValues['locale']);
+    render_view('setup', [
+        'title' => 'Configurar sitio',
+        'currentPage' => 'setup',
+        'currentUser' => null,
+        'setupError' => $setupError,
+        'setupValues' => $setupValues,
+        'config' => $config,
+    ]);
 }
 
 if ($page === 'app_icon') {
@@ -875,12 +1071,29 @@ if ($page === 'onboarding') {
                 redirect('/?page=onboarding&step=telegram');
             }
             if ($onboardingStep === 'goals') {
-                $stepGoal = bool_from_form('enable_step_goal') === 1
-                    ? max(0, min(500000, (int) ($_POST['step_goal'] ?? 0)))
-                    : 0;
+                $_SESSION['onboarding_goal_input'] = $_POST;
+                $stepGoal = 0;
+                if (bool_from_form('enable_step_goal') === 1) {
+                    $parsedStepGoal = parse_localized_positive_integer($_POST['step_goal'] ?? '');
+                    if ($parsedStepGoal === null) {
+                        throw new InvalidArgumentException(t('onboarding.steps_invalid'));
+                    }
+                    $stepGoal = $parsedStepGoal;
+                }
                 $workoutTarget = bool_from_form('enable_workout_goal') === 1
                     ? max(0, min(14, (int) ($_POST['workout_target'] ?? 0)))
                     : 0;
+                if (bool_from_form('enable_workout_goal') === 1 && $workoutTarget <= 0) {
+                    throw new InvalidArgumentException(t('onboarding.workouts_invalid'));
+                }
+                $calorieBurnRaw = trim((string) ($_POST['calorie_burn_goal'] ?? ''));
+                $calorieConsumedRaw = trim((string) ($_POST['calorie_consumed_max'] ?? ''));
+                $idealWeightRaw = trim((string) ($_POST['ideal_weight'] ?? ''));
+                if (($calorieBurnRaw !== '' && (!is_numeric($calorieBurnRaw) || (float) $calorieBurnRaw <= 0))
+                    || ($calorieConsumedRaw !== '' && (!is_numeric($calorieConsumedRaw) || (float) $calorieConsumedRaw <= 0))
+                    || ($idealWeightRaw !== '' && (!is_numeric($idealWeightRaw) || (float) $idealWeightRaw < 25 || (float) $idealWeightRaw > 400))) {
+                    throw new InvalidArgumentException(t('metric.invalid'));
+                }
                 $extraGoalsRaw = trim((string) ($_POST['primary_goals_spec'] ?? ''));
                 $extraGoals = $extraGoalsRaw !== '' ? parse_primary_goals_spec($extraGoalsRaw, true) : [];
                 $dailyGoals = [];
@@ -901,7 +1114,8 @@ if ($page === 'onboarding') {
                     $pdo,
                     'UPDATE users SET step_goal = :step_goal, workout_target = :workout_target,
                         primary_goal_type = :primary_goal_type, primary_goal_value = :primary_goal_value,
-                        primary_goals_spec = :primary_goals_spec,
+                        primary_goals_spec = :primary_goals_spec, calorie_burn_goal = :calorie_burn_goal,
+                        calorie_consumed_max = :calorie_consumed_max, ideal_weight = :ideal_weight,
                         updated_at = :updated_at WHERE id = :id',
                     [
                         ':step_goal' => $stepGoal,
@@ -909,10 +1123,28 @@ if ($page === 'onboarding') {
                         ':primary_goal_type' => $primaryGoalType,
                         ':primary_goal_value' => $primaryGoalType !== 'none' && $primaryGoalValue > 0 ? $primaryGoalValue : null,
                         ':primary_goals_spec' => $primaryGoalsSpec !== '' ? $primaryGoalsSpec : null,
+                        ':calorie_burn_goal' => $calorieBurnRaw !== '' ? (float) $calorieBurnRaw : null,
+                        ':calorie_consumed_max' => $calorieConsumedRaw !== '' ? (float) $calorieConsumedRaw : null,
+                        ':ideal_weight' => $idealWeightRaw !== '' ? (float) $idealWeightRaw : null,
                         ':updated_at' => now_iso(),
                         ':id' => (int) $currentUser['id'],
                     ]
                 );
+                $updatedGoalUser = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $currentUser['id']]) ?? $currentUser;
+                $enabledMetrics = array_map('strval', (array) ($_POST['enabled_metrics'] ?? []));
+                if ($stepGoal > 0) {
+                    $enabledMetrics[] = 'steps';
+                }
+                if ($workoutTarget > 0) {
+                    $enabledMetrics[] = 'workouts';
+                }
+                foreach ($dailyGoals as $dailyGoal) {
+                    if ((string) ($dailyGoal['type'] ?? '') === 'km') {
+                        $enabledMetrics[] = 'distance';
+                    }
+                }
+                save_user_metric_preferences($pdo, $updatedGoalUser, $enabledMetrics);
+                unset($_SESSION['onboarding_goal_input']);
             } elseif ($onboardingStep === 'profile') {
                 $newAvatarPath = '';
                 $newCoverPath = '';
@@ -1309,9 +1541,12 @@ if ($page === 'api_meal_calendar') {
     };
     $days = [];
     foreach ($mealCalendar as $dateKey => $day) {
-        $photoCount = (int) ($day['count'] ?? 0);
+        $photoCount = (int) ($day['meal_count'] ?? $day['count'] ?? 0);
         $preview = is_array($day['preview'] ?? null) ? (array) $day['preview'] : null;
-        $previewPhotoId = $preview !== null ? (int) ($preview['id'] ?? 0) : 0;
+        $previewHasPhoto = $preview !== null
+            && (int) ($preview['has_photo'] ?? 0) === 1
+            && trim((string) ($preview['file_path'] ?? '')) !== '';
+        $previewPhotoId = $previewHasPhoto ? (int) ($preview['id'] ?? 0) : 0;
         $previewPhotos = [];
         foreach (array_slice(array_values((array) ($day['photos'] ?? [])), 0, 3) as $previewPhoto) {
             if (is_array($previewPhoto)) {
@@ -1328,11 +1563,11 @@ if ($page === 'api_meal_calendar') {
             'date_short' => (new DateTimeImmutable((string) $dateKey))->format('d/m'),
             'has_log' => $photoCount > 0,
             'count' => $photoCount,
-            'count_label' => $photoCount . ' ' . ($photoCount === 1 ? t('entries.photo_singular') : t('entries.photo_plural')),
+            'count_label' => $photoCount . ' ' . ($photoCount === 1 ? t('entries.meal_singular') : t('entries.meal_plural')),
             'href' => $previewPhotoId > 0
                 ? '/?page=photo&photo_id=' . $previewPhotoId
                 : ($selectedUserId === (int) $currentUser['id']
-                    ? '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey)
+                    ? '/?page=entries&mode=nutrition&date=' . rawurlencode((string) $dateKey)
                     : '/?' . http_build_query([
                         'page' => 'entries',
                         'mode' => 'calendar',
@@ -1393,10 +1628,15 @@ if ($page === 'api_meal_calendar') {
     };
     if ($includePhotos) {
         foreach ($periodRows as $photo) {
+            if ((int) ($photo['has_photo'] ?? 0) !== 1 || trim((string) ($photo['file_path'] ?? '')) === '') {
+                continue;
+            }
             $periodPhotos[] = $photoPayload($photo);
         }
         foreach (array_values((array) ($selectedDayData['photos'] ?? [])) as $photo) {
-            if (!is_array($photo)) {
+            if (!is_array($photo)
+                || (int) ($photo['has_photo'] ?? 0) !== 1
+                || trim((string) ($photo['file_path'] ?? '')) === '') {
                 continue;
             }
             $selectedPhotos[] = $photoPayload($photo);
@@ -1433,7 +1673,11 @@ if ($page === 'api_meal_calendar') {
 
 if ($page === 'entries') {
     $entryMode = (string) ($_GET['mode'] ?? 'data');
-    if (!in_array($entryMode, ['data', 'meal', 'calendar'], true)) {
+    if ($entryMode === 'meal' && !is_post()) {
+        $legacyMealDate = to_date((string) ($_GET['date'] ?? null));
+        redirect('/?page=entries&mode=nutrition&date=' . rawurlencode($legacyMealDate));
+    }
+    if (!in_array($entryMode, ['data', 'nutrition', 'calendar'], true)) {
         $entryMode = 'data';
     }
 
@@ -1452,9 +1696,15 @@ if ($page === 'entries') {
 
             try {
                 $existingLogForHabits = fetch_log($pdo, $userId, $date);
+                $entryEnabledMetricSet = array_fill_keys(metric_enabled_keys($pdo, $currentUser), true);
                 $habitValues = [];
                 foreach (list_habit_definitions($pdo, false) as $habit) {
                     $code = (string) $habit['code'];
+                    if (!isset($entryEnabledMetricSet['habit:' . $code])) {
+                        $habitValues[$code] = !empty($existingLogForHabits['habits'][$code])
+                            && (int) ($existingLogForHabits['habits'][$code]['value'] ?? 0) === 1 ? 1 : 0;
+                        continue;
+                    }
                     if ($code === 'morning_walk' && !isset($_POST['habit'][$code])) {
                         $habitValues[$code] = !empty($existingLogForHabits['habits'][$code]) && (int) ($existingLogForHabits['habits'][$code]['value'] ?? 0) === 1 ? 1 : 0;
                         continue;
@@ -1463,9 +1713,13 @@ if ($page === 'entries') {
                 }
 
                 $rawWorkouts = [];
+                if (!isset($entryEnabledMetricSet['workouts'])) {
+                    $rawWorkouts = array_values((array) ($existingLogForHabits['workouts'] ?? []));
+                }
                 $hasWorkoutPayload = isset($_POST['workouts']) || isset($_POST['workout_type_id']) || isset($_POST['workout_type']);
                 $isNewWorkoutForm = (string) ($_POST['workout_form_mode'] ?? '') === '1';
-                if (bool_from_form('workout_enabled') === 1 || (!$isNewWorkoutForm && $hasWorkoutPayload)) {
+                if (isset($entryEnabledMetricSet['workouts'])
+                    && (bool_from_form('workout_enabled') === 1 || (!$isNewWorkoutForm && $hasWorkoutPayload))) {
                     if (isset($_POST['workouts']) && is_array($_POST['workouts'])) {
                         foreach (array_values((array) $_POST['workouts']) as $workoutRow) {
                             if (!is_array($workoutRow)) {
@@ -1496,23 +1750,38 @@ if ($page === 'entries') {
                     }
                 }
 
+                $postedSteps = max(0, (int) ($_POST['steps'] ?? 0));
+                $savedSteps = max(0, (int) ($existingLogForHabits['base_steps'] ?? $existingLogForHabits['steps'] ?? 0));
+                $savedDistance = $existingLogForHabits['base_distance_km'] ?? $existingLogForHabits['distance_km'] ?? null;
+                $savedBurnedCalories = $existingLogForHabits['base_training_calories_burned'] ?? $existingLogForHabits['training_calories_burned'] ?? null;
+                $savedWeight = $existingLogForHabits['weight'] ?? null;
+                $stepsValue = isset($entryEnabledMetricSet['steps']) ? $postedSteps : $savedSteps;
+                $distanceValue = isset($entryEnabledMetricSet['distance'])
+                    ? (($_POST['distance_km'] ?? '') !== '' ? (float) $_POST['distance_km'] : null)
+                    : $savedDistance;
+                $burnedCaloriesValue = isset($entryEnabledMetricSet['calories_burned'])
+                    ? (($_POST['training_calories_burned'] ?? '') !== '' ? (float) $_POST['training_calories_burned'] : null)
+                    : $savedBurnedCalories;
+                $weightValue = isset($entryEnabledMetricSet['weight'])
+                    ? (($_POST['weight'] ?? '') !== '' ? (float) $_POST['weight'] : null)
+                    : $savedWeight;
                 $payload = [
                     'user_id' => $userId,
                     'log_date' => $date,
                     'log_time' => normalize_log_time($_POST['log_time'] ?? '', (new DateTimeImmutable('now'))->format('H:i')),
-                    'steps' => max(0, (int) ($_POST['steps'] ?? 0)),
+                    'steps' => $stepsValue,
                     'workout_done' => 0,
                     'workout_type_id' => null,
                     'workout_type' => '',
                     'workouts' => $rawWorkouts,
                     'junk_food' => bool_from_form('junk_food'),
                     'extra_workout' => 0,
-                    'base_steps' => max(0, (int) ($_POST['steps'] ?? 0)),
-                    'base_distance_km' => ($_POST['distance_km'] ?? '') !== '' ? (float) $_POST['distance_km'] : null,
-                    'base_training_calories_burned' => ($_POST['training_calories_burned'] ?? '') !== '' ? (float) $_POST['training_calories_burned'] : null,
-                    'distance_km' => ($_POST['distance_km'] ?? '') !== '' ? (float) $_POST['distance_km'] : null,
-                    'training_calories_burned' => ($_POST['training_calories_burned'] ?? '') !== '' ? (float) $_POST['training_calories_burned'] : null,
-                    'weight' => ($_POST['weight'] ?? '') !== '' ? (float) $_POST['weight'] : null,
+                    'base_steps' => $stepsValue,
+                    'base_distance_km' => $distanceValue,
+                    'base_training_calories_burned' => $burnedCaloriesValue,
+                    'distance_km' => $distanceValue,
+                    'training_calories_burned' => $burnedCaloriesValue,
+                    'weight' => $weightValue,
                     'notes' => trim((string) ($_POST['notes'] ?? '')),
                     'step_exception_reason' => '',
                     'distance_exception_reason' => '',
@@ -1611,12 +1880,13 @@ if ($page === 'entries') {
                         'nutrition' => $nutrition,
                     ]
                 );
-                flash_set('success', t('flash.photo_uploaded'));
-                if (function_exists('xp_grant_action')) {
+                $createdHasPhoto = (int) ($createdPhoto['has_photo'] ?? 0) === 1;
+                flash_set('success', t($createdHasPhoto ? 'flash.photo_uploaded' : 'flash.meal_saved'));
+                if ($createdHasPhoto && function_exists('xp_grant_action')) {
                     xp_grant_action($pdo, $userId, 'photo', 'photo:' . $date);
                 }
                 // Notify friends of a meal or training post (privacy-aware, once/day).
-                if (function_exists('social_broadcast_activity')) {
+                if ($createdHasPhoto && function_exists('social_broadcast_activity')) {
                     $activityType = $category === 'workout'
                         ? 'training'
                         : (in_array($category, ['breakfast', 'lunch', 'dinner', 'meal'], true) ? 'meal' : '');
@@ -1628,17 +1898,53 @@ if ($page === 'entries') {
                 flash_set('error', $e->getMessage());
             }
 
-            if ($createdPhotoId > 0) {
+            if ($createdPhotoId > 0 && !empty($createdPhoto['has_photo'])) {
                 redirect('/?page=photo&photo_id=' . $createdPhotoId);
             }
-            redirect('/?page=entries&mode=' . rawurlencode($entryMode) . '&date=' . $date);
+            redirect('/?page=entries&mode=nutrition&date=' . $date);
+        }
+
+        if ($action === 'update_meal_entry') {
+            $mealId = (int) ($_POST['photo_id'] ?? 0);
+            $mealDate = to_date($_POST['log_date'] ?? null);
+            try {
+                $beforeMeal = db_fetch_one($pdo, 'SELECT * FROM photo_entries WHERE id = :id', [':id' => $mealId]);
+                if ($beforeMeal === null) {
+                    throw new RuntimeException(t('flash.not_found'));
+                }
+                if (!is_admin($currentUser) && (int) ($beforeMeal['user_id'] ?? 0) !== (int) $currentUser['id']) {
+                    throw new RuntimeException(t('flash.no_permission'));
+                }
+                $updatedMeal = update_photo_entry(
+                    $pdo,
+                    $config,
+                    $mealId,
+                    $mealDate,
+                    (string) ($_POST['category'] ?? 'other'),
+                    trim((string) ($_POST['caption'] ?? '')),
+                    [
+                        'calories' => $_POST['photo_calories'] ?? null,
+                        'protein_g' => $_POST['photo_protein_g'] ?? null,
+                        'carbs_g' => $_POST['photo_carbs_g'] ?? null,
+                        'fat_g' => $_POST['photo_fat_g'] ?? null,
+                        'fiber_g' => $_POST['photo_fiber_g'] ?? null,
+                        'sugar_g' => $_POST['photo_sugar_g'] ?? null,
+                        'sodium_mg' => $_POST['photo_sodium_mg'] ?? null,
+                    ]
+                );
+                audit_log($pdo, (int) $currentUser['id'], 'meal_updated', 'photo_entry', (string) $mealId, 'Meal updated.', audit_snapshot($beforeMeal), audit_snapshot($updatedMeal));
+                flash_set('success', t('flash.meal_saved'));
+            } catch (Throwable $e) {
+                flash_set('error', $e->getMessage());
+            }
+            redirect('/?page=entries&mode=nutrition&date=' . rawurlencode($mealDate));
         }
 
         if ($action === 'delete_photo') {
             $photoId = (int) ($_POST['photo_id'] ?? 0);
             $redirectMode = (string) ($_POST['redirect_mode'] ?? $entryMode);
-            if (!in_array($redirectMode, ['meal', 'calendar'], true)) {
-                $redirectMode = 'meal';
+            if (!in_array($redirectMode, ['nutrition', 'calendar'], true)) {
+                $redirectMode = 'nutrition';
             }
             $redirectDate = to_date((string) ($_POST['redirect_date'] ?? null));
             $redirectCalendarView = (string) ($_POST['redirect_calendar_view'] ?? 'month');
@@ -1711,14 +2017,16 @@ if ($page === 'entries') {
         || trim((string) ($_GET['calendar_week'] ?? '')) !== '';
     $calendarDateFallback = null;
     if ($entryMode === 'calendar' && !$hasExplicitCalendarDate) {
-        $latestMealPhoto = fetch_latest_meal_photo($pdo, $selectedUserId);
-        $calendarDateFallback = is_array($latestMealPhoto ?? null) && !empty($latestMealPhoto['log_date'])
-            ? (string) $latestMealPhoto['log_date']
+        $latestMealEntry = fetch_latest_meal_entry($pdo, $selectedUserId);
+        $calendarDateFallback = is_array($latestMealEntry ?? null) && !empty($latestMealEntry['log_date'])
+            ? (string) $latestMealEntry['log_date']
             : null;
     }
     $selectedDate = calendar_date_from_request($_GET, $calendarView, $calendarDateFallback);
     $currentLog = fetch_log($pdo, $selectedUserId, $selectedDate);
-    $recentPhotos = fetch_recent_photos($pdo, 20, $selectedUserId);
+    $recentPhotos = $entryMode === 'nutrition'
+        ? fetch_recent_meals($pdo, 50, $selectedUserId)
+        : fetch_recent_photos($pdo, 20, $selectedUserId);
     workouts_ensure_schema($pdo);
     $workoutTypes = list_workout_types($pdo, true);
     $mealCalendar = [];
@@ -1737,6 +2045,8 @@ if ($page === 'entries') {
         'selectedDate' => $selectedDate,
         'currentLog' => $currentLog,
         'recentPhotos' => $recentPhotos,
+        'entryMetricDefinitions' => metric_preference_definitions($pdo, $currentUser),
+        'entryEnabledMetrics' => metric_enabled_keys($pdo, $currentUser),
         'mealCalendar' => $mealCalendar,
         'calendarView' => $calendarView,
         'workoutTypes' => $workoutTypes,
@@ -1753,7 +2063,10 @@ if ($page === 'photo') {
     $photo = fetch_photo_by_id($pdo, $photoId);
     if ($photo === null) {
         flash_set('error', t('flash.not_found'));
-        redirect('/?page=entries&mode=meal&date=' . rawurlencode(to_date(null)));
+        redirect('/?page=entries&mode=nutrition&date=' . rawurlencode(to_date(null)));
+    }
+    if ((int) ($photo['has_photo'] ?? 0) !== 1 || trim((string) ($photo['file_path'] ?? '')) === '') {
+        redirect('/?page=entries&mode=nutrition&date=' . rawurlencode((string) ($photo['log_date'] ?? to_date(null))));
     }
 
     $photoOwnerId = (int) ($photo['user_id'] ?? 0);
@@ -1918,14 +2231,14 @@ if ($page === 'photo') {
                 redirect('/?page=photo&photo_id=' . (int) $photoId);
             }
 
-            redirect('/?page=entries&mode=meal&date=' . rawurlencode((string) ($photo['log_date'] ?? to_date(null))));
+            redirect('/?page=entries&mode=nutrition&date=' . rawurlencode((string) ($photo['log_date'] ?? to_date(null))));
         }
     }
 
     $photo = fetch_photo_by_id($pdo, $photoId);
     if ($photo === null) {
         flash_set('error', t('flash.not_found'));
-        redirect('/?page=entries&mode=meal&date=' . rawurlencode(to_date(null)));
+        redirect('/?page=entries&mode=nutrition&date=' . rawurlencode(to_date(null)));
     }
 
     render_view('photo', [
@@ -3109,7 +3422,7 @@ if ($page === 'workouts') {
                 } elseif ($favoriteTargetSessionId > 0) {
                     $favoriteReturn['target_session_id'] = $favoriteTargetSessionId;
                 }
-                foreach (['muscle', 'equipment', 'q'] as $filterKey) {
+                foreach (['muscle', 'equipment', 'context', 'q'] as $filterKey) {
                     $filterValue = trim((string) ($_POST[$filterKey] ?? ''));
                     if ($filterValue !== '') {
                         $favoriteReturn[$filterKey] = $filterValue;
@@ -3208,7 +3521,7 @@ if ($page === 'workouts') {
                 } elseif ($contextSession > 0) {
                     $libraryQuery['target_session_id'] = $contextSession;
                 }
-                foreach (['muscle', 'equipment', 'q', 'scope'] as $filterKey) {
+                foreach (['muscle', 'equipment', 'context', 'q', 'scope'] as $filterKey) {
                     $filterValue = trim((string) ($_POST[$filterKey] ?? ''));
                     if ($filterValue !== '') {
                         $libraryQuery[$filterKey] = $filterValue;
@@ -3375,6 +3688,7 @@ if ($page === 'workouts') {
         'q' => $wkLibraryQuery,
         'muscle' => in_array((string) ($_GET['muscle'] ?? ''), wk_muscle_groups(), true) ? (string) $_GET['muscle'] : '',
         'equipment' => in_array((string) ($_GET['equipment'] ?? ''), wk_equipment_options(), true) ? (string) $_GET['equipment'] : '',
+        'context' => in_array((string) ($_GET['context'] ?? ''), wk_context_options(), true) ? (string) $_GET['context'] : '',
         'scope' => in_array((string) ($_GET['scope'] ?? ''), ['mine', 'favorites'], true) ? (string) $_GET['scope'] : '',
     ];
     $wkLibraryMode = (string) ($_GET['library_mode'] ?? '') === 'organize' && $wkLibraryFilters['scope'] === 'favorites'
@@ -3647,6 +3961,7 @@ if ($page === 'workouts') {
         'wkLibraryLayout' => $wkLibraryLayout,
         'wkMuscleGroups' => wk_muscle_groups(),
         'wkEquipmentOptions' => wk_equipment_options(),
+        'wkContextOptions' => wk_context_options(),
         'wkExerciseRanks' => $wkExerciseRanks,
         'wkMuscleRanks' => $wkMuscleRanks,
         'wkOverallRank' => $wkOverallRank,
@@ -3723,6 +4038,46 @@ if ($page === 'settings') {
             if ($primaryType !== 'none' && $primaryValue <= 0) {
                 $primaryType = 'none';
             }
+            $settingsStepGoal = 0;
+            if (trim((string) ($_POST['step_goal'] ?? '')) !== '') {
+                $settingsStepGoal = parse_localized_positive_integer($_POST['step_goal'] ?? '') ?? -1;
+                if ($settingsStepGoal < 0) {
+                    flash_set('error', t('onboarding.steps_invalid'));
+                    redirect($settingsRedirect($settingsView));
+                }
+            }
+            $settingsWorkoutRaw = trim((string) ($_POST['workout_target'] ?? ''));
+            if ($settingsWorkoutRaw !== '' && (!is_numeric($settingsWorkoutRaw) || (int) $settingsWorkoutRaw < 0 || (int) $settingsWorkoutRaw > 14)) {
+                flash_set('error', t('onboarding.workouts_invalid'));
+                redirect($settingsRedirect($settingsView));
+            }
+            $settingsWorkoutTarget = $settingsWorkoutRaw !== '' ? (int) $settingsWorkoutRaw : 0;
+            $settingsDistanceRaw = trim((string) ($_POST['distance_goal'] ?? ''));
+            if ($settingsDistanceRaw !== '' && (!is_numeric($settingsDistanceRaw) || (float) $settingsDistanceRaw <= 0)) {
+                flash_set('error', t('metric.invalid'));
+                redirect($settingsRedirect($settingsView));
+            }
+            $settingsDistanceGoal = $settingsDistanceRaw !== '' ? (float) $settingsDistanceRaw : 0.0;
+            $settingsBurnRaw = trim((string) ($_POST['calorie_burn_goal'] ?? ''));
+            $settingsConsumedRaw = trim((string) ($_POST['calorie_consumed_max'] ?? ''));
+            if (($settingsBurnRaw !== '' && (!is_numeric($settingsBurnRaw) || (float) $settingsBurnRaw <= 0))
+                || ($settingsConsumedRaw !== '' && (!is_numeric($settingsConsumedRaw) || (float) $settingsConsumedRaw <= 0))) {
+                flash_set('error', t('metric.invalid'));
+                redirect($settingsRedirect($settingsView));
+            }
+            $settingsDailyGoals = [];
+            if ($settingsStepGoal > 0) {
+                $settingsDailyGoals[] = ['type' => 'steps', 'value' => (float) $settingsStepGoal];
+            }
+            if ($settingsDistanceGoal > 0) {
+                $settingsDailyGoals[] = ['type' => 'km', 'value' => $settingsDistanceGoal];
+            }
+            if ($primaryType === 'workouts' && $primaryValue > 0) {
+                $settingsDailyGoals[] = ['type' => 'workouts', 'value' => $primaryValue];
+            }
+            $settingsLegacyGoal = $settingsDailyGoals[0] ?? null;
+            $primaryType = is_array($settingsLegacyGoal) ? (string) ($settingsLegacyGoal['type'] ?? 'none') : 'none';
+            $primaryValue = is_array($settingsLegacyGoal) ? (float) ($settingsLegacyGoal['value'] ?? 0) : 0.0;
             $themeMode = in_array(($_POST['theme_mode'] ?? 'auto'), ['auto', 'light', 'dark'], true) ? (string) $_POST['theme_mode'] : 'auto';
             $layoutJson = (string) ($before['dashboard_layout_json'] ?? '[]');
             $hasWidgetPayload = array_key_exists('dashboard_widgets', $_POST) || array_key_exists('dashboard_order', $_POST);
@@ -3746,6 +4101,7 @@ if ($page === 'settings') {
                 'UPDATE users
                  SET primary_goal_type = :primary_goal_type,
                      primary_goal_value = :primary_goal_value,
+                     primary_goals_spec = :primary_goals_spec,
                      step_goal = :step_goal,
                      workout_target = :workout_target,
                      calorie_burn_goal = :calorie_burn_goal,
@@ -3758,10 +4114,11 @@ if ($page === 'settings') {
                 [
                     ':primary_goal_type' => $primaryType,
                     ':primary_goal_value' => $primaryType !== 'none' ? $primaryValue : null,
-                    ':step_goal' => ($_POST['step_goal'] ?? '') !== '' ? max(0, min(500000, (int) $_POST['step_goal'])) : 0,
-                    ':workout_target' => ($_POST['workout_target'] ?? '') !== '' ? max(0, min(14, (int) $_POST['workout_target'])) : 0,
-                    ':calorie_burn_goal' => ($_POST['calorie_burn_goal'] ?? '') !== '' ? max(0.0, (float) $_POST['calorie_burn_goal']) : null,
-                    ':calorie_consumed_max' => ($_POST['calorie_consumed_max'] ?? '') !== '' ? max(0.0, (float) $_POST['calorie_consumed_max']) : null,
+                    ':primary_goals_spec' => $settingsDailyGoals !== [] ? format_primary_goals_spec($settingsDailyGoals) : null,
+                    ':step_goal' => $settingsStepGoal,
+                    ':workout_target' => $settingsWorkoutTarget,
+                    ':calorie_burn_goal' => $settingsBurnRaw !== '' ? (float) $settingsBurnRaw : null,
+                    ':calorie_consumed_max' => $settingsConsumedRaw !== '' ? (float) $settingsConsumedRaw : null,
                     ':theme_mode' => $themeMode,
                     ':dashboard_view' => (string) ($_POST['dashboard_view'] ?? 'current_week'),
                     ':dashboard_layout_json' => $layoutJson,
@@ -3770,6 +4127,14 @@ if ($page === 'settings') {
                 ]
             );
             $after = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $currentUser['id']]);
+            if (array_key_exists('enabled_metrics', $_POST) || array_key_exists('metric_preferences_present', $_POST)) {
+                try {
+                    save_user_metric_preferences($pdo, $after ?? $currentUser, (array) ($_POST['enabled_metrics'] ?? []));
+                } catch (InvalidArgumentException $preferenceError) {
+                    flash_set('error', $preferenceError->getMessage());
+                    redirect($settingsRedirect($settingsView));
+                }
+            }
             audit_log($pdo, (int) $currentUser['id'], 'user_preferences_updated', 'user', (string) $currentUser['id'], 'User preferences updated.', audit_snapshot($before, ['password_hash']), audit_snapshot($after, ['password_hash']));
             flash_set('success', t('flash.preferences_updated'));
             redirect($settingsRedirect($settingsView));
@@ -3999,6 +4364,8 @@ if ($page === 'settings') {
         'settingsMetric' => is_array($settingsGoalMetric) ? $settingsGoalMetric : [],
         'settingsWeightHistory' => $settingsWeightHistory,
         'settingsGoalCards' => build_user_goal_view_models($settingsGoalRows, is_array($settingsGoalMetric) ? $settingsGoalMetric : [], $settingsHabitDefinitions),
+        'settingsMetricDefinitions' => metric_preference_definitions($pdo, $currentUser),
+        'settingsEnabledMetrics' => metric_enabled_keys($pdo, $currentUser),
         'telegramSettings' => telegram_settings($pdo),
         'config' => $config,
     ]);
@@ -4941,6 +5308,8 @@ if ($page === 'profile') {
          FROM photo_entries
          WHERE user_id = :user_id
            AND log_date BETWEEN :start AND :end
+           AND has_photo = 1
+           AND TRIM(COALESCE(file_path, "")) != ""
          ORDER BY log_date ASC, created_at ASC',
         [
             ':user_id' => (int) ($profileUser['id'] ?? 0),
@@ -8638,37 +9007,13 @@ if ($page === 'metric') {
     $currentValueSuffix = '';
     $chartLabel = $allowedMetrics[$metricKey];
     $score_for_week = static function (array $row) use ($selectedMetric): float {
-        $stepRequired = max(
-            0,
-            (int) ($row['step_days_required_week'] ?? ((int) ($row['step_days_success_week'] ?? 0) + (int) ($row['step_failures'] ?? 0)))
-        );
-        $stepSuccess = max(
-            0,
-            min($stepRequired, (int) ($row['step_days_success_week'] ?? ($stepRequired - (int) ($row['step_failures'] ?? 0))))
-        );
-        $stepPct = $stepRequired > 0 ? round(($stepSuccess / $stepRequired) * 100, 1) : 0.0;
-        $workoutTarget = max(0, (int) ($row['workout_target_week'] ?? 0));
-        $workoutSuccess = max(
-            max(0, (int) ($row['workouts'] ?? 0)),
-            isset($row['workout_success_week'])
-                ? max(0, (int) ($row['workout_success_week'] ?? 0))
-                : max(0, $workoutTarget - (int) ($row['workout_failures'] ?? 0))
-        );
-        $workoutPct = $workoutTarget > 0 ? round(($workoutSuccess / $workoutTarget) * 100, 1) : 0.0;
-        $strikesNet = max(
-            0,
-            (int) ($row['total_failures'] ?? ((int) ($row['step_failures'] ?? 0) + (int) ($row['workout_failures'] ?? 0)))
-            - (int) ($row['strike_reduction'] ?? 0)
-        );
-        $warnings = max(0, (int) ($row['skip_warnings'] ?? 0));
-        $disciplineScore = max(0.0, 100.0 - min(100.0, ($strikesNet * 10) + ($warnings * 3)));
-        $weightProgress = null;
-        if (array_key_exists('weight_progress_pct', $selectedMetric) && $selectedMetric['weight_progress_pct'] !== null && is_numeric($selectedMetric['weight_progress_pct'])) {
-            $weightProgress = (float) $selectedMetric['weight_progress_pct'];
+        $weekStart = (string) ($row['week_start'] ?? '');
+        if ($weekStart === '') {
+            return 0.0;
         }
-        $components = score_components_from_progress($stepPct, $workoutPct, $disciplineScore, $weightProgress);
+        $snapshot = metric_snapshot_for_view($selectedMetric, $weekStart);
 
-        return score_value_from_components($components);
+        return $snapshot['score'] !== null ? (float) $snapshot['score'] : 0.0;
     };
     $workout_success_for_week = static function (array $row): int {
         $workouts = max(0, (int) ($row['workouts'] ?? 0));
@@ -8772,7 +9117,7 @@ if ($page === 'metric') {
     $scoreBreakdown = score_breakdown_from_snapshot($selectedMetric, $scoreSnapshot);
     if ($metricKey === 'score') {
         // Keep the detail value identical to the dashboard. The chart remains a
-        // weekly history, but the headline is the weighted score for this view.
+        // weekly history based on the same active-metric snapshot contract.
         $currentValue = (float) ($scoreBreakdown['score'] ?? 0.0);
     }
 
@@ -9695,6 +10040,58 @@ if ($page === 'dashboard') {
                     return $leftOrder <=> $rightOrder;
                 });
             }
+            if (array_key_exists('metric_preferences_present', $_POST)) {
+                $dashboardStepRaw = trim((string) ($_POST['metric_step_goal'] ?? ''));
+                $dashboardStepGoal = $dashboardStepRaw !== ''
+                    ? (parse_localized_positive_integer($dashboardStepRaw) ?? -1)
+                    : 0;
+                $dashboardDistanceRaw = trim((string) ($_POST['metric_distance_goal'] ?? ''));
+                $dashboardWorkoutRaw = trim((string) ($_POST['metric_workout_target'] ?? ''));
+                $dashboardBurnRaw = trim((string) ($_POST['metric_calorie_burn_goal'] ?? ''));
+                $dashboardConsumedRaw = trim((string) ($_POST['metric_calorie_consumed_max'] ?? ''));
+                $dashboardIdealRaw = trim((string) ($_POST['metric_ideal_weight'] ?? ''));
+                $invalidDashboardTargets = $dashboardStepGoal < 0
+                    || ($dashboardDistanceRaw !== '' && (!is_numeric($dashboardDistanceRaw) || (float) $dashboardDistanceRaw <= 0))
+                    || ($dashboardWorkoutRaw !== '' && (!is_numeric($dashboardWorkoutRaw) || (int) $dashboardWorkoutRaw < 1 || (int) $dashboardWorkoutRaw > 14))
+                    || ($dashboardBurnRaw !== '' && (!is_numeric($dashboardBurnRaw) || (float) $dashboardBurnRaw <= 0))
+                    || ($dashboardConsumedRaw !== '' && (!is_numeric($dashboardConsumedRaw) || (float) $dashboardConsumedRaw <= 0))
+                    || ($dashboardIdealRaw !== '' && (!is_numeric($dashboardIdealRaw) || (float) $dashboardIdealRaw < 25 || (float) $dashboardIdealRaw > 400));
+                if ($invalidDashboardTargets) {
+                    flash_set('error', $dashboardStepGoal < 0 ? t('onboarding.steps_invalid') : t('metric.invalid'));
+                    redirect('/?page=dashboard&layout_edit=1');
+                }
+                $dashboardGoals = array_values(array_filter(
+                    user_primary_goals($currentUser),
+                    static fn(array $goal): bool => !in_array((string) ($goal['type'] ?? ''), ['steps', 'km'], true)
+                ));
+                if ($dashboardStepGoal > 0) {
+                    array_unshift($dashboardGoals, ['type' => 'steps', 'value' => (float) $dashboardStepGoal]);
+                }
+                if ($dashboardDistanceRaw !== '') {
+                    $dashboardGoals[] = ['type' => 'km', 'value' => (float) $dashboardDistanceRaw];
+                }
+                $dashboardLegacyGoal = $dashboardGoals[0] ?? null;
+                db_execute(
+                    $pdo,
+                    'UPDATE users SET step_goal = :step_goal, workout_target = :workout_target,
+                        primary_goal_type = :primary_goal_type, primary_goal_value = :primary_goal_value,
+                        primary_goals_spec = :primary_goals_spec, calorie_burn_goal = :calorie_burn_goal,
+                        calorie_consumed_max = :calorie_consumed_max, ideal_weight = :ideal_weight,
+                        updated_at = :updated_at WHERE id = :id',
+                    [
+                        ':step_goal' => $dashboardStepGoal,
+                        ':workout_target' => $dashboardWorkoutRaw !== '' ? (int) $dashboardWorkoutRaw : 0,
+                        ':primary_goal_type' => is_array($dashboardLegacyGoal) ? (string) ($dashboardLegacyGoal['type'] ?? 'none') : 'none',
+                        ':primary_goal_value' => is_array($dashboardLegacyGoal) ? (float) ($dashboardLegacyGoal['value'] ?? 0) : null,
+                        ':primary_goals_spec' => $dashboardGoals !== [] ? format_primary_goals_spec($dashboardGoals) : null,
+                        ':calorie_burn_goal' => $dashboardBurnRaw !== '' ? (float) $dashboardBurnRaw : null,
+                        ':calorie_consumed_max' => $dashboardConsumedRaw !== '' ? (float) $dashboardConsumedRaw : null,
+                        ':ideal_weight' => $dashboardIdealRaw !== '' ? (float) $dashboardIdealRaw : null,
+                        ':updated_at' => now_iso(),
+                        ':id' => (int) $currentUser['id'],
+                    ]
+                );
+            }
             db_execute(
                 $pdo,
                 'UPDATE users SET dashboard_view = :dashboard_view, dashboard_layout_json = :layout, updated_at = :updated_at WHERE id = :id',
@@ -9705,6 +10102,19 @@ if ($page === 'dashboard') {
                     ':id' => (int) $currentUser['id'],
                 ]
             );
+            if (array_key_exists('metric_preferences_present', $_POST)) {
+                $dashboardPreferenceUser = db_fetch_one(
+                    $pdo,
+                    'SELECT * FROM users WHERE id = :id',
+                    [':id' => (int) $currentUser['id']]
+                ) ?? $currentUser;
+                try {
+                    save_user_metric_preferences($pdo, $dashboardPreferenceUser, (array) ($_POST['enabled_metrics'] ?? []));
+                } catch (InvalidArgumentException $preferenceError) {
+                    flash_set('error', $preferenceError->getMessage());
+                    redirect('/?page=dashboard&layout_edit=1');
+                }
+            }
             audit_log($pdo, (int) $currentUser['id'], 'dashboard_preferences_updated', 'user', (string) $currentUser['id'], 'Dashboard preferences updated.', null, ['dashboard_view' => $_POST['dashboard_view'] ?? 'current_week', 'widgets' => $widgets, 'reset' => $resetLayout]);
             flash_set('success', t('flash.preferences_updated'));
             $dashboardRedirectParams = [
@@ -10003,6 +10413,8 @@ if ($page === 'dashboard') {
         }
     }
 
+    $dashboardPanelPreferences = dashboard_panel_preferences($pdo, (int) $currentUser['id']);
+
     render_view('dashboard', [
         'title' => t('nav.dashboard'),
         'currentPage' => 'dashboard',
@@ -10029,6 +10441,9 @@ if ($page === 'dashboard') {
         'settings' => $settings,
         'selectedMetric' => $selectedMetric,
         'selectedMetricSnapshot' => $selectedMetricSnapshot,
+        'dashboardMetricDefinitions' => metric_preference_definitions($pdo, $currentUser),
+        'dashboardEnabledMetrics' => metric_enabled_keys($pdo, $currentUser),
+        'dashboardPanelPreferences' => $dashboardPanelPreferences,
         'metricsOrdered' => array_values($metricsByUser),
         'selectedWeekStart' => $selectedWeekStart,
         'dashboardView' => $dashboardView,

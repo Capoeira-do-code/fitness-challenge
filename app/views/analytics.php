@@ -182,7 +182,7 @@ $foodCategoryLabels = array_map(
     },
     $foodCategoryRows
 );
-$foodCategoryCounts = array_map(static fn(array $row): int => (int) ($row['photo_count'] ?? 0), $foodCategoryRows);
+$foodCategoryCounts = array_map(static fn(array $row): int => (int) ($row['meal_count'] ?? 0), $foodCategoryRows);
 
 $analyticsBaseQuery = [
     'page' => 'analytics',
@@ -304,7 +304,7 @@ $analyticsSummaryCards = [
     ['label' => t('metric.steps'), 'value' => number_format($stepsCumulativeTotal, 0, '.', ''), 'meta' => t('metric.current_value')],
     ['label' => t('metric.distance_km'), 'value' => $formatDecimal((float) $distanceRangeTotal, 2) . ' km', 'meta' => t('dashboard.distance_walked_chart')],
     ['label' => t('metric.workouts'), 'value' => $workoutTarget > 0 ? (string) $workoutValue . ' / ' . (string) $workoutTarget : (string) $workoutValue, 'meta' => t('metric.progress')],
-    ['label' => t('analytics.food_photos'), 'value' => (string) ((int) ($foodStats['photo_count'] ?? 0)), 'meta' => t('analytics.meal_days') . ': ' . (string) ((int) ($foodStats['meal_days'] ?? 0))],
+    ['label' => t('analytics.meal_entries'), 'value' => (string) ((int) ($foodStats['meal_count'] ?? 0)), 'meta' => t('analytics.meal_days') . ': ' . (string) ((int) ($foodStats['meal_days'] ?? 0)) . ' · ' . t('analytics.food_photos') . ': ' . (string) ((int) ($foodStats['photo_count'] ?? 0))],
     ['label' => t('dashboard.calories_consumed'), 'value' => $formatCalories($calorieConsumedTotal) . ' kcal', 'meta' => t('dashboard.calories_title')],
     ['label' => t('dashboard.calories_burned'), 'value' => $formatCalories($calorieBurnedTotal) . ' kcal', 'meta' => t('entries.training_calories_burned')],
     ['label' => t('dashboard.calories_deficit'), 'value' => $formatCalories($calorieDeficitTotal) . ' kcal', 'meta' => t('dashboard.calories_hint_label')],
@@ -529,7 +529,7 @@ $topbarControls = ob_get_clean();
     <section class="analytics-section analytics-layout-item" data-analytics-section="food" style="<?= e($analyticsSectionStyle('food')) ?>">
         <div class="analytics-section-title">
             <h2><?= e(t('analytics.section_food')) ?></h2>
-            <span class="badge"><?= e((string) ((int) ($foodStats['photo_count'] ?? 0))) ?> <?= e(t('entries.photo_plural')) ?></span>
+            <span class="badge"><?= e((string) ((int) ($foodStats['meal_count'] ?? 0))) ?> <?= e(t('analytics.meal_entries')) ?></span>
         </div>
         <div class="analytics-grid">
             <article class="chart-card analytics-chart-card">
@@ -550,7 +550,7 @@ $topbarControls = ob_get_clean();
                             <?php $category = (string) ($row['category'] ?? 'other'); ?>
                             <div>
                                 <span><?= e((string) ($categoryLabels[$category] ?? $category)) ?></span>
-                                <strong><?= e((string) ((int) ($row['photo_count'] ?? 0))) ?></strong>
+                                <strong><?= e((string) ((int) ($row['meal_count'] ?? 0))) ?></strong>
                                 <small><?= e($formatCalories((float) ($row['calories'] ?? 0))) ?> kcal</small>
                             </div>
                         <?php endforeach; ?>

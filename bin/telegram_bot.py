@@ -44,6 +44,7 @@ DEFAULT_DB = ROOT / "storage" / "fitness.sqlite"
 TELEGRAM_API_BASE = "https://api.telegram.org"
 POLL_TIMEOUT = 20           # long-poll seconds
 REMINDER_INTERVAL = 60      # seconds between reminder passes
+POLL_CONFLICT_BACKOFF = 300 # another getUpdates consumer owns this bot token
 MAX_SENDS_PER_PASS = 25
 MAX_REMINDERS_PER_DAY = 3   # first nudge + up to 2 follow-ups while still unlogged
 FOLLOWUP_MINUTES = 90       # gap between follow-up nudges
@@ -1074,7 +1075,8 @@ def poll_once(db: BotDB, settings: dict, timeout: int) -> Optional[str]:
         timeout=timeout + 10,
     )
     if error is not None:
-        log(f"getUpdates failed: {error}")
+        if not is_get_updates_conflict(error):
+            log(f"getUpdates failed: {error}")
         return str(error)
     max_offset = settings["offset"]
     for update in result or []:
@@ -1089,6 +1091,17 @@ def poll_once(db: BotDB, settings: dict, timeout: int) -> Optional[str]:
         db.set_setting("telegram_update_offset", str(max_offset))
         settings["offset"] = max_offset
     return None
+
+
+def is_get_updates_conflict(error: object) -> bool:
+    """Telegram permits only one getUpdates consumer per bot token."""
+
+    message = str(error).lower()
+    return "conflict" in message and (
+        "getupdates" in message
+        or "other getupdates request" in message
+        or "terminated by other" in message
+    )
 
 
 def run_reminders(db: BotDB, settings: dict) -> None:
@@ -1247,6 +1260,8 @@ def run_forever(db_path: Path, verbose: bool) -> int:
     last_reminder = 0.0
     started = False
     owner_id = runtime_owner_id("telegram")
+    conflict_until = 0.0
+    conflict_notice_logged = False
     while True:
         lease = None
         try:
@@ -1276,8 +1291,18 @@ def run_forever(db_path: Path, verbose: bool) -> int:
                 log("polling for Telegram updates... (link users from Settings, then press Start)")
                 started = True
 
+            if time.time() < conflict_until:
+                # Keep the runtime lease alive while passive. Otherwise the PHP
+                # request scheduler would begin polling and create the same 409
+                # conflict from a second local code path.
+                lease.heartbeat(error="Telegram getUpdates is owned by another bot instance; polling paused.")
+                db.close()
+                time.sleep(min(10, max(1, int(conflict_until - time.time()))))
+                continue
+
             poll_error = poll_once(db, settings, POLL_TIMEOUT)
             if poll_error is None:
+                conflict_notice_logged = False
                 # Event-driven pushes are low-latency: drain every loop iteration.
                 drain_outbox(db, settings)
 
@@ -1286,6 +1311,17 @@ def run_forever(db_path: Path, verbose: bool) -> int:
                     last_reminder = time.time()
 
                 lease.heartbeat(success=True)
+            elif is_get_updates_conflict(poll_error):
+                conflict_until = time.time() + POLL_CONFLICT_BACKOFF
+                if not conflict_notice_logged:
+                    log(
+                        "another bot instance owns Telegram getUpdates; "
+                        f"pausing this poller for {POLL_CONFLICT_BACKOFF // 60} minutes"
+                    )
+                    conflict_notice_logged = True
+                lease.heartbeat(
+                    error="Telegram getUpdates is owned by another bot instance; polling paused."
+                )
             else:
                 lease.heartbeat(error=redact_secrets(poll_error, settings["token"]))
             db.close()

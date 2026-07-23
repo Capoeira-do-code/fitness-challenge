@@ -148,7 +148,7 @@ def main() -> int:
         leaked_url = f"network error at https://api.telegram.org/bot{secret}/getUpdates"
         redacted = bot.redact_secrets(leaked_url, secret)
         assert secret not in redacted and "bot[redacted]" in redacted
-        db.conn.close()
+        db.close()
 
     print("Telegram preference QA: PASS")
     return 0

@@ -717,28 +717,73 @@ body[data-page="profile"] .profile-widget-delete button { min-height: 36px; padd
     body[data-page="profile"] .profile-widget-field-head { display: grid; gap: 2px; }
 }
 
-/* Profile home disclosures mirror Home and Workouts: identity remains fixed,
-   while dense cards can be folded and remember their state per viewed profile. */
+/* Profile disclosures use the exact Home hierarchy: one continuous surface,
+   a 38px identity chip, readable intrinsic-width actions and a 44px chevron. */
+body[data-page="profile"] [data-profile-collapsible] {
+    display: grid;
+    align-content: start;
+    gap: 0 !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    border: 1px solid var(--ui-soft-border, var(--line)) !important;
+    border-radius: var(--ui-panel-radius, 16px) !important;
+    background: var(--surface) !important;
+    box-shadow: var(--ui-soft-shadow);
+}
 body[data-page="profile"] [data-profile-collapsible] > :is(.profile-home-card-head, .panel-head) {
+    display: grid !important;
+    grid-template-columns: 38px minmax(0, 1fr) auto !important;
+    align-items: center !important;
     min-width: 0;
-    min-height: 44px;
+    min-height: 58px;
+    gap: 0.62rem !important;
+    margin: 0 !important;
+    padding: 0.55rem 0.7rem !important;
+    border: 0;
+    border-bottom: 1px solid var(--ui-soft-border, var(--line));
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
 }
 body[data-page="profile"] [data-profile-collapsible] > :is(.profile-home-card-head, .panel-head).is-remembered-collapsible-head {
     cursor: pointer;
 }
-body[data-page="profile"] [data-profile-collapsible] > :is(.profile-home-card-head, .panel-head) > :first-child {
+body[data-page="profile"] [data-profile-collapsible] > :is(.profile-home-card-head, .panel-head) > :nth-child(2) {
     min-width: 0;
 }
-body[data-page="profile"] .profile-panel-head-actions {
+body[data-page="profile"] [data-profile-collapsible] > :is(.profile-home-card-head, .panel-head) h2 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+body[data-page="profile"] [data-profile-collapsible] > :not(.profile-home-card-head):not(.panel-head):not([data-layout-card-controls]) {
+    min-width: 0;
+    margin-inline: 0.7rem;
+}
+body[data-page="profile"] [data-profile-collapsible] > :is(.profile-home-card-head, .panel-head) + :not([data-layout-card-controls]) {
+    margin-top: 0.7rem;
+}
+body[data-page="profile"] [data-profile-collapsible] > :last-child:not(.profile-home-card-head):not(.panel-head):not([data-layout-card-controls]) {
+    margin-bottom: 0.7rem;
+}
+body[data-page="profile"] :is(.profile-panel-head-actions, .profile-home-card-head .inline-actions-mini) {
     display: flex;
     min-width: 0;
-    flex: 0 1 auto;
+    max-width: none;
+    flex: 0 0 auto;
     align-items: center;
     justify-content: flex-end;
+    flex-wrap: nowrap;
     gap: 6px;
+    overflow: visible;
 }
-body[data-page="profile"] .profile-panel-head-actions > :not(.profile-panel-collapse-toggle) {
-    min-width: 0;
+body[data-page="profile"] :is(.profile-panel-head-actions, .profile-home-card-head .inline-actions-mini) > :not(.profile-panel-collapse-toggle) {
+    min-width: max-content;
+    max-width: none;
+    flex: 0 0 auto;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
 }
 body[data-page="profile"] .profile-panel-collapse-toggle {
     display: grid;
@@ -748,17 +793,20 @@ body[data-page="profile"] .profile-panel-collapse-toggle {
     min-height: 44px;
     place-items: center;
     padding: 0;
-    border: 1px solid var(--line);
-    border-radius: 13px;
+    border: 0;
+    border-radius: 12px;
     color: var(--muted);
-    background: color-mix(in srgb, var(--ink) 3%, var(--surface));
+    background: transparent;
     box-shadow: none;
     cursor: pointer;
 }
 body[data-page="profile"] .profile-panel-collapse-toggle:where(:hover, :focus-visible) {
     color: var(--primary-dark);
-    border-color: color-mix(in srgb, var(--primary) 38%, var(--line));
     background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+}
+body[data-page="profile"] [data-profile-collapsible] > :is(.profile-home-card-head, .panel-head) > .dashboard-disclosure-icon {
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 12%, var(--surface));
 }
 body[data-page="profile"] .profile-panel-collapse-toggle > span {
     font-size: 1.35rem;
@@ -768,10 +816,15 @@ body[data-page="profile"] .profile-panel-collapse-toggle > span {
 }
 body[data-page="profile"] [data-profile-collapsible].is-collapsed {
     gap: 0;
-    padding-block: 8px;
 }
 body[data-page="profile"] [data-profile-collapsible].is-collapsed > :not(.profile-home-card-head):not(.panel-head):not([data-layout-card-controls]) {
     display: none !important;
+}
+body[data-page="profile"] [data-profile-collapsible].is-collapsed > :is(.profile-home-card-head, .panel-head) {
+    border-bottom-color: transparent;
+}
+body[data-page="profile"] [data-profile-collapsible].is-collapsed :is(.profile-panel-head-actions, .inline-actions-mini) > :not(.profile-panel-collapse-toggle) {
+    display: none;
 }
 body[data-page="profile"] [data-profile-collapsible].is-collapsed .profile-panel-collapse-toggle > span {
     transform: rotate(0deg);
@@ -781,33 +834,36 @@ body.layout-edit-active[data-page="profile"] .profile-panel-collapse-toggle {
 }
 body[data-page="profile"]:is([data-theme="dark"], .theme-active-dark) .profile-panel-collapse-toggle {
     color: var(--muted);
-    border-color: var(--line) !important;
-    background: var(--surface-2) !important;
+    border-color: transparent !important;
+    background: transparent !important;
     background-image: none !important;
     box-shadow: none !important;
 }
 
 @media (max-width: 700px) {
     body[data-page="profile"] [data-profile-collapsible] > :is(.profile-home-card-head, .panel-head) {
-        flex-wrap: nowrap;
-        gap: 7px;
+        gap: 7px !important;
+        padding: 0.5rem 0.58rem !important;
     }
     body[data-page="profile"] .profile-panel-head-actions,
     body[data-page="profile"] .profile-home-card-head .inline-actions-mini {
-        max-width: 62%;
-        flex: 0 1 auto;
+        max-width: none;
+        flex: 0 0 auto;
         flex-wrap: nowrap;
         gap: 5px;
     }
     body[data-page="profile"] .profile-panel-head-actions :is(.btn, .profile-achievement-preview-link),
     body[data-page="profile"] .profile-home-card-head .inline-actions-mini .btn {
-        min-width: 0;
-        flex: 0 1 auto;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        min-width: max-content;
+        flex: 0 0 auto;
+        overflow: visible;
+        text-overflow: clip;
         white-space: nowrap;
     }
-    body[data-page="profile"] [data-profile-collapsible].is-collapsed {
-        padding-block: 7px;
+}
+
+@media (max-width: 560px) {
+    body[data-page="profile"] .profile-home-goals .inline-actions-mini > .btn:nth-of-type(2) {
+        display: none;
     }
 }

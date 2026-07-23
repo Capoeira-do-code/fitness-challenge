@@ -1574,9 +1574,9 @@ function fetch_recent_photos(PDO $pdo, int $limit = 24, ?int $userId = null): ar
 {
     $limit = max(1, min(200, $limit));
     $params = [];
-    $where = '';
+    $where = 'WHERE p.has_photo = 1 AND TRIM(COALESCE(p.file_path, "")) != ""';
     if ($userId !== null) {
-        $where = 'WHERE p.user_id = :user_id';
+        $where .= ' AND p.user_id = :user_id';
         $params[':user_id'] = $userId;
     }
 
@@ -1597,6 +1597,8 @@ function fetch_gallery_photos(PDO $pdo, int $limit = 60, int $offset = 0, ?int $
     $offset = max(0, $offset);
     $params = [];
     $conditions = [];
+    $conditions[] = 'p.has_photo = 1';
+    $conditions[] = 'TRIM(COALESCE(p.file_path, "")) != ""';
     if ($userId !== null) {
         $conditions[] = 'p.user_id = :user_id';
         $params[':user_id'] = $userId;
@@ -1628,7 +1630,8 @@ function fetch_gallery_photos(PDO $pdo, int $limit = 60, int $offset = 0, ?int $
 function fetch_latest_meal_photo(PDO $pdo, ?int $userId = null): ?array
 {
     $params = [];
-    $where = 'WHERE p.category IN ("breakfast", "lunch", "dinner", "other", "meal", "workout")';
+    $where = 'WHERE p.has_photo = 1 AND TRIM(COALESCE(p.file_path, "")) != ""
+              AND p.category IN ("breakfast", "lunch", "dinner", "other", "meal", "workout")';
     if ($userId !== null) {
         $where .= ' AND p.user_id = :user_id';
         $params[':user_id'] = $userId;
@@ -1641,6 +1644,27 @@ function fetch_latest_meal_photo(PDO $pdo, ?int $userId = null): ?array
          JOIN users u ON u.id = p.user_id
          ' . $where . '
          ORDER BY p.log_date DESC, p.created_at DESC
+         LIMIT 1',
+        $params
+    );
+}
+
+function fetch_latest_meal_entry(PDO $pdo, ?int $userId = null): ?array
+{
+    $params = [];
+    $where = 'WHERE p.category IN ("breakfast", "lunch", "dinner", "other", "meal", "workout")';
+    if ($userId !== null) {
+        $where .= ' AND p.user_id = :user_id';
+        $params[':user_id'] = $userId;
+    }
+
+    return db_fetch_one(
+        $pdo,
+        'SELECT p.*, u.display_name
+         FROM photo_entries p
+         JOIN users u ON u.id = p.user_id
+         ' . $where . '
+         ORDER BY p.log_date DESC, p.created_at DESC, p.id DESC
          LIMIT 1',
         $params
     );
@@ -1677,17 +1701,22 @@ function fetch_meal_calendar(PDO $pdo, string $startDate, ?int $userId = null, s
 
     $calendar = [];
     foreach (day_sequence($start, new DateTimeImmutable($endDate)) as $day) {
-        $calendar[$day->format('Y-m-d')] = ['preview' => null, 'count' => 0, 'photos' => []];
+        $calendar[$day->format('Y-m-d')] = ['preview' => null, 'count' => 0, 'meal_count' => 0, 'photo_count' => 0, 'photos' => []];
     }
     foreach ($rows as $row) {
         $date = (string) $row['log_date'];
         if (!isset($calendar[$date])) {
             continue;
         }
-        if ($calendar[$date]['preview'] === null) {
+        $hasPhoto = (int) ($row['has_photo'] ?? 0) === 1 && trim((string) ($row['file_path'] ?? '')) !== '';
+        if ($calendar[$date]['preview'] === null || ($hasPhoto && empty($calendar[$date]['preview']['has_photo']))) {
             $calendar[$date]['preview'] = $row;
         }
         $calendar[$date]['count']++;
+        $calendar[$date]['meal_count']++;
+        if ($hasPhoto) {
+            $calendar[$date]['photo_count']++;
+        }
         $calendar[$date]['photos'][] = $row;
     }
 
@@ -1788,23 +1817,37 @@ function save_photo_entry(
 {
     $normalizedCategory = normalize_photo_entry_category($category);
 
-    $storedPath = save_uploaded_image(
-        $config,
-        $file,
-        (new DateTimeImmutable($date))->format('Y/m'),
-        (string) $userId,
-        image_upload_policy($config, 'photo_entry')
-    );
-    warm_media_thumbnails($config, $storedPath);
+    $hasUpload = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+    $hasNutrition = false;
+    foreach (['calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g', 'sodium_mg'] as $nutritionKey) {
+        if (normalize_nullable_float_input($nutrition[$nutritionKey] ?? null, 0) !== null) {
+            $hasNutrition = true;
+            break;
+        }
+    }
+    if (!$hasUpload && trim($caption) === '' && !$hasNutrition) {
+        throw new InvalidArgumentException(t('entries.meal_content_required'));
+    }
+    $storedPath = '';
+    if ($hasUpload) {
+        $storedPath = save_uploaded_image(
+            $config,
+            $file,
+            (new DateTimeImmutable($date))->format('Y/m'),
+            (string) $userId,
+            image_upload_policy($config, 'photo_entry')
+        );
+        warm_media_thumbnails($config, $storedPath);
+    }
     $now = now_iso();
 
     db_execute(
         $pdo,
         'INSERT INTO photo_entries (
-            user_id, log_date, category, caption, file_path,
+            user_id, log_date, category, caption, file_path, has_photo,
             calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, created_at, updated_at
         ) VALUES (
-            :user_id, :log_date, :category, :caption, :file_path,
+            :user_id, :log_date, :category, :caption, :file_path, :has_photo,
             :calories, :protein_g, :carbs_g, :fat_g, :fiber_g, :sugar_g, :sodium_mg, :created_at, :updated_at
         )',
         [
@@ -1813,6 +1856,7 @@ function save_photo_entry(
             ':category' => $normalizedCategory,
             ':caption' => $caption,
             ':file_path' => $storedPath,
+            ':has_photo' => $storedPath !== '' ? 1 : 0,
             ':calories' => normalize_nullable_float_input($nutrition['calories'] ?? null, 0),
             ':protein_g' => normalize_nullable_float_input($nutrition['protein_g'] ?? null, 0),
             ':carbs_g' => normalize_nullable_float_input($nutrition['carbs_g'] ?? null, 0),
@@ -1865,6 +1909,16 @@ function update_photo_entry(
             image_upload_policy($config, 'photo_entry')
         );
     }
+    $hasNutrition = false;
+    foreach (['calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g', 'sodium_mg'] as $nutritionKey) {
+        if (normalize_nullable_float_input($nutrition[$nutritionKey] ?? null, 0) !== null) {
+            $hasNutrition = true;
+            break;
+        }
+    }
+    if ($newFilePath === '' && trim($caption) === '' && !$hasNutrition) {
+        throw new InvalidArgumentException(t('entries.meal_content_required'));
+    }
 
     db_execute(
         $pdo,
@@ -1873,6 +1927,7 @@ function update_photo_entry(
              category = :category,
              caption = :caption,
              file_path = :file_path,
+             has_photo = :has_photo,
              calories = :calories,
              protein_g = :protein_g,
              carbs_g = :carbs_g,
@@ -1887,6 +1942,7 @@ function update_photo_entry(
             ':category' => $normalizedCategory,
             ':caption' => $caption,
             ':file_path' => $newFilePath,
+            ':has_photo' => $newFilePath !== '' ? 1 : 0,
             ':calories' => normalize_nullable_float_input($nutrition['calories'] ?? null, 0),
             ':protein_g' => normalize_nullable_float_input($nutrition['protein_g'] ?? null, 0),
             ':carbs_g' => normalize_nullable_float_input($nutrition['carbs_g'] ?? null, 0),
@@ -1968,7 +2024,12 @@ function create_photo_comment(PDO $pdo, int $photoId, int $userId, string $comme
         throw new InvalidArgumentException(t('flash.not_found'));
     }
 
-    $photo = db_fetch_one($pdo, 'SELECT id FROM photo_entries WHERE id = :id', [':id' => $photoId]);
+    $photo = db_fetch_one(
+        $pdo,
+        'SELECT id FROM photo_entries
+         WHERE id = :id AND has_photo = 1 AND TRIM(COALESCE(file_path, "")) != ""',
+        [':id' => $photoId]
+    );
     if ($photo === null) {
         throw new InvalidArgumentException(t('flash.not_found'));
     }
@@ -2132,6 +2193,7 @@ function fetch_user_food_stats(PDO $pdo, int $userId, string $startDate, string 
         'sodium_mg' => 0.0,
     ];
     $empty = [
+        'meal_count' => 0,
         'photo_count' => 0,
         'meal_days' => 0,
         'junk_days' => 0,
@@ -2155,7 +2217,8 @@ function fetch_user_food_stats(PDO $pdo, int $userId, string $startDate, string 
 
     $photoTotals = db_fetch_one(
         $pdo,
-        'SELECT COUNT(*) AS photo_count,
+        'SELECT COUNT(*) AS meal_count,
+                SUM(CASE WHEN has_photo = 1 AND TRIM(COALESCE(file_path, "")) != "" THEN 1 ELSE 0 END) AS photo_count,
                 COUNT(DISTINCT log_date) AS meal_days,
                 SUM(COALESCE(calories, 0)) AS calories,
                 SUM(COALESCE(protein_g, 0)) AS protein_g,
@@ -2184,13 +2247,14 @@ function fetch_user_food_stats(PDO $pdo, int $userId, string $startDate, string 
     $categoryRows = db_fetch_all(
         $pdo,
         'SELECT category,
-                COUNT(*) AS photo_count,
+                COUNT(*) AS meal_count,
+                SUM(CASE WHEN has_photo = 1 AND TRIM(COALESCE(file_path, "")) != "" THEN 1 ELSE 0 END) AS photo_count,
                 SUM(COALESCE(calories, 0)) AS calories
          FROM photo_entries
          WHERE user_id = :user_id
            AND log_date BETWEEN :start_date AND :end_date
          GROUP BY category
-         ORDER BY photo_count DESC, category ASC',
+         ORDER BY meal_count DESC, category ASC',
         [':user_id' => $userId, ':start_date' => $startKey, ':end_date' => $endKey]
     );
 
@@ -2202,12 +2266,14 @@ function fetch_user_food_stats(PDO $pdo, int $userId, string $startDate, string 
         }
         $categories[] = [
             'category' => $category,
+            'meal_count' => (int) ($row['meal_count'] ?? 0),
             'photo_count' => (int) ($row['photo_count'] ?? 0),
             'calories' => round((float) ($row['calories'] ?? 0), 2),
         ];
     }
 
     return [
+        'meal_count' => (int) ($photoTotals['meal_count'] ?? 0),
         'photo_count' => (int) ($photoTotals['photo_count'] ?? 0),
         'meal_days' => (int) ($photoTotals['meal_days'] ?? 0),
         'junk_days' => (int) ($logTotals['junk_days'] ?? 0),
@@ -3184,6 +3250,7 @@ function register_user_with_invite(PDO $pdo, string $token, array $payload): arr
     }
 
     $pdo->exec('BEGIN IMMEDIATE');
+    $transactionActive = true;
     try {
         $invite = registration_invite_from_token($pdo, $token);
         if ($invite === null || registration_invite_status($invite) !== 'active') {
@@ -3226,12 +3293,13 @@ function register_user_with_invite(PDO $pdo, string $token, array $payload): arr
         );
         $user = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $user['id']]) ?? $user;
         audit_log($pdo, (int) $user['id'], 'user_registered', 'user', (string) $user['id'], 'User registered from invite.', null, audit_snapshot($user, ['password_hash']));
-        $pdo->commit();
+        $pdo->exec('COMMIT');
+        $transactionActive = false;
 
         return $user;
     } catch (Throwable $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
+        if ($transactionActive) {
+            $pdo->exec('ROLLBACK');
         }
         throw $e;
     }
@@ -5735,7 +5803,9 @@ function challenge_period_summary(PDO $pdo, string $startDate, string $endDate):
     ) ?? [];
     $photoSummary = db_fetch_one(
         $pdo,
-        'SELECT COUNT(*) AS photos FROM photo_entries WHERE log_date BETWEEN :start AND :end',
+        'SELECT COUNT(*) AS meals,
+                SUM(CASE WHEN has_photo = 1 AND TRIM(COALESCE(file_path, "")) != "" THEN 1 ELSE 0 END) AS photos
+         FROM photo_entries WHERE log_date BETWEEN :start AND :end',
         [':start' => $start, ':end' => $end]
     ) ?? [];
 
@@ -5755,6 +5825,7 @@ function challenge_period_summary(PDO $pdo, string $startDate, string $endDate):
         'distance_km' => round((float) ($logSummary['distance_km'] ?? 0), 2),
         'workouts' => (int) ($workoutSummary['workouts'] ?? 0),
         'photos' => (int) ($photoSummary['photos'] ?? 0),
+        'meals' => (int) ($photoSummary['meals'] ?? 0),
     ];
 }
 
@@ -7198,12 +7269,23 @@ function user_daily_log_count(PDO $pdo, int $userId): int
 
 function user_photo_count(PDO $pdo, int $userId): int
 {
-    return achievement_user_count($pdo, 'photo_entries', 'user_id = :user_id', [':user_id' => $userId]);
+    return achievement_user_count(
+        $pdo,
+        'photo_entries',
+        'user_id = :user_id AND has_photo = 1 AND TRIM(COALESCE(file_path, "")) != ""',
+        [':user_id' => $userId]
+    );
 }
 
 function user_photo_day_count(PDO $pdo, int $userId): int
 {
-    $row = db_fetch_one($pdo, 'SELECT COUNT(DISTINCT log_date) AS total FROM photo_entries WHERE user_id = :user_id', [':user_id' => $userId]);
+    $row = db_fetch_one(
+        $pdo,
+        'SELECT COUNT(DISTINCT log_date) AS total
+         FROM photo_entries
+         WHERE user_id = :user_id AND has_photo = 1 AND TRIM(COALESCE(file_path, "")) != ""',
+        [':user_id' => $userId]
+    );
 
     return (int) ($row['total'] ?? 0);
 }
@@ -7388,7 +7470,8 @@ function team_photo_count(PDO $pdo, int $teamId): int
         'SELECT COUNT(*) AS total
          FROM photo_entries pe
          JOIN team_memberships tm ON tm.user_id = pe.user_id AND tm.active = 1
-         WHERE tm.team_id = :team_id',
+         WHERE tm.team_id = :team_id
+           AND pe.has_photo = 1 AND TRIM(COALESCE(pe.file_path, "")) != ""',
         [':team_id' => $teamId]
     );
 
@@ -7555,7 +7638,13 @@ function evaluate_automatic_achievements(PDO $pdo, array $metricsByUser, ?int $t
         if (isset($byTrigger['first_log']) && db_fetch_one($pdo, 'SELECT id FROM daily_logs WHERE user_id = :user_id LIMIT 1', [':user_id' => $userId]) !== null) {
             award_achievement($pdo, (int) $byTrigger['first_log']['id'], $userId, null, null, 'Automatic unlock.');
         }
-        if (isset($byTrigger['first_photo']) && db_fetch_one($pdo, 'SELECT id FROM photo_entries WHERE user_id = :user_id LIMIT 1', [':user_id' => $userId]) !== null) {
+        if (isset($byTrigger['first_photo']) && db_fetch_one(
+            $pdo,
+            'SELECT id FROM photo_entries
+             WHERE user_id = :user_id AND has_photo = 1 AND TRIM(COALESCE(file_path, "")) != ""
+             LIMIT 1',
+            [':user_id' => $userId]
+        ) !== null) {
             award_achievement($pdo, (int) $byTrigger['first_photo']['id'], $userId, null, null, 'Automatic unlock.');
         }
         if (isset($byTrigger['perfect_week'])) {
@@ -8226,6 +8315,31 @@ function score_value_from_components(array $components): float
 
 function score_breakdown_from_snapshot(array $metric, array $snapshot): array
 {
+    if (array_key_exists('has_active_metrics', $snapshot)) {
+        $details = is_array($snapshot['score_components_detailed'] ?? null)
+            ? (array) $snapshot['score_components_detailed']
+            : [];
+        $progress = [];
+        foreach ($details as $key => $detail) {
+            $progress[(string) $key] = round((float) ($detail['progress'] ?? 0), 1);
+        }
+
+        return [
+            'steps_progress' => (float) ($progress['steps'] ?? 0),
+            'workouts_progress' => (float) ($progress['workouts'] ?? 0),
+            'discipline_score' => (float) ($progress['discipline'] ?? 0),
+            'weight_progress' => array_key_exists('weight', $progress) ? (float) $progress['weight'] : null,
+            'weights' => array_fill_keys(array_keys($details), $details === [] ? 0.0 : round(1 / count($details), 4)),
+            'components' => (array) ($snapshot['score_components'] ?? []),
+            'component_details' => $details,
+            'score' => $snapshot['score'] ?? null,
+            'formula' => t('metric.score_active_average'),
+            'has_weight' => array_key_exists('weight', $details),
+            'has_active_metrics' => !empty($snapshot['has_active_metrics']),
+            'current_strikes' => max(0, (int) ($snapshot['strikes'] ?? 0)),
+            'current_penalty' => max(0.0, (float) ($snapshot['penalty'] ?? 0)),
+        ];
+    }
     $stepsProgress = max(0.0, min(100.0, (float) ($snapshot['step_completion_pct'] ?? 0)));
     $workoutsProgress = max(0.0, min(100.0, (float) ($snapshot['workout_completion_pct'] ?? 0)));
     $disciplineScore = max(0.0, min(100.0, (float) ($snapshot['discipline_score'] ?? 0)));
@@ -8256,6 +8370,11 @@ function score_breakdown_from_snapshot(array $metric, array $snapshot): array
 
 function metric_snapshot_for_view(array $metric, string $view): array
 {
+    $finalize = static function (array $snapshot) use ($metric, $view): array {
+        return function_exists('metric_preferences_apply_snapshot')
+            ? metric_preferences_apply_snapshot($metric, $view, $snapshot)
+            : $snapshot;
+    };
     $weightProgress = null;
     if (array_key_exists('weight_progress_pct', $metric) && $metric['weight_progress_pct'] !== null && is_numeric($metric['weight_progress_pct'])) {
         $weightProgress = (float) $metric['weight_progress_pct'];
@@ -8296,7 +8415,7 @@ function metric_snapshot_for_view(array $metric, string $view): array
         $scoreComponents = score_components_from_progress($stepsCompletionPct, $workoutCompletionPct, $disciplineScore, $weightProgress);
         $score = score_value_from_components($scoreComponents);
 
-        return [
+        return $finalize([
             'steps' => (int) ($metric['total_steps'] ?? 0),
             'distance_km' => round((float) ($metric['total_km'] ?? 0), 2),
             'workouts' => $totalWorkouts,
@@ -8309,12 +8428,12 @@ function metric_snapshot_for_view(array $metric, string $view): array
             'workout_completion_pct' => $workoutCompletionPct,
             'discipline_score' => round($disciplineScore, 1),
             'score_components' => $scoreComponents,
-        ];
+        ]);
     }
 
     $weekRow = metric_week_row_for_view($metric, $view, $view);
     if (!is_array($weekRow)) {
-        return [
+        return $finalize([
             'steps' => 0,
             'distance_km' => 0.0,
             'workouts' => 0,
@@ -8327,7 +8446,7 @@ function metric_snapshot_for_view(array $metric, string $view): array
             'workout_completion_pct' => 0.0,
             'discipline_score' => 100.0,
             'score_components' => score_components_from_progress(0.0, 0.0, 100.0, $weightProgress),
-        ];
+        ]);
     }
 
     $weekStepRequired = max(
@@ -8348,7 +8467,7 @@ function metric_snapshot_for_view(array $metric, string $view): array
     $scoreComponents = score_components_from_progress($stepCompletionPct, $workoutCompletionPct, $disciplineScore, $weightProgress);
     $weekScore = score_value_from_components($scoreComponents);
 
-    return [
+    return $finalize([
         'steps' => (int) ($weekRow['steps'] ?? 0),
         'distance_km' => round((float) ($weekRow['km'] ?? 0), 2),
         'workouts' => $weekWorkouts,
@@ -8361,7 +8480,28 @@ function metric_snapshot_for_view(array $metric, string $view): array
         'workout_completion_pct' => $workoutCompletionPct,
         'discipline_score' => round($disciplineScore, 1),
         'score_components' => $scoreComponents,
-    ];
+    ]);
+}
+
+function fetch_recent_meals(PDO $pdo, int $limit = 50, ?int $userId = null): array
+{
+    $limit = max(1, min(200, $limit));
+    $params = [];
+    $where = '';
+    if ($userId !== null) {
+        $where = 'WHERE p.user_id = :user_id';
+        $params[':user_id'] = $userId;
+    }
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT p.*, u.display_name FROM photo_entries p
+         JOIN users u ON u.id = p.user_id
+         ' . $where . '
+         ORDER BY p.log_date DESC, p.created_at DESC, p.id DESC
+         LIMIT ' . $limit,
+        $params
+    );
 }
 
 function normalize_strike_review_reason(string $reason): string

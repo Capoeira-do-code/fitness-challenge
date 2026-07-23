@@ -76,7 +76,12 @@ la [guía oficial de seguridad](https://docs.cloud.google.com/api-keys/docs/add-
 
 ## Usuarios iniciales
 
-Solo se crean cuando la DB está vacía y `SEED_PASSWORD` se ha definido expresamente:
+En una instalación nueva sin usuarios, la aplicación abre automáticamente `/?page=setup`.
+Desde ese asistente se eligen el usuario y la contraseña del primer administrador,
+el nombre de la aplicación, el equipo y las fechas del reto.
+
+Para entornos de demostración automatizados, también se pueden crear las cuentas
+seed cuando la DB está vacía y `SEED_PASSWORD` se ha definido expresamente:
 
 - `roberto`
 - `catalina`

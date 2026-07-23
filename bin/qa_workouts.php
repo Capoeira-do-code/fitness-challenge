@@ -71,7 +71,7 @@ if ($keepDatabase && $me > 0) {
 
 $sourceCatalog = wk_builtin_exercise_catalog();
 $catalogSlugs = array_map(static fn(array $exercise): string => (string) ($exercise['slug'] ?? ''), $sourceCatalog);
-$catalogComplete = count($sourceCatalog) === 32 && count(array_unique($catalogSlugs)) === 32;
+$catalogComplete = count($sourceCatalog) >= 120 && count(array_unique($catalogSlugs)) === count($sourceCatalog);
 foreach ($sourceCatalog as $catalogExercise) {
     foreach (['en', 'es'] as $locale) {
         $guide = (array) ($catalogExercise['guide'][$locale] ?? []);
@@ -83,7 +83,7 @@ foreach ($sourceCatalog as $catalogExercise) {
             && count((array) ($guide['mistakes'] ?? [])) >= 1;
     }
 }
-$check($catalogComplete, 'guías completas para todo el catálogo', '32 ejercicios · EN/ES');
+$check($catalogComplete, 'guías completas para todo el catálogo', count($sourceCatalog) . ' ejercicios · EN/ES');
 $missingPresetSlugs = [];
 foreach (wk_builtin_plan_presets() as $preset) {
     foreach ((array) ($preset['routines'] ?? []) as $presetRoutine) {
@@ -98,7 +98,7 @@ foreach (wk_builtin_plan_presets() as $preset) {
 $check($missingPresetSlugs === [], 'plantillas referencian ejercicios válidos', implode(', ', $missingPresetSlugs));
 
 $catalogCount = (int) (db_fetch_one($pdo, 'SELECT COUNT(*) AS c FROM exercise_definitions WHERE is_system = 1')['c'] ?? 0);
-$check($catalogCount === 32, 'catálogo integrado', $catalogCount . ' ejercicios');
+$check($catalogCount >= 120, 'catálogo integrado', $catalogCount . ' ejercicios');
 $catalogAccentRows = db_fetch_all($pdo, 'SELECT accent_color, visual_mark FROM exercise_definitions WHERE is_system = 1');
 $catalogAccents = array_values(array_unique(array_map(static fn(array $row): string => (string) ($row['accent_color'] ?? ''), $catalogAccentRows)));
 $catalogAccentsSafe = count($catalogAccents) >= 8;
@@ -135,7 +135,8 @@ $check(
     ($spanishGuide['name'] ?? '') === 'Press banca con barra' && count($spanishGuide['steps'] ?? []) === 3,
     'guía pre-cargada bilingüe'
 );
-$check(count(wk_exercise_library($pdo, $me, ['muscle' => 'chest'])) === 4, 'filtro por parte corporal', 'pecho=4');
+$chestCatalogueCount = count(wk_exercise_library($pdo, $me, ['muscle' => 'chest']));
+$check($chestCatalogueCount >= 4, 'filtro por parte corporal', 'pecho=' . $chestCatalogueCount);
 
 $routineId = wk_routine_create(
     $pdo,

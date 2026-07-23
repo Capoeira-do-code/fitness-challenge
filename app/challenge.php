@@ -658,12 +658,21 @@ function compute_challenge_metrics(PDO $pdo, array $users, string $startDate, st
         $userLogs = $logsByUser[$userId] ?? [];
         $userApprovals = $approvalsByUser[$userId] ?? [];
         $results[$userId] = compute_user_metrics($user, $userLogs, $userApprovals, $start, $end, $today, $penaltiesEnabled);
+        if (function_exists('metric_snapshot_for_view')) {
+            $scoreSnapshot = metric_snapshot_for_view($results[$userId], 'total');
+            if (array_key_exists('score', $scoreSnapshot)) {
+                $results[$userId]['score'] = $scoreSnapshot['score'];
+                $results[$userId]['score_components'] = (array) ($scoreSnapshot['score_components'] ?? []);
+                $results[$userId]['score_components_detailed'] = (array) ($scoreSnapshot['score_components_detailed'] ?? []);
+                $results[$userId]['active_metric_keys'] = (array) ($scoreSnapshot['active_metric_keys'] ?? []);
+            }
+        }
     }
 
     uasort(
         $results,
         static function (array $a, array $b): int {
-            $scoreOrder = $b['score'] <=> $a['score'];
+            $scoreOrder = ((float) ($b['score'] ?? 0)) <=> ((float) ($a['score'] ?? 0));
             if ($scoreOrder !== 0) {
                 return $scoreOrder;
             }

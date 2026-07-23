@@ -84,7 +84,7 @@ $row = static function (string $href, string $icon, string $title, string $descr
 
     <?php if ($section === ''): ?>
         <nav class="social-quick-actions" aria-label="<?= e(t('social_hub.quick_actions')) ?>">
-            <a href="/?page=entries&amp;mode=meal" data-tone="green"><span aria-hidden="true"><?= activity_icon_svg('image') ?></span><strong><?= e(t('social_hub.quick_share')) ?></strong></a>
+            <a href="/?page=entries&amp;mode=nutrition" data-tone="green"><span aria-hidden="true"><?= activity_icon_svg('image') ?></span><strong><?= e(t('social_hub.quick_share')) ?></strong></a>
             <a href="/?page=friends" data-tone="blue"><span aria-hidden="true"><?= activity_icon_svg('users') ?></span><strong><?= e(t('social_hub.quick_friend')) ?></strong></a>
             <a href="/?page=duels" data-tone="violet"><span aria-hidden="true"><?= activity_icon_svg('sword') ?></span><strong><?= e(t('social_hub.quick_duel')) ?></strong></a>
             <a href="/?page=challenges" data-tone="orange"><span aria-hidden="true"><?= activity_icon_svg('target') ?></span><strong><?= e(t('social_hub.quick_challenge')) ?></strong></a>
@@ -152,7 +152,7 @@ $row = static function (string $href, string $icon, string $title, string $descr
                         <?php endforeach; ?>
                     </div>
                 <?php else: ?>
-                    <div class="social-inline-empty is-wide"><span aria-hidden="true"><?= activity_icon_svg('image') ?></span><p><?= e(t('social_hub.community_empty')) ?></p><a href="/?page=entries&amp;mode=meal"><?= e(t('social_hub.share_update')) ?></a></div>
+                    <div class="social-inline-empty is-wide"><span aria-hidden="true"><?= activity_icon_svg('image') ?></span><p><?= e(t('social_hub.community_empty')) ?></p><a href="/?page=entries&amp;mode=nutrition"><?= e(t('social_hub.share_update')) ?></a></div>
                 <?php endif; ?>
             </article>
 

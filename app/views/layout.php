@@ -73,7 +73,7 @@ $pageStylesAssetFile = match ($currentPage) {
     'achievements' => 'achievements.css',
     'entries' => 'entries.css',
     'settings' => 'settings.css',
-    'register', 'onboarding' => 'onboarding.css',
+    'register', 'onboarding', 'setup' => 'onboarding.css',
     default => '',
 };
 $pageStylesAssetPath = $pageStylesAssetFile !== '' ? $projectRoot . '/public/assets/' . $pageStylesAssetFile : '';
@@ -344,7 +344,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                 </summary>
                 <div class="add-menu-panel">
                     <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><?= e(t('entries.quick_data')) ?></span></a>
-                    <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=meal"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
+                    <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=nutrition"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
                 </div>
             </details>
             <details class="user-menu">
@@ -419,7 +419,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
         <summary class="add-menu-trigger" aria-label="<?= e(t('entries.title')) ?>">+</summary>
         <div class="add-menu-panel floating-add-panel">
             <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><?= e(t('entries.quick_data')) ?></span></a>
-            <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=meal"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
+            <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=nutrition"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
         </div>
     </details>
     <nav class="bottom-nav mobile-liquid-nav" aria-label="<?= e(t('nav.mobile_primary')) ?>">
@@ -448,7 +448,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                             <div class="mobile-quick-view" data-menu-view="quick-register" hidden>
                                 <div class="mobile-quick-head"><button class="menu-destination-back" type="button" data-menu-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('quick_actions.title')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('quick_actions.title')) ?></strong></button><strong><?= e(t('quick_actions.register')) ?></strong><button type="button" data-menu-close aria-label="<?= e(t('menu.close')) ?>">&times;</button></div>
                                 <a class="mobile-quick-action" data-tone="blue" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><strong><?= e(t('entries.quick_data')) ?></strong><small><?= e(t('quick_actions.daily_hint')) ?></small></span></a>
-                                <a class="mobile-quick-action" data-tone="orange" href="/?page=entries&mode=meal"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><strong><?= e(t('entries.quick_meal')) ?></strong><small><?= e(t('quick_actions.meal_hint')) ?></small></span></a>
+                                <a class="mobile-quick-action" data-tone="orange" href="/?page=entries&mode=nutrition"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><strong><?= e(t('entries.quick_meal')) ?></strong><small><?= e(t('quick_actions.meal_hint')) ?></small></span></a>
                                 <a class="mobile-quick-action" data-tone="green" href="/?page=workouts"><span class="quick-entry-icon"><?= $renderQuickActionIcon('workout') ?></span><span><strong><?= e(t('quick_actions.workout')) ?></strong><small><?= e(t('quick_actions.workout_hint')) ?></small></span></a>
                             </div>
                             <div class="mobile-quick-view" data-menu-view="quick-create" hidden>

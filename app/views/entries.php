@@ -11,9 +11,12 @@ $categoryLabels = [
     'meal' => t('entries.lunch'),
     'workout' => t('entries.workout'),
 ];
-$entryMode = in_array(($entryMode ?? 'data'), ['data', 'meal', 'calendar'], true) ? (string) $entryMode : 'data';
+$entryMode = in_array(($entryMode ?? 'data'), ['data', 'nutrition', 'calendar'], true) ? (string) $entryMode : 'data';
 $calendarView = in_array(($calendarView ?? 'month'), ['month', 'week', 'day'], true) ? (string) $calendarView : 'month';
 $entryPrimaryGoals = is_array($entryPrimaryGoals ?? null) ? array_values((array) $entryPrimaryGoals) : [];
+$entryEnabledMetricKeys = array_values(array_map('strval', (array) ($entryEnabledMetrics ?? [])));
+$entryMetricEnabled = static fn(string $key): bool => in_array($key, $entryEnabledMetricKeys, true);
+$entryHasEnabledHabits = count(array_filter($entryEnabledMetricKeys, static fn(string $key): bool => str_starts_with($key, 'habit:'))) > 0;
 $entryPrimaryGoalsJson = json_encode($entryPrimaryGoals, JSON_UNESCAPED_SLASHES);
 if (!is_string($entryPrimaryGoalsJson)) {
     $entryPrimaryGoalsJson = '[]';
@@ -193,7 +196,7 @@ if ($entryMode === 'calendar') {
                     <span class="view-panel-label"><?= e(t('common.actions')) ?></span>
                     <div class="calendar-view-actions">
                         <a class="btn btn-ghost btn-block" href="<?= e('/?' . http_build_query(['page' => 'gallery', 'gallery_view' => 'recent', 'user_id' => (int) ($selectedUserId ?? $currentUser['id'] ?? 0)])) ?>"><?= e(t('gallery.open_recent')) ?></a>
-                        <a class="btn btn-primary btn-block" href="/?page=entries&mode=meal&date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
+                        <a class="btn btn-primary btn-block" href="/?page=entries&mode=nutrition&date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
                     </div>
                 </div>
             </form>
@@ -203,7 +206,7 @@ if ($entryMode === 'calendar') {
     $topbarControls = ob_get_clean();
 }
 ?>
-<section class="screen stack-lg<?= $entryMode === 'calendar' ? ' entries-calendar-screen' : '' ?><?= $entryMode === 'data' ? ' entries-data-screen' : '' ?><?= $entryMode === 'meal' ? ' entries-meal-screen' : '' ?>">
+<section class="screen stack-lg<?= $entryMode === 'calendar' ? ' entries-calendar-screen' : '' ?><?= $entryMode === 'data' ? ' entries-data-screen' : '' ?><?= $entryMode === 'nutrition' ? ' entries-meal-screen entries-nutrition-screen' : '' ?>">
     <?php if ($entryMode === 'data'): ?>
         <article class="panel entry-data-panel">
             <div class="panel-head entry-data-head entry-data-toolbar">
@@ -239,22 +242,22 @@ if ($entryMode === 'calendar') {
                 <input type="hidden" name="log_date" value="<?= e($selectedDate) ?>">
                 <input type="hidden" name="workout_form_mode" value="1">
                 <div class="entry-form-section grid-inline entries-two-col entry-metric-pair">
-                    <label class="entry-metric-field" data-tone="blue">
+                    <?php if ($entryMetricEnabled('steps')): ?><label class="entry-metric-field" data-tone="blue">
                         <span class="entry-field-label"><span aria-hidden="true"><?= activity_icon_svg('footsteps') ?></span><strong><?= e(t('metric.steps')) ?></strong></span>
                         <input type="number" min="0" inputmode="numeric" name="steps" value="<?= e($baseStepsValue) ?>" data-testid="entry-steps">
-                    </label>
-                    <label class="entry-metric-field" data-tone="violet">
+                    </label><?php endif; ?>
+                    <?php if ($entryMetricEnabled('distance')): ?><label class="entry-metric-field" data-tone="violet">
                         <span class="entry-field-label"><span aria-hidden="true"><?= activity_icon_svg('target') ?></span><strong><?= e(t('metric.distance_km')) ?></strong></span>
                         <input type="number" min="0" step="0.01" inputmode="decimal" name="distance_km" value="<?= e($baseDistanceValue) ?>">
-                    </label>
+                    </label><?php endif; ?>
                 </div>
 
                 <div class="entry-form-section quick-stats entries-two-col entry-metric-pair">
-                    <label class="entry-metric-field" data-tone="orange">
+                    <?php if ($entryMetricEnabled('calories_burned')): ?><label class="entry-metric-field" data-tone="orange">
                         <span class="entry-field-label"><span aria-hidden="true"><?= activity_icon_svg('flame') ?></span><strong><?= e(t('entries.training_calories_burned')) ?></strong></span>
                         <input type="number" min="0" step="1" inputmode="numeric" name="training_calories_burned" value="<?= e($baseCaloriesValue) ?>">
-                    </label>
-                    <div class="entry-weight-control" id="entry-weight">
+                    </label><?php endif; ?>
+                    <?php if ($entryMetricEnabled('weight')): ?><div class="entry-weight-control" id="entry-weight">
                         <div class="entry-weight-head">
                             <span class="entry-weight-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span>
                             <span><strong><?= e(t('metric.weight')) ?></strong><small><?= e(t('entries.weight_hint')) ?></small></span>
@@ -265,10 +268,10 @@ if ($entryMode === 'calendar') {
                             <span aria-hidden="true">kg</span>
                         </label>
                         <a href="/?page=settings&amp;view=body"><?= e(t('entries.weight_history')) ?></a>
-                    </div>
+                    </div><?php endif; ?>
                 </div>
 
-                <div class="entry-form-section workout-repeater" data-workout-repeater>
+                <?php if ($entryMetricEnabled('workouts')): ?><div class="entry-form-section workout-repeater" data-workout-repeater>
                     <div class="workout-toggle-row">
                         <label class="check entry-workout-toggle">
                             <input type="checkbox" name="workout_enabled" value="1" data-workout-enabled <?= $workoutEnabled ? 'checked' : '' ?>>
@@ -364,9 +367,9 @@ if ($entryMode === 'calendar') {
                             </button>
                         </div>
                     </template>
-                </div>
+                </div><?php endif; ?>
 
-                <details class="entry-habits-disclosure" data-entry-habits <?= $entrySelectedHabitCount > 0 ? 'open' : '' ?>>
+                <?php if ($entryHasEnabledHabits): ?><details class="entry-habits-disclosure" data-entry-habits <?= $entrySelectedHabitCount > 0 ? 'open' : '' ?>>
                     <summary class="entry-section-title"><span aria-hidden="true"><?= activity_icon_svg('check') ?></span><span><?= e(t('table.habits_section')) ?></span><span class="entry-habits-count" data-entry-habits-count><?= $entrySelectedHabitCount ?></span><span class="entry-habits-chevron" aria-hidden="true">⌄</span></summary>
                     <div class="toggle-row pill-toggles entries-toggles">
                         <label class="check">
@@ -375,7 +378,7 @@ if ($entryMode === 'calendar') {
                         </label>
                         <?php foreach (($habits ?? []) as $habit): ?>
                             <?php $code = (string) $habit['code']; ?>
-                            <?php if ($code === 'morning_walk') {
+                            <?php if ($code === 'morning_walk' || !$entryMetricEnabled('habit:' . $code)) {
                                 continue;
                             } ?>
                             <label class="check">
@@ -384,7 +387,7 @@ if ($entryMode === 'calendar') {
                             </label>
                         <?php endforeach; ?>
                     </div>
-                </details>
+                </details><?php endif; ?>
 
                 <?php if ($entryPenaltiesEnabled): ?>
                     <div class="grid-inline entries-two-col entry-reason-section">
@@ -412,16 +415,16 @@ if ($entryMode === 'calendar') {
         </article>
     <?php endif; ?>
 
-    <?php if ($entryMode === 'meal'): ?>
+    <?php if ($entryMode === 'nutrition'): ?>
     <article class="panel proof-photo-panel">
         <div class="panel-head">
             <div>
-                <p class="eyebrow"><?= e(t('common.photo')) ?></p>
-                <h2><?= e(t('entries.upload_photo')) ?></h2>
+                <p class="eyebrow"><?= e(t('entries.nutrition')) ?></p>
+                <h2><?= e(t('entries.log_meal')) ?></h2>
             </div>
         </div>
 
-        <form method="post" action="/?page=entries" enctype="multipart/form-data" class="stack proof-photo-form" data-proof-photo-form>
+        <form method="post" action="/?page=entries&amp;mode=nutrition" enctype="multipart/form-data" class="stack proof-photo-form" data-proof-photo-form>
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="upload_photo">
 
@@ -455,7 +458,7 @@ if ($entryMode === 'calendar') {
                     <div class="proof-photo-upload-block">
                         <label class="proof-photo-upload-label">
                             <span class="proof-photo-upload-copy"><span class="proof-photo-upload-icon" aria-hidden="true"><?= activity_icon_svg('image') ?></span><span><strong><?= e(t('entries.camera_hint')) ?></strong><small><?= e(t('entries.photo_upload_help')) ?></small></span><span class="proof-photo-upload-plus" aria-hidden="true"><?= activity_icon_svg('plus') ?></span></span>
-                            <input type="file" name="photo" accept="image/*" required data-proof-photo-input aria-label="<?= e(t('entries.camera_hint')) ?>">
+                            <input type="file" name="photo" accept="image/*" data-proof-photo-input aria-label="<?= e(t('entries.camera_hint')) ?>">
                         </label>
                         <p class="proof-photo-upload-state muted small" data-proof-photo-state><?= e(t('entries.photo_upload_idle')) ?></p>
                     </div>
@@ -517,7 +520,7 @@ if ($entryMode === 'calendar') {
             </div>
 
             <div class="proof-photo-form-actions">
-                <button type="submit" class="btn btn-secondary btn-block proof-photo-submit"><span aria-hidden="true"><?= activity_icon_svg('check') ?></span><strong><?= e(t('entries.upload')) ?></strong></button>
+                <button type="submit" class="btn btn-secondary btn-block proof-photo-submit"><span aria-hidden="true"><?= activity_icon_svg('check') ?></span><strong><?= e(t('entries.save_meal')) ?></strong></button>
             </div>
         </form>
 
@@ -527,12 +530,12 @@ if ($entryMode === 'calendar') {
     <article class="panel entry-recent-photos-panel">
         <div class="panel-head">
             <div>
-                <p class="eyebrow"><?= e(t('common.photo')) ?></p>
-                <h2><?= e(t('entries.recent_photos')) ?></h2>
+                <p class="eyebrow"><?= e(t('entries.nutrition')) ?></p>
+                <h2><?= e(t('entries.meal_history')) ?></h2>
             </div>
         </div>
         <?php if ($recentPhotos === []): ?>
-            <p class="muted"><?= e(t('entries.no_photos')) ?></p>
+            <p class="muted"><?= e(t('entries.no_meals')) ?></p>
         <?php else: ?>
             <div class="photo-grid">
                 <?php foreach ($recentPhotos as $photo): ?>
@@ -541,16 +544,17 @@ if ($entryMode === 'calendar') {
                     $category = (string) ($photo['category'] ?? 'other');
                     $photoPath = (string) ($photo['file_path'] ?? '');
                     $photoUrl = media_thumbnail_url($photoPath, 400);
+                    $photoHasMedia = (int) ($photo['has_photo'] ?? 0) === 1 && $photoUrl !== '';
                     $nutritionLine = $nutritionSummary($photo);
                     ?>
-                    <figure class="photo-card">
-                        <a class="photo-card-media" href="/?page=photo&photo_id=<?= $photoId ?>">
-                            <?php if ($photoUrl !== ''): ?>
+                    <figure class="photo-card<?= $photoHasMedia ? '' : ' meal-card-no-photo' ?>">
+                        <?php if ($photoHasMedia): ?><a class="photo-card-media" href="/?page=photo&photo_id=<?= $photoId ?>"><?php else: ?><div class="photo-card-media"><?php endif; ?>
+                            <?php if ($photoHasMedia): ?>
                                 <img src="<?= e($photoUrl) ?>" srcset="<?= e(media_thumbnail_srcset($photoPath, [200, 400, 800])) ?>" sizes="(max-width: 700px) 46vw, 220px" width="400" height="400" alt="<?= e(t('common.photo')) ?>" loading="lazy" decoding="async">
                             <?php else: ?>
-                                <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
+                                <div class="entries-calendar-empty"><span aria-hidden="true"><?= activity_icon_svg('flame') ?></span><?= e(t('entries.no_photo')) ?></div>
                             <?php endif; ?>
-                        </a>
+                        <?php if ($photoHasMedia): ?></a><?php else: ?></div><?php endif; ?>
                         <figcaption>
                             <a class="user-inline-link" href="/?page=profile&amp;user_id=<?= (int) ($photo['user_id'] ?? 0) ?>"><strong><?= e((string) ($photo['display_name'] ?? '')) ?></strong></a>
                             <span><?= e(format_date_eu((string) ($photo['log_date'] ?? ''))) ?> · <?= e((string) ($categoryLabels[$category] ?? $category)) ?></span>
@@ -559,6 +563,36 @@ if ($entryMode === 'calendar') {
                             <?php endif; ?>
                             <?php if ($nutritionLine !== ''): ?>
                                 <span class="photo-nutrition-line"><?= e($nutritionLine) ?></span>
+                            <?php endif; ?>
+                            <?php if ((int) ($photo['user_id'] ?? 0) === (int) ($currentUser['id'] ?? 0) || is_admin($currentUser)): ?>
+                                <details class="meal-entry-editor">
+                                    <summary><?= e(t('common.edit')) ?></summary>
+                                    <form method="post" action="/?page=entries&amp;mode=nutrition" class="stack compact-form">
+                                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                        <input type="hidden" name="action" value="update_meal_entry">
+                                        <input type="hidden" name="photo_id" value="<?= $photoId ?>">
+                                        <div class="grid-inline two">
+                                            <label><?= e(t('common.date')) ?><input type="date" name="log_date" value="<?= e((string) ($photo['log_date'] ?? $selectedDate)) ?>"></label>
+                                            <label><?= e(t('common.category')) ?><select name="category"><?php foreach (['breakfast', 'lunch', 'dinner', 'other'] as $mealCategory): ?><option value="<?= e($mealCategory) ?>" <?= $category === $mealCategory ? 'selected' : '' ?>><?= e((string) ($categoryLabels[$mealCategory] ?? $mealCategory)) ?></option><?php endforeach; ?></select></label>
+                                        </div>
+                                        <label><?= e(t('common.caption')) ?><input type="text" name="caption" value="<?= e((string) ($photo['caption'] ?? '')) ?>"></label>
+                                        <div class="grid-inline two">
+                                            <label><?= e(t('entries.photo_calories')) ?><input type="number" min="0" step="1" name="photo_calories" value="<?= e((string) ($photo['calories'] ?? '')) ?>"></label>
+                                            <label><?= e(t('entries.photo_protein')) ?><input type="number" min="0" step="0.1" name="photo_protein_g" value="<?= e((string) ($photo['protein_g'] ?? '')) ?>"></label>
+                                            <label><?= e(t('entries.photo_carbs')) ?><input type="number" min="0" step="0.1" name="photo_carbs_g" value="<?= e((string) ($photo['carbs_g'] ?? '')) ?>"></label>
+                                            <label><?= e(t('entries.photo_fat')) ?><input type="number" min="0" step="0.1" name="photo_fat_g" value="<?= e((string) ($photo['fat_g'] ?? '')) ?>"></label>
+                                        </div>
+                                        <button class="btn btn-primary small" type="submit"><?= e(t('common.save')) ?></button>
+                                    </form>
+                                </details>
+                                <form method="post" action="/?page=entries&amp;mode=nutrition" class="meal-entry-delete-form" onsubmit="return confirm('<?= e(t('entries.delete_confirm')) ?>')">
+                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                    <input type="hidden" name="action" value="delete_photo">
+                                    <input type="hidden" name="photo_id" value="<?= $photoId ?>">
+                                    <input type="hidden" name="redirect_mode" value="nutrition">
+                                    <input type="hidden" name="redirect_date" value="<?= e($selectedDate) ?>">
+                                    <button class="btn btn-ghost small" type="submit"><?= e(t('common.delete')) ?></button>
+                                </form>
                             <?php endif; ?>
                         </figcaption>
                     </figure>
@@ -580,13 +614,15 @@ if ($entryMode === 'calendar') {
             <div class="meal-calendar meal-calendar-<?= e($calendarView) ?><?= $calendarView === 'month' ? ' meal-calendar-month' : '' ?> entries-calendar" data-meal-calendar-days>
                 <?php foreach (($mealCalendar ?? []) as $dateKey => $day): ?>
                     <?php
-                    $photoCount = (int) ($day['count'] ?? 0);
+                    $photoCount = (int) ($day['meal_count'] ?? $day['count'] ?? 0);
                     $hasLog = $photoCount > 0;
                     $preview = $day['preview'] ?? null;
                     $previewPath = is_array($preview) ? (string) ($preview['file_path'] ?? '') : '';
                     $previewUrl = $previewPath !== '' ? media_thumbnail_url($previewPath, 360) : '';
                     $previewSrcset = $previewPath !== '' ? media_thumbnail_srcset($previewPath, [200, 400, 800]) : '';
-                    $previewPhotoId = (int) (($preview['id'] ?? 0));
+                    $previewPhotoId = $previewPath !== '' && (int) ($preview['has_photo'] ?? 0) === 1
+                        ? (int) ($preview['id'] ?? 0)
+                        : 0;
                     $previewPhotos = [];
                     foreach (array_slice(array_values((array) ($day['photos'] ?? [])), 0, 3) as $previewPhoto) {
                         if (!is_array($previewPhoto)) {
@@ -614,7 +650,7 @@ if ($entryMode === 'calendar') {
                     $calendarDayUrl = $previewPhotoId > 0
                         ? '/?page=photo&photo_id=' . $previewPhotoId
                         : ($canCreateForCalendarDay
-                            ? '/?page=entries&mode=meal&date=' . rawurlencode((string) $dateKey)
+                            ? '/?page=entries&mode=nutrition&date=' . rawurlencode((string) $dateKey)
                             : '/?' . http_build_query([
                                 'page' => 'entries',
                                 'mode' => 'calendar',
@@ -642,7 +678,7 @@ if ($entryMode === 'calendar') {
                             <?php else: ?>
                                 <div class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></div>
                             <?php endif; ?>
-                            <span class="badge"><?= $photoCount ?> <?= e($photoCount === 1 ? t('entries.photo_singular') : t('entries.photo_plural')) ?></span>
+                            <span class="badge"><?= $photoCount ?> <?= e($photoCount === 1 ? t('entries.meal_singular') : t('entries.meal_plural')) ?></span>
                         </article>
                     </a>
                 <?php endforeach; ?>

@@ -198,6 +198,12 @@ function workouts_ensure_schema(PDO $pdo): void
     ensure_column($pdo, 'exercise_definitions', 'sort_order', 'INTEGER NOT NULL DEFAULT 0');
     ensure_column($pdo, 'exercise_definitions', 'image_path', 'TEXT');
     ensure_column($pdo, 'exercise_definitions', 'video_url', 'TEXT');
+    ensure_column($pdo, 'exercise_definitions', 'equipment_tags_json', 'TEXT NOT NULL DEFAULT "[]"');
+    ensure_column($pdo, 'exercise_definitions', 'contexts_json', 'TEXT NOT NULL DEFAULT "[]"');
+    ensure_column($pdo, 'exercise_definitions', 'image_source_url', 'TEXT NOT NULL DEFAULT ""');
+    ensure_column($pdo, 'exercise_definitions', 'image_license', 'TEXT NOT NULL DEFAULT ""');
+    ensure_column($pdo, 'exercise_definitions', 'image_attribution', 'TEXT NOT NULL DEFAULT ""');
+    ensure_column($pdo, 'exercise_definitions', 'video_attribution', 'TEXT NOT NULL DEFAULT ""');
     ensure_column($pdo, 'exercise_definitions', 'visual_mark', 'TEXT NOT NULL DEFAULT ""');
     ensure_column($pdo, 'exercise_definitions', 'accent_color', 'TEXT NOT NULL DEFAULT "#14b8a6"');
     ensure_column($pdo, 'exercise_definitions', 'cover_mode', 'TEXT NOT NULL DEFAULT "auto"');
@@ -214,6 +220,9 @@ function workouts_ensure_schema(PDO $pdo): void
     ensure_column($pdo, 'exercise_definitions', 'admin_override', 'INTEGER NOT NULL DEFAULT 0');
     ensure_column($pdo, 'exercise_definitions', 'source_exercise_id', 'INTEGER');
     ensure_column($pdo, 'exercise_media', 'caption', 'TEXT NOT NULL DEFAULT ""');
+    ensure_column($pdo, 'exercise_media', 'source_url', 'TEXT NOT NULL DEFAULT ""');
+    ensure_column($pdo, 'exercise_media', 'license_code', 'TEXT NOT NULL DEFAULT ""');
+    ensure_column($pdo, 'exercise_media', 'attribution', 'TEXT NOT NULL DEFAULT ""');
     ensure_column($pdo, 'workout_routines', 'recommended_days_mask', 'TEXT NOT NULL DEFAULT "0000000"');
     ensure_column($pdo, 'workout_routines', 'accent_color', 'TEXT NOT NULL DEFAULT "#14b8a6"');
     ensure_column($pdo, 'workout_routines', 'image_path', 'TEXT');
@@ -235,6 +244,50 @@ function workouts_ensure_schema(PDO $pdo): void
     workouts_seed_rank_tiers($pdo);
 }
 
+/** @return array{image_path:string,image_source_url:string,image_license:string,image_attribution:string,video_url:string,video_attribution:string,equipment_tags:array<int,string>,contexts:array<int,string>} */
+function wk_catalog_media_defaults(array $item): array
+{
+    $equipment = trim((string) ($item['equipment'] ?? 'none'));
+    $assetKey = match ($equipment) {
+        'bodyweight', 'none' => 'none',
+        'cardio_machine' => 'cardio_machine',
+        default => in_array($equipment, ['machine', 'cable', 'outdoor', 'dumbbell', 'barbell', 'kettlebell', 'band'], true)
+            ? $equipment
+            : 'none',
+    };
+    $equipmentTags = array_values(array_unique(array_filter(array_map(
+        static fn(mixed $value): string => trim((string) $value),
+        (array) ($item['equipment_tags'] ?? [$equipment])
+    ))));
+    $contexts = array_values(array_unique(array_filter(array_map(
+        static fn(mixed $value): string => trim((string) $value),
+        (array) ($item['contexts'] ?? match ($equipment) {
+            'none', 'bodyweight' => ['home', 'outdoor', 'no_equipment'],
+            'outdoor' => ['outdoor'],
+            'dumbbell', 'kettlebell', 'band' => ['gym', 'home'],
+            default => ['gym'],
+        })
+    ))));
+    $name = trim((string) (($item['names']['en'] ?? '') ?: ($item['slug'] ?? 'exercise')));
+    $videoUrl = trim((string) ($item['video_url'] ?? ''));
+    if ($videoUrl === '') {
+        // The searchable public link remains useful when a direct provider result
+        // has not been curated yet, while keeping the catalogue fully offline-safe.
+        $videoUrl = 'https://www.youtube.com/results?search_query=' . rawurlencode($name . ' exercise technique tutorial');
+    }
+
+    return [
+        'image_path' => trim((string) ($item['image_path'] ?? '')) ?: '/assets/workouts/catalog/' . $assetKey . '.webp',
+        'image_source_url' => trim((string) ($item['image_source_url'] ?? '')) ?: 'generated://fitness-challenge/catalog/' . $assetKey,
+        'image_license' => trim((string) ($item['image_license'] ?? '')) ?: 'Original generated asset',
+        'image_attribution' => trim((string) ($item['image_attribution'] ?? '')) ?: 'Fitness Challenge catalogue artwork',
+        'video_url' => $videoUrl,
+        'video_attribution' => trim((string) ($item['video_attribution'] ?? '')) ?: 'YouTube public exercise search',
+        'equipment_tags' => $equipmentTags,
+        'contexts' => $contexts,
+    ];
+}
+
 /** Seed and update the offline catalogue without touching personal exercises. */
 function workouts_seed_system_exercises(PDO $pdo): void
 {
@@ -251,9 +304,10 @@ function workouts_seed_system_exercises(PDO $pdo): void
     foreach (array_values(wk_builtin_exercise_catalog()) as $order => $item) {
         $slug = (string) $item['slug'];
         $name = (string) (($item['names']['en'] ?? '') ?: $slug);
+        $media = wk_catalog_media_defaults($item);
         $existing = db_fetch_one($pdo, 'SELECT id FROM exercise_definitions WHERE slug = :slug LIMIT 1', [':slug' => $slug]);
-        if ($existing === null) {
-            $legacy = (string) ($legacyNames[$slug] ?? $name);
+        if ($existing === null && isset($legacyNames[$slug])) {
+            $legacy = (string) $legacyNames[$slug];
             $existing = db_fetch_one(
                 $pdo,
                 'SELECT id FROM exercise_definitions WHERE is_system = 1 AND LOWER(name) = LOWER(:name) LIMIT 1',
@@ -268,12 +322,20 @@ function workouts_seed_system_exercises(PDO $pdo): void
             ':secondary' => json_encode(array_values((array) ($item['secondary'] ?? [])), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             ':type' => (string) ($item['type'] ?? 'strength'),
             ':equipment' => (string) ($item['equipment'] ?? ''),
+            ':equipment_tags' => json_encode($media['equipment_tags'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ':contexts' => json_encode($media['contexts'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             ':difficulty' => (string) ($item['difficulty'] ?? 'beginner'),
             ':visual_mark' => wk_exercise_default_mark($item['muscle'] ?? ''),
             ':accent' => wk_exercise_default_color($item['muscle'] ?? ''),
             ':guide' => json_encode(['names' => (array) ($item['names'] ?? []), 'guides' => (array) ($item['guide'] ?? [])], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             ':factor' => max(0.01, (float) ($item['rank_factor'] ?? 1.0)),
             ':rankable' => ($item['rankable'] ?? true) ? 1 : 0,
+            ':image_path' => $media['image_path'],
+            ':image_source_url' => $media['image_source_url'],
+            ':image_license' => $media['image_license'],
+            ':image_attribution' => $media['image_attribution'],
+            ':video_url' => $media['video_url'],
+            ':video_attribution' => $media['video_attribution'],
             ':sort' => $order + 1,
             ':now' => $now,
         ];
@@ -284,8 +346,15 @@ function workouts_seed_system_exercises(PDO $pdo): void
                 $pdo,
                 'UPDATE exercise_definitions
                  SET slug = :slug, name = :name, muscle_group = :muscle, secondary_muscles = :secondary,
-                     exercise_type = :type, equipment = :equipment, difficulty = :difficulty,
+                     exercise_type = :type, equipment = :equipment, equipment_tags_json = :equipment_tags,
+                     contexts_json = :contexts, difficulty = :difficulty,
                      guide_json = :guide, rank_factor = :factor, rankable = :rankable,
+                     image_path = CASE WHEN TRIM(COALESCE(image_path, "")) = "" THEN :image_path ELSE image_path END,
+                     image_source_url = CASE WHEN TRIM(COALESCE(image_source_url, "")) = "" THEN :image_source_url ELSE image_source_url END,
+                     image_license = CASE WHEN TRIM(COALESCE(image_license, "")) = "" THEN :image_license ELSE image_license END,
+                     image_attribution = CASE WHEN TRIM(COALESCE(image_attribution, "")) = "" THEN :image_attribution ELSE image_attribution END,
+                     video_url = CASE WHEN TRIM(COALESCE(video_url, "")) = "" THEN :video_url ELSE video_url END,
+                     video_attribution = CASE WHEN TRIM(COALESCE(video_attribution, "")) = "" THEN :video_attribution ELSE video_attribution END,
                      visual_mark = :visual_mark, accent_color = :accent, sort_order = :sort, is_system = 1, updated_at = :now
                  WHERE id = :id AND COALESCE(admin_override, 0) = 0',
                 $params
@@ -297,10 +366,14 @@ function workouts_seed_system_exercises(PDO $pdo): void
             $pdo,
             'INSERT INTO exercise_definitions (
                 user_id, slug, name, muscle_group, secondary_muscles, exercise_type, equipment,
-                difficulty, visual_mark, accent_color, guide_json, rank_factor, rankable, sort_order, is_system, created_at, updated_at
+                equipment_tags_json, contexts_json, difficulty, visual_mark, accent_color, guide_json,
+                rank_factor, rankable, sort_order, image_path, image_source_url, image_license,
+                image_attribution, video_url, video_attribution, is_system, created_at, updated_at
              ) VALUES (
                 NULL, :slug, :name, :muscle, :secondary, :type, :equipment,
-                :difficulty, :visual_mark, :accent, :guide, :factor, :rankable, :sort, 1, :now, :now
+                :equipment_tags, :contexts, :difficulty, :visual_mark, :accent, :guide,
+                :factor, :rankable, :sort, :image_path, :image_source_url, :image_license,
+                :image_attribution, :video_url, :video_attribution, 1, :now, :now
              )',
             $params
         );
@@ -1440,14 +1513,16 @@ function wk_user_clone_exercise(PDO $pdo, int $sourceExerciseId, int $userId): i
         $pdo,
         'INSERT INTO exercise_definitions (
             user_id, source_exercise_id, name, muscle_group, secondary_muscles, exercise_type,
-            equipment, difficulty, guide_json, rank_factor, rankable, sort_order,
-            image_path, video_url, cover_mode, image_position, visual_mark, accent_color,
+            equipment, equipment_tags_json, contexts_json, difficulty, guide_json, rank_factor, rankable, sort_order,
+            image_path, image_source_url, image_license, image_attribution,
+            video_url, video_attribution, cover_mode, image_position, visual_mark, accent_color,
             default_sets, default_reps, default_weight, default_duration, default_distance, default_rest_seconds, default_unit, default_notes,
             active, admin_override, is_system, created_at, updated_at
          ) VALUES (
             :user, :source, :name, :muscle, :secondary, :type,
-            :equipment, :difficulty, :guide, 1, 0, 9999,
-            :image, :video, :cover_mode, :image_position, :visual_mark, :accent_color,
+            :equipment, :equipment_tags, :contexts, :difficulty, :guide, 1, 0, 9999,
+            :image, :image_source_url, :image_license, :image_attribution,
+            :video, :video_attribution, :cover_mode, :image_position, :visual_mark, :accent_color,
             :default_sets, :default_reps, :default_weight, :default_duration, :default_distance, :default_rest, :default_unit, :default_notes,
             1, 0, 0, :created, :updated
          )',
@@ -1459,10 +1534,16 @@ function wk_user_clone_exercise(PDO $pdo, int $sourceExerciseId, int $userId): i
             ':secondary' => (string) ($source['secondary_muscles'] ?? '[]'),
             ':type' => (string) ($source['exercise_type'] ?? 'strength'),
             ':equipment' => (string) ($source['equipment'] ?? 'none'),
+            ':equipment_tags' => (string) ($source['equipment_tags_json'] ?? '[]'),
+            ':contexts' => (string) ($source['contexts_json'] ?? '[]'),
             ':difficulty' => (string) ($source['difficulty'] ?? 'beginner'),
             ':guide' => json_encode($guide, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             ':image' => trim((string) ($source['image_path'] ?? '')) !== '' ? (string) $source['image_path'] : null,
+            ':image_source_url' => (string) ($source['image_source_url'] ?? ''),
+            ':image_license' => (string) ($source['image_license'] ?? ''),
+            ':image_attribution' => (string) ($source['image_attribution'] ?? ''),
             ':video' => wk_normalize_exercise_video_url($source['video_url'] ?? ''),
+            ':video_attribution' => (string) ($source['video_attribution'] ?? ''),
             ':cover_mode' => wk_normalize_exercise_cover_mode($source['cover_mode'] ?? 'auto'),
             ':image_position' => wk_normalize_image_position($source['image_position'] ?? 'center'),
             ':visual_mark' => wk_normalize_exercise_mark($source['visual_mark'] ?? wk_exercise_default_mark($source['muscle_group'] ?? '')),
@@ -1514,7 +1595,12 @@ function wk_muscle_groups(): array
 
 function wk_equipment_options(): array
 {
-    return ['barbell', 'dumbbell', 'cable', 'machine', 'bodyweight', 'none'];
+    return ['machine', 'cable', 'cardio_machine', 'bodyweight', 'none', 'outdoor', 'dumbbell', 'barbell', 'kettlebell', 'band'];
+}
+
+function wk_context_options(): array
+{
+    return ['gym', 'home', 'outdoor', 'no_equipment'];
 }
 
 /** @return array<int,array<string,mixed>> */
@@ -1524,10 +1610,11 @@ function wk_exercise_library(PDO $pdo, int $userId, array $filters = []): array
     $query = $lower(trim((string) ($filters['q'] ?? '')));
     $muscle = trim((string) ($filters['muscle'] ?? ''));
     $equipment = trim((string) ($filters['equipment'] ?? ''));
+    $context = trim((string) ($filters['context'] ?? ''));
     $scope = trim((string) ($filters['scope'] ?? ''));
     $rows = wk_exercises_for_user($pdo, $userId);
 
-    return array_values(array_filter($rows, static function (array $row) use ($query, $muscle, $equipment, $scope, $userId, $lower): bool {
+    return array_values(array_filter($rows, static function (array $row) use ($query, $muscle, $equipment, $context, $scope, $userId, $lower): bool {
         if ($scope === 'mine' && (int) ($row['user_id'] ?? 0) !== $userId) {
             return false;
         }
@@ -1537,7 +1624,17 @@ function wk_exercise_library(PDO $pdo, int $userId, array $filters = []): array
         if ($muscle !== '' && (string) ($row['muscle_group'] ?? '') !== $muscle) {
             return false;
         }
-        if ($equipment !== '' && (string) ($row['equipment'] ?? '') !== $equipment) {
+        $equipmentTags = json_decode((string) ($row['equipment_tags_json'] ?? '[]'), true);
+        $equipmentTags = is_array($equipmentTags) ? array_map('strval', $equipmentTags) : [];
+        if ($equipmentTags === []) {
+            $equipmentTags[] = (string) ($row['equipment'] ?? '');
+        }
+        if ($equipment !== '' && !in_array($equipment, $equipmentTags, true)) {
+            return false;
+        }
+        $contexts = json_decode((string) ($row['contexts_json'] ?? '[]'), true);
+        $contexts = is_array($contexts) ? array_map('strval', $contexts) : [];
+        if ($context !== '' && !in_array($context, $contexts, true)) {
             return false;
         }
         if ($query !== '') {
@@ -1546,6 +1643,8 @@ function wk_exercise_library(PDO $pdo, int $userId, array $filters = []): array
                 (string) ($row['display_name'] ?? ''),
                 (string) ($row['muscle_group'] ?? ''),
                 (string) ($row['equipment'] ?? ''),
+                implode(' ', $equipmentTags),
+                implode(' ', $contexts),
                 (string) ($row['content']['summary'] ?? ''),
                 t('workouts.muscle_' . (string) ($row['muscle_group'] ?? '')),
                 t('workouts.equipment_' . (string) ($row['equipment'] ?? '')),

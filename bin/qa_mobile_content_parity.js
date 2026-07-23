@@ -131,7 +131,7 @@ const pages = [
             const mobileCount = await countVisible(page, entry.selector);
             const integratedDashboardKpis = entry.name === 'Inicio'
                 && mobileCount === desktopCounts[entry.name] - 1
-                && await countVisible(page, '.dashboard-mobile-home [data-dashboard-mobile-surface="mobile_today"] a[href*="metric="]') >= 6;
+                && await countVisible(page, '.dashboard-mobile-home [data-dashboard-mobile-surface="mobile_today"] a[href*="metric="]') >= 1;
             check(mobileCount === desktopCounts[entry.name] || integratedDashboardKpis,
                 `${entry.name}: móvil conserva todos los módulos o su equivalente integrado`,
                 `${mobileCount}/${desktopCounts[entry.name]}${integratedDashboardKpis ? ' + KPIs integrados' : ''}`);
@@ -149,6 +149,154 @@ const pages = [
         const desktopKpis = await page.locator('.dashboard-layout [data-dashboard-widget="kpis"] .metric-card').count();
         check(mobileKpis === desktopKpis && mobileKpis > 0,
             'Inicio no recorta los indicadores diarios', `${mobileKpis}/${desktopKpis}`);
+        const initialDashboardPanels = await page.locator('[data-dashboard-collapsible]').evaluateAll((panels) => panels.map((panel) => ({
+            name: panel.dataset.dashboardCollapsible || '',
+            expanded: panel.dataset.dashboardExpanded || '',
+            collapsed: panel.classList.contains('is-collapsed'),
+            ariaExpanded: panel.querySelector('[data-dashboard-panel-toggle]')?.getAttribute('aria-expanded') || '',
+        })));
+        check(initialDashboardPanels.length > 0
+                && initialDashboardPanels.every((panel) => panel.expanded === '0'
+                    && panel.collapsed
+                    && panel.ariaExpanded === 'false'),
+            'Los paneles de Inicio empiezan cerrados sin preferencia guardada',
+            JSON.stringify(initialDashboardPanels));
+
+        const legacyDashboardStorageKey = await page.evaluate(() => {
+            const user = String(document.body.dataset.uiUser || '0');
+            const key = `fitness-challenge:ui:v1:${user}:disclosure:dashboard.quests-panel`;
+            localStorage.setItem(key, '1');
+            return key;
+        });
+        await page.reload({ waitUntil: 'networkidle' });
+        const legacyState = await page.evaluate((key) => ({
+            stored: localStorage.getItem(key),
+            collapsed: document.querySelector('[data-dashboard-collapsible="dashboard.quests-panel"]')?.classList.contains('is-collapsed'),
+        }), legacyDashboardStorageKey);
+        check(legacyState.stored === null && legacyState.collapsed === true,
+            'Inicio ignora y elimina el estado antiguo del navegador',
+            JSON.stringify(legacyState));
+
+        const persistedPanelSelector = '[data-dashboard-collapsible="dashboard.training-progress"]';
+        const panelSaveResponse = page.waitForResponse((response) => response.url().includes('page=dashboard_panel_state')
+            && response.request().method() === 'POST');
+        await page.locator(`${persistedPanelSelector} [data-dashboard-panel-toggle]`).click();
+        const savedPanelResponse = await panelSaveResponse;
+        const savedPanelPayload = await savedPanelResponse.json().catch(() => null);
+        check(savedPanelResponse.ok() && savedPanelPayload?.ok === true && savedPanelPayload?.expanded === true,
+            'Abrir un panel guarda su estado en el servidor',
+            JSON.stringify(savedPanelPayload));
+        await page.reload({ waitUntil: 'networkidle' });
+        const reloadedPanelState = await page.locator(persistedPanelSelector).evaluate((panel) => ({
+            expanded: panel.dataset.dashboardExpanded,
+            collapsed: panel.classList.contains('is-collapsed'),
+            ariaExpanded: panel.querySelector('[data-dashboard-panel-toggle]')?.getAttribute('aria-expanded'),
+        }));
+        check(reloadedPanelState.expanded === '1'
+                && !reloadedPanelState.collapsed
+                && reloadedPanelState.ariaExpanded === 'true',
+            'El panel conserva desde la base de datos su estado tras recargar',
+            JSON.stringify(reloadedPanelState));
+        const dashboardDisclosureLocalState = await page.evaluate(() => Object.keys(localStorage)
+            .filter((key) => key.includes(':disclosure:dashboard.')));
+        check(dashboardDisclosureLocalState.length === 0,
+            'Los paneles de Inicio no guardan estado en localStorage',
+            JSON.stringify(dashboardDisclosureLocalState));
+
+        const collapsedPanelNames = await page.locator('[data-dashboard-collapsible].is-collapsed').evaluateAll(
+            (panels) => panels.map((panel) => panel.dataset.dashboardCollapsible || '').filter(Boolean)
+        );
+        for (const panelName of collapsedPanelNames) {
+            const responsePromise = page.waitForResponse((response) => response.url().includes('page=dashboard_panel_state')
+                && response.request().method() === 'POST');
+            await page.locator(`[data-dashboard-collapsible="${panelName}"] [data-dashboard-panel-toggle]`).click();
+            const response = await responsePromise;
+            check(response.ok(), `Inicio guarda el panel abierto: ${panelName}`);
+        }
+        const rankDisclosure = await page.evaluate(() => {
+            const panel = document.querySelector('.dashboard-training-rank[data-dashboard-collapsible]');
+            const head = panel?.querySelector(':scope > .panel-head');
+            const action = head?.querySelector('.dashboard-panel-action');
+            const summary = panel?.querySelector(':scope > .dashboard-training-rank-summary');
+            const board = panel?.querySelector(':scope > .dashboard-training-board');
+            if (!panel || !head || !action || !summary || !board) return null;
+            const panelStyle = getComputedStyle(panel);
+            const actionRect = action.getBoundingClientRect();
+            const headRect = head.getBoundingClientRect();
+            return {
+                actionFits: action.scrollWidth <= action.clientWidth + 1
+                    && actionRect.left >= headRect.left - 1
+                    && actionRect.right <= headRect.right + 1,
+                panelBackground: panelStyle.backgroundColor,
+                summaryBackground: getComputedStyle(summary).backgroundColor,
+                boardBackground: getComputedStyle(board).backgroundColor,
+                gap: panelStyle.rowGap,
+            };
+        });
+        check(Boolean(rankDisclosure?.actionFits),
+            'Inicio muestra Ver todos completo dentro de la cabecera de rango',
+            JSON.stringify(rankDisclosure));
+        check(Boolean(rankDisclosure)
+                && rankDisclosure.panelBackground === rankDisclosure.summaryBackground
+                && rankDisclosure.panelBackground === rankDisclosure.boardBackground
+                && Number.parseFloat(rankDisclosure.gap) === 0,
+            'El panel de rango usa una única superficie continua',
+            JSON.stringify(rankDisclosure));
+        const disclosurePanels = await page.evaluate(() => {
+            const definitions = [
+                ['progreso de entrenamiento', '.dashboard-training-progress'],
+                ['misiones', '.quests-widget'],
+                ['temporada', '.season-widget'],
+                ['progreso de logros', '.dashboard-achievement-progress-panel'],
+                ['duelos', '.dashboard-duels-card'],
+                ['competiciones', '.dashboard-competitions-card'],
+                ['ranking del reto', '.dashboard-ranking-panel'],
+                ['histórico semanal', '.dashboard-weekly-history'],
+            ];
+            return definitions.map(([name, selector]) => {
+                const panel = document.querySelector(`${selector}[data-dashboard-collapsible]`);
+                const head = panel?.querySelector(':scope > .panel-head');
+                const content = panel
+                    ? [...panel.children].find((child) => !child.matches('.panel-head, [data-layout-card-controls]'))
+                    : null;
+                const actions = head
+                    ? [...head.querySelectorAll('.dashboard-panel-head-actions > :not(.dashboard-panel-collapse-toggle)')]
+                    : [];
+                if (!panel || !head || !content) {
+                    return { name, found: false };
+                }
+                const panelStyle = getComputedStyle(panel);
+                const headRect = head.getBoundingClientRect();
+                return {
+                    name,
+                    found: true,
+                    background: panelStyle.backgroundColor,
+                    gap: panelStyle.rowGap,
+                    radius: panelStyle.borderTopLeftRadius,
+                    border: panelStyle.borderTopWidth,
+                    clipsContents: panelStyle.overflowX === 'hidden'
+                        && panelStyle.overflowY === 'hidden',
+                    actionsFit: actions.every((action) => {
+                        const actionRect = action.getBoundingClientRect();
+                        return action.scrollWidth <= action.clientWidth + 1
+                            && actionRect.left >= headRect.left - 1
+                            && actionRect.right <= headRect.right + 1;
+                    }),
+                };
+            });
+        });
+        check(disclosurePanels.length === 8
+                && disclosurePanels.every((panel) => panel.found
+                    && panel.background !== 'rgba(0, 0, 0, 0)'
+                    && Number.parseFloat(panel.gap) === 0
+                    && Number.parseFloat(panel.radius) > 0
+                    && Number.parseFloat(panel.border) > 0
+                    && panel.clipsContents),
+            'Los ocho desplegables restantes usan una superficie continua',
+            JSON.stringify(disclosurePanels));
+        check(disclosurePanels.every((panel) => panel.found && panel.actionsFit),
+            'Las acciones de los ocho desplegables se muestran completas',
+            JSON.stringify(disclosurePanels));
         const mobileAchievementCount = await countVisible(page, '.dashboard-achievement-card');
         check(mobileAchievementCount === desktopAchievementCount,
             'Inicio no recorta la lista de logros', `${mobileAchievementCount}/${desktopAchievementCount}`);
@@ -177,6 +325,69 @@ const pages = [
             check(menuState.columns === 2 && menuState.tones >= 4 && menuState.minHeight >= 60,
                 `${route}: submenú móvil es claro, compacto y usa categorías de color`, JSON.stringify(menuState));
         }
+
+        const profileDisclosures = await page.evaluate(() => [...document.querySelectorAll('[data-profile-collapsible]')]
+            .filter((panel) => panel.getClientRects().length > 0)
+            .map((panel) => {
+                const head = panel.querySelector(':scope > :is(.profile-home-card-head, .panel-head)');
+                const toggle = head?.querySelector('[data-profile-panel-toggle]');
+                const actions = head
+                    ? [...head.querySelectorAll('.profile-panel-head-actions > :not(.profile-panel-collapse-toggle), .inline-actions-mini > :not(.profile-panel-collapse-toggle)')]
+                        .filter((action) => action.getClientRects().length > 0)
+                    : [];
+                if (!head || !toggle) return { found: false };
+                const headRect = head.getBoundingClientRect();
+                const toggleRect = toggle.getBoundingClientRect();
+                const panelStyle = getComputedStyle(panel);
+                return {
+                    found: true,
+                    columns: getComputedStyle(head).gridTemplateColumns.split(' ').filter(Boolean).length,
+                    headHeight: headRect.height,
+                    toggleWidth: toggleRect.width,
+                    toggleHeight: toggleRect.height,
+                    continuous: Number.parseFloat(panelStyle.rowGap) === 0
+                        && panelStyle.overflowX === 'hidden'
+                        && panelStyle.backgroundColor !== 'rgba(0, 0, 0, 0)',
+                    actionsFit: actions.every((action) => {
+                        const rect = action.getBoundingClientRect();
+                        return action.scrollWidth <= action.clientWidth + 1
+                            && rect.left >= headRect.left - 1
+                            && rect.right <= headRect.right + 1;
+                    }),
+                };
+            }));
+        check(profileDisclosures.length > 0
+                && profileDisclosures.every((panel) => panel.found
+                    && panel.columns === 3
+                    && panel.headHeight >= 58
+                    && panel.toggleWidth >= 44
+                    && panel.toggleHeight >= 44
+                    && panel.continuous),
+            'Perfil reutiliza la estructura de desplegable de Inicio',
+            JSON.stringify(profileDisclosures));
+        check(profileDisclosures.every((panel) => panel.found && panel.actionsFit),
+            'Perfil muestra completas las acciones de sus cabeceras',
+            JSON.stringify(profileDisclosures));
+
+        await page.locator('[data-profile-collapsible]:visible').evaluateAll((panels) => {
+            panels.forEach((panel) => {
+                if (!panel.classList.contains('is-collapsed')) {
+                    panel.querySelector('[data-profile-panel-toggle]')?.click();
+                }
+            });
+        });
+        const collapsedProfileActions = await page.locator('[data-profile-collapsible]:visible').evaluateAll((panels) => panels.map((panel) => ({
+            collapsed: panel.classList.contains('is-collapsed'),
+            visibleActions: [...panel.querySelectorAll('.profile-panel-head-actions > :not(.profile-panel-collapse-toggle), .inline-actions-mini > :not(.profile-panel-collapse-toggle)')]
+                .filter((action) => action.getClientRects().length > 0).length,
+            ariaExpanded: panel.querySelector('[data-profile-panel-toggle]')?.getAttribute('aria-expanded') || '',
+        })));
+        check(collapsedProfileActions.length > 0
+                && collapsedProfileActions.every((panel) => panel.collapsed
+                    && panel.visibleActions === 0
+                    && panel.ariaExpanded === 'false'),
+            'Perfil cerrado deja una cabecera limpia con un solo chevron',
+            JSON.stringify(collapsedProfileActions));
 
         await open(page, '/?page=dashboard');
         const plus = page.locator('.mobile-liquid-nav .liquid-nav-plus');

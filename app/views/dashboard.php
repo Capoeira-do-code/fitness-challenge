@@ -38,16 +38,26 @@ foreach ($dashboardWidgets as $widget) {
 }
 $dashboardVisibleCount = count(array_intersect($dashboardEditorWidgets, $visibleWidgets));
 $dashboardHiddenCount = max(0, count($dashboardEditorWidgets) - $dashboardVisibleCount);
-$dashboardCollapseControl = static function (): string {
+$dashboardLayoutEditMode = $dashboardSection === '' && (string) ($_GET['layout_edit'] ?? '') === '1';
+$dashboardPanelPreferences = is_array($dashboardPanelPreferences ?? null) ? $dashboardPanelPreferences : [];
+$dashboardPanelIsExpanded = static fn(string $panelKey): bool => !empty($dashboardPanelPreferences[$panelKey]);
+$dashboardPanelClass = static function (string $panelKey) use ($dashboardPanelIsExpanded, $dashboardLayoutEditMode): string {
+    return $dashboardLayoutEditMode || $dashboardPanelIsExpanded($panelKey) ? '' : ' is-collapsed';
+};
+$dashboardPanelStateAttribute = static function (string $panelKey) use ($dashboardPanelIsExpanded): string {
+    return ' data-dashboard-expanded="' . ($dashboardPanelIsExpanded($panelKey) ? '1' : '0') . '"';
+};
+$dashboardCollapseControl = static function (string $panelKey) use ($dashboardPanelIsExpanded, $dashboardLayoutEditMode): string {
     $collapseLabel = t('profile.show_less');
     $expandLabel = t('profile.show_more');
+    $expanded = $dashboardLayoutEditMode || $dashboardPanelIsExpanded($panelKey);
+    $activeLabel = $expanded ? $collapseLabel : $expandLabel;
 
     return '<button class="dashboard-panel-collapse-toggle" type="button" data-dashboard-panel-toggle'
         . ' data-label-collapse="' . e($collapseLabel) . '" data-label-expand="' . e($expandLabel) . '"'
-        . ' aria-expanded="true" aria-label="' . e($collapseLabel) . '" title="' . e($collapseLabel) . '">'
+        . ' aria-expanded="' . ($expanded ? 'true' : 'false') . '" aria-label="' . e($activeLabel) . '" title="' . e($activeLabel) . '">'
         . '<span aria-hidden="true">&rsaquo;</span></button>';
 };
-$dashboardLayoutEditMode = $dashboardSection === '' && (string) ($_GET['layout_edit'] ?? '') === '1';
 $widgetOrder = static function (string ...$widgets) use ($visibleWidgets): int {
     $orders = [];
     foreach ($widgets as $widget) {
@@ -159,6 +169,15 @@ $calorieConsumedMeta = $calorieConsumedMaxTotal > 0
     ? t('dashboard.calories_max') . ': ' . $formatCalories($calorieConsumedMaxTotal) . ' kcal'
     : t('dashboard.calories_goal_not_set');
 $viewSnapshot = is_array($selectedMetricSnapshot ?? null) ? (array) $selectedMetricSnapshot : [];
+$dashboardScoreDecimal = current_locale() === 'en' ? '.' : ',';
+$activeMetricKeys = array_values(array_map('strval', (array) ($viewSnapshot['active_metric_keys'] ?? ($dashboardEnabledMetrics ?? []))));
+$metricEnabled = static fn(string $key): bool => in_array($key, $activeMetricKeys, true);
+$scoreMetricDetails = is_array($viewSnapshot['score_components_detailed'] ?? null)
+    ? (array) $viewSnapshot['score_components_detailed']
+    : [];
+$metricComponentProgress = static fn(string $key, float $fallback = 0.0): float => isset($scoreMetricDetails[$key])
+    ? (float) ($scoreMetricDetails[$key]['progress'] ?? $fallback)
+    : $fallback;
 $viewSteps = max(0, (int) ($viewSnapshot['steps'] ?? ($selectedMetric['total_steps'] ?? 0)));
 $viewDistance = round((float) ($viewSnapshot['distance_km'] ?? ($selectedMetric['total_km'] ?? 0)), 2);
 $viewWorkoutSuccess = max(0, (int) ($viewSnapshot['workouts'] ?? ($selectedMetric['workout_success'] ?? 0)));
@@ -178,7 +197,7 @@ $kpis = [
         'value' => (string) $viewSteps,
         'meta' => number_format($viewStepCompletionPct, 1, '.', '') . '%',
         'ring' => number_format($viewStepCompletionPct, 1, '.', '') . '%',
-        'progress' => $viewStepCompletionPct,
+        'progress' => $metricComponentProgress('steps', $viewStepCompletionPct),
     ],
     [
         'key' => 'distance',
@@ -186,7 +205,7 @@ $kpis = [
         'value' => number_format($viewDistance, 2, '.', '') . ' km',
         'meta' => t('metric.distance_km'),
         'ring' => number_format($viewDistance, 1, '.', ''),
-        'progress' => min(100, $viewDistance),
+        'progress' => $metricComponentProgress('distance', min(100, $viewDistance)),
     ],
     [
         'key' => 'workouts',
@@ -194,7 +213,7 @@ $kpis = [
         'value' => (string) $viewWorkoutSuccess . ' / ' . (string) $viewWorkoutTarget,
         'meta' => (string) $viewWorkoutCompletionPct . '%',
         'ring' => (string) $viewWorkoutCompletionPct . '%',
-        'progress' => (float) $viewWorkoutCompletionPct,
+        'progress' => $metricComponentProgress('workouts', (float) $viewWorkoutCompletionPct),
     ],
 ];
 if ($penaltiesEnabled) {
@@ -205,6 +224,26 @@ if ($penaltiesEnabled) {
         'meta' => t('dashboard.accumulated_penalty', ['amount' => $viewPenaltyLabel]),
         'ring' => (string) $viewStrikes,
         'progress' => max(0, 100 - ($viewStrikes * 10)),
+    ];
+}
+$kpis = array_values(array_filter($kpis, static function (array $kpi) use ($metricEnabled): bool {
+    $key = (string) ($kpi['key'] ?? '');
+    return $metricEnabled($key === 'strikes' ? 'discipline' : $key);
+}));
+foreach ($scoreMetricDetails as $detailKey => $detail) {
+    $detailKey = (string) $detailKey;
+    if ($detailKey !== 'weight' && !str_starts_with($detailKey, 'habit:')) {
+        continue;
+    }
+    $progress = max(0.0, min(100.0, (float) ($detail['progress'] ?? 0)));
+    $kpis[] = [
+        'key' => $detailKey,
+        'label' => (string) ($detail['label'] ?? $detailKey),
+        'value' => number_format($progress, 1, $dashboardScoreDecimal ?? '.', '') . '%',
+        'meta' => t('metric.progress'),
+        'ring' => number_format($progress, 0, '.', '') . '%',
+        'progress' => $progress,
+        'href' => $detailKey === 'weight' ? '/?page=analytics&section=body' : '/?page=entries&mode=data',
     ];
 }
 $todayLog = is_array($dashboardTodayLog ?? null) ? (array) $dashboardTodayLog : [];
@@ -246,10 +285,41 @@ if ($penaltiesEnabled) {
         'progress' => max(0, 100 - ($viewStrikes * 10)),
     ];
 }
+$todayKpis = array_values(array_filter($todayKpis, static function (array $kpi) use ($metricEnabled): bool {
+    $key = (string) ($kpi['key'] ?? '');
+    return $metricEnabled($key === 'strikes' ? 'discipline' : $key);
+}));
+foreach ($scoreMetricDetails as $detailKey => $detail) {
+    $detailKey = (string) $detailKey;
+    if ($detailKey === 'weight') {
+        $todayKpis[] = [
+            'key' => $detailKey,
+            'label' => (string) ($detail['label'] ?? t('metric.weight')),
+            'value' => isset($todayLog['weight']) && $todayLog['weight'] !== null
+                ? number_format((float) $todayLog['weight'], 1, $dashboardScoreDecimal ?? '.', '') . ' kg'
+                : number_format((float) ($detail['progress'] ?? 0), 0, '.', '') . '%',
+            'progress' => (float) ($detail['progress'] ?? 0),
+            'href' => '/?page=analytics&section=body',
+        ];
+        continue;
+    }
+    if (!str_starts_with($detailKey, 'habit:')) {
+        continue;
+    }
+    $habitCode = substr($detailKey, 6);
+    $habitDone = (int) ($todayLog['habits'][$habitCode]['value'] ?? 0) === 1;
+    $todayKpis[] = [
+        'key' => $detailKey,
+        'label' => (string) ($detail['label'] ?? $habitCode),
+        'value' => $habitDone ? '100%' : '0%',
+        'progress' => $habitDone ? 100.0 : 0.0,
+        'href' => '/?page=entries&mode=data',
+    ];
+}
 $todayCaloriesConsumed = max(0.0, (float) ($todayCalorieStats['total_consumed'] ?? 0));
 $todayCaloriesBurned = max(0.0, (float) ($todayCalorieStats['total_burned'] ?? 0));
-$dashboardScoreDecimal = current_locale() === 'en' ? '.' : ',';
-$dashboardScoreValue = (float) ($selectedMetric['score'] ?? 0);
+$dashboardHasScore = !empty($viewSnapshot['has_active_metrics']) && is_numeric($viewSnapshot['score'] ?? null);
+$dashboardScoreValue = $dashboardHasScore ? (float) $viewSnapshot['score'] : 0.0;
 $trainingRank = (array) ($dashboardTrainingRank ?? wk_rank_from_score(0.0));
 $trainingRankKey = (string) ($trainingRank['key'] ?? 'unranked');
 if (!array_key_exists($trainingRankKey, wk_rank_tiers())) {
@@ -268,6 +338,7 @@ $dashboardTodayMetricIcon = static fn(string $metric): string => match ($metric)
     'strikes' => 'shield',
     'calories_consumed' => 'flame',
     'calories_burned' => 'bolt',
+    'weight' => 'target',
     default => 'spark',
 };
 $metricQueryBase = [
@@ -330,7 +401,7 @@ ob_start();
 <?php
 $topbarControls = ob_get_clean();
 ?>
-<section class="screen stack-lg dashboard-hierarchy-screen<?= $dashboardSection !== '' ? ' has-section' : '' ?>" data-dashboard-page data-dashboard-section="<?= e($dashboardSection) ?>">
+<section class="screen stack-lg dashboard-hierarchy-screen<?= $dashboardSection !== '' ? ' has-section' : '' ?>" data-dashboard-page data-dashboard-section="<?= e($dashboardSection) ?>" data-dashboard-panel-state-endpoint="/?page=dashboard_panel_state" data-dashboard-panel-csrf="<?= e(csrf_token()) ?>">
     <?php if ($dashboardSection !== ''): ?>
         <header class="hierarchy-page-header">
             <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="/?page=dashboard" aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.home')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.home')) ?></strong></button>
@@ -340,7 +411,7 @@ $topbarControls = ob_get_clean();
         <?php if ($dashboardSection === 'progress'): ?>
             <div class="mobile-kpi-grid">
                 <?php foreach ($kpis as $kpi): ?>
-                    <?php $mobileMetricHref = (string) ($kpi['key'] ?? '') === 'strikes' ? $strikesHref : '/?' . http_build_query($metricQueryBase + ['metric' => (string) $kpi['key']]); ?>
+                    <?php $mobileMetricHref = (string) ($kpi['href'] ?? ((string) ($kpi['key'] ?? '') === 'strikes' ? $strikesHref : '/?' . http_build_query($metricQueryBase + ['metric' => (string) $kpi['key']]))); ?>
                     <a href="<?= e($mobileMetricHref) ?>"><small><?= e((string) $kpi['label']) ?></small><strong><?= e((string) $kpi['value']) ?></strong><span><?= e((string) $kpi['meta']) ?></span></a>
                 <?php endforeach; ?>
             </div>
@@ -407,22 +478,26 @@ $topbarControls = ob_get_clean();
                     <h1><?= e((string) ($selectedUser['display_name'] ?? t('nav.home'))) ?></h1>
                     <small><?= e(t('dashboard.mobile_today_status')) ?></small>
                 </div>
-                <a class="mobile-today-score mobile-score-link" href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'score'])) ?>" aria-label="<?= e(t('metric.score')) ?>: <?= e(number_format($dashboardScoreValue, 1, $dashboardScoreDecimal, '')) ?> / 100">
-                    <span><?= e(t('metric.score')) ?></span>
-                    <strong><?= e(number_format($dashboardScoreValue, 1, $dashboardScoreDecimal, '')) ?></strong>
-                    <small>/ 100</small>
-                </a>
+                <?php if ($dashboardHasScore): ?>
+                    <a class="mobile-today-score mobile-score-link" href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'score'])) ?>" aria-label="<?= e(t('metric.score')) ?>: <?= e(number_format($dashboardScoreValue, 1, $dashboardScoreDecimal, '')) ?> / 100">
+                        <span><?= e(t('metric.score')) ?></span>
+                        <strong><?= e(number_format($dashboardScoreValue, 1, $dashboardScoreDecimal, '')) ?></strong>
+                        <small>/ 100</small>
+                    </a>
+                <?php else: ?>
+                    <a class="mobile-today-score mobile-score-link is-empty" href="/?page=settings&amp;view=preferences"><span><?= e(t('metric.score')) ?></span><strong><?= e(t('settings.configure_goals')) ?></strong></a>
+                <?php endif; ?>
             </header>
             <div class="mobile-today-metrics">
                 <?php foreach ($todayKpis as $kpi): ?>
-                    <?php $mobileKpiKey = (string) ($kpi['key'] ?? ''); $mobileKpiHref = $mobileKpiKey === 'strikes' ? $strikesHref : '/?' . http_build_query($metricQueryBase + ['metric' => $mobileKpiKey]); ?>
+                    <?php $mobileKpiKey = (string) ($kpi['key'] ?? ''); $mobileKpiHref = (string) ($kpi['href'] ?? ($mobileKpiKey === 'strikes' ? $strikesHref : '/?' . http_build_query($metricQueryBase + ['metric' => $mobileKpiKey]))); ?>
                     <a href="<?= e($mobileKpiHref) ?>" data-metric="<?= e($mobileKpiKey) ?>">
                         <span class="mobile-today-metric-icon" aria-hidden="true"><?= activity_icon_svg($dashboardTodayMetricIcon($mobileKpiKey)) ?></span>
                         <span class="mobile-today-metric-copy"><strong><?= e((string) $kpi['value']) ?></strong><small><?= e((string) $kpi['label']) ?></small></span>
                     </a>
                 <?php endforeach; ?>
-                <a href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'calories_consumed'])) ?>" data-metric="calories_consumed"><span class="mobile-today-metric-icon" aria-hidden="true"><?= activity_icon_svg($dashboardTodayMetricIcon('calories_consumed')) ?></span><span class="mobile-today-metric-copy"><strong><?= e($formatCalories($todayCaloriesConsumed)) ?> kcal</strong><small><?= e(t('dashboard.calories_consumed')) ?></small></span></a>
-                <a href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'calories_burned'])) ?>" data-metric="calories_burned"><span class="mobile-today-metric-icon" aria-hidden="true"><?= activity_icon_svg($dashboardTodayMetricIcon('calories_burned')) ?></span><span class="mobile-today-metric-copy"><strong><?= e($formatCalories($todayCaloriesBurned)) ?> kcal</strong><small><?= e(t('dashboard.calories_burned')) ?></small></span></a>
+                <?php if ($metricEnabled('calories_consumed')): ?><a href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'calories_consumed'])) ?>" data-metric="calories_consumed"><span class="mobile-today-metric-icon" aria-hidden="true"><?= activity_icon_svg($dashboardTodayMetricIcon('calories_consumed')) ?></span><span class="mobile-today-metric-copy"><strong><?= e($formatCalories($todayCaloriesConsumed)) ?> kcal</strong><small><?= e(t('dashboard.calories_consumed')) ?></small></span></a><?php endif; ?>
+                <?php if ($metricEnabled('calories_burned')): ?><a href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'calories_burned'])) ?>" data-metric="calories_burned"><span class="mobile-today-metric-icon" aria-hidden="true"><?= activity_icon_svg($dashboardTodayMetricIcon('calories_burned')) ?></span><span class="mobile-today-metric-copy"><strong><?= e($formatCalories($todayCaloriesBurned)) ?> kcal</strong><small><?= e(t('dashboard.calories_burned')) ?></small></span></a><?php endif; ?>
             </div>
         </article>
         <a class="mobile-primary-action" data-dashboard-mobile-surface="mobile_primary"<?= $showWidget('mobile_primary') ? '' : ' hidden' ?> href="/?page=entries&mode=data"><span><strong><?= e(t('dashboard.quick_action_training')) ?></strong><small><?= e(t('dashboard.mobile_primary_hint')) ?></small></span><span aria-hidden="true">&rsaquo;</span></a>
@@ -453,6 +528,7 @@ $topbarControls = ob_get_clean();
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="save_dashboard_layout">
             <input type="hidden" name="dashboard_view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
+            <input type="hidden" name="metric_preferences_present" value="1">
 
             <div class="dashboard-editbar-row">
                 <p class="dashboard-editbar-hint">
@@ -500,6 +576,35 @@ $topbarControls = ob_get_clean();
                 </div>
                 <button class="btn btn-ghost small dashboard-editbar-reset" type="submit" name="reset_dashboard_layout" value="1"><?= e(t('dashboard.reset_layout')) ?></button>
             </details>
+            <details class="dashboard-layout-visibility dashboard-metric-visibility" data-persist-disclosure="dashboard.metric-visibility">
+                <summary><?= e(t('settings.tracked_metrics')) ?></summary>
+                <div class="dashboard-metric-toggle-grid">
+                    <?php foreach ((array) ($dashboardMetricDefinitions ?? []) as $metricKey => $metricDefinition): ?>
+                        <label class="dashboard-layout-toggle">
+                            <input type="checkbox" name="enabled_metrics[]" value="<?= e((string) $metricKey) ?>" <?= in_array((string) $metricKey, (array) ($dashboardEnabledMetrics ?? []), true) ? 'checked' : '' ?>>
+                            <span><strong><?= e((string) ($metricDefinition['label'] ?? $metricKey)) ?></strong><small><?= e(t('settings.metric_period_' . (string) ($metricDefinition['period'] ?? 'daily'))) ?></small></span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <?php
+                $dashboardDistanceGoal = 0.0;
+                foreach (user_primary_goals($currentUser) as $dashboardPrimaryGoal) {
+                    if ((string) ($dashboardPrimaryGoal['type'] ?? '') === 'km') {
+                        $dashboardDistanceGoal = max(0.0, (float) ($dashboardPrimaryGoal['value'] ?? 0));
+                        break;
+                    }
+                }
+                ?>
+                <div class="dashboard-metric-target-grid">
+                    <label><?= e(t('metric.steps')) ?><input type="text" inputmode="numeric" name="metric_step_goal" value="<?= (int) ($currentUser['step_goal'] ?? 0) > 0 ? (int) $currentUser['step_goal'] : '' ?>"></label>
+                    <label><?= e(t('metric.distance_km')) ?><input type="number" min="0.1" step="0.1" name="metric_distance_goal" value="<?= $dashboardDistanceGoal > 0 ? e((string) $dashboardDistanceGoal) : '' ?>"></label>
+                    <label><?= e(t('metric.workouts')) ?><input type="number" min="1" max="14" step="1" name="metric_workout_target" value="<?= (int) ($currentUser['workout_target'] ?? 0) > 0 ? (int) $currentUser['workout_target'] : '' ?>"></label>
+                    <label><?= e(t('dashboard.calories_burned')) ?><input type="number" min="1" step="1" name="metric_calorie_burn_goal" value="<?= e((string) ($currentUser['calorie_burn_goal'] ?? '')) ?>"></label>
+                    <label><?= e(t('dashboard.calories_consumed')) ?><input type="number" min="1" step="1" name="metric_calorie_consumed_max" value="<?= e((string) ($currentUser['calorie_consumed_max'] ?? '')) ?>"></label>
+                    <label><?= e(t('settings.ideal_weight')) ?><input type="number" min="25" max="400" step="0.1" name="metric_ideal_weight" value="<?= e((string) ($currentUser['ideal_weight'] ?? '')) ?>"></label>
+                </div>
+                <a class="btn btn-ghost small" href="/?page=settings&amp;view=preferences"><?= e(t('settings.configure_goals')) ?></a>
+            </details>
         </form>
     </div>
     <?php endif; ?>
@@ -507,7 +612,7 @@ $topbarControls = ob_get_clean();
     <div class="dashboard-layout" data-unsaved-message="<?= e(t('dashboard.unsaved_changes')) ?>">
         <?php if ($showWidget('kpis')): ?>
         <div class="metric-grid dashboard-span-full dashboard-kpis" data-dashboard-widget="kpis" style="order: <?= $contentWidgetOrder('kpis') ?>">
-            <a class="metric-card metric-card-link metric-card-score" href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'score'])) ?>" data-testid="metric-card-link-score">
+            <?php if ($dashboardHasScore): ?><a class="metric-card metric-card-link metric-card-score" href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'score'])) ?>" data-testid="metric-card-link-score">
                 <div class="progress-ring" style="--value: <?= e((string) min(100, max(0, $dashboardScoreValue))) ?>;">
                     <span><?= e(number_format($dashboardScoreValue, 1, $dashboardScoreDecimal, '')) ?></span>
                 </div>
@@ -516,10 +621,10 @@ $topbarControls = ob_get_clean();
                     <strong><?= e(number_format($dashboardScoreValue, 1, $dashboardScoreDecimal, '')) ?> / 100</strong>
                     <p><?= e(t('dashboard.current_week')) ?></p>
                 </div>
-            </a>
+            </a><?php else: ?><a class="metric-card metric-card-link metric-card-score is-empty" href="/?page=settings&amp;view=preferences"><div><span><?= e(t('metric.score')) ?></span><strong><?= e(t('settings.configure_goals')) ?></strong><p><?= e(t('settings.tracked_metrics_hint')) ?></p></div></a><?php endif; ?>
             <?php foreach ($kpis as $kpi): ?>
                 <?php
-                $metricHref = '/?' . http_build_query($metricQueryBase + ['metric' => (string) $kpi['key']]);
+                $metricHref = (string) ($kpi['href'] ?? ('/?' . http_build_query($metricQueryBase + ['metric' => (string) $kpi['key']])));
                 if ((string) ($kpi['key'] ?? '') === 'strikes') {
                     $metricHref = $strikesHref;
                 }
@@ -535,7 +640,7 @@ $topbarControls = ob_get_clean();
                     </div>
                 </a>
             <?php endforeach; ?>
-            <a class="metric-card metric-card-link metric-card-calorie-goal" href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'calories_consumed'])) ?>" data-testid="metric-card-calorie-consumed">
+            <?php if ($metricEnabled('calories_consumed')): ?><a class="metric-card metric-card-link metric-card-calorie-goal" href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'calories_consumed'])) ?>" data-testid="metric-card-calorie-consumed">
                 <div class="progress-ring" style="--value: <?= e((string) min(100, max(0, $calorieConsumedProgress))) ?>;">
                     <span><?= e($calorieConsumedRing) ?></span>
                 </div>
@@ -544,8 +649,8 @@ $topbarControls = ob_get_clean();
                     <strong><?= e($formatCalories($calorieConsumedTotal)) ?> kcal</strong>
                     <p><?= e($calorieConsumedMeta) ?></p>
                 </div>
-            </a>
-            <a class="metric-card metric-card-link metric-card-calorie-goal" href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'calories_burned'])) ?>" data-testid="metric-card-calorie-burned">
+            </a><?php endif; ?>
+            <?php if ($metricEnabled('calories_burned')): ?><a class="metric-card metric-card-link metric-card-calorie-goal" href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'calories_burned'])) ?>" data-testid="metric-card-calorie-burned">
                 <div class="progress-ring" style="--value: <?= e((string) min(100, max(0, $calorieBurnProgress))) ?>;">
                     <span><?= e($calorieBurnRing) ?></span>
                 </div>
@@ -554,7 +659,7 @@ $topbarControls = ob_get_clean();
                     <strong><?= e($formatCalories($calorieBurnedTotal)) ?> kcal</strong>
                     <p><?= e($calorieBurnMeta) ?></p>
                 </div>
-            </a>
+            </a><?php endif; ?>
         </div>
         <?php endif; ?>
 
@@ -563,7 +668,7 @@ $topbarControls = ob_get_clean();
                 <a class="btn btn-primary dashboard-quick-action" href="/?page=entries&mode=data">
                     <?= e(t('dashboard.quick_action_training')) ?>
                 </a>
-                <a class="btn btn-secondary dashboard-quick-action" href="/?page=entries&mode=meal">
+                <a class="btn btn-secondary dashboard-quick-action" href="/?page=entries&mode=nutrition">
                     <?= e(t('dashboard.quick_action_meal')) ?>
                 </a>
             </div>
@@ -599,14 +704,14 @@ $topbarControls = ob_get_clean();
         </article>
 
         <?php if ($showWidget('training_rank')): ?>
-            <article class="panel dashboard-panel dashboard-training-rank compact-panel glass-panel" data-dashboard-widget="training_rank" data-dashboard-collapsible="dashboard.training-rank" data-rank="<?= e($trainingRankKey) ?>" style="order: <?= $contentWidgetOrder('training_rank') ?>; --rank-color: <?= e($trainingRankColor) ?>">
+            <article class="panel dashboard-panel dashboard-training-rank compact-panel glass-panel<?= $dashboardPanelClass('dashboard.training-rank') ?>" data-dashboard-widget="training_rank" data-dashboard-collapsible="dashboard.training-rank"<?= $dashboardPanelStateAttribute('dashboard.training-rank') ?> data-rank="<?= e($trainingRankKey) ?>" style="order: <?= $contentWidgetOrder('training_rank') ?>; --rank-color: <?= e($trainingRankColor) ?>">
                 <div class="panel-head dashboard-panel-head-compact">
                     <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span>
                     <div class="dashboard-training-rank-heading">
                         <span aria-hidden="true"><?= activity_icon_svg('trophy') ?></span>
                         <div><p class="eyebrow"><?= e(t('dashboard.training_rank_title')) ?></p><p class="muted small"><?= e(t('dashboard.training_rank_hint')) ?></p></div>
                     </div>
-                    <div class="dashboard-panel-head-actions"><a class="btn btn-ghost small dashboard-panel-action" href="/?page=workouts&amp;view=ranks"><?= e(t('common.view_all')) ?></a><?= $dashboardCollapseControl() ?></div>
+                    <div class="dashboard-panel-head-actions"><a class="btn btn-ghost small dashboard-panel-action" href="/?page=workouts&amp;view=ranks"><?= e(t('common.view_all')) ?></a><?= $dashboardCollapseControl('dashboard.training-rank') ?></div>
                 </div>
                 <div class="dashboard-training-rank-summary">
                     <div class="dashboard-training-rank-emblem">
@@ -654,14 +759,14 @@ $topbarControls = ob_get_clean();
             $trainingAll = (array) ($dashboardTrainingAll ?? []);
             $trainingRecentSession = (array) (($dashboardTrainingRecentSessions ?? [])[0] ?? []);
             ?>
-            <article class="panel dashboard-panel dashboard-training-progress compact-panel glass-panel compact-progress-panel" data-dashboard-widget="training_progress" data-dashboard-collapsible="dashboard.training-progress" style="order: <?= $contentWidgetOrder('training_progress') ?>">
+            <article class="panel dashboard-panel dashboard-training-progress compact-panel glass-panel compact-progress-panel<?= $dashboardPanelClass('dashboard.training-progress') ?>" data-dashboard-widget="training_progress" data-dashboard-collapsible="dashboard.training-progress"<?= $dashboardPanelStateAttribute('dashboard.training-progress') ?> style="order: <?= $contentWidgetOrder('training_progress') ?>">
                 <div class="panel-head dashboard-panel-head-compact">
                     <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('run') ?></span>
                     <div>
                         <p class="eyebrow"><?= e(t('dashboard.training_progress_title')) ?></p>
                         <p class="muted small"><?= e(t('dashboard.training_progress_hint')) ?></p>
                     </div>
-                    <div class="dashboard-panel-head-actions"><a class="btn btn-ghost small dashboard-panel-action" href="/?page=workouts&amp;view=stats"><?= e(t('common.view_all')) ?></a><?= $dashboardCollapseControl() ?></div>
+                    <div class="dashboard-panel-head-actions"><a class="btn btn-ghost small dashboard-panel-action" href="/?page=workouts&amp;view=stats"><?= e(t('common.view_all')) ?></a><?= $dashboardCollapseControl('dashboard.training-progress') ?></div>
                 </div>
                 <div class="dashboard-training-progress-grid compact-metrics-row">
                     <span><small><?= e(t('workouts.stat_sessions')) ?> · <?= e(t('workouts.this_month')) ?></small><strong><?= (int) ($trainingMonth['sessions'] ?? 0) ?></strong></span>
@@ -682,7 +787,7 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <?php if ($showWidget('achievements')): ?>
-        <article class="panel dashboard-panel dashboard-achievements-panel dashboard-span-full compact-panel glass-panel" data-dashboard-widget="achievements" data-dashboard-collapsible="dashboard.achievements" style="order: <?= $contentWidgetOrder('achievements') ?>">
+        <article class="panel dashboard-panel dashboard-achievements-panel dashboard-span-full compact-panel glass-panel<?= $dashboardPanelClass('dashboard.achievements') ?>" data-dashboard-widget="achievements" data-dashboard-collapsible="dashboard.achievements"<?= $dashboardPanelStateAttribute('dashboard.achievements') ?> style="order: <?= $contentWidgetOrder('achievements') ?>">
             <div class="panel-head dashboard-panel-head-compact">
                 <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span>
                 <div>
@@ -692,7 +797,7 @@ $topbarControls = ob_get_clean();
                 <div class="dashboard-achievements-summary">
                     <span class="dashboard-achievement-count"><strong><?= $dashboardAchievementUnlockedCount ?></strong><small>/ <?= $dashboardAchievementTotalCount ?></small></span>
                     <a class="dashboard-achievement-all-link" href="<?= e($dashboardAchievementsUrl) ?>"><span><?= e(t('common.view_all')) ?></span><b aria-hidden="true">›</b></a>
-                    <?= $dashboardCollapseControl() ?>
+                    <?= $dashboardCollapseControl('dashboard.achievements') ?>
                 </div>
             </div>
             <div class="dashboard-achievement-showcase" aria-label="<?= e(t('dashboard.latest_unlocked_achievements')) ?>">
@@ -711,11 +816,11 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <?php if ($showWidget('achievement_progress')): ?>
-        <article class="panel dashboard-panel dashboard-achievement-progress-panel dashboard-span-full compact-panel glass-panel compact-progress-panel" data-dashboard-widget="achievement_progress" data-dashboard-collapsible="dashboard.achievement-progress" style="order: <?= $contentWidgetOrder('achievement_progress') ?>">
+        <article class="panel dashboard-panel dashboard-achievement-progress-panel dashboard-span-full compact-panel glass-panel compact-progress-panel<?= $dashboardPanelClass('dashboard.achievement-progress') ?>" data-dashboard-widget="achievement_progress" data-dashboard-collapsible="dashboard.achievement-progress"<?= $dashboardPanelStateAttribute('dashboard.achievement-progress') ?> style="order: <?= $contentWidgetOrder('achievement_progress') ?>">
             <div class="panel-head dashboard-panel-head-compact">
                 <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span>
                 <div><p class="eyebrow"><?= e(t('dashboard.widget_achievement_progress')) ?></p><p class="muted small"><?= e(t('dashboard.nearest_achievements')) ?></p></div>
-                <div class="dashboard-panel-head-actions"><a class="btn btn-ghost small dashboard-panel-action" href="<?= e($dashboardAchievementsUrl) ?>"><?= e(t('common.view_all')) ?></a><?= $dashboardCollapseControl() ?></div>
+                <div class="dashboard-panel-head-actions"><a class="btn btn-ghost small dashboard-panel-action" href="<?= e($dashboardAchievementsUrl) ?>"><?= e(t('common.view_all')) ?></a><?= $dashboardCollapseControl('dashboard.achievement-progress') ?></div>
             </div>
             <div class="dashboard-achievement-progress-list">
                 <?php foreach ($dashboardAchievementProgressPreview as $achievement): ?>
@@ -732,7 +837,7 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <?php if ($showWidget('quests')): ?>
-            <article class="panel dashboard-panel quests-widget dashboard-span-full compact-panel glass-panel" data-dashboard-widget="quests" data-dashboard-collapsible="dashboard.quests-panel" style="order: <?= $contentWidgetOrder('quests') ?>">
+            <article class="panel dashboard-panel quests-widget dashboard-span-full compact-panel glass-panel<?= $dashboardPanelClass('dashboard.quests-panel') ?>" data-dashboard-widget="quests" data-dashboard-collapsible="dashboard.quests-panel"<?= $dashboardPanelStateAttribute('dashboard.quests-panel') ?> style="order: <?= $contentWidgetOrder('quests') ?>">
                 <div class="panel-head">
                     <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('check') ?></span>
                     <div class="dashboard-widget-heading quests-widget-heading">
@@ -744,7 +849,7 @@ $topbarControls = ob_get_clean();
                             <span class="quests-streak-flame" aria-hidden="true">&#128293;</span>
                             <strong><?= (int) ($dashboardQuestStreak ?? 0) ?></strong>
                         </span>
-                        <?= $dashboardCollapseControl() ?>
+                        <?= $dashboardCollapseControl('dashboard.quests-panel') ?>
                     </div>
                 </div>
 
@@ -849,7 +954,7 @@ $topbarControls = ob_get_clean();
                 }
             }
             ?>
-            <article class="panel dashboard-panel season-widget dashboard-span-full compact-panel glass-panel compact-progress-panel" data-dashboard-widget="season" data-dashboard-collapsible="dashboard.season-panel" style="order: <?= $contentWidgetOrder('season') ?>; --season-accent: <?= e($dashboardSeasonAccent) ?>">
+            <article class="panel dashboard-panel season-widget dashboard-span-full compact-panel glass-panel compact-progress-panel<?= $dashboardPanelClass('dashboard.season-panel') ?>" data-dashboard-widget="season" data-dashboard-collapsible="dashboard.season-panel"<?= $dashboardPanelStateAttribute('dashboard.season-panel') ?> style="order: <?= $contentWidgetOrder('season') ?>; --season-accent: <?= e($dashboardSeasonAccent) ?>">
                 <div class="panel-head">
                     <span class="dashboard-disclosure-icon season-widget-identity<?= $dashboardSeasonCoverUrl !== '' ? ' has-cover' : '' ?>" aria-hidden="true"><?php if ($dashboardSeasonCoverUrl !== ''): ?><img src="<?= e($dashboardSeasonCoverUrl) ?>" alt=""><?php else: ?><?= activity_icon_svg($dashboardSeasonIcon) ?><?php endif; ?></span>
                     <div class="dashboard-widget-heading season-widget-heading">
@@ -860,7 +965,7 @@ $topbarControls = ob_get_clean();
                         <span class="season-countdown">
                             <?= $seasonDaysLeft > 0 ? e(t('season.days_left', ['n' => $seasonDaysLeft])) : e(t('season.ends_today')) ?>
                         </span>
-                        <?= $dashboardCollapseControl() ?>
+                        <?= $dashboardCollapseControl('dashboard.season-panel') ?>
                     </div>
                 </div>
 
@@ -905,7 +1010,7 @@ $topbarControls = ob_get_clean();
 
         <?php if ($showWidget('duels')): ?>
             <?php $dDuels = (array) ($dashboardDuelsSummary ?? []); ?>
-            <article class="panel dashboard-panel dashboard-versus-card dashboard-duels-card compact-panel glass-panel" data-dashboard-widget="duels" data-dashboard-collapsible="dashboard.duels-panel" style="order: <?= $contentWidgetOrder('duels') ?>">
+            <article class="panel dashboard-panel dashboard-versus-card dashboard-duels-card compact-panel glass-panel<?= $dashboardPanelClass('dashboard.duels-panel') ?>" data-dashboard-widget="duels" data-dashboard-collapsible="dashboard.duels-panel"<?= $dashboardPanelStateAttribute('dashboard.duels-panel') ?> style="order: <?= $contentWidgetOrder('duels') ?>">
                 <div class="panel-head">
                     <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('sword') ?></span>
                     <div class="dashboard-widget-heading">
@@ -914,7 +1019,7 @@ $topbarControls = ob_get_clean();
                     </div>
                     <div class="dashboard-panel-head-actions">
                         <span class="dashboard-versus-live"><strong><?= (int) ($dDuels['active'] ?? 0) ?></strong><small><?= e(t('common.active')) ?></small></span>
-                        <?= $dashboardCollapseControl() ?>
+                        <?= $dashboardCollapseControl('dashboard.duels-panel') ?>
                     </div>
                 </div>
                 <a class="dashboard-versus-body" href="/?page=duels" aria-label="<?= e(t('common.view_all') . ': ' . t('nav.duels')) ?>">
@@ -930,7 +1035,7 @@ $topbarControls = ob_get_clean();
 
         <?php if ($showWidget('competitions')): ?>
             <?php $dComps = (array) ($dashboardCompetitionsSummary ?? []); ?>
-            <article class="panel dashboard-panel dashboard-versus-card dashboard-competitions-card compact-panel glass-panel" data-dashboard-widget="competitions" data-dashboard-collapsible="dashboard.competitions-panel" style="order: <?= $contentWidgetOrder('competitions') ?>">
+            <article class="panel dashboard-panel dashboard-versus-card dashboard-competitions-card compact-panel glass-panel<?= $dashboardPanelClass('dashboard.competitions-panel') ?>" data-dashboard-widget="competitions" data-dashboard-collapsible="dashboard.competitions-panel"<?= $dashboardPanelStateAttribute('dashboard.competitions-panel') ?> style="order: <?= $contentWidgetOrder('competitions') ?>">
                 <div class="panel-head">
                     <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span>
                     <div class="dashboard-widget-heading">
@@ -939,7 +1044,7 @@ $topbarControls = ob_get_clean();
                     </div>
                     <div class="dashboard-panel-head-actions">
                         <span class="dashboard-versus-live"><strong><?= (int) ($dComps['active'] ?? 0) ?></strong><small><?= e(t('common.active')) ?></small></span>
-                        <?= $dashboardCollapseControl() ?>
+                        <?= $dashboardCollapseControl('dashboard.competitions-panel') ?>
                     </div>
                 </div>
                 <a class="dashboard-versus-body" href="/?page=competitions" aria-label="<?= e(t('common.view_all') . ': ' . t('nav.competitions')) ?>">
@@ -954,11 +1059,11 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <?php if ($showWidget('weekly')): ?>
-        <article class="panel dashboard-panel dashboard-span-full dashboard-weekly-history compact-panel glass-panel" data-dashboard-widget="weekly" data-dashboard-collapsible="dashboard.weekly-panel" style="order: <?= $contentWidgetOrder('weekly') ?>">
+        <article class="panel dashboard-panel dashboard-span-full dashboard-weekly-history compact-panel glass-panel<?= $dashboardPanelClass('dashboard.weekly-panel') ?>" data-dashboard-widget="weekly" data-dashboard-collapsible="dashboard.weekly-panel"<?= $dashboardPanelStateAttribute('dashboard.weekly-panel') ?> style="order: <?= $contentWidgetOrder('weekly') ?>">
             <div class="panel-head">
                 <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('list') ?></span>
                 <h2><?= e(t('dashboard.weekly_history')) ?></h2>
-                <div class="dashboard-panel-head-actions"><a class="btn btn-ghost small dashboard-panel-action" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week=<?= e(date_to_iso_week((string) $selectedWeekStart)) ?>"><?= e(t('table.open_editor')) ?></a><?= $dashboardCollapseControl() ?></div>
+                <div class="dashboard-panel-head-actions"><a class="btn btn-ghost small dashboard-panel-action" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week=<?= e(date_to_iso_week((string) $selectedWeekStart)) ?>"><?= e(t('table.open_editor')) ?></a><?= $dashboardCollapseControl('dashboard.weekly-panel') ?></div>
             </div>
             <div class="table-wrap dashboard-desktop-table-wrap" data-collapsible-list data-persist-collapsible="dashboard.weekly" data-mobile-count="6" data-desktop-count="6">
                 <table class="table compact dashboard-weekly-table">
@@ -1062,13 +1167,13 @@ $topbarControls = ob_get_clean();
         <?php endif; ?>
 
         <?php if ($showWidget('approvals')): ?>
-        <article class="panel dashboard-panel dashboard-approvals" data-testid="pending-approvals" data-dashboard-widget="approvals" data-dashboard-collapsible="dashboard.approvals" style="order: <?= $contentWidgetOrder('approvals') ?>">
+        <article class="panel dashboard-panel dashboard-approvals<?= $dashboardPanelClass('dashboard.approvals') ?>" data-testid="pending-approvals" data-dashboard-widget="approvals" data-dashboard-collapsible="dashboard.approvals"<?= $dashboardPanelStateAttribute('dashboard.approvals') ?> style="order: <?= $contentWidgetOrder('approvals') ?>">
             <div class="panel-head dashboard-panel-head-compact">
                 <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('shield') ?></span>
                 <div>
                     <p class="eyebrow"><?= e(t('dashboard.approvals_pending_eyebrow')) ?></p>
                 </div>
-                <div class="dashboard-panel-head-actions"><span class="badge"><?= count($pendingApprovals) ?></span><?= $dashboardCollapseControl() ?></div>
+                <div class="dashboard-panel-head-actions"><span class="badge"><?= count($pendingApprovals) ?></span><?= $dashboardCollapseControl('dashboard.approvals') ?></div>
             </div>
             <?php if ($pendingApprovals === []): ?>
                 <p class="muted"><?= e(t('dashboard.approvals_empty')) ?></p>
@@ -1106,8 +1211,8 @@ $topbarControls = ob_get_clean();
 
 
         <?php if ($showWidget('ranking')): ?>
-        <article class="panel dashboard-panel dashboard-ranking-panel compact-panel glass-panel" data-dashboard-widget="ranking" data-dashboard-collapsible="dashboard.ranking-panel" data-collapsible-list data-persist-collapsible="dashboard.ranking" data-mobile-count="6" data-desktop-count="10" style="order: <?= $contentWidgetOrder('ranking') ?>">
-            <div class="panel-head dashboard-panel-head-compact"><span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><h2><?= e(t('dashboard.challenge_ranking')) ?></h2><?= $dashboardCollapseControl() ?></div>
+        <article class="panel dashboard-panel dashboard-ranking-panel compact-panel glass-panel<?= $dashboardPanelClass('dashboard.ranking-panel') ?>" data-dashboard-widget="ranking" data-dashboard-collapsible="dashboard.ranking-panel"<?= $dashboardPanelStateAttribute('dashboard.ranking-panel') ?> data-collapsible-list data-persist-collapsible="dashboard.ranking" data-mobile-count="6" data-desktop-count="10" style="order: <?= $contentWidgetOrder('ranking') ?>">
+            <div class="panel-head dashboard-panel-head-compact"><span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><h2><?= e(t('dashboard.challenge_ranking')) ?></h2><?= $dashboardCollapseControl('dashboard.ranking-panel') ?></div>
             <div class="leaderboard-list">
                 <?php $leaderboardTopScore = (float) (($metricsOrdered[0]['score'] ?? 0)); $leaderboardPreviousScore = null; $leaderboardPreviousRank = 0; ?>
                 <?php foreach ($metricsOrdered as $leaderboardIndex => $metric): ?>

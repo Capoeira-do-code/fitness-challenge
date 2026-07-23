@@ -19,6 +19,13 @@ $settingsWeightSeries = $settingsWeightHistory !== []
         static fn($row): bool => is_array($row) && isset($row['weight']) && is_numeric($row['weight'])
     ));
 $settingsLatestWeight = $settingsWeightSeries !== [] ? (float) ($settingsWeightSeries[count($settingsWeightSeries) - 1]['weight'] ?? 0) : null;
+$settingsDistanceGoal = 0.0;
+foreach (user_primary_goals($currentUser) as $settingsPrimaryGoal) {
+    if ((string) ($settingsPrimaryGoal['type'] ?? '') === 'km') {
+        $settingsDistanceGoal = max(0.0, (float) ($settingsPrimaryGoal['value'] ?? 0));
+        break;
+    }
+}
 $settingsFirstWeight = $settingsWeightSeries !== [] ? (float) ($settingsWeightSeries[0]['weight'] ?? 0) : null;
 $settingsWeightChange = $settingsLatestWeight !== null && $settingsFirstWeight !== null ? round($settingsLatestWeight - $settingsFirstWeight, 1) : null;
 $settingsRecentWeights = $settingsWeightHistory !== [] ? array_slice($settingsWeightHistory, 0, 8) : array_slice(array_reverse($settingsWeightSeries), 0, 8);
@@ -367,16 +374,34 @@ if ($settingsView === 'avatar') {
         <form method="post" action="/?page=settings&amp;view=preferences" class="stack compact-form settings-preferences-form settings-dirty-form" data-settings-dirty-form>
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="update_preferences">
+            <input type="hidden" name="metric_preferences_present" value="1">
             <fieldset class="settings-preference-group">
                 <legend><?= e(t('settings.preferences_goals_title')) ?></legend>
                 <p class="muted small"><?= e(t('settings.preferences_goals_hint')) ?></p>
                 <div class="grid-inline two settings-preference-fields">
                     <label><?= e(t('settings.primary_goal')) ?><select name="primary_goal_type" data-optional-primary-goal><option value="none" <?= ($currentUser['primary_goal_type'] ?? 'none') === 'none' ? 'selected' : '' ?>><?= e(t('onboarding.no_primary_goal')) ?></option><option value="steps" <?= ($currentUser['primary_goal_type'] ?? 'none') === 'steps' ? 'selected' : '' ?>><?= e(t('metric.steps')) ?></option><option value="km" <?= ($currentUser['primary_goal_type'] ?? 'none') === 'km' ? 'selected' : '' ?>><?= e(t('metric.distance_km')) ?></option><option value="workouts" <?= ($currentUser['primary_goal_type'] ?? 'none') === 'workouts' ? 'selected' : '' ?>><?= e(t('metric.workouts')) ?></option></select></label>
                     <label data-optional-primary-value <?= ($currentUser['primary_goal_type'] ?? 'none') === 'none' ? 'hidden' : '' ?>><?= e(t('settings.primary_goal_value')) ?><input type="number" min="0.1" step="0.01" name="primary_goal_value" value="<?= e((string) ($currentUser['primary_goal_value'] ?? '')) ?>" <?= ($currentUser['primary_goal_type'] ?? 'none') === 'none' ? 'disabled' : '' ?>></label>
-                    <label><?= e(t('onboarding.daily_steps')) ?><input type="number" min="0" max="500000" step="500" name="step_goal" value="<?= (int) ($currentUser['step_goal'] ?? 0) ?>"><small><?= e(t('settings.zero_disables_goal')) ?></small></label>
+                    <label><?= e(t('onboarding.daily_steps')) ?><input type="text" inputmode="numeric" autocomplete="off" name="step_goal" value="<?= (int) ($currentUser['step_goal'] ?? 0) > 0 ? (int) $currentUser['step_goal'] : '' ?>"><small><?= e(t('settings.clear_disables_goal')) ?></small></label>
+                    <label><?= e(t('metric.distance_km')) ?><input type="number" min="0.1" step="0.1" name="distance_goal" value="<?= $settingsDistanceGoal > 0 ? e((string) $settingsDistanceGoal) : '' ?>"><small><?= e(t('settings.clear_disables_goal')) ?></small></label>
                     <label><?= e(t('onboarding.weekly_workouts')) ?><input type="number" min="0" max="14" name="workout_target" value="<?= (int) ($currentUser['workout_target'] ?? 0) ?>"><small><?= e(t('settings.zero_disables_goal')) ?></small></label>
                     <label><?= e(t('settings.calorie_burn_goal')) ?><input type="number" min="0" step="1" name="calorie_burn_goal" value="<?= e((string) ($currentUser['calorie_burn_goal'] ?? '')) ?>"></label>
                     <label><?= e(t('settings.calorie_consumed_max')) ?><input type="number" min="0" step="1" name="calorie_consumed_max" value="<?= e((string) ($currentUser['calorie_consumed_max'] ?? '')) ?>"></label>
+                </div>
+                <div class="settings-tracked-metrics">
+                    <div class="settings-group-head">
+                        <span class="settings-group-icon" aria-hidden="true"><?= activity_icon_svg('sliders') ?></span>
+                        <div><h3><?= e(t('settings.tracked_metrics')) ?></h3><p class="muted small"><?= e(t('settings.tracked_metrics_hint')) ?></p></div>
+                    </div>
+                    <div class="settings-metric-toggle-grid">
+                        <?php foreach ((array) ($settingsMetricDefinitions ?? []) as $metricKey => $metricDefinition): ?>
+                            <label class="settings-metric-toggle">
+                                <input type="checkbox" name="enabled_metrics[]" value="<?= e((string) $metricKey) ?>" <?= in_array((string) $metricKey, (array) ($settingsEnabledMetrics ?? []), true) ? 'checked' : '' ?>>
+                                <span aria-hidden="true"><?= activity_icon_svg((string) ($metricDefinition['icon'] ?? 'check')) ?></span>
+                                <strong><?= e((string) ($metricDefinition['label'] ?? $metricKey)) ?></strong>
+                                <small><?= e(t('settings.metric_period_' . (string) ($metricDefinition['period'] ?? 'daily'))) ?></small>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
             </fieldset>
             <fieldset class="settings-preference-group">

@@ -55,56 +55,78 @@ function quests_period_key(string $period, ?string $date = null): string
  *
  * @return array<string,array<string,mixed>>
  */
-function quests_catalogue(): array
+function quests_catalogue_for_user(PDO $pdo, array $user): array
 {
-    return [
-        // --- daily ---
-        'daily_log' => [
-            'period' => 'daily', 'xp' => 10, 'icon' => 'check',
-            'label' => 'quests.daily_log', 'target' => 1,
-        ],
-        'daily_steps' => [
-            'period' => 'daily', 'xp' => 20, 'icon' => 'spark',
-            'label' => 'quests.daily_steps', 'target' => 'step_goal',
-        ],
-        'daily_workout' => [
-            'period' => 'daily', 'xp' => 25, 'icon' => 'dumbbell',
-            'label' => 'quests.daily_workout', 'target' => 1,
-        ],
-        'daily_habits' => [
-            'period' => 'daily', 'xp' => 15, 'icon' => 'target',
-            'label' => 'quests.daily_habits', 'target' => 2,
-        ],
-        // --- weekly ---
-        'weekly_workouts' => [
-            'period' => 'weekly', 'xp' => 60, 'icon' => 'dumbbell',
-            'label' => 'quests.weekly_workouts', 'target' => 3,
-        ],
-        'weekly_active_days' => [
-            'period' => 'weekly', 'xp' => 70, 'icon' => 'trophy',
-            'label' => 'quests.weekly_active_days', 'target' => 5,
-        ],
-    ];
+    $definitions = metric_preference_definitions($pdo, $user);
+    $catalogue = [];
+    foreach (metric_enabled_keys($pdo, $user) as $metricKey) {
+        $definition = $definitions[$metricKey] ?? null;
+        if (!is_array($definition)) {
+            continue;
+        }
+        $period = (string) ($definition['period'] ?? 'daily');
+        $target = (float) ($definition['target'] ?? 1);
+        $questKey = match ($metricKey) {
+            'steps' => 'daily_steps',
+            'distance' => 'daily_distance',
+            'workouts' => 'weekly_workouts',
+            'calories_burned' => 'daily_calories_burned',
+            'calories_consumed' => 'daily_calories_consumed',
+            'weight' => 'weekly_weight',
+            'discipline' => 'weekly_discipline',
+            default => str_starts_with($metricKey, 'habit:')
+                ? 'daily_habit:' . substr($metricKey, 6)
+                : $period . '_' . str_replace(':', '_', $metricKey),
+        };
+        if ($metricKey === 'weight' || $metricKey === 'discipline' || str_starts_with($metricKey, 'habit:')) {
+            $target = 1.0;
+        }
+        $catalogue[$questKey] = [
+            'period' => $period,
+            'xp' => $period === 'weekly' ? 60 : (str_starts_with($metricKey, 'habit:') ? 15 : 20),
+            'icon' => (string) ($definition['icon'] ?? 'target'),
+            'label_text' => t(
+                $period === 'weekly' ? 'quests.metric_weekly' : 'quests.metric_daily',
+                ['metric' => (string) ($definition['label'] ?? $metricKey), 'n' => quests_format_target($target)]
+            ),
+            'target' => $target,
+            'metric_key' => $metricKey,
+            'metric_label' => (string) ($definition['label'] ?? $metricKey),
+        ];
+    }
+
+    return $catalogue;
 }
 
 /** Resolve a quest's target for one user (supports per-user goals). */
 function quests_resolve_target(array $quest, array $user): float
 {
-    $target = $quest['target'];
-    if ($target === 'step_goal') {
-        $goal = (int) ($user['step_goal'] ?? 0);
+    return (float) ($quest['target'] ?? 1);
+}
 
-        return (float) ($goal > 0 ? $goal : 10000);
-    }
+function quests_format_target(float $target): string
+{
+    return abs($target - round($target)) < 0.0001
+        ? number_format($target, 0, '.', ' ')
+        : rtrim(rtrim(number_format($target, 2, '.', ''), '0'), '.');
+}
 
-    return (float) $target;
+function quests_label_for_definition(array $quest, float $target): string
+{
+    return t(
+        (string) ($quest['period'] ?? 'daily') === 'weekly' ? 'quests.metric_weekly' : 'quests.metric_daily',
+        [
+            'metric' => (string) ($quest['metric_label'] ?? $quest['label_text'] ?? $quest['metric_key'] ?? ''),
+            'n' => quests_format_target($target),
+        ]
+    );
 }
 
 /**
  * Current progress for a quest, computed from data the user actually logged.
  * Never trusts client input.
  */
-function quests_progress(PDO $pdo, int $userId, string $key, string $period): float
+function quests_progress(PDO $pdo, int $userId, string $key, string $period, float $periodTarget = 0.0): float
 {
     $today = date('Y-m-d');
     try {
@@ -116,16 +138,6 @@ function quests_progress(PDO $pdo, int $userId, string $key, string $period): fl
     }
 
     switch ($key) {
-        case 'daily_log':
-            $r = db_fetch_one(
-                $pdo,
-                'SELECT COUNT(*) AS c FROM daily_logs WHERE user_id = :u AND log_date = :d
-                 AND (COALESCE(steps,0) > 0 OR workout_done = 1 OR COALESCE(distance_km,0) > 0 OR weight IS NOT NULL)',
-                [':u' => $userId, ':d' => $today]
-            );
-
-            return (float) min(1, (int) ($r['c'] ?? 0));
-
         case 'daily_steps':
             $r = db_fetch_one(
                 $pdo,
@@ -135,31 +147,54 @@ function quests_progress(PDO $pdo, int $userId, string $key, string $period): fl
 
             return (float) ($r['v'] ?? 0);
 
-        case 'daily_workout':
+        case 'daily_distance':
             $r = db_fetch_one(
                 $pdo,
-                'SELECT COUNT(*) AS c FROM daily_logs WHERE user_id = :u AND log_date = :d AND workout_done = 1',
+                'SELECT COALESCE(distance_km,0) AS c FROM daily_logs WHERE user_id = :u AND log_date = :d',
                 [':u' => $userId, ':d' => $today]
             );
 
-            return (float) min(1, (int) ($r['c'] ?? 0));
+            return (float) ($r['c'] ?? 0);
 
-        case 'daily_habits':
+        case 'daily_calories_burned':
             $r = db_fetch_one(
                 $pdo,
-                'SELECT COUNT(*) AS c FROM daily_log_habits h
-                 JOIN daily_logs l ON l.id = h.log_id
-                 WHERE l.user_id = :u AND l.log_date = :d AND h.value = 1',
+                'SELECT COALESCE(training_calories_burned,0) AS c
+                 FROM daily_logs WHERE user_id = :u AND log_date = :d',
                 [':u' => $userId, ':d' => $today]
             );
 
-            return (float) (int) ($r['c'] ?? 0);
+            return (float) ($r['c'] ?? 0);
+
+        case 'daily_calories_consumed':
+            $r = db_fetch_one(
+                $pdo,
+                'SELECT COALESCE(SUM(COALESCE(calories,0)),0) AS c, COUNT(*) AS meals
+                 FROM photo_entries WHERE user_id = :u AND log_date = :d',
+                [':u' => $userId, ':d' => $today]
+            );
+            $maximum = max(0.0, $periodTarget);
+            $total = (float) ($r['c'] ?? 0);
+
+            return (int) ($r['meals'] ?? 0) > 0 && $maximum > 0 && $total <= $maximum ? $maximum : 0.0;
 
         case 'weekly_workouts':
             $r = db_fetch_one(
                 $pdo,
-                'SELECT COUNT(*) AS c FROM daily_logs
-                 WHERE user_id = :u AND workout_done = 1 AND log_date BETWEEN :a AND :b',
+                'SELECT COALESCE(SUM(
+                    CASE
+                        WHEN COALESCE(workouts.workout_count, 0) > 0 THEN workouts.workout_count
+                        ELSE (CASE WHEN dl.workout_done = 1 THEN 1 ELSE 0 END)
+                           + (CASE WHEN dl.extra_workout = 1 THEN 1 ELSE 0 END)
+                    END
+                 ), 0) AS c
+                 FROM daily_logs dl
+                 LEFT JOIN (
+                    SELECT log_id, COUNT(*) AS workout_count
+                    FROM daily_log_workouts
+                    GROUP BY log_id
+                 ) workouts ON workouts.log_id = dl.id
+                 WHERE dl.user_id = :u AND dl.log_date BETWEEN :a AND :b',
                 [':u' => $userId, ':a' => $weekStart, ':b' => $weekEnd]
             );
 
@@ -177,7 +212,93 @@ function quests_progress(PDO $pdo, int $userId, string $key, string $period): fl
             return (float) (int) ($r['c'] ?? 0);
     }
 
+    if (str_starts_with($key, 'daily_habit:')) {
+        $code = substr($key, strlen('daily_habit:'));
+        $r = db_fetch_one(
+            $pdo,
+            'SELECT COUNT(*) AS c FROM daily_log_habits h
+             JOIN daily_logs l ON l.id = h.log_id
+             JOIN habit_definitions hd ON hd.id = h.habit_id
+             WHERE l.user_id = :u AND l.log_date = :d AND h.value = 1 AND hd.code = :code',
+            [':u' => $userId, ':d' => $today, ':code' => $code]
+        );
+
+        return (float) min(1, (int) ($r['c'] ?? 0));
+    }
+    if ($key === 'weekly_weight') {
+        $r = db_fetch_one(
+            $pdo,
+            'SELECT COUNT(*) AS c FROM daily_logs
+             WHERE user_id = :u AND log_date BETWEEN :a AND :b AND weight IS NOT NULL',
+            [':u' => $userId, ':a' => $weekStart, ':b' => $weekEnd]
+        );
+
+        return (float) min(1, (int) ($r['c'] ?? 0));
+    }
+    if ($key === 'weekly_discipline') {
+        return 0.0;
+    }
+
     return 0.0;
+}
+
+function quests_finalize_previous_discipline(PDO $pdo, array $user): void
+{
+    if (!metric_is_enabled($pdo, $user, 'discipline')) {
+        return;
+    }
+    try {
+        $previousStart = (new DateTimeImmutable('monday last week'))->format('Y-m-d');
+        $previousEnd = (new DateTimeImmutable('sunday last week'))->format('Y-m-d');
+    } catch (Throwable) {
+        return;
+    }
+    $disciplinePreference = metric_preferences_for_user($pdo, (int) ($user['id'] ?? 0))['discipline'] ?? [];
+    $enabledFrom = trim((string) ($disciplinePreference['enabled_from'] ?? ''));
+    if ($enabledFrom === '' || $enabledFrom > $previousStart) {
+        return;
+    }
+    $periodKey = quests_period_key('weekly', $previousStart);
+    $userId = (int) ($user['id'] ?? 0);
+    $now = now_iso();
+    db_execute(
+        $pdo,
+        'INSERT OR IGNORE INTO user_quests
+            (user_id, quest_key, period, period_key, target, xp_reward, created_at)
+         VALUES (:u, "weekly_discipline", "weekly", :pk, 1, 60, :now)',
+        [':u' => $userId, ':pk' => $periodKey, ':now' => $now]
+    );
+    $row = db_fetch_one(
+        $pdo,
+        'SELECT * FROM user_quests
+         WHERE user_id = :u AND quest_key = "weekly_discipline" AND period_key = :pk',
+        [':u' => $userId, ':pk' => $periodKey]
+    );
+    if ($row === null || !empty($row['completed_at'])) {
+        return;
+    }
+    $metrics = compute_challenge_metrics($pdo, [$user], $previousStart, $previousEnd, $previousEnd);
+    $metric = $metrics[$userId] ?? null;
+    $weeks = is_array($metric) ? array_values((array) ($metric['weekly'] ?? [])) : [];
+    $week = (array) ($weeks[0] ?? []);
+    $clean = (int) ($week['total_failures'] ?? 0) === 0 && (int) ($week['skip_warnings'] ?? 0) === 0;
+    if (!$clean) {
+        return;
+    }
+    xp_award($pdo, $userId, 60, 'quest:weekly_discipline', 'quest:weekly_discipline:' . $periodKey);
+    db_execute(
+        $pdo,
+        'UPDATE user_quests SET completed_at = :now WHERE id = :id AND completed_at IS NULL',
+        [':now' => $now, ':id' => (int) $row['id']]
+    );
+    celebration_enqueue(
+        $pdo,
+        $userId,
+        'quest',
+        'weekly_discipline:' . $periodKey,
+        t('quests.metric_weekly', ['metric' => t('metric.discipline'), 'n' => '1']),
+        60
+    );
 }
 
 /**
@@ -197,7 +318,8 @@ function quests_for_user(PDO $pdo, array $user): array
     $now = now_iso();
     $board = [];
 
-    foreach (quests_catalogue() as $key => $quest) {
+    quests_finalize_previous_discipline($pdo, $user);
+    foreach (quests_catalogue_for_user($pdo, $user) as $key => $quest) {
         $period = (string) $quest['period'];
         $periodKey = quests_period_key($period);
         $target = quests_resolve_target($quest, $user);
@@ -219,8 +341,12 @@ function quests_for_user(PDO $pdo, array $user): array
             continue;
         }
 
-        $progress = quests_progress($pdo, $userId, $key, $period);
-        $done = $progress >= $target;
+        // Use the target persisted when this period was created. Later goal
+        // changes must not rewrite a mission that is already in progress.
+        $target = max(0.0, (float) $row['target']);
+        $questLabel = quests_label_for_definition($quest, $target);
+        $progress = quests_progress($pdo, $userId, $key, $period, $target);
+        $done = $key !== 'weekly_discipline' && $progress >= $target;
 
         // Pay out once. xp_events has a UNIQUE unique_key, so even if two
         // requests race here only one award can ever land.
@@ -243,7 +369,7 @@ function quests_for_user(PDO $pdo, array $user): array
                 $userId,
                 'quest',
                 $key . ':' . $periodKey,
-                t((string) $quest['label'], ['n' => (int) round($target)]),
+                $questLabel,
                 (int) $row['xp_reward']
             );
         }
@@ -252,7 +378,7 @@ function quests_for_user(PDO $pdo, array $user): array
             'key' => $key,
             'period' => $period,
             'icon' => (string) $quest['icon'],
-            'label' => t((string) $quest['label'], ['n' => (int) round($target)]),
+            'label' => $questLabel,
             'progress' => $progress,
             'target' => $target,
             'pct' => $target > 0 ? (int) min(100, round(($progress / $target) * 100)) : 0,

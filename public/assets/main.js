@@ -2019,7 +2019,7 @@ window.addEventListener('appinstalled', () => {
                 }
             });
             if (backLink instanceof HTMLAnchorElement) {
-                backLink.href = `/?page=entries&mode=meal&date=${encodeURIComponent(dateInput.value)}`;
+                backLink.href = `/?page=entries&mode=nutrition&date=${encodeURIComponent(dateInput.value)}`;
             }
             visiblePeriodLabels.forEach((label) => {
                 if (label instanceof HTMLElement) {
@@ -5656,7 +5656,7 @@ window.addEventListener('appinstalled', () => {
 
     const initWorkoutRoutinePicker = () => {
         const picker = document.querySelector('[data-workout-routine-picker]');
-        if (picker instanceof HTMLElement && picker.dataset.workoutRoutinePickerReady !== '1') {
+        if (picker instanceof HTMLElement) {
             const form = picker.querySelector('[data-workout-routine-picker-form]');
             const exerciseInput = picker.querySelector('[data-workout-routine-picker-exercise]');
             const pickerCopy = picker.querySelector('[data-workout-routine-picker-copy]');
@@ -5666,7 +5666,10 @@ window.addEventListener('appinstalled', () => {
             const triggers = Array.from(document.querySelectorAll('[data-workout-routine-picker-open]'))
                 .filter((button) => button instanceof HTMLButtonElement);
             const singleRoutine = picker.dataset.singleRoutine === '1';
-            const defaultCopy = pickerCopy?.textContent || '';
+            if (picker.dataset.workoutRoutinePickerCopy === undefined) {
+                picker.dataset.workoutRoutinePickerCopy = pickerCopy?.textContent || '';
+            }
+            const defaultCopy = picker.dataset.workoutRoutinePickerCopy;
 
             const syncSubmit = () => {
                 if (submit instanceof HTMLButtonElement) {
@@ -5674,28 +5677,36 @@ window.addEventListener('appinstalled', () => {
                 }
             };
 
-            triggers.forEach((trigger) => trigger.addEventListener('click', () => {
-                if (exerciseInput instanceof HTMLInputElement) {
-                    exerciseInput.value = trigger.dataset.exerciseId || '';
+            triggers.forEach((trigger) => {
+                if (trigger.dataset.workoutRoutinePickerTriggerReady === '1') {
+                    return;
                 }
-                if (pickerCopy instanceof HTMLElement) {
-                    const exerciseName = String(trigger.dataset.exerciseName || '').trim();
-                    pickerCopy.textContent = exerciseName !== '' ? `${defaultCopy}: ${exerciseName}` : defaultCopy;
-                }
-                if (!singleRoutine) {
-                    routineInputs.forEach((input) => { input.checked = false; });
-                }
-                syncSubmit();
-            }));
-            routineInputs.forEach((input) => input.addEventListener('change', syncSubmit));
-            form?.addEventListener('submit', () => {
-                if (submit instanceof HTMLButtonElement) {
-                    submit.disabled = true;
-                    submit.classList.add('is-loading');
-                }
+                trigger.dataset.workoutRoutinePickerTriggerReady = '1';
+                trigger.addEventListener('click', () => {
+                    if (exerciseInput instanceof HTMLInputElement) {
+                        exerciseInput.value = trigger.dataset.exerciseId || '';
+                    }
+                    if (pickerCopy instanceof HTMLElement) {
+                        const exerciseName = String(trigger.dataset.exerciseName || '').trim();
+                        pickerCopy.textContent = exerciseName !== '' ? `${defaultCopy}: ${exerciseName}` : defaultCopy;
+                    }
+                    if (!singleRoutine) {
+                        routineInputs.forEach((input) => { input.checked = false; });
+                    }
+                    syncSubmit();
+                });
             });
-            picker.dataset.workoutRoutinePickerReady = '1';
-            syncSubmit();
+            if (picker.dataset.workoutRoutinePickerReady !== '1') {
+                routineInputs.forEach((input) => input.addEventListener('change', syncSubmit));
+                form?.addEventListener('submit', () => {
+                    if (submit instanceof HTMLButtonElement) {
+                        submit.disabled = true;
+                        submit.classList.add('is-loading');
+                    }
+                });
+                picker.dataset.workoutRoutinePickerReady = '1';
+                syncSubmit();
+            }
         }
 
         const successModal = document.querySelector('[data-workout-add-success]');
@@ -5703,6 +5714,124 @@ window.addEventListener('appinstalled', () => {
             successModal.dataset.workoutAddSuccessReady = '1';
             window.requestAnimationFrame(() => window.AppOverlay?.open(successModal));
         }
+    };
+
+    let workoutLibraryInfiniteObserver = null;
+
+    const initWorkoutLibraryInfiniteScroll = () => {
+        const grid = document.querySelector('[data-library-infinite-grid]');
+        const infinite = document.querySelector('[data-library-infinite]');
+        const pagination = document.querySelector('[data-library-pagination]');
+        if (!(grid instanceof HTMLElement)
+            || !(infinite instanceof HTMLElement)
+            || !(pagination instanceof HTMLElement)
+            || infinite.dataset.libraryInfiniteReady === '1') {
+            return;
+        }
+
+        const sentinel = infinite.querySelector('[data-library-infinite-sentinel]');
+        const status = infinite.querySelector('[data-library-infinite-status]');
+        if (!(sentinel instanceof HTMLElement) || !(status instanceof HTMLElement) || !('IntersectionObserver' in window)) {
+            return;
+        }
+
+        infinite.dataset.libraryInfiniteReady = '1';
+        infinite.classList.add('is-enhanced');
+        pagination.classList.add('is-enhanced');
+        let loading = false;
+        let finished = false;
+        let nextUrl = pagination.querySelector('[data-library-next]')?.href || '';
+        const total = Math.max(0, Number(grid.dataset.libraryTotal || 0));
+        const loadedLabel = infinite.dataset.loadedLabel || ':loaded / :total';
+
+        const formatLoaded = () => loadedLabel
+            .replace(':loaded', String(grid.querySelectorAll(':scope > .workouts-library-card').length))
+            .replace(':total', String(total));
+
+        const finish = () => {
+            finished = true;
+            infinite.classList.remove('is-loading');
+            infinite.classList.add('is-complete');
+            status.textContent = infinite.dataset.completeLabel || formatLoaded();
+            workoutLibraryInfiniteObserver?.disconnect();
+        };
+
+        const loadNext = async () => {
+            if (loading || finished || nextUrl === '') {
+                if (nextUrl === '') {
+                    finish();
+                }
+                return;
+            }
+            loading = true;
+            infinite.classList.add('is-loading');
+            status.textContent = infinite.dataset.loadingLabel || '';
+
+            try {
+                const response = await fetch(nextUrl, {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'text/html', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const html = await response.text();
+                const page = new DOMParser().parseFromString(html, 'text/html');
+                const nextGrid = page.querySelector('[data-library-infinite-grid]');
+                if (!(nextGrid instanceof HTMLElement)) {
+                    throw new Error('Exercise grid missing');
+                }
+
+                const knownIds = new Set(Array.from(grid.querySelectorAll(':scope > [data-exercise-id]'))
+                    .map((card) => card.getAttribute('data-exercise-id')));
+                const fragment = document.createDocumentFragment();
+                let added = 0;
+                nextGrid.querySelectorAll(':scope > .workouts-library-card').forEach((card) => {
+                    const exerciseId = card.getAttribute('data-exercise-id');
+                    if (exerciseId !== null && knownIds.has(exerciseId)) {
+                        return;
+                    }
+                    fragment.append(document.importNode(card, true));
+                    if (exerciseId !== null) {
+                        knownIds.add(exerciseId);
+                    }
+                    added += 1;
+                });
+                grid.append(fragment);
+
+                const following = page.querySelector('[data-library-pagination] [data-library-next]');
+                nextUrl = following instanceof HTMLAnchorElement ? following.href : '';
+                const fallbackNext = pagination.querySelector('[data-library-next]');
+                if (fallbackNext instanceof HTMLAnchorElement && nextUrl !== '') {
+                    fallbackNext.href = nextUrl;
+                }
+
+                initWorkoutRoutinePicker();
+                document.dispatchEvent(new CustomEvent('fc:libraryItemsAdded', { detail: { added } }));
+                status.textContent = formatLoaded();
+                if (nextUrl === '' || added === 0 || grid.querySelectorAll(':scope > .workouts-library-card').length >= total) {
+                    finish();
+                }
+            } catch (_) {
+                finished = true;
+                infinite.classList.remove('is-loading');
+                infinite.classList.add('has-error');
+                pagination.classList.remove('is-enhanced');
+                status.textContent = infinite.dataset.errorLabel || '';
+                workoutLibraryInfiniteObserver?.disconnect();
+            } finally {
+                loading = false;
+                infinite.classList.remove('is-loading');
+            }
+        };
+
+        workoutLibraryInfiniteObserver?.disconnect();
+        workoutLibraryInfiniteObserver = new IntersectionObserver((entries) => {
+            if (entries.some((entry) => entry.isIntersecting)) {
+                loadNext();
+            }
+        }, { rootMargin: '700px 0px' });
+        workoutLibraryInfiniteObserver.observe(sentinel);
     };
 
     const initContextualBack = () => {
@@ -5737,6 +5866,15 @@ window.addEventListener('appinstalled', () => {
         }
     };
 
+    const clearPersistedUiState = (kind, name) => {
+        if (!name) return;
+        try {
+            window.localStorage.removeItem(persistedUiStateKey(kind, name));
+        } catch (_) {
+            // Removing a legacy browser preference is best effort only.
+        }
+    };
+
     const initPersistentDisclosures = () => {
         document.querySelectorAll('details[data-persist-disclosure]').forEach((details) => {
             if (!(details instanceof HTMLDetailsElement) || details.dataset.persistDisclosureReady === '1') {
@@ -5754,7 +5892,15 @@ window.addEventListener('appinstalled', () => {
         });
     };
 
-    const initRememberedPanelDisclosures = ({ panelSelector, stateDataKey, headerSelector, toggleSelector }) => {
+    const initRememberedPanelDisclosures = ({
+        panelSelector,
+        stateDataKey,
+        headerSelector,
+        toggleSelector,
+        defaultExpanded = true,
+        readState = null,
+        persistState = null,
+    }) => {
         document.querySelectorAll(panelSelector).forEach((panel) => {
             if (!(panel instanceof HTMLElement) || panel.dataset.rememberedPanelReady === '1') {
                 return;
@@ -5766,8 +5912,10 @@ window.addEventListener('appinstalled', () => {
             }
 
             const name = String(panel.dataset[stateDataKey] || '').trim();
-            const saved = readPersistedUiState('disclosure', name);
-            let expanded = saved === null ? true : saved === '1';
+            const saved = typeof readState === 'function'
+                ? readState(panel, name)
+                : readPersistedUiState('disclosure', name);
+            let expanded = saved === null ? defaultExpanded : saved === '1';
             const render = () => {
                 const effectiveExpanded = document.body.classList.contains('layout-edit-active') || expanded;
                 panel.classList.toggle('is-collapsed', !effectiveExpanded);
@@ -5783,7 +5931,11 @@ window.addEventListener('appinstalled', () => {
                     return;
                 }
                 expanded = !expanded;
-                writePersistedUiState('disclosure', name, expanded);
+                if (typeof persistState === 'function') {
+                    persistState(panel, name, expanded);
+                } else {
+                    writePersistedUiState('disclosure', name, expanded);
+                }
                 render();
             };
 
@@ -5801,11 +5953,61 @@ window.addEventListener('appinstalled', () => {
         });
     };
 
+    const dashboardPanelSaveQueues = new WeakMap();
+    const persistDashboardPanelState = (panel, name, expanded) => {
+        const dashboardPage = panel.closest('[data-dashboard-page]');
+        if (!(dashboardPage instanceof HTMLElement) || name === '') {
+            return;
+        }
+        const endpoint = String(dashboardPage.dataset.dashboardPanelStateEndpoint || '').trim();
+        const csrfToken = String(dashboardPage.dataset.dashboardPanelCsrf || '').trim();
+        if (endpoint === '' || csrfToken === '') {
+            return;
+        }
+
+        panel.dataset.dashboardExpanded = expanded ? '1' : '0';
+        panel.dataset.dashboardPanelSaveState = 'saving';
+        const previous = dashboardPanelSaveQueues.get(panel) || Promise.resolve();
+        const pending = previous.catch(() => undefined).then(async () => {
+            const body = new URLSearchParams({
+                csrf_token: csrfToken,
+                panel_key: name,
+                expanded: expanded ? '1' : '0',
+            });
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                credentials: 'same-origin',
+                keepalive: true,
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                },
+                body: body.toString(),
+            });
+            const result = await response.json().catch(() => null);
+            if (!response.ok || !result?.ok) {
+                throw new Error('Unable to save dashboard panel state.');
+            }
+            panel.dataset.dashboardPanelSaveState = 'saved';
+        });
+        dashboardPanelSaveQueues.set(panel, pending);
+        pending.catch(() => {
+            panel.dataset.dashboardPanelSaveState = 'error';
+        });
+    };
+
     const initDashboardPanelDisclosures = () => initRememberedPanelDisclosures({
         panelSelector: '[data-dashboard-collapsible]',
         stateDataKey: 'dashboardCollapsible',
         headerSelector: ':scope > .panel-head',
         toggleSelector: ':scope > .panel-head [data-dashboard-panel-toggle]',
+        defaultExpanded: false,
+        readState: (panel, name) => {
+            clearPersistedUiState('disclosure', name);
+            const saved = String(panel.dataset.dashboardExpanded || '');
+            return saved === '1' || saved === '0' ? saved : null;
+        },
+        persistState: persistDashboardPanelState,
     });
 
     const initProfilePanelDisclosures = () => initRememberedPanelDisclosures({
@@ -5904,6 +6106,7 @@ window.addEventListener('appinstalled', () => {
         safeInit(initWorkoutHubTabs);
         safeInit(initWorkoutLibraryFilters);
         safeInit(initWorkoutRoutinePicker);
+        safeInit(initWorkoutLibraryInfiniteScroll);
         safeInit(initSpaNavigation);
         safeInit(initAdminBackups);
         safeInit(initAdminXp);

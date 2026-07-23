@@ -12,7 +12,21 @@ $profileCoverPath = trim((string) ($currentUser['profile_cover_path'] ?? ''));
 $profileCoverUrl = $profileCoverPath !== '' ? media_url($profileCoverPath) : '';
 $hasStepGoal = (int) ($currentUser['step_goal'] ?? 0) > 0;
 $hasWorkoutGoal = (int) ($currentUser['workout_target'] ?? 0) > 0;
+$onboardingGoalInput = is_array($_SESSION['onboarding_goal_input'] ?? null) ? (array) $_SESSION['onboarding_goal_input'] : [];
+if ($onboardingGoalInput !== []) {
+    $hasStepGoal = isset($onboardingGoalInput['enable_step_goal']);
+    $hasWorkoutGoal = isset($onboardingGoalInput['enable_workout_goal']);
+}
+$onboardingMetricDefinitions = metric_preference_definitions($GLOBALS['pdo'], $currentUser);
+$onboardingEnabledMetrics = metric_enabled_keys($GLOBALS['pdo'], $currentUser);
+$onboardingRequestedMetrics = array_values(array_unique(array_map(
+    'strval',
+    (array) ($onboardingGoalInput['enabled_metrics'] ?? $onboardingEnabledMetrics)
+)));
 $onboardingDailyGoals = user_primary_goals($currentUser);
+if (array_key_exists('primary_goals_spec', $onboardingGoalInput)) {
+    $onboardingDailyGoals = parse_primary_goals_spec((string) $onboardingGoalInput['primary_goals_spec'], false);
+}
 $onboardingExtraGoals = array_values(array_filter(
     $onboardingDailyGoals,
     static fn(array $goal): bool => !($hasStepGoal && (string) ($goal['type'] ?? '') === 'steps')
@@ -101,11 +115,11 @@ try {
                 <div class="onboarding-goal-options">
                     <section class="onboarding-goal-option<?= $hasStepGoal ? ' is-enabled' : '' ?>" data-onboarding-optional-card>
                         <label class="onboarding-option-toggle"><input type="checkbox" name="enable_step_goal" value="1" <?= $hasStepGoal ? 'checked' : '' ?> data-onboarding-optional-toggle data-primary-goal-reserves="steps"><span class="onboarding-option-icon" aria-hidden="true"><?= activity_icon_svg('run') ?></span><span><strong><?= e(t('onboarding.daily_steps')) ?></strong><small><?= e(t('onboarding.daily_steps_hint')) ?></small></span><i aria-hidden="true"></i></label>
-                        <div class="onboarding-option-value" data-onboarding-optional-content <?= $hasStepGoal ? '' : 'hidden' ?>><label><span><?= e(t('onboarding.target_optional')) ?></span><input type="number" name="step_goal" min="1" max="500000" step="500" value="<?= $hasStepGoal ? (int) $currentUser['step_goal'] : 10000 ?>" <?= $hasStepGoal ? '' : 'disabled' ?>></label></div>
+                        <div class="onboarding-option-value" data-onboarding-optional-content <?= $hasStepGoal ? '' : 'hidden' ?>><label><span><?= e(t('onboarding.target_optional')) ?></span><input type="text" name="step_goal" inputmode="numeric" autocomplete="off" value="<?= e((string) ($onboardingGoalInput['step_goal'] ?? ($hasStepGoal ? (int) $currentUser['step_goal'] : 10000))) ?>" <?= $hasStepGoal ? '' : 'disabled' ?>></label></div>
                     </section>
                     <section class="onboarding-goal-option<?= $hasWorkoutGoal ? ' is-enabled' : '' ?>" data-onboarding-optional-card>
                         <label class="onboarding-option-toggle"><input type="checkbox" name="enable_workout_goal" value="1" <?= $hasWorkoutGoal ? 'checked' : '' ?> data-onboarding-optional-toggle><span class="onboarding-option-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span><span><strong><?= e(t('onboarding.weekly_workouts')) ?></strong><small><?= e(t('onboarding.weekly_workouts_hint')) ?></small></span><i aria-hidden="true"></i></label>
-                        <div class="onboarding-option-value" data-onboarding-optional-content <?= $hasWorkoutGoal ? '' : 'hidden' ?>><label><span><?= e(t('onboarding.target_optional')) ?></span><input type="number" name="workout_target" min="1" max="14" value="<?= $hasWorkoutGoal ? (int) $currentUser['workout_target'] : 3 ?>" <?= $hasWorkoutGoal ? '' : 'disabled' ?>></label></div>
+                        <div class="onboarding-option-value" data-onboarding-optional-content <?= $hasWorkoutGoal ? '' : 'hidden' ?>><label><span><?= e(t('onboarding.target_optional')) ?></span><input type="number" name="workout_target" min="1" max="14" value="<?= e((string) ($onboardingGoalInput['workout_target'] ?? ($hasWorkoutGoal ? (int) $currentUser['workout_target'] : 3))) ?>" <?= $hasWorkoutGoal ? '' : 'disabled' ?>></label></div>
                     </section>
                     <section class="onboarding-goal-option onboarding-multi-goals">
                         <div class="onboarding-primary-head"><span class="onboarding-option-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span><span><strong><?= e(t('settings.primary_goals_spec')) ?></strong><small><?= e(t('settings.primary_goals_spec_hint')) ?></small></span></div>
@@ -123,6 +137,26 @@ try {
                             </div>
                             <button class="btn btn-ghost primary-goal-add" type="button" data-primary-goal-add data-label-empty="<?= e(t('settings.add_first_goal')) ?>" data-label-more="<?= e(t('settings.add_primary_goal')) ?>"><span aria-hidden="true">+</span><span data-primary-goal-add-label><?= e($onboardingExtraGoals === [] ? t('settings.add_first_goal') : t('settings.add_primary_goal')) ?></span></button>
                             <template data-primary-goal-template><div class="primary-goal-row" data-primary-goal-row><label><span><?= e(t('onboarding.metric_optional')) ?></span><select data-primary-goal-type><?php foreach ($onboardingGoalOptions as $option): ?><option value="<?= e($option['value']) ?>" data-step="<?= e($option['step']) ?>" data-placeholder="<?= e($option['placeholder']) ?>"><?= e($option['label']) ?></option><?php endforeach; ?></select></label><label><span><?= e(t('settings.primary_goal_value')) ?></span><input type="number" min="0.1" step="1" data-primary-goal-value></label><button class="btn btn-ghost primary-goal-remove" type="button" data-primary-goal-remove aria-label="<?= e(t('settings.remove_primary_goal')) ?>">&times;</button></div></template>
+                        </div>
+                    </section>
+                    <section class="onboarding-goal-option onboarding-multi-goals">
+                        <div class="onboarding-primary-head"><span class="onboarding-option-icon" aria-hidden="true"><?= activity_icon_svg('sliders') ?></span><span><strong><?= e(t('settings.tracked_metrics')) ?></strong><small><?= e(t('settings.tracked_metrics_hint')) ?></small></span></div>
+                        <div class="onboarding-metric-preferences">
+                            <?php foreach ($onboardingMetricDefinitions as $metricKey => $metricDefinition): ?>
+                                <?php if (in_array($metricKey, ['steps', 'workouts', 'distance'], true)) {
+                                    continue;
+                                } ?>
+                                <label class="onboarding-metric-toggle">
+                                    <input type="checkbox" name="enabled_metrics[]" value="<?= e($metricKey) ?>" <?= in_array($metricKey, $onboardingRequestedMetrics, true) ? 'checked' : '' ?>>
+                                    <span aria-hidden="true"><?= activity_icon_svg((string) ($metricDefinition['icon'] ?? 'check')) ?></span>
+                                    <strong><?= e((string) ($metricDefinition['label'] ?? $metricKey)) ?></strong>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+                        <div class="grid-inline two onboarding-metric-targets">
+                            <label><?= e(t('settings.calorie_burn_goal')) ?><input type="number" min="1" step="1" name="calorie_burn_goal" value="<?= e((string) ($onboardingGoalInput['calorie_burn_goal'] ?? ($currentUser['calorie_burn_goal'] ?? ''))) ?>"></label>
+                            <label><?= e(t('settings.calorie_consumed_max')) ?><input type="number" min="1" step="1" name="calorie_consumed_max" value="<?= e((string) ($onboardingGoalInput['calorie_consumed_max'] ?? ($currentUser['calorie_consumed_max'] ?? ''))) ?>"></label>
+                            <label><?= e(t('settings.ideal_weight')) ?><input type="number" min="25" max="400" step="0.1" name="ideal_weight" value="<?= e((string) ($onboardingGoalInput['ideal_weight'] ?? ($currentUser['ideal_weight'] ?? ''))) ?>"></label>
                         </div>
                     </section>
                 </div>

@@ -208,14 +208,15 @@ function initialize_database(PDO $pdo, array $config): void
         )'
     );
 
-    $pdo->exec(
-        'CREATE TABLE IF NOT EXISTS photo_entries (
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS photo_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             log_date TEXT NOT NULL,
             category TEXT NOT NULL,
             caption TEXT,
             file_path TEXT NOT NULL,
+            has_photo INTEGER NOT NULL DEFAULT 1,
             calories REAL,
             protein_g REAL,
             carbs_g REAL,
@@ -224,6 +225,29 @@ function initialize_database(PDO $pdo, array $config): void
             sugar_g REAL,
             sodium_mg REAL,
             created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS user_metric_preferences (
+            user_id INTEGER NOT NULL,
+            metric_key TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            enabled_from TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, metric_key),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS user_dashboard_panel_preferences (
+            user_id INTEGER NOT NULL,
+            panel_key TEXT NOT NULL,
+            expanded INTEGER NOT NULL DEFAULT 0 CHECK (expanded IN (0, 1)),
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, panel_key),
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )'
     );
@@ -705,6 +729,7 @@ function initialize_database(PDO $pdo, array $config): void
     );
 
     ensure_schema_columns($pdo, $config);
+    $pdo->exec('UPDATE photo_entries SET has_photo = CASE WHEN TRIM(COALESCE(file_path, "")) = "" THEN 0 ELSE 1 END');
     backfill_team_membership_periods($pdo);
     ensure_indexes($pdo);
     migrate_photo_categories($pdo);
@@ -874,6 +899,7 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'daily_logs', 'training_calories_burned', 'REAL');
     ensure_column($pdo, 'daily_logs', 'distance_exception_reason', 'TEXT');
     ensure_column($pdo, 'daily_logs', 'log_time', 'TEXT');
+    ensure_column($pdo, 'photo_entries', 'has_photo', 'INTEGER NOT NULL DEFAULT 1');
 
     ensure_column($pdo, 'approval_requests', 'request_state', 'TEXT NOT NULL DEFAULT "sent"');
     ensure_column($pdo, 'approval_requests', 'resent_count', 'INTEGER NOT NULL DEFAULT 0');
@@ -982,6 +1008,8 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_entries_user_log_created ON photo_entries(user_id, log_date, created_at DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_entries_created ON photo_entries(created_at DESC, id DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_entries_user_created ON photo_entries(user_id, created_at DESC, id DESC)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_entries_user_date_media ON photo_entries(user_id, log_date, has_photo)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_user_metric_preferences_enabled ON user_metric_preferences(user_id, enabled, metric_key)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_comments_photo_created ON photo_comments(photo_id, created_at)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_comments_user ON photo_comments(user_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_team_memberships_team ON team_memberships(team_id, active)');

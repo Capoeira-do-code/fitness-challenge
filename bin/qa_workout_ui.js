@@ -69,35 +69,37 @@ const login = async (page) => {
         const routineName = `UI Martes Domingo ${Date.now()}`;
 
         await page.goto(`${BASE}/?page=workouts&view=library`, { waitUntil: 'networkidle' });
-        ensure(await page.locator('.workouts-library-card').count() === 12, 'biblioteca limita la primera carga', '12 ejercicios');
+        const initialLibraryCount = await page.locator('.workouts-library-card').count();
+        ensure(initialLibraryCount >= 12 && initialLibraryCount <= 24, 'biblioteca pagina la primera carga', `${initialLibraryCount} ejercicios`);
         ensure(await page.locator('.workouts-mobile-subheader [data-hierarchy-back]').count() === 1, 'biblioteca conserva retorno jerárquico');
         await page.goto(`${BASE}/?page=workouts`, { waitUntil: 'networkidle' });
         ensure(await page.locator('.workouts-section-grid .hierarchy-nav-row').count() === 5, 'grid único del hub completo');
         await page.goto(`${BASE}/?page=workouts&view=library`, { waitUntil: 'networkidle' });
         ensure(await page.locator('.workouts-library-pagination').count() === 1, 'biblioteca ofrece paginación');
-        ensure(await page.locator('[data-library-layout-switch]').count() === 1, 'selector de densidad disponible');
-        if (await page.locator('[data-library-layout-switch] button[value="cards"][aria-pressed="true"]').count() !== 1) {
+        ensure(await page.locator('[data-library-layout-switch]:visible').count() === 1, 'selector de densidad disponible');
+        if (await page.locator('[data-library-layout-switch]:visible button[value="cards"][aria-pressed="true"]').count() !== 1) {
             await Promise.all([
                 page.waitForLoadState('networkidle'),
-                page.locator('[data-library-layout-switch] button[value="cards"]').click(),
+                page.locator('[data-library-layout-switch]:visible button[value="cards"]').click(),
             ]);
         }
-        ensure(await page.locator('[data-library-layout-switch] button[value="cards"][aria-pressed="true"]').count() === 1, 'vista visual predeterminada');
+        ensure(await page.locator('[data-library-layout-switch]:visible button[value="cards"][aria-pressed="true"]').count() === 1, 'vista visual predeterminada');
         const visualCardHeight = await page.locator('.workouts-library-card').first().evaluate((element) => element.getBoundingClientRect().height);
         await Promise.all([
             page.waitForLoadState('networkidle'),
-            page.locator('[data-library-layout-switch] button[value="compact"]').click(),
+            page.locator('[data-library-layout-switch]:visible button[value="compact"]').click(),
         ]);
         ensure(await page.locator('.workouts-library-grid.is-compact[data-library-layout="compact"]').count() === 1, 'vista compacta aplicada');
-        ensure(await page.locator('[data-library-layout-switch] button[value="compact"][aria-pressed="true"]').count() === 1, 'selector refleja la vista compacta');
-        ensure(await page.locator('.workouts-library-card').count() === 12, 'vista compacta conserva los 12 resultados');
-        ensure(await page.locator('.workouts-library-copy h3').count() === 12
-            && await page.locator('.workouts-library-copy p').count() === 12
-            && await page.locator('.workouts-library-card .workouts-exercise-tags').count() === 12
-            && await page.locator('.workouts-library-card a.btn').count() >= 12, 'vista compacta conserva información y acciones');
+        ensure(await page.locator('[data-library-layout-switch]:visible button[value="compact"][aria-pressed="true"]').count() === 1, 'selector refleja la vista compacta');
+        const compactLibraryCount = await page.locator('.workouts-library-card').count();
+        ensure(compactLibraryCount >= 12 && compactLibraryCount <= 24, 'vista compacta conserva la carga paginada', `${compactLibraryCount} ejercicios`);
+        ensure(await page.locator('.workouts-library-copy h3').count() === compactLibraryCount
+            && await page.locator('.workouts-library-copy p').count() === compactLibraryCount
+            && await page.locator('.workouts-library-card .workouts-exercise-tags').count() === compactLibraryCount
+            && await page.locator('.workouts-library-card a.btn').count() >= compactLibraryCount, 'vista compacta conserva información y acciones');
         const compactCardHeight = await page.locator('.workouts-library-card').first().evaluate((element) => element.getBoundingClientRect().height);
         ensure(compactCardHeight < visualCardHeight * 0.78, 'vista compacta reduce la altura de tarjeta', `${Math.round(visualCardHeight)}px → ${Math.round(compactCardHeight)}px`);
-        const layoutTargetSizes = await page.locator('[data-library-layout-switch] button').evaluateAll((buttons) => buttons.map((button) => {
+        const layoutTargetSizes = await page.locator('[data-library-layout-switch]:visible button').evaluateAll((buttons) => buttons.map((button) => {
             const box = button.getBoundingClientRect();
             return Math.min(box.width, box.height);
         }));
@@ -107,17 +109,18 @@ const login = async (page) => {
         await noHorizontalOverflow(page, 'biblioteca compacta móvil sin desbordamiento');
         await page.screenshot({ path: path.join(reportDir, 'ui-workout-library-compact-mobile.png'), fullPage: true });
         await page.goto(`${BASE}/?page=workouts&view=library&library_page=2`, { waitUntil: 'networkidle' });
-        ensure(await page.locator('.workouts-library-card').count() === 12, 'segunda carga mantiene el límite', '12 ejercicios');
+        const secondLibraryCount = await page.locator('.workouts-library-card').count();
+        ensure(secondLibraryCount >= 12 && secondLibraryCount <= 24, 'segunda carga mantiene la paginación', `${secondLibraryCount} ejercicios`);
         ensure(await page.locator('.workouts-library-grid.is-compact').count() === 1, 'preferencia compacta persiste al paginar');
         await Promise.all([
             page.waitForLoadState('networkidle'),
-            page.locator('[data-library-layout-switch] button[value="cards"]').click(),
+            page.locator('[data-library-layout-switch]:visible button[value="cards"]').click(),
         ]);
         ensure(page.url().includes('library_page=2')
             && await page.locator('.workouts-library-grid:not(.is-compact)[data-library-layout="cards"]').count() === 1, 'cambiar a visual conserva la página');
         await Promise.all([
             page.waitForLoadState('networkidle'),
-            page.locator('[data-library-layout-switch] button[value="compact"]').click(),
+            page.locator('[data-library-layout-switch]:visible button[value="compact"]').click(),
         ]);
         ensure(page.url().includes('library_page=2')
             && await page.locator('.workouts-library-grid.is-compact').count() === 1, 'volver a compacta conserva la página');
@@ -127,7 +130,10 @@ const login = async (page) => {
         await page.screenshot({ path: path.join(reportDir, 'ui-workout-library-mobile.png'), fullPage: true });
 
         await page.goto(`${BASE}/?page=workouts&view=library&muscle=chest`, { waitUntil: 'networkidle' });
-        ensure(await page.locator('.workouts-library-card').count() === 4, 'filtro UI por pecho', '4 resultados');
+        const chestCards = page.locator('.workouts-library-card');
+        const chestCount = await chestCards.count();
+        const nonChestCount = await page.locator('.workouts-library-card:not([data-muscle="chest"])').count();
+        ensure(chestCount >= 4 && nonChestCount === 0, 'filtro UI por pecho', `${chestCount} resultados`);
         ensure(await page.locator('.workouts-library-grid.is-compact').count() === 1, 'preferencia compacta persiste con filtros');
         const firstGuideHref = await page.locator('.workouts-library-card h3 a').first().getAttribute('href');
         ensure(Boolean(firstGuideHref), 'enlace a guía disponible');
@@ -199,7 +205,8 @@ const login = async (page) => {
 
         await page.goto(`${BASE}/?page=workouts&view=ranks`, { waitUntil: 'networkidle' });
         ensure(await page.locator('.workouts-body-rank-card').count() === 10, 'rangos UI por parte corporal');
-        ensure(await page.locator('.workouts-exercise-rank-row').count() === 29, 'rangos UI por ejercicio', '29 ejercicios puntuables');
+        const rankedExerciseCount = await page.locator('.workouts-exercise-rank-row').count();
+        ensure(rankedExerciseCount >= 29, 'rangos UI por ejercicio', `${rankedExerciseCount} ejercicios puntuables`);
         ensure(await page.locator('.workouts-leaderboard-row').count() >= 2, 'clasificación UI del equipo');
         const overallScore = Number((await page.locator('.workouts-rank-emblem strong').innerText()).replace(',', '.'));
         const overallRankKey = await page.locator('.workouts-rank-hero').getAttribute('data-rank');
