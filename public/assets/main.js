@@ -5716,6 +5716,46 @@ window.addEventListener('appinstalled', () => {
         }
     };
 
+    let pendingWorkoutStartForm = null;
+
+    const initWorkoutStartConfirm = () => {
+        const modal = document.getElementById('wk-start-confirm-modal');
+        const confirmBtn = modal?.querySelector('[data-wk-start-confirm-action]');
+        if (!(modal instanceof HTMLElement) || !(confirmBtn instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        document.querySelectorAll('[data-wk-confirm-start]').forEach((trigger) => {
+            if (!(trigger instanceof HTMLButtonElement) || trigger.dataset.wkConfirmStartReady === '1') {
+                return;
+            }
+            trigger.dataset.wkConfirmStartReady = '1';
+            trigger.addEventListener('click', () => {
+                pendingWorkoutStartForm = trigger.closest('form');
+            });
+        });
+
+        if (confirmBtn.dataset.wkStartConfirmReady !== '1') {
+            confirmBtn.dataset.wkStartConfirmReady = '1';
+            confirmBtn.addEventListener('click', () => {
+                const form = pendingWorkoutStartForm;
+                if (!(form instanceof HTMLFormElement)) {
+                    return;
+                }
+                let replaceInput = form.querySelector('input[name="replace_active"]');
+                if (!(replaceInput instanceof HTMLInputElement)) {
+                    replaceInput = document.createElement('input');
+                    replaceInput.type = 'hidden';
+                    replaceInput.name = 'replace_active';
+                    form.appendChild(replaceInput);
+                }
+                replaceInput.value = '1';
+                form.submit();
+                window.AppOverlay?.close(modal);
+            });
+        }
+    };
+
     let workoutLibraryInfiniteObserver = null;
 
     const initWorkoutLibraryInfiniteScroll = () => {
@@ -6106,6 +6146,7 @@ window.addEventListener('appinstalled', () => {
         safeInit(initWorkoutHubTabs);
         safeInit(initWorkoutLibraryFilters);
         safeInit(initWorkoutRoutinePicker);
+        safeInit(initWorkoutStartConfirm);
         safeInit(initWorkoutLibraryInfiniteScroll);
         safeInit(initSpaNavigation);
         safeInit(initAdminBackups);

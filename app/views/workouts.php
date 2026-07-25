@@ -267,7 +267,7 @@ $libraryClearUrl = $libraryUrl([
                                 <label><input type="radio" name="routine_id" value="<?= (int) ($todayRoutine['id'] ?? 0) ?>"<?= $todayRoutineIndex === 0 ? ' checked' : '' ?>><span><?= e((string) ($todayRoutine['name'] ?? '')) ?></span></label>
                             <?php endforeach; ?>
                         </div>
-                        <button class="btn btn-primary" type="submit"<?= $hasActiveWorkoutSession ? ' disabled title="' . e(t('workouts.finish_active_first')) . '"' : '' ?>><?= e(t('workouts.start_routine')) ?></button>
+                        <button class="btn btn-primary" type="<?= $hasActiveWorkoutSession ? 'button' : 'submit' ?>"<?= $hasActiveWorkoutSession ? ' data-app-modal-open="wk-start-confirm-modal" data-wk-confirm-start' : '' ?>><?= e(t('workouts.start_routine')) ?></button>
                     </form>
                 </article>
             <?php endif; ?>
@@ -414,7 +414,7 @@ $libraryClearUrl = $libraryUrl([
                 <strong><?= e(t('workouts.start_empty')) ?></strong>
                 <small><?= e(t('workouts.start_empty_hint')) ?></small>
             </span>
-            <button type="submit" class="btn btn-primary small"<?= !empty($wkActiveSession) ? ' disabled title="' . e(t('workouts.finish_active_first')) . '"' : '' ?>><?= e(t('workouts.start_now')) ?></button>
+            <button type="<?= !empty($wkActiveSession) ? 'button' : 'submit' ?>" class="btn btn-primary small"<?= !empty($wkActiveSession) ? ' data-app-modal-open="wk-start-confirm-modal" data-wk-confirm-start' : '' ?>><?= e(t('workouts.start_now')) ?></button>
         </form>
 
         <div class="workouts-start-card">
@@ -482,7 +482,7 @@ $libraryClearUrl = $libraryUrl([
                                 <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
                                 <input type="hidden" name="action" value="session_start">
                                 <input type="hidden" name="routine_id" value="<?= $rid ?>">
-                                <button type="submit" class="btn btn-primary small workouts-routine-start-btn" aria-label="<?= e(t('workouts.start_routine')) ?>: <?= e((string) $routine['name']) ?>" title="<?= e(!empty($wkActiveSession) ? t('workouts.finish_active_first') : t('workouts.start_routine')) ?>"<?= !empty($wkActiveSession) ? ' disabled' : '' ?>><span aria-hidden="true">&#9654;</span><span class="sr-only"><?= e(t('workouts.start_routine')) ?></span></button>
+                                <button type="<?= !empty($wkActiveSession) ? 'button' : 'submit' ?>" class="btn btn-primary small workouts-routine-start-btn" aria-label="<?= e(t('workouts.start_routine')) ?>: <?= e((string) $routine['name']) ?>" title="<?= e(t('workouts.start_routine')) ?>"<?= !empty($wkActiveSession) ? ' data-app-modal-open="wk-start-confirm-modal" data-wk-confirm-start' : '' ?>><span aria-hidden="true">&#9654;</span><span class="sr-only"><?= e(t('workouts.start_routine')) ?></span></button>
                             </form>
                             <?= $routineMenu ?>
                         </div>
@@ -598,7 +598,7 @@ $libraryClearUrl = $libraryUrl([
                                     <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
                                     <input type="hidden" name="action" value="session_start">
                                     <input type="hidden" name="routine_id" value="<?= (int) $routine['id'] ?>">
-                                    <button class="btn btn-primary small" type="submit"<?= $hasActiveWorkoutSession ? ' disabled title="' . e(t('workouts.finish_active_first')) . '"' : '' ?>><?= e(t('workouts.start_routine')) ?></button>
+                                    <button class="btn btn-primary small" type="<?= $hasActiveWorkoutSession ? 'button' : 'submit' ?>"<?= $hasActiveWorkoutSession ? ' data-app-modal-open="wk-start-confirm-modal" data-wk-confirm-start' : '' ?>><?= e(t('workouts.start_routine')) ?></button>
                                 </form>
                             </div>
                         <?php endforeach; ?>
@@ -1551,7 +1551,7 @@ $libraryClearUrl = $libraryUrl([
         <article class="panel workouts-routine-exercises-panel">
             <?php $routineExerciseCount = count((array) ($wkRoutineExercises ?? [])); ?>
             <div class="panel-head"><div><p class="eyebrow"><?= e(t($routineExerciseCount === 1 ? 'workouts.exercise_count_one' : 'workouts.exercise_count', ['count' => $routineExerciseCount])) ?></p><h2><?= e(t('workouts.exercises')) ?></h2></div>
-                <div class="inline-actions workouts-routine-exercises-actions"><?php if ($routineExerciseCount > 1): ?><a class="btn btn-ghost small" href="/?page=workouts&routine_id=<?= $rid ?>&section=organize"><?= e(t('workouts.organize')) ?></a><?php endif; ?><form method="post" action="/?page=workouts" class="inline-form"><input type="hidden" name="csrf_token" value="<?= e($csrf) ?>"><input type="hidden" name="action" value="session_start"><input type="hidden" name="routine_id" value="<?= $rid ?>"><button type="submit" class="btn btn-primary small"<?= !empty($wkActiveSession) ? ' disabled title="' . e(t('workouts.finish_active_first')) . '"' : '' ?>><?= e(t('workouts.start_routine')) ?></button></form></div>
+                <div class="inline-actions workouts-routine-exercises-actions"><?php if ($routineExerciseCount > 1): ?><a class="btn btn-ghost small" href="/?page=workouts&routine_id=<?= $rid ?>&section=organize"><?= e(t('workouts.organize')) ?></a><?php endif; ?><form method="post" action="/?page=workouts" class="inline-form"><input type="hidden" name="csrf_token" value="<?= e($csrf) ?>"><input type="hidden" name="action" value="session_start"><input type="hidden" name="routine_id" value="<?= $rid ?>"><button type="<?= !empty($wkActiveSession) ? 'button' : 'submit' ?>" class="btn btn-primary small"<?= !empty($wkActiveSession) ? ' data-app-modal-open="wk-start-confirm-modal" data-wk-confirm-start' : '' ?>><?= e(t('workouts.start_routine')) ?></button></form></div>
             </div>
             <?php if (($wkRoutineExercises ?? []) === []): ?>
                 <div class="workouts-routine-empty"><span aria-hidden="true">+</span><div><strong><?= e(t('workouts.no_exercises')) ?></strong><small><?= e(t('workouts.add_exercises_hint')) ?></small></div></div>
@@ -2322,6 +2322,20 @@ $libraryClearUrl = $libraryUrl([
     </div>
 </div>
 <?php endif; ?>
+
+<div class="app-modal" id="wk-start-confirm-modal" hidden role="dialog" aria-modal="true" aria-labelledby="wk-start-confirm-title">
+    <div class="app-modal-card">
+        <div class="app-modal-head">
+            <h2 id="wk-start-confirm-title"><?= e(t('workouts.replace_active_title')) ?></h2>
+            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button>
+        </div>
+        <p><?= e(t('workouts.replace_active_body')) ?></p>
+        <div class="confirm-modal-actions">
+            <button type="button" class="btn btn-ghost" data-app-modal-close><?= e(t('common.cancel')) ?></button>
+            <button type="button" class="btn btn-primary" data-wk-start-confirm-action><?= e(t('workouts.replace_active_action')) ?></button>
+        </div>
+    </div>
+</div>
 
 <div class="app-modal" id="wk-new-routine-modal" hidden role="dialog" aria-modal="true" aria-labelledby="wk-new-routine-title">
     <div class="app-modal-card workouts-routine-modal-card">

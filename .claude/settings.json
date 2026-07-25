@@ -39,7 +39,24 @@
       "Bash(php -l public/assets/../../app/views/partials/workout_custom_exercise_form.php)",
       "Bash(php -l app/views/partials/workout_custom_exercise_form.php)",
       "Bash(node --check public/assets/main.js)",
-      "Bash(echo \"---exit code: $?\")"
+      "Bash(echo \"---exit code: $?\")",
+      "Bash(grep -E \"\\\\.\\(php|js|html\\)$\")",
+      "Bash(grep -n \"^\\\\.inline-actions\\\\b\\\\|^\\\\.inline-actions[ ,{]\" /Users/roberto/Documents/GitHub/fitness-challenge/public/assets/styles.css)",
+      "Bash(php -l app/views/workouts.php)",
+      "Bash(php -l public/index.php)",
+      "Bash(node -c public/assets/main.js)",
+      "Bash(find / -maxdepth 4 -iname \"*chromium-cli*\")",
+      "Read(//Users/roberto/**)",
+      "Read(//Users/roberto/.claude/**)",
+      "Bash(find / -maxdepth 6 -iname \"chromium-cli\" -type f)",
+      "Bash(pip3 show *)",
+      "Bash(brew list *)",
+      "Bash(python3 -m playwright install chromium --with-deps)",
+      "Bash(SEED_PASSWORD=TestPass123! nohup ./bin/e2e_local.py --profile basic --db-mode e2e --open-mode none --no-auto-install-deps)",
+      "Bash(echo \"PID:$!\")",
+      "Bash(jobs -l)",
+      "Bash(kill 11196 11198 11199)",
+      "Bash(lsof -nP -iTCP -sTCP:LISTEN)"
     ]
   }
 }

@@ -3590,6 +3590,12 @@ if ($page === 'workouts') {
                 redirect('/?page=workouts&view=plan');
             case 'session_start':
                 $startRoutine = (int) ($_POST['routine_id'] ?? 0);
+                if ((string) ($_POST['replace_active'] ?? '') === '1') {
+                    $activeToReplace = wk_session_active_for_user($pdo, $meId);
+                    if ($activeToReplace !== null) {
+                        wk_session_finish($pdo, (int) $activeToReplace['id'], $meId);
+                    }
+                }
                 $sid = wk_session_start($pdo, $meId, $startRoutine > 0 ? $startRoutine : null, (string) ($_POST['title'] ?? ''));
                 $startedSessionExercises = wk_session_exercises($pdo, $sid);
                 $startedSessionExerciseId = (int) ($startedSessionExercises[0]['id'] ?? 0);
