@@ -1633,18 +1633,21 @@ body[data-page="workouts"] .workouts-session-status {
     grid-template-columns: auto minmax(90px, 1fr) 42px;
     align-items: center;
     gap: 10px;
-    margin: 0;
-    padding: 9px 0 14px;
-    border: 0;
-    border-bottom: 1px solid var(--line);
-    border-radius: 0;
-    background: transparent;
+    margin: 0 0 12px;
+    padding: 11px 13px;
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    background: var(--glass);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 body[data-page="workouts"] .workouts-session-status-copy {
     display: flex;
     align-items: center;
     gap: 7px;
     min-width: 0;
+    font-weight: 700;
     font-size: 0.7rem;
 }
 body[data-page="workouts"] .workouts-session-status-copy i {
@@ -1653,26 +1656,31 @@ body[data-page="workouts"] .workouts-session-status-copy i {
     flex: 0 0 8px;
     border-radius: 50%;
     background: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 body[data-page="workouts"] .workouts-session-status > .goal-progress {
-    height: 7px;
+    height: 8px;
     margin: 0;
 }
 body[data-page="workouts"] .workouts-session-status > strong {
-    color: var(--muted);
-    font-size: 0.68rem;
+    color: var(--primary-dark);
+    font-size: 0.72rem;
+    font-weight: 800;
     text-align: end;
 }
 body[data-page="workouts"] .workouts-session-exercise {
-    padding: 16px 0;
-    border: 0;
-    border-bottom: 1px solid var(--line);
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
+    padding: 16px;
+    border: 1px solid color-mix(in srgb, var(--exercise-accent, var(--primary)) 16%, var(--line));
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--exercise-accent, var(--primary)) 3%, var(--surface));
+    box-shadow: var(--shadow);
+}
+body[data-page="workouts"] .workouts-session-exercise + .workouts-session-exercise {
+    margin-top: 12px;
 }
 body[data-page="workouts"] .workouts-session-exercise.is-active {
-    box-shadow: none;
+    border-color: color-mix(in srgb, var(--exercise-accent, var(--primary)) 34%, var(--line));
+    box-shadow: var(--shadow), 0 0 0 1px color-mix(in srgb, var(--exercise-accent, var(--primary)) 14%, transparent);
 }
 body[data-page="workouts"] .workouts-session-exercise-head {
     grid-template-columns: 58px minmax(0, 1fr) auto;
@@ -1864,6 +1872,14 @@ body[data-page="workouts"] .workouts-set-delete:focus-visible {
     border-color: color-mix(in srgb, var(--danger, #dc2626) 24%, var(--line));
     background: color-mix(in srgb, var(--danger, #dc2626) 7%, var(--surface));
 }
+/* A finished set reads as "success" (green), distinct from the teal primary
+   actions elsewhere on the page (Add exercise, Finish session). */
+body[data-page="workouts"] .workouts-set-done.is-done {
+    border-color: color-mix(in srgb, var(--good) 55%, transparent);
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.28), transparent 45%),
+        linear-gradient(135deg, var(--good), color-mix(in srgb, var(--good) 70%, #063));
+}
 body[data-page="workouts"] .workouts-session-footer {
     z-index: 12;
     display: block;
@@ -1940,8 +1956,9 @@ body.theme-active-dark[data-page="workouts"] .workouts-session-footer {
     body[data-page="workouts"] .workouts-session-status {
         grid-template-columns: auto minmax(60px, 1fr) 34px;
         gap: 7px;
-        margin: 0;
-        padding: 8px 0 11px;
+        margin: 0 0 10px;
+        padding: 9px 11px;
+        border-radius: 12px;
     }
     body[data-page="workouts"] .workouts-session-status-copy {
         font-size: 0.62rem;
@@ -1966,28 +1983,29 @@ body.theme-active-dark[data-page="workouts"] .workouts-session-footer {
         display: none;
     }
     body[data-page="workouts"] .workouts-session-exercise-nav {
-        gap: 0;
-        margin: 0;
-        padding: 7px 0;
-        border: 0;
-        border-bottom: 1px solid var(--line);
-        border-radius: 0;
-        background: transparent;
-        box-shadow: none;
+        gap: 8px;
+        margin: 0 0 10px;
+        padding: 10px 11px;
+        border: 1px solid var(--glass-border);
+        border-radius: 14px;
+        background: var(--glass);
+        box-shadow: var(--glass-shadow);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
     }
     body[data-page="workouts"] .workouts-session-exercise-nav-main {
-        grid-template-columns: 40px minmax(0, 1fr) 40px;
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
         gap: 6px;
     }
     body[data-page="workouts"] .workouts-session-exercise-nav-main > .workouts-session-nav-arrow {
         display: grid;
-        width: 40px;
-        height: 40px;
-        min-height: 40px;
+        width: 44px;
+        height: 44px;
+        min-height: 44px;
         padding: 0;
         place-items: center;
         border: 1px solid var(--line);
-        border-radius: 10px;
+        border-radius: 12px;
         color: var(--ink);
         background: var(--surface);
         box-shadow: none;
@@ -2095,8 +2113,8 @@ body.theme-active-dark[data-page="workouts"] .workouts-session-footer {
         background: color-mix(in srgb, var(--success, #16a66a) 11%, var(--surface));
     }
     body[data-page="workouts"] .workouts-session-exercise {
-        padding: 11px 0;
-        border-radius: 0;
+        padding: 13px;
+        border-radius: 16px;
     }
     body[data-page="workouts"] .workouts-session-exercise-head {
         grid-template-columns: 54px minmax(0, 1fr) auto;
@@ -2154,13 +2172,9 @@ body.theme-active-dark[data-page="workouts"] .workouts-session-footer {
             "clock copy toggle"
             "actions actions actions";
         gap: 7px;
-        margin: 0;
-        padding: 9px 0;
-        border: 0;
-        border-bottom: 1px solid var(--line);
-        border-radius: 0;
-        background: transparent;
-        box-shadow: none;
+        margin: 0 0 10px;
+        padding: 10px 12px;
+        border-radius: 16px;
     }
     body[data-page="workouts"] .workouts-view-session .workouts-rest-timer-clock {
         width: 46px;
@@ -2197,7 +2211,7 @@ body.theme-active-dark[data-page="workouts"] .workouts-session-footer {
         gap: 5px;
     }
     body[data-page="workouts"] .workouts-view-session .workouts-rest-timer-actions .btn {
-        min-height: 40px;
+        min-height: 44px;
         padding-inline: 5px;
         font-size: 0.62rem;
     }
@@ -2260,13 +2274,13 @@ body.theme-active-dark[data-page="workouts"] .workouts-session-footer {
 
 @media (max-width: 360px) {
     body[data-page="workouts"] .workouts-session-exercise-nav-main {
-        grid-template-columns: 40px minmax(0, 1fr) 40px;
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
         gap: 5px;
     }
     body[data-page="workouts"] .workouts-session-exercise-nav-main > .workouts-session-nav-arrow {
-        width: 40px;
-        height: 40px;
-        min-height: 40px;
+        width: 44px;
+        height: 44px;
+        min-height: 44px;
     }
     body[data-page="workouts"] .workouts-session-exercise-nav-current strong {
         display: block;
