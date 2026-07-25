@@ -407,7 +407,7 @@ body[data-page="dashboard"] [data-dashboard-collapsible] > .panel-head {
     min-width: 0;
     min-height: 58px;
     margin: 0 !important;
-    padding: 0.55rem 0.7rem !important;
+    padding: 0.75rem 0.9rem !important;
     border: 1px solid var(--ui-soft-border, var(--line));
     border-radius: var(--ui-panel-radius, 16px);
     background: var(--surface);
@@ -472,7 +472,7 @@ body[data-page="dashboard"] [data-dashboard-collapsible] > .dashboard-training-r
 body[data-page="dashboard"] .dashboard-training-rank[data-dashboard-collapsible] > .dashboard-training-rank-summary,
 body[data-page="dashboard"] [data-dashboard-collapsible] > .dashboard-versus-body,
 body[data-page="dashboard"] [data-dashboard-collapsible] > .season-widget-overview {
-    padding: 0.55rem;
+    padding: 0.72rem;
 }
 body[data-page="dashboard"] .dashboard-panel-head-actions {
     display: flex;
@@ -527,17 +527,20 @@ body[data-page="dashboard"] [data-dashboard-collapsible].is-collapsed :is(.dashb
 body[data-page="dashboard"] .dashboard-training-rank[data-dashboard-collapsible] {
     gap: 0;
     overflow: hidden !important;
+    padding: 0.7rem !important;
     border: 1px solid color-mix(in srgb, var(--rank-color) 22%, var(--line)) !important;
     border-radius: var(--ui-panel-radius, 16px) !important;
     background: var(--surface) !important;
 }
 body[data-page="dashboard"] .dashboard-training-rank[data-dashboard-collapsible] > .panel-head {
+    margin: -0.7rem -0.7rem 0.6rem !important;
     border: 0;
     border-bottom: 1px solid color-mix(in srgb, var(--rank-color) 16%, var(--line));
     border-radius: 0;
     background: transparent;
 }
 body[data-page="dashboard"] .dashboard-training-rank.is-collapsed > .panel-head {
+    margin-bottom: -0.7rem !important;
     border-bottom-color: transparent;
 }
 body[data-page="dashboard"] .dashboard-training-rank .dashboard-panel-head-actions {
@@ -582,6 +585,7 @@ body[data-page="dashboard"] :is(
 )[data-dashboard-collapsible] {
     gap: 0;
     overflow: hidden !important;
+    padding: 0.7rem !important;
     border: 1px solid var(--ui-soft-border, var(--line)) !important;
     border-radius: var(--ui-panel-radius, 16px) !important;
     background: var(--surface) !important;
@@ -596,6 +600,7 @@ body[data-page="dashboard"] :is(
     .dashboard-ranking-panel,
     .dashboard-weekly-history
 )[data-dashboard-collapsible] > .panel-head {
+    margin: -0.7rem -0.7rem 0.6rem !important;
     border: 0;
     border-bottom: 1px solid var(--ui-soft-border, var(--line));
     border-radius: 0;
@@ -611,6 +616,7 @@ body[data-page="dashboard"] :is(
     .dashboard-ranking-panel,
     .dashboard-weekly-history
 )[data-dashboard-collapsible].is-collapsed > .panel-head {
+    margin-bottom: -0.7rem !important;
     border-bottom-color: transparent;
 }
 body[data-page="dashboard"] :is(
@@ -949,7 +955,7 @@ body[data-page="dashboard"]:is([data-theme="dark"], .theme-active-dark) [data-da
         grid-template-columns: 38px minmax(0, 1fr) auto !important;
         gap: 7px !important;
         min-height: 58px;
-        padding: 0.5rem 0.58rem !important;
+        padding: 0.65rem 0.78rem !important;
     }
     body[data-page="dashboard"] .dashboard-panel-head-actions {
         max-width: 58%;

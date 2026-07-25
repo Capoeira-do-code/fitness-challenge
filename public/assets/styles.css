@@ -26054,12 +26054,10 @@ body[data-page="workouts"]:is([data-theme="dark"], .theme-active-dark) .workouts
         font-size: 0.62rem;
     }
 
-    .workouts-overview-priority .workouts-today-picker {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
     .workouts-overview-priority .workouts-today-picker > .btn {
-        width: 100%;
+        min-height: 40px;
+        padding-block: 0.4rem;
+        white-space: nowrap;
     }
 
     .workouts-routines-head-actions .workouts-organize-routines-link {

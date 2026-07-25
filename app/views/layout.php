@@ -74,6 +74,7 @@ $pageStylesAssetFile = match ($currentPage) {
     'entries' => 'entries.css',
     'settings' => 'settings.css',
     'register', 'onboarding', 'setup' => 'onboarding.css',
+    'login' => 'login.css',
     default => '',
 };
 $pageStylesAssetPath = $pageStylesAssetFile !== '' ? $projectRoot . '/public/assets/' . $pageStylesAssetFile : '';

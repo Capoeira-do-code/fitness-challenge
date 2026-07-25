@@ -187,6 +187,21 @@ function workouts_ensure_schema(PDO $pdo): void
         )'
     );
 
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS workout_rank_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            scope TEXT NOT NULL,
+            scope_key TEXT NOT NULL DEFAULT "",
+            score REAL NOT NULL DEFAULT 0,
+            tier TEXT NOT NULL DEFAULT "unranked",
+            captured_on TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE (user_id, scope, scope_key, captured_on),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )'
+    );
+
     // Older installations already have these tables. Keep the migration local
     // to the workouts module so opening Training upgrades the feature safely.
     ensure_column($pdo, 'exercise_definitions', 'slug', 'TEXT');
@@ -231,6 +246,7 @@ function workouts_ensure_schema(PDO $pdo): void
     ensure_column($pdo, 'workout_routines', 'image_position', 'TEXT NOT NULL DEFAULT "center"');
     ensure_column($pdo, 'session_exercises', 'rest_seconds', 'INTEGER');
 
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_rank_snapshots ON workout_rank_snapshots(user_id, scope, scope_key, captured_on)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_routines_user ON workout_routines(user_id, is_archived, sort_order)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_sessions_user ON workout_sessions(user_id, status, started_at DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_pr_user ON personal_records(user_id, exercise_def_id)');
@@ -1886,6 +1902,77 @@ function wk_routine_duplicate(PDO $pdo, int $id, int $userId): int
     return $newId;
 }
 
+/**
+ * Copy a routine owned by another user (plus its exercises) into $targetUserId's
+ * routines. Caller must verify the two users are allowed to share (e.g. friends).
+ * Returns the new routine id, or 0 on failure.
+ */
+function wk_routine_copy_from_user(PDO $pdo, int $sourceRoutineId, int $sourceUserId, int $targetUserId): int
+{
+    $routine = wk_routine_get($pdo, $sourceRoutineId, $sourceUserId);
+    if ($routine === null || $sourceUserId === $targetUserId) {
+        return 0;
+    }
+    $newId = wk_routine_create(
+        $pdo,
+        $targetUserId,
+        (string) $routine['name'],
+        (string) $routine['icon'],
+        (string) $routine['description'],
+        (string) ($routine['recommended_days_mask'] ?? '0000000'),
+        (string) ($routine['accent_color'] ?? '#14b8a6'),
+        ($routine['image_path'] ?? null) !== null ? (string) $routine['image_path'] : null,
+        ($routine['video_url'] ?? null) !== null ? (string) $routine['video_url'] : null,
+        (string) ($routine['cover_mode'] ?? 'auto'),
+        (string) ($routine['image_position'] ?? 'center')
+    );
+    if ($newId <= 0) {
+        return 0;
+    }
+    foreach (wk_routine_exercises($pdo, $sourceRoutineId) as $ex) {
+        db_execute(
+            $pdo,
+            'INSERT INTO routine_exercises (routine_id, exercise_def_id, sort_order, target_sets, target_reps, target_weight, target_duration, target_distance, rest_seconds, unit, notes)
+             VALUES (:r, :e, :so, :ts, :tr, :tw, :td, :ds, :rs, :un, :no)',
+            [
+                ':r' => $newId, ':e' => (int) $ex['exercise_def_id'], ':so' => (int) $ex['sort_order'],
+                ':ts' => (int) $ex['target_sets'], ':tr' => $ex['target_reps'], ':tw' => $ex['target_weight'],
+                ':td' => $ex['target_duration'], ':ds' => $ex['target_distance'], ':rs' => $ex['rest_seconds'],
+                ':un' => (string) $ex['unit'], ':no' => (string) $ex['notes'],
+            ]
+        );
+    }
+
+    return $newId;
+}
+
+/**
+ * Active routines belonging to the user's accepted friends, tagged with the
+ * friend's name/id so they can be browsed and copied from the training tab.
+ *
+ * @return array<int,array<string,mixed>>
+ */
+function wk_friends_routines(PDO $pdo, int $userId): array
+{
+    if (!function_exists('friends_list')) {
+        return [];
+    }
+    $out = [];
+    foreach (friends_list($pdo, $userId) as $friend) {
+        $friendId = (int) ($friend['id'] ?? 0);
+        if ($friendId <= 0) {
+            continue;
+        }
+        foreach (wk_routines_for_user($pdo, $friendId, true) as $routine) {
+            $routine['friend_id'] = $friendId;
+            $routine['friend_name'] = (string) ($friend['display_name'] ?? $friend['username'] ?? '');
+            $out[] = $routine;
+        }
+    }
+
+    return $out;
+}
+
 /** @return array<string,array<int,array<string,mixed>>> */
 function wk_routines_by_day(PDO $pdo, int $userId): array
 {
@@ -2796,6 +2883,8 @@ function wk_session_finish(PDO $pdo, int $sessionId, int $userId, bool $countTow
         [':now' => now_iso(), ':id' => $sessionId, ':u' => $userId]
     );
     wk_refresh_personal_records($pdo, $userId, $sessionId);
+    // Snapshot the post-workout rank so the zone history reflects this session.
+    wk_capture_rank_snapshots($pdo, $userId);
 
     // Only count sessions that actually have a completed set toward the
     // challenge, so an accidentally-finished empty session doesn't mark a day.
@@ -3240,6 +3329,56 @@ function wk_overall_rank_for_user(PDO $pdo, int $userId): array
     ]);
 }
 
+/**
+ * Persist today's overall + per-zone rank scores (one row per day, upserted).
+ * Forward-only history; pass pre-computed ranks to avoid recomputation.
+ */
+function wk_capture_rank_snapshots(PDO $pdo, int $userId, ?array $muscleRanks = null, ?array $overall = null): void
+{
+    $muscleRanks = $muscleRanks ?? wk_muscle_ranks_for_user($pdo, $userId);
+    $overall = $overall ?? wk_overall_rank_for_user($pdo, $userId);
+    $today = (new DateTimeImmutable('today'))->format('Y-m-d');
+    $now = now_iso();
+    $rows = [['overall', '', (float) ($overall['score'] ?? 0), (string) ($overall['key'] ?? 'unranked')]];
+    foreach ($muscleRanks as $mr) {
+        $score = (float) ($mr['rank']['score'] ?? 0);
+        if ($score <= 0) {
+            continue;
+        }
+        $rows[] = ['muscle', (string) ($mr['muscle'] ?? ''), $score, (string) ($mr['rank']['key'] ?? 'unranked')];
+    }
+    foreach ($rows as [$scope, $scopeKey, $score, $tier]) {
+        db_execute(
+            $pdo,
+            'INSERT OR REPLACE INTO workout_rank_snapshots (user_id, scope, scope_key, score, tier, captured_on, created_at)
+             VALUES (:u, :s, :k, :sc, :t, :d, :n)',
+            [':u' => $userId, ':s' => $scope, ':k' => $scopeKey, ':sc' => $score, ':t' => $tier, ':d' => $today, ':n' => $now]
+        );
+    }
+}
+
+/**
+ * Rank-score history for a scope (oldest first).
+ *
+ * @return array<int,array{date:string,score:float,tier:string}>
+ */
+function wk_rank_snapshot_history(PDO $pdo, int $userId, string $scope, string $scopeKey = '', int $limit = 30): array
+{
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT captured_on, score, tier FROM workout_rank_snapshots
+         WHERE user_id = :u AND scope = :s AND scope_key = :k
+         ORDER BY captured_on ASC LIMIT ' . max(1, min(120, $limit)),
+        [':u' => $userId, ':s' => $scope, ':k' => $scopeKey]
+    );
+    $out = [];
+    foreach ($rows as $row) {
+        $out[] = ['date' => (string) $row['captured_on'], 'score' => (float) $row['score'], 'tier' => (string) $row['tier']];
+    }
+
+    return $out;
+}
+
 /** @return array<int,array<string,mixed>> */
 function wk_rank_leaderboard(PDO $pdo, int $limit = 20, string $division = 'open'): array
 {
@@ -3360,6 +3499,90 @@ function wk_weekly_series(PDO $pdo, int $userId, int $weeks = 8): array
     return array_values($buckets);
 }
 
+/**
+ * Per-session history for a single exercise (oldest first): volume, best est. 1RM
+ * and top weight per session. Powers the per-exercise stats sub-page.
+ *
+ * @return array<int,array{session_id:int,date:string,title:string,volume:float,best_1rm:float,top_weight:float,sets:int}>
+ */
+function wk_exercise_history(PDO $pdo, int $userId, int $exerciseDefId, int $limit = 30): array
+{
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT s.id AS session_id, s.started_at, s.title,
+                COALESCE(SUM(CASE WHEN ws.completed = 1 AND ws.weight IS NOT NULL AND ws.reps IS NOT NULL THEN ws.weight * ws.reps ELSE 0 END), 0) AS volume,
+                COALESCE(MAX(CASE WHEN ws.completed = 1 AND ws.weight IS NOT NULL AND ws.reps IS NOT NULL THEN ws.weight * (1 + ws.reps / 30.0) ELSE 0 END), 0) AS best_1rm,
+                COALESCE(MAX(CASE WHEN ws.completed = 1 THEN ws.weight ELSE 0 END), 0) AS top_weight,
+                COUNT(CASE WHEN ws.completed = 1 THEN 1 END) AS sets
+         FROM workout_sessions s
+         JOIN session_exercises se ON se.session_id = s.id AND se.exercise_def_id = :ex
+         LEFT JOIN workout_sets ws ON ws.session_exercise_id = se.id
+         WHERE s.user_id = :u AND s.status = \'completed\'
+         GROUP BY s.id
+         HAVING sets > 0
+         ORDER BY s.started_at ASC
+         LIMIT ' . max(1, min(60, $limit)),
+        [':u' => $userId, ':ex' => $exerciseDefId]
+    );
+    $out = [];
+    foreach ($rows as $row) {
+        $out[] = [
+            'session_id' => (int) $row['session_id'],
+            'date' => (string) $row['started_at'],
+            'title' => (string) ($row['title'] ?? ''),
+            'volume' => (float) $row['volume'],
+            'best_1rm' => (float) $row['best_1rm'],
+            'top_weight' => (float) $row['top_weight'],
+            'sets' => (int) $row['sets'],
+        ];
+    }
+
+    return $out;
+}
+
+/**
+ * Weekly volume for a single muscle group over the last N weeks (oldest first),
+ * derived from session history. Powers the body-zone rank detail history chart.
+ *
+ * @return array<int,array{label:string,week:string,volume:float}>
+ */
+function wk_muscle_weekly_volume(PDO $pdo, int $userId, string $muscle, int $weeks = 8): array
+{
+    $weeks = max(1, min(26, $weeks));
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT s.id, s.started_at,
+                COALESCE(SUM(CASE WHEN ws.completed = 1 AND ws.weight IS NOT NULL AND ws.reps IS NOT NULL THEN ws.weight * ws.reps ELSE 0 END), 0) AS volume
+         FROM workout_sessions s
+         JOIN session_exercises se ON se.session_id = s.id
+         JOIN exercise_definitions ed ON ed.id = se.exercise_def_id AND ed.muscle_group = :m
+         LEFT JOIN workout_sets ws ON ws.session_exercise_id = se.id
+         WHERE s.user_id = :u AND s.status = \'completed\'
+         GROUP BY s.id
+         ORDER BY s.started_at ASC',
+        [':u' => $userId, ':m' => $muscle]
+    );
+    $buckets = [];
+    $cursor = new DateTimeImmutable('monday this week');
+    for ($i = $weeks - 1; $i >= 0; $i--) {
+        $weekStart = $cursor->modify('-' . $i . ' week');
+        $key = $weekStart->format('o-\WW');
+        $buckets[$key] = ['label' => $weekStart->format('d/m'), 'week' => $key, 'volume' => 0.0];
+    }
+    foreach ($rows as $row) {
+        try {
+            $key = (new DateTimeImmutable((string) $row['started_at']))->format('o-\WW');
+        } catch (Throwable) {
+            continue;
+        }
+        if (isset($buckets[$key])) {
+            $buckets[$key]['volume'] += (float) $row['volume'];
+        }
+    }
+
+    return array_values($buckets);
+}
+
 /** Current streak: consecutive days (ending today or yesterday) with a session. */
 function wk_streak_days(PDO $pdo, int $userId): int
 {
@@ -3405,7 +3628,7 @@ function wk_frequent_exercises(PDO $pdo, int $userId, int $limit = 6): array
 {
     return db_fetch_all(
         $pdo,
-        'SELECT ed.name AS name, COUNT(DISTINCT se.session_id) AS count
+        'SELECT ed.id AS id, ed.name AS name, COUNT(DISTINCT se.session_id) AS count
          FROM session_exercises se
          JOIN workout_sessions s ON s.id = se.session_id AND s.user_id = :u AND s.status = \'completed\'
          JOIN exercise_definitions ed ON ed.id = se.exercise_def_id

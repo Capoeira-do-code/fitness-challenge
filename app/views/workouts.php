@@ -496,6 +496,34 @@ $libraryClearUrl = $libraryUrl([
         </details>
     <?php endif; ?>
 
+    <?php if (($wkFriendRoutines ?? []) !== []): ?>
+        <details class="workouts-overview-disclosure workouts-friends-routines-disclosure" data-persist-disclosure="workouts.friends_routines">
+            <summary>
+                <span class="workouts-overview-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span>
+                <span><strong><?= e(t('workouts.friend_routines')) ?></strong><small><?php $wkFrCount = count((array) $wkFriendRoutines); ?><?= e(t($wkFrCount === 1 ? 'workouts.routine_count_one' : 'workouts.routine_count', ['count' => $wkFrCount])) ?></small></span>
+                <b aria-hidden="true">&rsaquo;</b>
+            </summary>
+            <div class="workouts-overview-disclosure-body">
+                <ul class="workouts-friend-routine-list">
+                    <?php foreach ((array) $wkFriendRoutines as $fr): ?>
+                        <?php $frEx = (int) ($fr['exercise_count'] ?? 0); ?>
+                        <li class="workouts-friend-routine">
+                            <span class="workouts-friend-routine-icon" aria-hidden="true" style="--routine-accent: <?= e(wk_normalize_routine_color($fr['accent_color'] ?? '#14b8a6')) ?>"><?= activity_icon_svg(wk_normalize_routine_icon($fr['icon'] ?? 'dumbbell')) ?></span>
+                            <span class="workouts-friend-routine-copy"><strong><?= e((string) ($fr['name'] ?? '')) ?></strong><small><?= e((string) ($fr['friend_name'] ?? '')) ?> &middot; <?= e(t($frEx === 1 ? 'workouts.exercise_count_one' : 'workouts.exercise_count', ['count' => $frEx])) ?></small></span>
+                            <form method="post" action="/?page=workouts" class="workouts-friend-routine-form">
+                                <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
+                                <input type="hidden" name="action" value="routine_copy_friend">
+                                <input type="hidden" name="source_user_id" value="<?= (int) ($fr['friend_id'] ?? 0) ?>">
+                                <input type="hidden" name="source_routine_id" value="<?= (int) ($fr['id'] ?? 0) ?>">
+                                <button type="submit" class="btn btn-primary small" aria-label="<?= e(t('workouts.copy_routine')) ?>: <?= e((string) ($fr['name'] ?? '')) ?>"><?= e(t('workouts.copy_routine')) ?></button>
+                            </form>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        </details>
+    <?php endif; ?>
+
     <details class="workouts-overview-disclosure workouts-history-disclosure" data-persist-disclosure="workouts.history" open>
         <summary>
             <span class="workouts-overview-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('run') ?></span>
@@ -1014,19 +1042,110 @@ $libraryClearUrl = $libraryUrl([
                 <div class="workouts-rank-notice"><?= activity_icon_svg('info') ?><span><?= e(t('workouts.bodyweight_required')) ?></span><a href="/?page=entries&mode=data"><?= e(t('entries.quick_data')) ?></a></div>
             <?php endif; ?>
         <?php elseif ($rankSection === 'body'): ?>
-            <article class="panel workouts-rank-section-panel">
-                <div class="panel-head"><div><h2><?= e(t('workouts.body_part_ranks')) ?></h2></div><span class="workouts-rank-section-count"><?= count((array) ($wkMuscleRanks ?? [])) ?></span></div>
-                <div class="workouts-body-rank-grid">
-                    <?php foreach ((array) ($wkMuscleRanks ?? []) as $muscleRank): ?>
-                        <?php $rank = (array) ($muscleRank['rank'] ?? []); $rankKey = (string) ($rank['key'] ?? 'unranked'); $bodyRankProgress = $rankProgressData($rank); ?>
-                        <a class="workouts-body-rank-card" data-rank="<?= e($rankKey) ?>" href="/?page=workouts&view=library&muscle=<?= e((string) $muscleRank['muscle']) ?>">
-                            <span class="workouts-muscle-token"><?= e(strtoupper(substr((string) $muscleRank['muscle'], 0, 2))) ?></span>
-                            <span><strong><?= e($muscleLabel((string) $muscleRank['muscle'])) ?></strong><small><?= e(t('workouts.ranked_count', ['ranked' => (int) $muscleRank['ranked_count'], 'total' => (int) $muscleRank['catalog_count']])) ?> · <?= e(t('workouts.rank_points_short', ['points' => number_format((float) $bodyRankProgress['score'], 1, '.', '')])) ?></small><span class="workouts-rank-mini-progress" aria-hidden="true"><i style="width: <?= (int) $bodyRankProgress['progress'] ?>%"></i></span></span>
-                            <span class="workouts-rank-badge" data-rank="<?= e($rankKey) ?>"><?= e($rankLabel($rankKey)) ?></span>
-                        </a>
-                    <?php endforeach; ?>
-                </div>
-            </article>
+            <?php
+            $zoneKey = (string) ($wkRankZone ?? '');
+            $zoneRank = null;
+            if ($zoneKey !== '') {
+                foreach ((array) ($wkMuscleRanks ?? []) as $mr) {
+                    if ((string) ($mr['muscle'] ?? '') === $zoneKey) {
+                        $zoneRank = (array) $mr;
+                        break;
+                    }
+                }
+            }
+            ?>
+            <?php if ($zoneRank !== null): ?>
+                <?php
+                $zoneRankData = (array) ($zoneRank['rank'] ?? []);
+                $zoneRankKey = (string) ($zoneRankData['key'] ?? 'unranked');
+                $zoneProgress = $rankProgressData($zoneRankData);
+                $zoneExercises = [];
+                foreach ((array) ($wkExerciseRanks ?? []) as $exr) {
+                    if ((string) ($exr['muscle_group'] ?? '') === $zoneKey && (bool) ($exr['rank']['rankable'] ?? false)) {
+                        $zoneExercises[] = $exr;
+                    }
+                }
+                $zoneWeekly = (array) ($wkRankZoneWeekly ?? []);
+                $zoneMaxVol = 0.0;
+                foreach ($zoneWeekly as $zw) {
+                    $zoneMaxVol = max($zoneMaxVol, (float) ($zw['volume'] ?? 0));
+                }
+                ?>
+                <a class="workouts-stats-back" href="/?page=workouts&amp;view=ranks&amp;rank_section=body"><span aria-hidden="true">&larr;</span><?= e(t('workouts.rank_zone_back')) ?></a>
+                <article class="panel workouts-rank-zone-head" data-rank="<?= e($zoneRankKey) ?>">
+                    <span class="workouts-muscle-token" data-rank="<?= e($zoneRankKey) ?>"><?= e(strtoupper(substr($zoneKey, 0, 2))) ?></span>
+                    <div class="workouts-rank-zone-head-copy">
+                        <h2><?= e($muscleLabel($zoneKey)) ?></h2>
+                        <small><?= e(t('workouts.ranked_count', ['ranked' => (int) ($zoneRank['ranked_count'] ?? 0), 'total' => (int) ($zoneRank['catalog_count'] ?? 0)])) ?> · <?= e(t('workouts.rank_points_short', ['points' => number_format((float) $zoneProgress['score'], 1, '.', '')])) ?></small>
+                        <span class="workouts-rank-mini-progress" aria-hidden="true"><i style="width: <?= (int) $zoneProgress['progress'] ?>%"></i></span>
+                    </div>
+                    <span class="workouts-rank-badge" data-rank="<?= e($zoneRankKey) ?>"><?= e($rankLabel($zoneRankKey)) ?></span>
+                </article>
+                <article class="panel workouts-rank-section-panel">
+                    <div class="panel-head"><div><p class="eyebrow"><?= e(t('workouts.rank_zone_contrib')) ?></p><h2><?= e(t('workouts.exercises')) ?></h2></div><span class="workouts-rank-section-count"><?= count($zoneExercises) ?></span></div>
+                    <?php if ($zoneExercises === []): ?>
+                        <p class="muted panel-inline-empty"><?= e(t('workouts.no_data')) ?></p>
+                    <?php else: ?>
+                        <ul class="workouts-rank-zone-contrib-list">
+                            <?php foreach ($zoneExercises as $zex): ?>
+                                <?php $zexRank = (array) ($zex['rank'] ?? []); $zexKey = (string) ($zexRank['key'] ?? 'unranked'); $zexScore = (float) ($zexRank['score'] ?? 0); ?>
+                                <li>
+                                    <a href="/?page=workouts&amp;view=stats&amp;exercise_stats=<?= (int) ($zex['id'] ?? 0) ?>">
+                                        <span class="workouts-rank-badge" data-rank="<?= e($zexKey) ?>"><?= e($rankLabel($zexKey)) ?></span>
+                                        <span class="workouts-rank-zone-contrib-copy"><strong><?= e((string) ($zex['display_name'] ?? $zex['name'] ?? '')) ?></strong><small><?= e(t('workouts.rank_points_short', ['points' => number_format($zexScore, 1, '.', '')])) ?></small></span>
+                                        <span class="workouts-stats-session-arrow" aria-hidden="true">&rsaquo;</span>
+                                    </a>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                </article>
+                <?php $zoneRankHistory = (array) ($wkRankZoneHistory ?? []); ?>
+                <?php if (count($zoneRankHistory) >= 2): ?>
+                    <?php $zoneRankMax = 0.0; foreach ($zoneRankHistory as $zrh) { $zoneRankMax = max($zoneRankMax, (float) ($zrh['score'] ?? 0)); } ?>
+                    <article class="panel workouts-analytics-chart-panel">
+                        <div class="panel-head workouts-analytics-panel-head"><div><p class="eyebrow"><?= e(t('workouts.exercise_progress')) ?></p><h2><?= e(t('workouts.rank_points_history')) ?></h2></div></div>
+                        <div class="workouts-bar-chart" role="img" aria-label="<?= e(t('workouts.rank_points_history')) ?>">
+                            <?php foreach ($zoneRankHistory as $zrh): ?>
+                                <?php $zrhH = $zoneRankMax > 0 ? max(3, (int) round(((float) ($zrh['score'] ?? 0) / $zoneRankMax) * 100)) : 3; ?>
+                                <div class="workouts-bar-col">
+                                    <div class="workouts-bar" style="height: <?= $zrhH ?>%" title="<?= e(number_format((float) ($zrh['score'] ?? 0), 1, '.', '')) ?> pts"></div>
+                                    <span class="workouts-bar-label"><?= e(format_date_eu((string) ($zrh['date'] ?? ''))) ?></span>
+                                    <span class="workouts-bar-sub"><?= e(number_format((float) ($zrh['score'] ?? 0), 0, '.', '')) ?></span>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </article>
+                <?php endif; ?>
+                <?php if ($zoneMaxVol > 0): ?>
+                    <article class="panel workouts-analytics-chart-panel">
+                        <div class="panel-head workouts-analytics-panel-head"><div><p class="eyebrow"><?= e(t('workouts.last_8_weeks')) ?></p><h2><?= e(t('workouts.rank_zone_history')) ?></h2></div></div>
+                        <div class="workouts-bar-chart" role="img" aria-label="<?= e(t('workouts.rank_zone_history')) ?>">
+                            <?php foreach ($zoneWeekly as $zw): ?>
+                                <?php $zh = $zoneMaxVol > 0 ? max(3, (int) round(((float) ($zw['volume'] ?? 0) / $zoneMaxVol) * 100)) : 3; ?>
+                                <div class="workouts-bar-col">
+                                    <div class="workouts-bar" style="height: <?= $zh ?>%" title="<?= e(number_format((float) ($zw['volume'] ?? 0), 0, '.', ' ')) ?> kg"></div>
+                                    <span class="workouts-bar-label"><?= e((string) ($zw['label'] ?? '')) ?></span>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </article>
+                <?php endif; ?>
+            <?php else: ?>
+                <article class="panel workouts-rank-section-panel">
+                    <div class="panel-head"><div><h2><?= e(t('workouts.body_part_ranks')) ?></h2></div><span class="workouts-rank-section-count"><?= count((array) ($wkMuscleRanks ?? [])) ?></span></div>
+                    <div class="workouts-body-rank-grid">
+                        <?php foreach ((array) ($wkMuscleRanks ?? []) as $muscleRank): ?>
+                            <?php $rank = (array) ($muscleRank['rank'] ?? []); $rankKey = (string) ($rank['key'] ?? 'unranked'); $bodyRankProgress = $rankProgressData($rank); ?>
+                            <a class="workouts-body-rank-card" data-rank="<?= e($rankKey) ?>" href="/?page=workouts&view=ranks&rank_section=body&zone=<?= e((string) $muscleRank['muscle']) ?>">
+                                <span class="workouts-muscle-token"><?= e(strtoupper(substr((string) $muscleRank['muscle'], 0, 2))) ?></span>
+                                <span><strong><?= e($muscleLabel((string) $muscleRank['muscle'])) ?></strong><small><?= e(t('workouts.ranked_count', ['ranked' => (int) $muscleRank['ranked_count'], 'total' => (int) $muscleRank['catalog_count']])) ?> · <?= e(t('workouts.rank_points_short', ['points' => number_format((float) $bodyRankProgress['score'], 1, '.', '')])) ?></small><span class="workouts-rank-mini-progress" aria-hidden="true"><i style="width: <?= (int) $bodyRankProgress['progress'] ?>%"></i></span></span>
+                                <span class="workouts-rank-badge" data-rank="<?= e($rankKey) ?>"><?= e($rankLabel($rankKey)) ?></span>
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+                </article>
+            <?php endif; ?>
         <?php elseif ($rankSection === 'exercises'): ?>
             <article class="panel workouts-rank-section-panel">
                 <div class="panel-head"><div><h2><?= e(t('workouts.exercise_ranks')) ?></h2></div><span class="workouts-rank-section-count"><?= count($rankableExerciseRanks) ?></span></div>
@@ -1641,7 +1760,13 @@ $libraryClearUrl = $libraryUrl([
         <?php endif; ?>
 
         <?php if ($sessionExercises === []): ?>
-            <p class="muted"><?= e(t('workouts.no_exercises')) ?></p>
+            <div class="workouts-session-empty">
+                <span class="workouts-session-empty-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
+                <p><?= e(t('workouts.no_exercises')) ?></p>
+                <?php if (!$sessionDone): ?>
+                    <a class="btn btn-primary workouts-session-empty-add" href="/?page=workouts&amp;view=library&amp;target_session_id=<?= $sid ?>"><span aria-hidden="true"><?= activity_icon_svg('plus') ?></span> <?= e(t('workouts.add_exercise')) ?></a>
+                <?php endif; ?>
+            </div>
         <?php else: ?>
             <?php if (count($sessionExercises) > 1): ?>
                 <?php $activeSessionCover = $sessionExerciseCoverAsset($activeSessionExercise); ?>
@@ -1819,18 +1944,11 @@ $libraryClearUrl = $libraryUrl([
         <?php endif; ?>
 
         <?php if (!$sessionDone): ?>
-            <details class="workouts-session-options">
-                <summary>
-                    <span aria-hidden="true"><?= activity_icon_svg('sliders') ?></span>
-                    <strong><?= e(t('workouts.more_options')) ?></strong>
-                    <small><?= e(t('workouts.count_challenge')) ?></small>
-                    <b aria-hidden="true">+</b>
-                </summary>
-                <label class="check standalone-check workouts-count-check">
-                    <input type="checkbox" name="count_challenge" value="1" checked form="workouts-session-finish-<?= $sid ?>">
-                    <span><strong><?= e(t('workouts.count_challenge')) ?></strong><small><?= e(t('workouts.count_challenge_hint')) ?></small></span>
-                </label>
-            </details>
+            <label class="workouts-session-count-toggle">
+                <input type="checkbox" name="count_challenge" value="1" checked form="workouts-session-finish-<?= $sid ?>">
+                <span class="workouts-session-count-copy"><strong><?= e(t('workouts.count_challenge')) ?></strong><small><?= e(t('workouts.count_challenge_hint')) ?></small></span>
+                <span class="workouts-session-count-switch" aria-hidden="true"></span>
+            </label>
             <div class="workouts-session-footer">
                 <form id="workouts-session-finish-<?= $sid ?>" method="post" action="/?page=workouts" class="stack workouts-finish-form" data-workout-session-end data-workout-session-action data-session-id="<?= $sid ?>">
                     <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
@@ -1934,7 +2052,7 @@ $libraryClearUrl = $libraryUrl([
                     ?>
                     <article class="workouts-session-detail-exercise">
                         <div class="workouts-session-detail-exercise-head">
-                            <a href="/?page=workouts&amp;exercise_id=<?= (int) ($dex['exercise_def_id'] ?? 0) ?>"><strong><?= e((string) ($dex['exercise_name'] ?? '')) ?></strong></a>
+                            <a href="/?page=workouts&amp;view=stats&amp;exercise_stats=<?= (int) ($dex['exercise_def_id'] ?? 0) ?>"><strong><?= e((string) ($dex['exercise_name'] ?? '')) ?></strong></a>
                             <span class="muted small"><?= e($muscleLabel((string) ($dex['muscle_group'] ?? ''))) ?></span>
                         </div>
                         <?php if ($dexSets === []): ?>
@@ -1955,6 +2073,77 @@ $libraryClearUrl = $libraryUrl([
                     </article>
                 <?php endforeach; ?>
             </div>
+        <?php endif; ?>
+    <?php elseif (!empty($wkStatsExercise)): ?>
+        <?php
+        $exStat = (array) $wkStatsExercise;
+        $exHist = (array) $wkStatsExerciseHistory;
+        $exName = (string) ($exStat['display_name'] ?? $exStat['name'] ?? '');
+        $exBest1rm = 0.0;
+        $exTopWeight = 0.0;
+        $exTotalVol = 0.0;
+        $exMaxChart = 0.0;
+        foreach ($exHist as $h) {
+            $exBest1rm = max($exBest1rm, (float) $h['best_1rm']);
+            $exTopWeight = max($exTopWeight, (float) $h['top_weight']);
+            $exTotalVol += (float) $h['volume'];
+            $exMaxChart = max($exMaxChart, (float) $h['best_1rm']);
+        }
+        $exFirst1rm = $exHist !== [] ? (float) $exHist[0]['best_1rm'] : 0.0;
+        $exLast1rm = $exHist !== [] ? (float) $exHist[count($exHist) - 1]['best_1rm'] : 0.0;
+        $exDelta = $exLast1rm - $exFirst1rm;
+        ?>
+        <a class="workouts-stats-back" href="/?page=workouts&amp;view=stats"><span aria-hidden="true">&larr;</span><?= e(t('workouts.stats_back')) ?></a>
+        <article class="panel workouts-session-detail-card">
+            <div class="workouts-session-detail-head">
+                <span class="workouts-session-detail-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
+                <div>
+                    <h2><?= e($exName) ?></h2>
+                    <p class="muted small"><?= e($muscleLabel((string) ($exStat['muscle_group'] ?? ''))) ?></p>
+                </div>
+            </div>
+            <div class="workouts-session-detail-metrics">
+                <span><small><?= e(t('workouts.best_1rm')) ?></small><strong><?= e($compactStatNumber($exBest1rm, ' kg')) ?></strong></span>
+                <span><small><?= e(t('workouts.top_weight')) ?></small><strong><?= e($compactStatNumber($exTopWeight, ' kg')) ?></strong></span>
+                <span><small><?= e(t('workouts.stat_volume')) ?></small><strong><?= e($compactStatNumber($exTotalVol, ' kg')) ?></strong></span>
+                <span><small><?= e(t('workouts.stat_sessions')) ?></small><strong><?= count($exHist) ?></strong></span>
+            </div>
+        </article>
+        <?php if ($exHist === []): ?>
+            <div class="workouts-analytics-empty"><span aria-hidden="true"><?= activity_icon_svg('run') ?></span><p><?= e(t('workouts.no_data')) ?></p></div>
+        <?php else: ?>
+            <article class="panel workouts-analytics-chart-panel">
+                <div class="panel-head workouts-analytics-panel-head">
+                    <div><p class="eyebrow"><?= e(t('workouts.exercise_progress')) ?></p><h2><?= e(t('workouts.best_1rm')) ?></h2></div>
+                    <?php if (abs($exDelta) >= 0.05): ?>
+                        <span class="workouts-stats-delta <?= $exDelta > 0 ? 'is-up' : 'is-down' ?>"><?= $exDelta > 0 ? '&uarr;' : '&darr;' ?> <?= e($compactStatNumber(abs($exDelta), ' kg')) ?></span>
+                    <?php endif; ?>
+                </div>
+                <div class="workouts-bar-chart" role="img" aria-label="<?= e(t('workouts.exercise_progress')) ?>">
+                    <?php foreach ($exHist as $h): ?>
+                        <?php $hh = $exMaxChart > 0 ? max(3, (int) round(((float) $h['best_1rm'] / $exMaxChart) * 100)) : 3; ?>
+                        <div class="workouts-bar-col">
+                            <div class="workouts-bar" style="height: <?= $hh ?>%" title="<?= e(number_format((float) $h['best_1rm'], 1, '.', '')) ?> kg"></div>
+                            <span class="workouts-bar-label"><?= e(format_date_eu((string) $h['date'])) ?></span>
+                            <span class="workouts-bar-sub"><?= e($compactStatNumber((float) $h['best_1rm'])) ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </article>
+            <article class="panel workouts-analytics-detail-card">
+                <div class="panel-head workouts-analytics-panel-head"><div><p class="eyebrow"><?= count($exHist) ?></p><h2><?= e(t('workouts.recent_sessions')) ?></h2></div></div>
+                <ul class="workouts-stats-session-list">
+                    <?php foreach (array_reverse($exHist) as $h): ?>
+                        <li>
+                            <a href="/?page=workouts&amp;view=stats&amp;detail_session=<?= (int) $h['session_id'] ?>">
+                                <span class="workouts-stats-session-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
+                                <span class="workouts-stats-session-copy"><strong><?= e((string) ($h['title'] ?? '') !== '' ? (string) $h['title'] : t('workouts.session')) ?></strong><small><?= e(format_date_eu((string) $h['date'])) ?> &middot; <?= e($compactStatNumber((float) $h['volume'], ' kg')) ?></small></span>
+                                <span class="workouts-stats-session-arrow" aria-hidden="true">&rsaquo;</span>
+                            </a>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            </article>
         <?php endif; ?>
     <?php else: ?>
         <div class="workouts-analytics-kpis" aria-label="<?= e(t('workouts.training_snapshot')) ?>">
@@ -2016,6 +2205,30 @@ $libraryClearUrl = $libraryUrl([
         <?php endif; ?>
     </article>
 
+    <article class="panel workouts-analytics-compare">
+        <div class="panel-head workouts-analytics-panel-head"><div><p class="eyebrow"><?= e(t('workouts.trend')) ?></p><h2><?= e(t('workouts.volume_trend')) ?></h2></div></div>
+        <?php
+        $compareRows = [
+            ['label' => t('workouts.this_week'), 'prev_label' => t('workouts.previous_week'), 'now' => (float) ($currentWeek['volume'] ?? 0), 'prev' => (float) ($previousWeek['volume'] ?? 0)],
+            ['label' => t('workouts.this_month'), 'prev_label' => t('workouts.previous_month'), 'now' => (float) (($wkStatsCompare ?? [])['month_now'] ?? 0), 'prev' => (float) (($wkStatsCompare ?? [])['month_prev'] ?? 0)],
+        ];
+        ?>
+        <div class="workouts-compare-grid">
+            <?php foreach ($compareRows as $cmp): ?>
+                <?php
+                $cmpDelta = $cmp['now'] - $cmp['prev'];
+                $cmpPct = $cmp['prev'] > 0 ? (int) round(($cmpDelta / $cmp['prev']) * 100) : ($cmp['now'] > 0 ? 100 : 0);
+                $cmpDir = $cmpDelta > 0.05 ? 'is-up' : ($cmpDelta < -0.05 ? 'is-down' : 'is-flat');
+                ?>
+                <div class="workouts-compare-row">
+                    <div class="workouts-compare-copy"><strong><?= e($compactStatNumber($cmp['now'], ' kg')) ?></strong><small><?= e($cmp['label']) ?></small></div>
+                    <span class="workouts-stats-delta <?= $cmpDir ?>"><?= $cmpDir === 'is-up' ? '&uarr; ' : ($cmpDir === 'is-down' ? '&darr; ' : '') ?><?= $cmpDir === 'is-flat' ? e(t('workouts.no_change')) : (abs($cmpPct) . '%') ?></span>
+                    <small class="workouts-compare-prev"><?= e($cmp['prev_label']) ?>: <?= e($compactStatNumber($cmp['prev'], ' kg')) ?></small>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </article>
+
     <div class="grid-two workouts-analytics-detail-grid">
         <article class="panel workouts-analytics-detail-card">
             <div class="panel-head workouts-analytics-panel-head"><div><p class="eyebrow"><?= count((array) ($stats['frequent'] ?? [])) ?></p><h2><?= e(t('workouts.frequent_exercises')) ?></h2></div></div>
@@ -2024,7 +2237,7 @@ $libraryClearUrl = $libraryUrl([
             <?php else: ?>
                 <ol class="workouts-analytics-frequency-list">
                     <?php foreach ((array) $stats['frequent'] as $frequencyIndex => $fx): ?>
-                        <li><span><?= $frequencyIndex + 1 ?></span><strong><?= e((string) $fx['name']) ?></strong><b><?= (int) $fx['count'] ?>×</b></li>
+                        <li><?php if ((int) ($fx['id'] ?? 0) > 0): ?><a class="workouts-frequency-link" href="/?page=workouts&amp;view=stats&amp;exercise_stats=<?= (int) $fx['id'] ?>" aria-label="<?= e((string) $fx['name']) ?>"></a><?php endif; ?><span><?= $frequencyIndex + 1 ?></span><strong><?= e((string) $fx['name']) ?></strong><b><?= (int) $fx['count'] ?>×</b></li>
                     <?php endforeach; ?>
                 </ol>
             <?php endif; ?>

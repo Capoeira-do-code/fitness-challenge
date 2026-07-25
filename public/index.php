@@ -3140,6 +3140,18 @@ if ($page === 'workouts') {
             case 'routine_duplicate':
                 $dup = wk_routine_duplicate($pdo, $backRoutine, $meId);
                 redirect($dup > 0 ? '/?page=workouts&routine_id=' . $dup : '/?page=workouts');
+            case 'routine_copy_friend':
+                $copySourceUser = max(0, (int) ($_POST['source_user_id'] ?? 0));
+                $copySourceRoutine = max(0, (int) ($_POST['source_routine_id'] ?? 0));
+                if ($copySourceUser > 0 && $copySourceRoutine > 0 && friends_status($pdo, $meId, $copySourceUser) === 'friends') {
+                    $copiedRoutineId = wk_routine_copy_from_user($pdo, $copySourceRoutine, $copySourceUser, $meId);
+                    if ($copiedRoutineId > 0) {
+                        flash_set('success', t('workouts.routine_copied'));
+                        redirect('/?page=workouts&routine_id=' . $copiedRoutineId);
+                    }
+                }
+                flash_set('error', t('workouts.routine_copy_failed'));
+                redirect($copySourceUser > 0 ? '/?page=profile&user_id=' . $copySourceUser : '/?page=workouts');
             case 'routine_reorder':
                 $ids = array_map('intval', (array) ($_POST['order'] ?? []));
                 wk_routine_reorder($pdo, $meId, $ids);
@@ -3859,6 +3871,22 @@ if ($page === 'workouts') {
                 $wkStatsSessionExercises = wk_session_exercises($pdo, $statsDetailSessionId);
             }
         }
+        // Per-exercise stats sub-page (volume / est. 1RM over time).
+        $statsExerciseId = max(0, (int) ($_GET['exercise_stats'] ?? 0));
+        $wkStatsExercise = null;
+        $wkStatsExerciseHistory = [];
+        if ($statsExerciseId > 0) {
+            $wkStatsExercise = wk_exercise_get_for_user($pdo, $statsExerciseId, $meId);
+            if ($wkStatsExercise !== null) {
+                $wkStatsExerciseHistory = wk_exercise_history($pdo, $meId, $statsExerciseId, 30);
+            }
+        }
+        // Month-over-month volume: previous month = [prevStart, thisStart).
+        $statsMonthNowStart = (new DateTimeImmutable('first day of this month'))->format('Y-m-d 00:00:00');
+        $statsMonthPrevStart = (new DateTimeImmutable('first day of last month'))->format('Y-m-d 00:00:00');
+        $statsMonthNowVol = (float) wk_summary_for_user($pdo, $meId, $statsMonthNowStart)['volume'];
+        $statsMonthPrevVol = max(0.0, (float) wk_summary_for_user($pdo, $meId, $statsMonthPrevStart)['volume'] - $statsMonthNowVol);
+        $wkStatsCompare = ['month_now' => $statsMonthNowVol, 'month_prev' => $statsMonthPrevVol];
         $wkStats = [
             'weekly' => wk_weekly_series($pdo, $meId, 8),
             'streak' => wk_streak_days($pdo, $meId),
@@ -3895,6 +3923,23 @@ if ($page === 'workouts') {
         $wkOverallRank = wk_overall_rank_for_user($pdo, $meId);
         $wkRankProfile = wk_user_rank_profile($pdo, $meId);
         $wkRankLeaderboard = wk_rank_leaderboard($pdo, 20, $wkRankDivision);
+        // Record today's rank so the history accrues whenever ranks are viewed.
+        wk_capture_rank_snapshots($pdo, $meId, $wkMuscleRanks, $wkOverallRank);
+        // Body-zone rank detail: what contributes + volume/rank history for one muscle.
+        $wkRankZone = trim((string) ($_GET['zone'] ?? ''));
+        $wkRankZoneWeekly = [];
+        $wkRankZoneHistory = [];
+        if ($wkRankZone !== '') {
+            $wkRankZoneWeekly = wk_muscle_weekly_volume($pdo, $meId, $wkRankZone, 8);
+            $wkRankZoneHistory = wk_rank_snapshot_history($pdo, $meId, 'muscle', $wkRankZone, 30);
+        }
+    }
+
+    // Friends' routines you can browse and copy, surfaced on the training overview.
+    $wkFriendRoutines = [];
+    if ($wkView === 'list') {
+        friends_ensure_schema($pdo);
+        $wkFriendRoutines = wk_friends_routines($pdo, $meId);
     }
 
     $sinceMonth = (new DateTimeImmutable('first day of this month'))->format('Y-m-d 00:00:00');
@@ -3941,6 +3986,10 @@ if ($page === 'workouts') {
         'wkStats' => $wkStats,
         'wkStatsSession' => $wkStatsSession ?? null,
         'wkStatsSessionExercises' => $wkStatsSessionExercises ?? [],
+        'wkStatsExercise' => $wkStatsExercise ?? null,
+        'wkStatsExerciseHistory' => $wkStatsExerciseHistory ?? [],
+        'wkFriendRoutines' => $wkFriendRoutines ?? [],
+        'wkStatsCompare' => $wkStatsCompare ?? null,
         'wkRoutines' => wk_routines_for_user($pdo, $meId, true),
         'wkRoutine' => $wkRoutine,
         'wkRoutineExercises' => $wkRoutineExercises,
@@ -3977,6 +4026,9 @@ if ($page === 'workouts') {
         'wkContextOptions' => wk_context_options(),
         'wkExerciseRanks' => $wkExerciseRanks,
         'wkMuscleRanks' => $wkMuscleRanks,
+        'wkRankZone' => $wkRankZone ?? '',
+        'wkRankZoneWeekly' => $wkRankZoneWeekly ?? [],
+        'wkRankZoneHistory' => $wkRankZoneHistory ?? [],
         'wkOverallRank' => $wkOverallRank,
         'wkRankLeaderboard' => $wkRankLeaderboard,
         'wkRankProfile' => $wkRankProfile,
