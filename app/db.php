@@ -385,11 +385,13 @@ function initialize_database(PDO $pdo, array $config): void
             title TEXT NOT NULL,
             target_type TEXT NOT NULL,
             target_value REAL,
+            target_exercise_id INTEGER,
             baseline_value REAL,
             current_value REAL NOT NULL DEFAULT 0,
             secondary_enabled INTEGER NOT NULL DEFAULT 0,
             secondary_target_type TEXT,
             secondary_target_value REAL,
+            secondary_exercise_id INTEGER,
             secondary_baseline_value REAL,
             secondary_current_value REAL NOT NULL DEFAULT 0,
             secondary_unit_label TEXT,
@@ -975,6 +977,10 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'daily_log_workout_field_values', 'data_key', 'TEXT');
     ensure_column($pdo, 'daily_log_workout_field_values', 'value_text', 'TEXT');
     ensure_column($pdo, 'daily_log_workout_field_values', 'value_number', 'REAL');
+
+    // Optional exercise scope for "weight_lifted" goals (NULL = every exercise counts).
+    ensure_column($pdo, 'goals', 'target_exercise_id', 'INTEGER');
+    ensure_column($pdo, 'goals', 'secondary_exercise_id', 'INTEGER');
 }
 
 function ensure_column(PDO $pdo, string $table, string $column, string $definition): void

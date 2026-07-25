@@ -437,7 +437,7 @@ body[data-page="dashboard"] .dashboard-widget-heading > * {
 body[data-page="dashboard"] .dashboard-widget-heading h2 {
     display: -webkit-box;
     overflow: hidden;
-    color: var(--ink);
+    color: var(--primary-dark);
     font-size: 1rem;
     font-weight: 800;
     line-height: 1.2;
@@ -483,6 +483,14 @@ body[data-page="dashboard"] .dashboard-panel-head-actions {
 }
 body[data-page="dashboard"] .dashboard-panel-head-actions > :not(.dashboard-panel-collapse-toggle) {
     min-width: 0;
+}
+/* The "Ver todos" link has `min-width: 0` above so it CAN shrink, but with
+   no floor it was shrinking past its own text, clipping mid-word instead of
+   wrapping the title next to it. Keep it at its natural width and let the
+   title truncate instead — that's the side with more slack. */
+body[data-page="dashboard"] .dashboard-panel-head-actions > .dashboard-panel-action {
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 body[data-page="dashboard"] .dashboard-panel-collapse-toggle {
     display: grid;

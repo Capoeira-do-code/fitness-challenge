@@ -27834,6 +27834,46 @@ body.theme-active-dark .team-avatar-stack-more {
     color: color-mix(in srgb, var(--primary) 55%, #ffffff);
 }
 
+.team-active-challenge-contributors {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    margin: 0.2rem 0 0;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.team-active-challenge-contributors:hover { background: color-mix(in srgb, var(--primary) 6%, transparent); }
+.team-active-challenge-contributors .team-avatar-stack { margin: 0; }
+.team-active-challenge-contributors small { color: var(--muted); }
+.team-active-challenge-contributors small strong { color: var(--ink); }
+
+.team-challenge-detail-contributors { margin-top: 0.9rem; }
+.team-challenge-detail-contributors > strong { display: block; margin-bottom: 0.5rem; }
+
+.dashboard-active-challenge-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-bottom: 0.6rem;
+}
+.dashboard-active-challenge-contributors { margin-top: 0.8rem; }
+.dashboard-active-challenge-contributors > p { margin: 0 0 0.5rem; }
+
+/* This widget only ever has 2 stats (current/target), so it needs its own
+   2-up grid — the shared .compact-metrics-row is hardcoded to 4 columns,
+   which squeezes goal values like "9500 steps" into a quarter-width cell
+   and wraps them onto two lines. */
+.dashboard-active-challenge-panel .compact-metrics-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 /* Social hub — the hierarchy screen is capped at 760px, so the 12-col
    two-up layout is always cramped and clips content. Stack the overview
    cards full-width at every size. */
@@ -30454,7 +30494,8 @@ body[data-page="competitions"] .competitions-screen .squad-add-form {
     gap: 0.5rem;
 }
 
-.team-goal-form > label {
+.team-goal-form > label,
+.team-goal-datetime-row > label {
     min-width: 0;
     gap: 0.22rem;
     font-size: 0.67rem;
@@ -30464,6 +30505,15 @@ body[data-page="competitions"] .competitions-screen .squad-add-form {
 .team-goal-form :is(input, select) {
     width: 100%;
     min-width: 0;
+}
+
+/* Fecha + hora share a row instead of each taking a full one — date gets more
+   room than time since native date pickers need it, but both stay wide
+   enough to render without clipping. */
+.team-goal-datetime-row {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: 0.5rem;
 }
 
 .team-goal-form .check {

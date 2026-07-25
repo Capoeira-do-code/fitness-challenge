@@ -11,8 +11,8 @@ $penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
 $dashboardLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
 $dashboardMobileSurfaces = ['mobile_today', 'mobile_primary', 'mobile_progress', 'mobile_shortcuts'];
 $dashboardDesktopWidgets = $penaltiesEnabled
-    ? ['kpis', 'training_rank', 'training_progress', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
-    : ['kpis', 'training_rank', 'training_progress', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'ranking', 'weekly'];
+    ? ['kpis', 'training_rank', 'training_progress', 'active_challenge', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
+    : ['kpis', 'training_rank', 'training_progress', 'active_challenge', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'ranking', 'weekly'];
 $dashboardWidgets = array_merge($dashboardMobileSurfaces, $dashboardDesktopWidgets);
 $visibleWidgets = [];
 if (is_array($dashboardLayout) && $dashboardLayout !== []) {
@@ -786,6 +786,77 @@ $topbarControls = ob_get_clean();
             </article>
         <?php endif; ?>
 
+        <?php if ($showWidget('active_challenge')): ?>
+            <?php
+            $dActiveChallenge = is_array($dashboardActiveChallenge ?? null) ? (array) $dashboardActiveChallenge : null;
+            $dChallengeContributions = array_slice((array) ($dashboardActiveChallengeContributions ?? []), 0, 5);
+            $dChallengeTeam = is_array($dashboardTeam ?? null) ? (array) $dashboardTeam : [];
+            $dChallengeUrl = '/?' . http_build_query(['page' => 'team', 'team_id' => (int) ($dChallengeTeam['id'] ?? 0), 'section' => 'challenge']);
+            ?>
+            <article class="panel dashboard-panel dashboard-active-challenge-panel compact-panel glass-panel<?= $dashboardPanelClass('dashboard.active-challenge') ?>" data-dashboard-widget="active_challenge" data-dashboard-collapsible="dashboard.active-challenge"<?= $dashboardPanelStateAttribute('dashboard.active-challenge') ?> style="order: <?= $contentWidgetOrder('active_challenge') ?>">
+                <div class="panel-head dashboard-panel-head-compact">
+                    <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span>
+                    <div>
+                        <p class="eyebrow"><?= e(t('team.active_challenge_title')) ?></p>
+                        <p class="muted small"><?= e($dActiveChallenge !== null ? (string) ($dActiveChallenge['title'] ?? t('team.challenges')) : t('dashboard.active_challenge_empty_hint')) ?></p>
+                    </div>
+                    <div class="dashboard-panel-head-actions">
+                        <a class="btn btn-ghost small dashboard-panel-action" href="<?= e($dChallengeUrl) ?>"><?= e(t('common.view_all')) ?></a>
+                        <?= $dashboardCollapseControl('dashboard.active-challenge') ?>
+                    </div>
+                </div>
+                <?php if ($dActiveChallenge !== null): ?>
+                    <?php
+                    $dChallengeIsExpired = (bool) ($dActiveChallenge['is_expired'] ?? false);
+                    $dChallengeIsPreStart = !empty($dActiveChallenge['is_pre_start']);
+                    $dChallengeStatusText = $dChallengeIsExpired
+                        ? t('goals.expired')
+                        : ($dChallengeIsPreStart ? t('team.active_challenge_starts_in') : t('team.active_challenge_started'));
+                    $dChallengeStatusClass = $dChallengeIsExpired ? 'status-expired' : ($dChallengeIsPreStart ? 'status-pending' : 'status-active');
+                    $dChallengeProgressVisual = (float) ($dActiveChallenge['progress_pct_visual'] ?? 0);
+                    $dChallengeProgressRaw = (float) ($dActiveChallenge['progress_pct_raw'] ?? 0);
+                    $dChallengeDue = trim((string) ($dActiveChallenge['due_date'] ?? ''));
+                    ?>
+                    <div class="dashboard-active-challenge-status-row">
+                        <span class="team-active-challenge-status <?= e($dChallengeStatusClass) ?>"><?= e($dChallengeStatusText) ?></span>
+                        <?php if ($dChallengeDue !== ''): ?><small class="muted"><?= e(t('goals.due_date')) ?>: <?= e(format_date_eu($dChallengeDue)) ?></small><?php endif; ?>
+                    </div>
+                    <div class="goal-progress-wrap">
+                        <div class="goal-progress"><span style="width: <?= e((string) $dChallengeProgressVisual) ?>%"></span></div>
+                        <small><?= e(number_format($dChallengeProgressRaw, 0, '.', '')) ?>%</small>
+                    </div>
+                    <div class="compact-metrics-row">
+                        <span><small><?= e(t('team.active_challenge_progress')) ?></small><strong><?= e((string) ($dActiveChallenge['progress_display'] ?? '0')) ?></strong></span>
+                        <span><small><?= e(t('team.active_challenge_target')) ?></small><strong><?= e((string) ($dActiveChallenge['target_display'] ?? '-')) ?></strong></span>
+                    </div>
+                    <?php if ($dChallengeContributions !== []): ?>
+                        <div class="dashboard-active-challenge-contributors">
+                            <p class="muted small"><?= e(t('team.challenge_top_contributors')) ?></p>
+                            <div class="leaderboard-list">
+                                <?php foreach ($dChallengeContributions as $dContribIdx => $dContrib): ?>
+                                    <?php $dContribAvatarUrl = avatar_url($dContrib); ?>
+                                    <article class="leaderboard-row compact-list-item">
+                                        <strong class="leaderboard-position">#<?= $dContribIdx + 1 ?></strong>
+                                        <a class="leaderboard-name user-profile-link" href="/?page=profile&amp;user_id=<?= (int) ($dContrib['id'] ?? 0) ?>">
+                                            <?php if ($dContribAvatarUrl !== ''): ?>
+                                                <img class="member-avatar leaderboard-avatar" src="<?= e($dContribAvatarUrl) ?>" alt="<?= e((string) ($dContrib['display_name'] ?? '')) ?>">
+                                            <?php else: ?>
+                                                <span class="member-avatar member-avatar-initials leaderboard-avatar"><?= e(initials_for((string) ($dContrib['display_name'] ?? ''))) ?></span>
+                                            <?php endif; ?>
+                                            <span class="leaderboard-name-text"><strong><?= e((string) ($dContrib['display_name'] ?? '')) ?></strong></span>
+                                        </a>
+                                        <div class="leaderboard-end"><strong><?= e((string) ($dContrib['contribution_display'] ?? '0')) ?></strong></div>
+                                    </article>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <p class="muted panel-inline-empty"><?= e(t('dashboard.active_challenge_empty')) ?></p>
+                <?php endif; ?>
+            </article>
+        <?php endif; ?>
+
         <?php if ($showWidget('achievements')): ?>
         <article class="panel dashboard-panel dashboard-achievements-panel dashboard-span-full compact-panel glass-panel<?= $dashboardPanelClass('dashboard.achievements') ?>" data-dashboard-widget="achievements" data-dashboard-collapsible="dashboard.achievements"<?= $dashboardPanelStateAttribute('dashboard.achievements') ?> style="order: <?= $contentWidgetOrder('achievements') ?>">
             <div class="panel-head dashboard-panel-head-compact">
@@ -1014,7 +1085,7 @@ $topbarControls = ob_get_clean();
                 <div class="panel-head">
                     <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('sword') ?></span>
                     <div class="dashboard-widget-heading">
-                        <h2><?= e(t('nav.duels')) ?></h2>
+                        <h2 class="eyebrow"><?= e(t('nav.duels')) ?></h2>
                         <p class="muted small"><?= e(t('social_hub.duels_hint')) ?></p>
                     </div>
                     <div class="dashboard-panel-head-actions">
@@ -1039,7 +1110,7 @@ $topbarControls = ob_get_clean();
                 <div class="panel-head">
                     <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span>
                     <div class="dashboard-widget-heading">
-                        <h2><?= e(t('nav.competitions')) ?></h2>
+                        <h2 class="eyebrow"><?= e(t('nav.competitions')) ?></h2>
                         <p class="muted small"><?= e(t('social_hub.competitions_hint')) ?></p>
                     </div>
                     <div class="dashboard-panel-head-actions">
@@ -1062,7 +1133,7 @@ $topbarControls = ob_get_clean();
         <article class="panel dashboard-panel dashboard-span-full dashboard-weekly-history compact-panel glass-panel<?= $dashboardPanelClass('dashboard.weekly-panel') ?>" data-dashboard-widget="weekly" data-dashboard-collapsible="dashboard.weekly-panel"<?= $dashboardPanelStateAttribute('dashboard.weekly-panel') ?> style="order: <?= $contentWidgetOrder('weekly') ?>">
             <div class="panel-head">
                 <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('list') ?></span>
-                <h2><?= e(t('dashboard.weekly_history')) ?></h2>
+                <h2 class="eyebrow"><?= e(t('dashboard.weekly_history')) ?></h2>
                 <div class="dashboard-panel-head-actions"><a class="btn btn-ghost small dashboard-panel-action" href="/?page=week_editor&user_id=<?= (int) $selectedUser['id'] ?>&week=<?= e(date_to_iso_week((string) $selectedWeekStart)) ?>"><?= e(t('table.open_editor')) ?></a><?= $dashboardCollapseControl('dashboard.weekly-panel') ?></div>
             </div>
             <div class="table-wrap dashboard-desktop-table-wrap" data-collapsible-list data-persist-collapsible="dashboard.weekly" data-mobile-count="6" data-desktop-count="6">
@@ -1212,7 +1283,7 @@ $topbarControls = ob_get_clean();
 
         <?php if ($showWidget('ranking')): ?>
         <article class="panel dashboard-panel dashboard-ranking-panel compact-panel glass-panel<?= $dashboardPanelClass('dashboard.ranking-panel') ?>" data-dashboard-widget="ranking" data-dashboard-collapsible="dashboard.ranking-panel"<?= $dashboardPanelStateAttribute('dashboard.ranking-panel') ?> data-collapsible-list data-persist-collapsible="dashboard.ranking" data-mobile-count="6" data-desktop-count="10" style="order: <?= $contentWidgetOrder('ranking') ?>">
-            <div class="panel-head dashboard-panel-head-compact"><span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><h2><?= e(t('dashboard.challenge_ranking')) ?></h2><?= $dashboardCollapseControl('dashboard.ranking-panel') ?></div>
+            <div class="panel-head dashboard-panel-head-compact"><span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><h2 class="eyebrow"><?= e(t('dashboard.challenge_ranking')) ?></h2><?= $dashboardCollapseControl('dashboard.ranking-panel') ?></div>
             <div class="leaderboard-list">
                 <?php $leaderboardTopScore = (float) (($metricsOrdered[0]['score'] ?? 0)); $leaderboardPreviousScore = null; $leaderboardPreviousRank = 0; ?>
                 <?php foreach ($metricsOrdered as $leaderboardIndex => $metric): ?>
@@ -1246,6 +1317,7 @@ $topbarControls = ob_get_clean();
                         <div class="leaderboard-end">
                             <strong class="leaderboard-score"><?= e((string) $metric['score']) ?></strong>
                             <small class="leaderboard-steps"><?= e(number_format((int) ($metric['total_steps'] ?? 0), 0, '.', ' ')) ?> <?= e(t('metric.steps')) ?></small>
+                            <small class="leaderboard-steps"><?= e(number_format((float) ($metric['total_km'] ?? 0), 1, ',', '.')) ?> km · <?= (int) max((int) ($metric['workout_count'] ?? 0), (int) ($metric['workout_success'] ?? 0)) ?> <?= e(t('metric.workouts')) ?></small>
                         </div>
                     </article>
                 <?php endforeach; ?>

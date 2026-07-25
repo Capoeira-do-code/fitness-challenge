@@ -4328,16 +4328,16 @@ function create_goal(PDO $pdo, array $payload, int $actorUserId): int
     db_execute(
         $pdo,
         'INSERT INTO goals (
-            scope, team_id, user_id, title, target_type, target_value,
+            scope, team_id, user_id, title, target_type, target_value, target_exercise_id,
             baseline_value, current_value,
-            secondary_enabled, secondary_target_type, secondary_target_value, secondary_baseline_value, secondary_current_value, secondary_unit_label,
+            secondary_enabled, secondary_target_type, secondary_target_value, secondary_exercise_id, secondary_baseline_value, secondary_current_value, secondary_unit_label,
             unit_label, reward_text, start_date, start_time, due_date, due_time,
             status, completed_at, created_by, created_at, updated_at
         )
          VALUES (
-            :scope, :team_id, :user_id, :title, :target_type, :target_value,
+            :scope, :team_id, :user_id, :title, :target_type, :target_value, :target_exercise_id,
             :baseline_value, :current_value,
-            :secondary_enabled, :secondary_target_type, :secondary_target_value, :secondary_baseline_value, :secondary_current_value, :secondary_unit_label,
+            :secondary_enabled, :secondary_target_type, :secondary_target_value, :secondary_exercise_id, :secondary_baseline_value, :secondary_current_value, :secondary_unit_label,
             :unit_label, :reward_text, :start_date, :start_time, :due_date, :due_time,
             "active", NULL, :created_by, :created_at, :updated_at
         )',
@@ -4348,11 +4348,13 @@ function create_goal(PDO $pdo, array $payload, int $actorUserId): int
             ':title' => $payload['title'],
             ':target_type' => $payload['target_type'],
             ':target_value' => $payload['target_value'],
+            ':target_exercise_id' => $payload['target_exercise_id'] ?? null,
             ':baseline_value' => $payload['baseline_value'] ?? null,
             ':current_value' => $payload['current_value'] ?? 0,
             ':secondary_enabled' => !empty($payload['secondary_enabled']) ? 1 : 0,
             ':secondary_target_type' => $payload['secondary_target_type'] ?? null,
             ':secondary_target_value' => $payload['secondary_target_value'] ?? null,
+            ':secondary_exercise_id' => $payload['secondary_exercise_id'] ?? null,
             ':secondary_baseline_value' => $payload['secondary_baseline_value'] ?? null,
             ':secondary_current_value' => $payload['secondary_current_value'] ?? 0,
             ':secondary_unit_label' => $payload['secondary_unit_label'] ?? null,
@@ -4420,11 +4422,13 @@ function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): v
          SET title = :title,
              target_type = :target_type,
              target_value = :target_value,
+             target_exercise_id = :target_exercise_id,
              baseline_value = CASE WHEN :set_baseline_value = 1 THEN :baseline_value ELSE baseline_value END,
              current_value = CASE WHEN :set_current_value = 1 THEN :current_value ELSE current_value END,
              secondary_enabled = :secondary_enabled,
              secondary_target_type = :secondary_target_type,
              secondary_target_value = :secondary_target_value,
+             secondary_exercise_id = :secondary_exercise_id,
              secondary_baseline_value = CASE WHEN :set_secondary_baseline_value = 1 THEN :secondary_baseline_value ELSE secondary_baseline_value END,
              secondary_current_value = CASE WHEN :set_secondary_current_value = 1 THEN :secondary_current_value ELSE secondary_current_value END,
              secondary_unit_label = :secondary_unit_label,
@@ -4440,6 +4444,7 @@ function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): v
             ':title' => trim((string) $payload['title']),
             ':target_type' => trim((string) $payload['target_type']),
             ':target_value' => $payload['target_value'],
+            ':target_exercise_id' => $payload['target_exercise_id'] ?? null,
             ':set_baseline_value' => $setBaselineValue ? 1 : 0,
             ':baseline_value' => $setBaselineValue ? $payload['baseline_value'] : null,
             ':set_current_value' => $setCurrentValue ? 1 : 0,
@@ -4447,6 +4452,7 @@ function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): v
             ':secondary_enabled' => !empty($payload['secondary_enabled']) ? 1 : 0,
             ':secondary_target_type' => $payload['secondary_target_type'] ?? null,
             ':secondary_target_value' => $payload['secondary_target_value'] ?? null,
+            ':secondary_exercise_id' => $payload['secondary_exercise_id'] ?? null,
             ':set_secondary_baseline_value' => $setSecondaryBaselineValue ? 1 : 0,
             ':secondary_baseline_value' => $setSecondaryBaselineValue ? $payload['secondary_baseline_value'] : null,
             ':set_secondary_current_value' => $setSecondaryCurrentValue ? 1 : 0,
@@ -4489,7 +4495,7 @@ function normalize_goal_target_type(string $targetType): string
     if ($normalized === 'weight_progress') {
         $normalized = 'weight';
     }
-    if (in_array($normalized, ['steps', 'km', 'workouts', 'score', 'strikes', 'penalties', 'weight', 'calories_burned', 'calories_consumed', 'custom'], true)) {
+    if (in_array($normalized, ['steps', 'km', 'workouts', 'score', 'strikes', 'penalties', 'weight', 'weight_lifted', 'calories_burned', 'calories_consumed', 'custom'], true)) {
         return $normalized;
     }
     if (str_starts_with($normalized, 'habit:')) {
@@ -4538,6 +4544,7 @@ function goal_target_default_unit(string $targetType): string
         'penalties' => 'EUR',
         'strikes' => 'strikes',
         'weight' => '%',
+        'weight_lifted' => 'kg',
         default => '',
     };
 }
@@ -4545,13 +4552,13 @@ function goal_target_default_unit(string $targetType): string
 function goal_target_type_uses_time_window(string $targetType): bool
 {
     $type = normalize_goal_target_type($targetType);
-    return in_array($type, ['steps', 'km', 'workouts', 'calories_burned', 'calories_consumed'], true);
+    return in_array($type, ['steps', 'km', 'workouts', 'calories_burned', 'calories_consumed', 'weight_lifted'], true);
 }
 
 function goal_target_type_uses_dynamic_window_progress(string $targetType): bool
 {
     $type = normalize_goal_target_type($targetType);
-    return in_array($type, ['steps', 'km', 'workouts', 'calories_burned'], true);
+    return in_array($type, ['steps', 'km', 'workouts', 'calories_burned', 'weight_lifted'], true);
 }
 
 function goal_secondary_target_type(array $goal): string
@@ -4582,6 +4589,7 @@ function goal_team_metric_value_for_type(string $targetType, array $teamSummary,
         'calories_burned' => (float) ($teamSummary['calories_burned'] ?? 0),
         'calories_consumed' => (float) ($teamSummary['calories_consumed'] ?? 0),
         'weight' => (float) ($teamSummary['weight_progress'] ?? 0),
+        'weight_lifted' => (float) ($teamSummary['weight_lifted'] ?? $fallback ?? 0),
         default => (float) ($fallback ?? 0),
     };
 }
@@ -4623,11 +4631,16 @@ function goal_time_window_bounds(array $goal, ?DateTimeImmutable $now = null): a
     return ['start' => $startAt, 'end' => $endAt];
 }
 
-function goal_window_metric_value_for_team(PDO $pdo, array $goal, array $teamUsers): float
+/**
+ * Raw (unrounded) per-user sums for a goal's time window, keyed by user id.
+ * Shared base for the team-total and per-user contribution readers below so
+ * they can't drift apart on the underlying query/approval logic.
+ */
+function goal_window_metric_raw_sums_by_user(PDO $pdo, array $goal, array $teamUsers): array
 {
     $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
     if (!goal_target_type_uses_time_window($type)) {
-        return 0.0;
+        return ['type' => $type, 'sums' => []];
     }
 
     $userIds = [];
@@ -4638,7 +4651,14 @@ function goal_window_metric_value_for_team(PDO $pdo, array $goal, array $teamUse
         }
     }
     if ($userIds === []) {
-        return 0.0;
+        return ['type' => $type, 'sums' => []];
+    }
+
+    if ($type === 'weight_lifted') {
+        return [
+            'type' => $type,
+            'sums' => goal_weight_lifted_raw_sums_by_user($pdo, $goal, array_keys($userIds)),
+        ];
     }
 
     $bounds = goal_time_window_bounds($goal);
@@ -4694,53 +4714,159 @@ function goal_window_metric_value_for_team(PDO $pdo, array $goal, array $teamUse
     );
 
     $approvalsByUserDate = load_approval_status_by_user_date($pdo, $startDate, $endDate);
-    $sumSteps = 0.0;
-    $sumKm = 0.0;
-    $sumWorkouts = 0.0;
-    $sumCaloriesBurned = 0.0;
+    $sums = [];
+    foreach (array_keys($userIds) as $userId) {
+        $sums[$userId] = ['steps' => 0.0, 'km' => 0.0, 'workouts' => 0.0, 'calories_burned' => 0.0, 'calories_consumed' => 0.0];
+    }
     foreach ($logRows as $logRow) {
         $logAt = log_datetime_from_values((string) ($logRow['log_date'] ?? ''), $logRow['log_time'] ?? '', '00:00');
         if ($logAt === null || $logAt < $startAt || $logAt > $endAt) {
             continue;
         }
 
-        $sumSteps += max(0, (int) ($logRow['steps'] ?? 0));
-        $sumKm += max(0.0, (float) ($logRow['distance_km'] ?? 0));
-        $sumCaloriesBurned += max(0.0, (float) ($logRow['training_calories_burned'] ?? 0));
-
         $userId = (int) ($logRow['user_id'] ?? 0);
+        if (!isset($sums[$userId])) {
+            continue;
+        }
+
+        $sums[$userId]['steps'] += max(0, (int) ($logRow['steps'] ?? 0));
+        $sums[$userId]['km'] += max(0.0, (float) ($logRow['distance_km'] ?? 0));
+        $sums[$userId]['calories_burned'] += max(0.0, (float) ($logRow['training_calories_burned'] ?? 0));
+
         $logDate = (string) ($logRow['log_date'] ?? '');
         $approvalsByDate = is_array($approvalsByUserDate[$userId] ?? null) ? (array) $approvalsByUserDate[$userId] : [];
-        $sumWorkouts += counted_workout_total($logRow, $approvalsByDate, $logDate);
+        $sums[$userId]['workouts'] += counted_workout_total($logRow, $approvalsByDate, $logDate);
     }
 
     if ($type === 'calories_consumed') {
         $photoRows = db_fetch_all(
             $pdo,
-            'SELECT log_date, calories
+            'SELECT user_id, log_date, calories
              FROM photo_entries
              WHERE log_date BETWEEN :start_date AND :end_date
                AND user_id IN (' . implode(',', $placeholders) . ')',
             $params
         );
-        $sumCaloriesConsumed = 0.0;
         foreach ($photoRows as $photoRow) {
             $photoAt = log_datetime_from_values((string) ($photoRow['log_date'] ?? ''), '00:00', '00:00');
             if ($photoAt === null || $photoAt < $startAt || $photoAt > $endAt) {
                 continue;
             }
-            $sumCaloriesConsumed += max(0.0, (float) ($photoRow['calories'] ?? 0));
+            $userId = (int) ($photoRow['user_id'] ?? 0);
+            if (!isset($sums[$userId])) {
+                continue;
+            }
+            $sums[$userId]['calories_consumed'] += max(0.0, (float) ($photoRow['calories'] ?? 0));
         }
-        return round($sumCaloriesConsumed, 2);
+    }
+
+    return ['type' => $type, 'sums' => $sums];
+}
+
+/**
+ * Training volume (weight x reps, completed sets only) per user for a goal's
+ * time window. A different data source than the daily_logs-based types above
+ * (workout_sets, not daily_logs), so it's kept as its own query rather than
+ * bolted onto the shared one. Honors $goal['target_exercise_id'] when set, so
+ * a goal can target "any lifting" or one specific exercise.
+ */
+function goal_weight_lifted_raw_sums_by_user(PDO $pdo, array $goal, array $userIds): array
+{
+    $sums = [];
+    foreach ($userIds as $userId) {
+        $sums[(int) $userId] = ['weight_lifted' => 0.0];
+    }
+    if ($sums === []) {
+        return $sums;
+    }
+
+    $bounds = goal_time_window_bounds($goal);
+    /** @var DateTimeImmutable $startAt */
+    $startAt = $bounds['start'];
+    /** @var DateTimeImmutable $endAt */
+    $endAt = $bounds['end'];
+
+    $params = [
+        ':start_at' => $startAt->format('Y-m-d H:i:s'),
+        ':end_at' => $endAt->format('Y-m-d H:i:s'),
+    ];
+    $placeholders = [];
+    foreach (array_keys($sums) as $index => $userId) {
+        $key = ':goal_wl_uid_' . $index;
+        $placeholders[] = $key;
+        $params[$key] = $userId;
+    }
+
+    $exerciseId = (int) ($goal['target_exercise_id'] ?? 0);
+    $exerciseCond = '';
+    if ($exerciseId > 0) {
+        $exerciseCond = ' AND se.exercise_def_id = :exercise_id';
+        $params[':exercise_id'] = $exerciseId;
+    }
+
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT s.user_id,
+                COALESCE(SUM(CASE WHEN ws.completed = 1 AND ws.weight IS NOT NULL AND ws.reps IS NOT NULL THEN ws.weight * ws.reps ELSE 0 END), 0) AS volume
+         FROM workout_sessions s
+         JOIN session_exercises se ON se.session_id = s.id' . $exerciseCond . '
+         LEFT JOIN workout_sets ws ON ws.session_exercise_id = se.id
+         WHERE s.status = \'completed\'
+           AND datetime(s.started_at) BETWEEN datetime(:start_at) AND datetime(:end_at)
+           AND s.user_id IN (' . implode(',', $placeholders) . ')
+         GROUP BY s.user_id',
+        $params
+    );
+
+    foreach ($rows as $row) {
+        $userId = (int) ($row['user_id'] ?? 0);
+        if (!isset($sums[$userId])) {
+            continue;
+        }
+        $sums[$userId]['weight_lifted'] = max(0.0, (float) ($row['volume'] ?? 0));
+    }
+
+    return $sums;
+}
+
+function goal_window_metric_value_for_team(PDO $pdo, array $goal, array $teamUsers): float
+{
+    $raw = goal_window_metric_raw_sums_by_user($pdo, $goal, $teamUsers);
+    $type = (string) $raw['type'];
+    if ($raw['sums'] === []) {
+        return 0.0;
+    }
+
+    $total = 0.0;
+    foreach ($raw['sums'] as $values) {
+        $total += $values[$type] ?? 0.0;
     }
 
     return match ($type) {
-        'steps' => (float) ((int) round($sumSteps)),
-        'km' => round($sumKm, 2),
-        'workouts' => (float) ((int) round($sumWorkouts)),
-        'calories_burned' => round($sumCaloriesBurned, 2),
+        'steps', 'workouts' => (float) ((int) round($total)),
+        'km', 'calories_burned', 'calories_consumed', 'weight_lifted' => round($total, 2),
         default => 0.0,
     };
+}
+
+/** Same window/metric as goal_window_metric_value_for_team(), broken down per user id. */
+function goal_window_metric_values_by_user(PDO $pdo, array $goal, array $teamUsers): array
+{
+    $raw = goal_window_metric_raw_sums_by_user($pdo, $goal, $teamUsers);
+    $type = (string) $raw['type'];
+    if ($raw['sums'] === [] || !in_array($type, ['steps', 'km', 'workouts', 'calories_burned', 'calories_consumed', 'weight_lifted'], true)) {
+        return [];
+    }
+
+    $result = [];
+    foreach ($raw['sums'] as $userId => $values) {
+        $value = $values[$type] ?? 0.0;
+        $result[$userId] = in_array($type, ['steps', 'workouts'], true)
+            ? (float) ((int) round($value))
+            : round($value, 2);
+    }
+
+    return $result;
 }
 
 function goal_team_baseline_from_start(
@@ -4858,11 +4984,12 @@ function goal_team_progress_state(PDO $pdo, array $goal, array $teamSummary, ?Da
         $targetType = normalize_goal_target_type((string) ($goal[$targetTypeField] ?? 'custom'));
         $targetValue = max(0.0, (float) ($goal[$targetValueField] ?? 0));
         $useDynamicWindowProgress = goal_target_type_uses_dynamic_window_progress($targetType);
+        $exerciseIdField = $targetTypeField === 'secondary_target_type' ? 'secondary_exercise_id' : 'target_exercise_id';
 
         $currentMetricValue = $useDynamicWindowProgress
             ? goal_window_metric_value_for_team(
                 $pdo,
-                array_merge($goal, ['target_type' => $targetType]),
+                array_merge($goal, ['target_type' => $targetType, 'target_exercise_id' => $goal[$exerciseIdField] ?? null]),
                 $resolveTeamUsers()
             )
             : goal_team_metric_value_for_type(
@@ -4981,6 +5108,297 @@ function goal_team_progress_state(PDO $pdo, array $goal, array $teamSummary, ?Da
         'primary' => $primaryState,
         'secondary' => $secondaryState,
     ];
+}
+
+/**
+ * Builds the full view-ready goal list for a team (progress, countdown, formatted
+ * values) and picks the "active challenge" (soonest due, then oldest) from it.
+ * Shared by the team page and the dashboard's active-challenge widget so both
+ * stay in sync instead of re-deriving this independently.
+ */
+function team_challenge_view_data(PDO $pdo, array $team, array $teamSummaryTotal, array $settings): array
+{
+    $goalTypeLabel = static function (string $targetType): string {
+        return match (normalize_goal_target_type($targetType)) {
+            'steps' => t('metric.steps'),
+            'km' => t('metric.distance_km'),
+            'workouts' => t('metric.workouts'),
+            'score' => t('metric.score'),
+            'calories_burned' => t('dashboard.calories_burned'),
+            'calories_consumed' => t('dashboard.calories_consumed'),
+            'penalties' => t('metric.penalty'),
+            'strikes' => t('metric.strikes'),
+            'weight' => t('metric.weight'),
+            'weight_lifted' => t('metric.weight_lifted'),
+            default => t('common.other'),
+        };
+    };
+    $formatGoalValue = static function (float $value, string $targetType, ?string $unitLabel = null): string {
+        $normalizedType = normalize_goal_target_type($targetType);
+        $unit = trim((string) $unitLabel);
+        if ($unit === '') {
+            $unit = goal_target_default_unit($normalizedType);
+        }
+        $rounded = match ($normalizedType) {
+            'steps', 'workouts', 'strikes', 'calories_burned', 'calories_consumed', 'weight_lifted' => (string) ((int) round($value)),
+            'score', 'weight' => number_format($value, 1, '.', ''),
+            'km' => number_format($value, 2, '.', ''),
+            'penalties' => number_format($value, 2, '.', ''),
+            default => fmod($value, 1.0) === 0.0 ? (string) ((int) $value) : number_format($value, 2, '.', ''),
+        };
+        if ($normalizedType === 'penalties') {
+            return '€' . $rounded;
+        }
+
+        return $unit !== '' ? $rounded . ' ' . $unit : $rounded;
+    };
+    $exerciseNameCache = [];
+    $exerciseName = static function (?int $exerciseId) use ($pdo, &$exerciseNameCache): ?string {
+        $exerciseId = (int) ($exerciseId ?? 0);
+        if ($exerciseId <= 0) {
+            return null;
+        }
+        if (!array_key_exists($exerciseId, $exerciseNameCache)) {
+            $exercise = wk_exercise_get($pdo, $exerciseId);
+            $exerciseNameCache[$exerciseId] = $exercise !== null ? (string) $exercise['display_name'] : null;
+        }
+
+        return $exerciseNameCache[$exerciseId];
+    };
+    $teamGoalsRaw = list_goals($pdo, 'team', null, (int) $team['id']);
+    $teamGoals = [];
+    $nowDateTime = new DateTimeImmutable('now');
+    $formatDebugNumber = static function (float $value): string {
+        $normalized = rtrim(rtrim(number_format($value, 4, '.', ''), '0'), '.');
+        return $normalized !== '' ? $normalized : '0';
+    };
+    $challengeEndDeadline = null;
+    $challengeEndDate = to_date((string) ($settings['challenge_end'] ?? ''), '');
+    if ($challengeEndDate !== '') {
+        try {
+            $challengeEndDeadline = new DateTimeImmutable($challengeEndDate . ' 23:59:59');
+        } catch (Throwable) {
+            $challengeEndDeadline = null;
+        }
+    }
+    foreach ($teamGoalsRaw as $goal) {
+        $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
+        $unitLabel = trim((string) ($goal['unit_label'] ?? ''));
+        $goalStartDate = trim((string) ($goal['start_date'] ?? ''));
+        $goalStartTime = $goalStartDate !== '' ? normalize_goal_start_time((string) ($goal['start_time'] ?? ''), '00:00') : '';
+        $goalStartAt = $goalStartDate !== '' ? log_datetime_from_values($goalStartDate, $goalStartTime, '00:00') : null;
+        $goalDueDate = trim((string) ($goal['due_date'] ?? ''));
+        $goalDueTime = normalize_goal_due_time($goalDueDate !== '' ? $goalDueDate : null, (string) ($goal['due_time'] ?? ''));
+        $goalDueAt = $goalDueDate !== '' && $goalDueTime !== null ? log_datetime_from_values($goalDueDate, $goalDueTime, '23:59') : null;
+        if ($unitLabel === '') {
+            $unitLabel = goal_target_default_unit($type);
+        }
+        $goalProgressState = goal_team_progress_state($pdo, $goal, $teamSummaryTotal, $nowDateTime);
+        $goalForProgress = is_array($goalProgressState['goal'] ?? null) ? (array) $goalProgressState['goal'] : $goal;
+        $primaryState = is_array($goalProgressState['primary'] ?? null) ? (array) $goalProgressState['primary'] : [];
+        $secondaryState = is_array($goalProgressState['secondary'] ?? null) ? (array) $goalProgressState['secondary'] : [];
+        $hasStarted = !empty($goalProgressState['has_started']);
+        $currentMetricValue = (float) ($primaryState['current_metric_value'] ?? $goalProgressState['current_metric_value'] ?? goal_team_metric_value($goalForProgress, $teamSummaryTotal));
+        $progressValue = $hasStarted ? (float) ($primaryState['progress_value'] ?? $goalProgressState['progress_value'] ?? 0.0) : 0.0;
+        $targetValue = max(0.0, (float) ($goal['target_value'] ?? 0));
+        if ((string) ($goal['status'] ?? '') === 'complete' && $targetValue > 0 && $progressValue < $targetValue) {
+            $progressValue = $targetValue;
+        }
+        $primaryProgressPctRaw = $targetValue > 0 ? round(($progressValue / $targetValue) * 100, 1) : 0.0;
+        $progressPctRaw = (float) ($goalProgressState['progress_pct_raw'] ?? $primaryProgressPctRaw);
+        $secondaryEnabled = $secondaryState !== [];
+        $secondaryType = normalize_goal_target_type((string) ($secondaryState['target_type'] ?? $goalForProgress['secondary_target_type'] ?? 'custom'));
+        $secondaryUnitLabel = trim((string) ($goalForProgress['secondary_unit_label'] ?? ''));
+        if ($secondaryUnitLabel === '') {
+            $secondaryUnitLabel = goal_target_default_unit($secondaryType);
+        }
+        $secondaryTargetValue = $secondaryEnabled ? max(0.0, (float) ($secondaryState['target_value'] ?? $goalForProgress['secondary_target_value'] ?? 0)) : 0.0;
+        $secondaryProgressValue = $secondaryEnabled && $hasStarted
+            ? (float) ($secondaryState['progress_value'] ?? 0.0)
+            : 0.0;
+        if ($secondaryEnabled && (string) ($goal['status'] ?? '') === 'complete' && $secondaryTargetValue > 0 && $secondaryProgressValue < $secondaryTargetValue) {
+            $secondaryProgressValue = $secondaryTargetValue;
+        }
+        $secondaryProgressPctRaw = $secondaryEnabled && $secondaryTargetValue > 0
+            ? round(($secondaryProgressValue / $secondaryTargetValue) * 100, 1)
+            : 0.0;
+        if ($secondaryEnabled) {
+            $progressPctRaw = round(($primaryProgressPctRaw + $secondaryProgressPctRaw) / 2, 1);
+        }
+        if ((string) ($goal['status'] ?? '') === 'complete') {
+            $progressPctRaw = max(100.0, $progressPctRaw);
+        }
+        $progressPctVisual = max(0.0, min(100.0, $progressPctRaw));
+        $baselineValue = is_numeric($goalForProgress['baseline_value'] ?? null) ? (float) $goalForProgress['baseline_value'] : $currentMetricValue;
+        $baselineDisplay = is_numeric($goalForProgress['baseline_value'] ?? null)
+            ? $formatGoalValue($baselineValue, $type, $unitLabel)
+            : '-';
+        $secondaryBaselineValue = is_numeric($goalForProgress['secondary_baseline_value'] ?? null)
+            ? (float) $goalForProgress['secondary_baseline_value']
+            : null;
+        $secondaryBaselineDisplay = $secondaryEnabled && $secondaryBaselineValue !== null
+            ? $formatGoalValue($secondaryBaselineValue, $secondaryType, $secondaryUnitLabel)
+            : '-';
+
+        $countdownMode = 'end';
+        $countdownDeadline = null;
+        $countdownNextDeadline = null;
+        if (!$hasStarted && $goalStartAt instanceof DateTimeImmutable) {
+            $countdownMode = 'start';
+            $countdownDeadline = $goalStartAt;
+            $countdownNextDeadline = $goalDueAt instanceof DateTimeImmutable ? $goalDueAt : $challengeEndDeadline;
+        } else {
+            $countdownDeadline = $goalDueAt instanceof DateTimeImmutable ? $goalDueAt : $challengeEndDeadline;
+        }
+        $isExpired = $hasStarted && $countdownMode === 'end' && $countdownDeadline instanceof DateTimeImmutable && $nowDateTime >= $countdownDeadline;
+
+        $teamGoals[] = array_merge($goalForProgress, [
+            'target_type_normalized' => $type,
+            'target_type_label' => $goalTypeLabel($type),
+            'target_exercise_name' => $exerciseName($goal['target_exercise_id'] ?? null),
+            'unit_label_resolved' => $unitLabel,
+            'is_lower_better' => goal_target_type_is_lower_better($type),
+            'direction_label' => goal_target_type_is_lower_better($type) ? t('goals.lower_better') : t('goals.higher_better'),
+            'has_started' => $hasStarted,
+            'progress_value' => $progressValue,
+            'progress_pct' => $progressPctRaw,
+            'progress_pct_raw' => $progressPctRaw,
+            'progress_pct_visual' => $progressPctVisual,
+            'progress_display' => $formatGoalValue($progressValue, $type, $unitLabel),
+            'target_display' => $formatGoalValue($targetValue, $type, $unitLabel),
+            'baseline_display' => $baselineDisplay,
+            'primary_progress_display' => $formatGoalValue($progressValue, $type, $unitLabel),
+            'primary_target_display' => $formatGoalValue($targetValue, $type, $unitLabel),
+            'primary_progress_pct_raw' => $primaryProgressPctRaw,
+            'primary_progress_pct_visual' => max(0.0, min(100.0, $primaryProgressPctRaw)),
+            'secondary_enabled' => $secondaryEnabled,
+            'secondary_target_value' => $secondaryTargetValue,
+            'secondary_target_type_normalized' => $secondaryType,
+            'secondary_target_type_label' => $secondaryEnabled ? $goalTypeLabel($secondaryType) : null,
+            'secondary_exercise_name' => $secondaryEnabled ? $exerciseName($goal['secondary_exercise_id'] ?? null) : null,
+            'secondary_unit_label_resolved' => $secondaryUnitLabel,
+            'secondary_progress_value' => $secondaryProgressValue,
+            'secondary_progress_display' => $secondaryEnabled ? $formatGoalValue($secondaryProgressValue, $secondaryType, $secondaryUnitLabel) : null,
+            'secondary_target_display' => $secondaryEnabled ? $formatGoalValue($secondaryTargetValue, $secondaryType, $secondaryUnitLabel) : null,
+            'secondary_baseline_display' => $secondaryBaselineDisplay,
+            'secondary_progress_pct_raw' => $secondaryProgressPctRaw,
+            'secondary_progress_pct_visual' => max(0.0, min(100.0, $secondaryProgressPctRaw)),
+            'current_metric_value' => $currentMetricValue,
+            'baseline_value_numeric' => is_numeric($goalForProgress['baseline_value'] ?? null) ? (float) $goalForProgress['baseline_value'] : null,
+            'progress_debug' => [
+                'current_metric' => $formatDebugNumber($currentMetricValue),
+                'baseline' => is_numeric($goalForProgress['baseline_value'] ?? null) ? $formatDebugNumber((float) $goalForProgress['baseline_value']) : 'null',
+                'progress' => $formatDebugNumber($progressValue),
+                'target' => $formatDebugNumber($targetValue),
+                'secondary_progress' => $secondaryEnabled ? $formatDebugNumber($secondaryProgressValue) : 'n/a',
+                'secondary_target' => $secondaryEnabled ? $formatDebugNumber($secondaryTargetValue) : 'n/a',
+            ],
+            'start_date_resolved' => $goalStartDate !== '' ? $goalStartDate : null,
+            'start_time_resolved' => $goalStartDate !== '' ? $goalStartTime : null,
+            'start_at' => $goalStartAt instanceof DateTimeImmutable ? $goalStartAt->format('Y-m-d H:i') : null,
+            'due_time_resolved' => $goalDueTime,
+            'due_at' => $goalDueDate !== '' && $goalDueTime !== null ? ($goalDueDate . ' ' . $goalDueTime) : null,
+            'countdown_mode' => $countdownMode,
+            'countdown_deadline_iso' => $countdownDeadline instanceof DateTimeImmutable ? $countdownDeadline->format(DateTimeInterface::ATOM) : null,
+            'countdown_next_deadline_iso' => $countdownNextDeadline instanceof DateTimeImmutable ? $countdownNextDeadline->format(DateTimeInterface::ATOM) : null,
+            'is_expired' => $isExpired,
+        ]);
+    }
+
+    $teamActiveChallenge = null;
+    $activeGoals = array_values(array_filter(
+        $teamGoals,
+        static fn(array $goal): bool => (string) ($goal['status'] ?? '') === 'active'
+    ));
+    if ($activeGoals !== []) {
+        usort(
+            $activeGoals,
+            static function (array $left, array $right): int {
+                $leftDueRaw = trim((string) ($left['due_at'] ?? ''));
+                $rightDueRaw = trim((string) ($right['due_at'] ?? ''));
+                $leftHasDue = $leftDueRaw !== '';
+                $rightHasDue = $rightDueRaw !== '';
+
+                if ($leftHasDue && !$rightHasDue) {
+                    return -1;
+                }
+                if (!$leftHasDue && $rightHasDue) {
+                    return 1;
+                }
+                if ($leftHasDue && $rightHasDue) {
+                    if ($leftDueRaw !== $rightDueRaw) {
+                        return strcmp($leftDueRaw, $rightDueRaw);
+                    }
+                }
+
+                return strcmp((string) ($left['created_at'] ?? ''), (string) ($right['created_at'] ?? ''));
+            }
+        );
+
+        $teamActiveChallenge = $activeGoals[0];
+        $isPreStart = empty($teamActiveChallenge['has_started']);
+        $teamActiveChallenge['is_pre_start'] = $isPreStart;
+        $teamActiveChallenge['countdown_mode'] = $isPreStart ? 'start' : 'end';
+        $teamActiveChallenge['countdown_label'] = $isPreStart
+            ? t('team.active_challenge_starts_in')
+            : t('team.active_challenge_time_left');
+        if ($isPreStart) {
+            $teamActiveChallenge['is_expired'] = false;
+        } elseif (!empty($teamActiveChallenge['countdown_deadline_iso'])) {
+            try {
+                $teamActiveChallenge['is_expired'] = $nowDateTime >= new DateTimeImmutable((string) $teamActiveChallenge['countdown_deadline_iso']);
+            } catch (Throwable) {
+                $teamActiveChallenge['is_expired'] = false;
+            }
+        } else {
+            $teamActiveChallenge['is_expired'] = false;
+        }
+    }
+
+    return ['goals' => $teamGoals, 'active' => $teamActiveChallenge];
+}
+
+/**
+ * Per-member contribution toward a challenge's target metric, ranked descending.
+ * Only additive metrics (summable per user) support a breakdown; other target
+ * types (weight, penalties, strikes, custom) return an empty list since "who
+ * contributed" doesn't make sense for them.
+ */
+function team_challenge_contributions(PDO $pdo, array $goal, array $teamUsers, array $metricsByUser): array
+{
+    $type = normalize_goal_target_type((string) ($goal['target_type_normalized'] ?? $goal['target_type'] ?? 'custom'));
+    $rows = [];
+
+    if ($type === 'score') {
+        foreach ($teamUsers as $user) {
+            $userId = (int) ($user['id'] ?? 0);
+            $value = (float) ($metricsByUser[$userId]['score'] ?? 0);
+            $rows[] = array_merge($user, [
+                'contribution_value' => $value,
+                'contribution_display' => number_format($value, 1, '.', ''),
+            ]);
+        }
+    } elseif (goal_target_type_uses_dynamic_window_progress($type) || $type === 'calories_consumed') {
+        $valuesByUser = goal_window_metric_values_by_user($pdo, $goal, $teamUsers);
+        foreach ($teamUsers as $user) {
+            $userId = (int) ($user['id'] ?? 0);
+            $value = (float) ($valuesByUser[$userId] ?? 0);
+            $rows[] = array_merge($user, [
+                'contribution_value' => $value,
+                'contribution_display' => match ($type) {
+                    'steps', 'workouts' => (string) ((int) round($value)),
+                    'km' => number_format($value, 2, '.', ''),
+                    default => number_format($value, 0, '.', ''),
+                },
+            ]);
+        }
+    } else {
+        return [];
+    }
+
+    usort($rows, static fn(array $a, array $b): int => ($b['contribution_value'] ?? 0.0) <=> ($a['contribution_value'] ?? 0.0));
+
+    return $rows;
 }
 
 function goal_target_reached_from_progress(array $goal, float $progressValue): bool
