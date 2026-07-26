@@ -6,7 +6,7 @@ $days = [];
 for ($i = 0; $i < 7; $i++) {
     $days[$i] = t('weekday.' . $i);
 }
-$entityTypes = ['daily_log', 'approval_request', 'user', 'team_membership', 'goal', 'achievement', 'workout_type', 'exercise_definition', 'workout_rank_tier', 'season', 'photo_entry', 'app_setting', 'system_backup', 'motivational_quote'];
+$entityTypes = ['daily_log', 'approval_request', 'user', 'team_membership', 'goal', 'achievement', 'workout_type', 'exercise_definition', 'workout_rank_tier', 'season', 'photo_entry', 'app_setting', 'system_backup', 'motivational_quote', 'deploy_port_settings'];
 $activeSection = (string) ($_GET['section'] ?? '');
 $allowedSections = ['users', 'registration_links', 'challenge', 'app', 'appearance', 'notion', 'telegram', 'backups', 'habits', 'workout_types', 'training', 'achievements', 'motivational_quotes', 'xp', 'audit'];
 if (!in_array($activeSection, $allowedSections, true)) {

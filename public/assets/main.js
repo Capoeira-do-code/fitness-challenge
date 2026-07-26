@@ -6636,6 +6636,10 @@ window.addEventListener('appinstalled', () => {
         }
     }
 
+    function goToInstallGuide() {
+        window.location.href = '/?page=pwa_install_guide';
+    }
+
     function initPwaInstallNudge() {
         document.querySelectorAll('[data-pwa-install-nudge]').forEach(function (root) {
             if (!(root instanceof HTMLElement)) return;
@@ -6670,7 +6674,7 @@ window.addEventListener('appinstalled', () => {
                 installButton.addEventListener('click', async function () {
                     var prompt = window.__fitnessPwaInstallPrompt;
                     if (!prompt || typeof prompt.prompt !== 'function') {
-                        showManualGuidance(root);
+                        goToInstallGuide();
                         return;
                     }
 
@@ -6718,6 +6722,100 @@ window.addEventListener('appinstalled', () => {
             else initPwaInstallNudge();
         });
     }
+})();
+
+/* Dedicated "how to install" guide page: picks a default tab/section from the
+   visitor's user agent, but always lets them switch to a different one manually. */
+(function () {
+    'use strict';
+
+    function detectPwaGuidePlatform() {
+        var userAgent = navigator.userAgent || '';
+        var isIos = /iPad|iPhone|iPod/i.test(userAgent)
+            || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        var isAndroid = /Android/i.test(userAgent);
+        // On iOS every browser embeds WebKit, so Safari itself is only reliably
+        // identifiable by the absence of every other browser's UA token.
+        var isIosSafari = isIos && !/CriOS|FxiOS|EdgiOS|OPiOS|mercury|DuckDuckGo/i.test(userAgent);
+
+        var androidBrowser = 'other';
+        if (isAndroid) {
+            if (/SamsungBrowser/i.test(userAgent)) {
+                androidBrowser = 'samsung';
+            } else if (/EdgA/i.test(userAgent)) {
+                androidBrowser = 'edge';
+            } else if (/Firefox/i.test(userAgent)) {
+                androidBrowser = 'firefox';
+            } else if (/Chrome/i.test(userAgent)) {
+                androidBrowser = 'chrome';
+            }
+        }
+
+        var tab = 'desktop';
+        if (isIos) tab = 'ios';
+        else if (isAndroid) tab = 'android';
+
+        return { tab: tab, isIos: isIos, isIosSafari: isIosSafari, isAndroid: isAndroid, androidBrowser: androidBrowser };
+    }
+
+    function selectPwaGuideAndroidBrowser(root, browserKey) {
+        root.querySelectorAll('[data-pwa-guide-android-browser]').forEach(function (section) {
+            section.hidden = section.dataset.pwaGuideAndroidBrowser !== browserKey;
+        });
+        root.querySelectorAll('[data-pwa-guide-android-select]').forEach(function (pill) {
+            pill.classList.toggle('is-active', pill.dataset.pwaGuideAndroidSelect === browserKey);
+        });
+    }
+
+    function selectPwaGuideTab(root, tabKey) {
+        root.querySelectorAll('[data-pwa-guide-tab]').forEach(function (tabButton) {
+            var active = tabButton.dataset.pwaGuideTab === tabKey;
+            tabButton.classList.toggle('is-active', active);
+            tabButton.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        root.querySelectorAll('[data-pwa-guide-panel]').forEach(function (panel) {
+            panel.hidden = panel.dataset.pwaGuidePanel !== tabKey;
+        });
+    }
+
+    function initPwaInstallGuide() {
+        var root = document.querySelector('[data-pwa-install-guide]');
+        if (!(root instanceof HTMLElement) || root.dataset.pwaGuideReady === '1') {
+            return;
+        }
+        root.dataset.pwaGuideReady = '1';
+
+        var platform = detectPwaGuidePlatform();
+
+        var iosWarning = root.querySelector('[data-pwa-guide-ios-warning]');
+        if (iosWarning instanceof HTMLElement) {
+            iosWarning.hidden = !(platform.isIos && !platform.isIosSafari);
+        }
+
+        selectPwaGuideAndroidBrowser(root, platform.androidBrowser);
+        selectPwaGuideTab(root, platform.tab);
+
+        root.querySelectorAll('[data-pwa-guide-tab]').forEach(function (tabButton) {
+            tabButton.addEventListener('click', function () {
+                var tabKey = tabButton.dataset.pwaGuideTab || 'desktop';
+                selectPwaGuideTab(root, tabKey);
+            });
+        });
+
+        root.querySelectorAll('[data-pwa-guide-android-select]').forEach(function (pill) {
+            pill.addEventListener('click', function () {
+                selectPwaGuideAndroidBrowser(root, pill.dataset.pwaGuideAndroidSelect || 'other');
+            });
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPwaInstallGuide);
+    } else {
+        initPwaInstallGuide();
+    }
+    document.addEventListener('pjax:loaded', initPwaInstallGuide);
+    document.addEventListener('fc:afterPageSwap', initPwaInstallGuide);
 })();
 
 /* Friend discovery: debounced, server-approved Instagram-style suggestions. */

@@ -1,4 +1,5 @@
 .tools/
+.env
 .env.live
 .artifacts/
 e2e-report/

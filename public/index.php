@@ -6106,6 +6106,14 @@ if ($page === 'quests') {
     ]);
 }
 
+if ($page === 'pwa_install_guide') {
+    render_view('pwa_install_guide', [
+        'title' => t('pwa_guide.title'),
+        'currentPage' => 'pwa_install_guide',
+        'currentUser' => $currentUser,
+    ]);
+}
+
 if ($page === 'season') {
     seasons_ensure_schema($pdo);
     $season = seasons_current($pdo);
@@ -7050,6 +7058,30 @@ if ($page === 'admin') {
             redirect('/?page=admin');
         }
 
+        if ($action === 'update_deploy_ports') {
+            require_admin($currentUser);
+            $httpPort = (int) ($_POST['http_port'] ?? 0);
+            $httpsPort = (int) ($_POST['https_port'] ?? 0);
+            $beforeStatus = deploy_port_settings_status();
+            try {
+                $afterStatus = deploy_port_settings_save($httpPort, $httpsPort);
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'deploy_ports_updated',
+                    'deploy_port_settings',
+                    $afterStatus['mode'],
+                    'Published HTTP/HTTPS ports updated.',
+                    ['http_port' => $beforeStatus['http_port'], 'https_port' => $beforeStatus['https_port'], 'path' => $beforeStatus['path']],
+                    ['http_port' => $afterStatus['http_port'], 'https_port' => $afterStatus['https_port'], 'path' => $afterStatus['path']]
+                );
+                flash_set('success', t('admin.deploy_ports_saved', ['command' => $afterStatus['apply_command']]));
+            } catch (Throwable $e) {
+                flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : t('flash.save_failed'));
+            }
+            redirect('/?page=admin&section=backups#deploy-ports');
+        }
+
         if ($action === 'update_backup_settings') {
             $enabled = bool_from_form('backup_auto_enabled') === 1;
             $frequency = normalize_backup_frequency((string) ($_POST['backup_frequency'] ?? 'daily'));
@@ -7524,6 +7556,7 @@ if ($page === 'admin') {
         'loginStyle' => login_style_normalize(app_setting($pdo, 'login_style', 'split')),
         'backupSettings' => $backupSettings,
         'systemBackups' => $systemBackups,
+        'deployPortSettings' => deploy_port_settings_status(),
         'integrationStatuses' => $integrationStatuses,
         'challengeSettings' => $challengeSettings,
         'challengeArchives' => $challengeArchives,

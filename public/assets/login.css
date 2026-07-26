@@ -224,6 +224,10 @@ body[data-page="login"] .flash {
     .loginx-headline { font-size: clamp(1.85rem, 8vw, 2.4rem); }
     .loginx-tagline { max-width: none; }
     .loginx-equalizer { height: 32px; }
+    /* Below 860px the hero stacks directly above the card, so the app icon (and name)
+       rendered twice back to back. The card head already re-states both a few lines
+       down, so drop the hero's copy here and let the card carry the identity. */
+    .loginx-brand { display: none; }
 }
 @media (max-width: 480px) {
     .loginx { padding: 1.1rem; }

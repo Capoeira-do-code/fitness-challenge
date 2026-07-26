@@ -48,6 +48,7 @@ require_once __DIR__ . '/metrics.php';
 require_once __DIR__ . '/dashboard_preferences.php';
 require_once __DIR__ . '/profile_widgets.php';
 require_once __DIR__ . '/media_search.php';
+require_once __DIR__ . '/deploy_settings.php';
 require_once __DIR__ . '/challenge.php';
 require_once __DIR__ . '/notion.php';
 require_once __DIR__ . '/telegram.php';

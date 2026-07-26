@@ -20402,7 +20402,12 @@ body {
 }
 
 /* A tall modal scrolls inside its card, and the close button lived at the top of that
-   scroll area: scroll down to reach the frames and the X was gone. Pin the header. */
+   scroll area: scroll down to reach the frames and the X was gone. Pin the header.
+   `background: inherit` (not a re-declared token) is deliberate: it always paints
+   whatever the card's own *computed* background ended up being - including the
+   flat --surface color dark mode forces onto .app-modal-card with !important - so
+   the header can never drift out of sync with the card and read as a flat white/
+   mismatched bar again. See theme-dark.css for the dark-mode override this relies on. */
 .app-modal-card > .app-modal-head {
     position: sticky;
     top: calc(-1 * clamp(1.2rem, 3vw, 1.6rem));
@@ -20411,8 +20416,10 @@ body {
     padding-top: clamp(1.2rem, 3vw, 1.6rem);
     padding-bottom: 0.5rem;
     background: inherit;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line, rgba(127, 127, 127, 0.16));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    margin-bottom: 0.6rem;
 }
 
 /* ==========================================================================
@@ -20643,16 +20650,6 @@ body {
 /* Belt and braces: a modal is a column of content, never a horizontal scroller. */
 .app-modal-card {
     overflow-x: hidden;
-}
-
-/* The sticky modal header rendered as a flat white bar over the glass card. Use the
-   themed surface so it reads as part of the card in both themes. */
-.app-modal-card > .app-modal-head {
-    background: var(--glass-strong, var(--surface, #fff));
-    border-bottom: 1px solid var(--line, rgba(127, 127, 127, 0.16));
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    margin-bottom: 0.6rem;
 }
 
 /* Six more frames. Same construction as the first wave: a gradient ring around the

@@ -156,4 +156,67 @@ $backupFilterSearchValue = static function (array $backup) use ($backupTriggerLa
         <summary><span aria-hidden="true"><?= activity_icon_svg('image') ?></span><span><strong><?= e(t('admin.backups_maintenance_title')) ?></strong><small><?= e(t('admin.backups_maintenance_hint')) ?></small></span><b aria-hidden="true">⌄</b></summary>
         <form method="post" action="/?page=admin&amp;section=backups" class="admin-backups-maintenance-form"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="regenerate_photo_thumbnails"><div><strong><?= e(t('admin.photo_thumbnails_title')) ?></strong><p><?= e(t('admin.photo_thumbnails_subtitle')) ?></p></div><button class="btn btn-ghost" type="submit"><?= e(t('admin.photo_thumbnails_regenerate')) ?></button></form>
     </details>
+
+    <?php
+    $deployPortState = is_array($deployPortSettings ?? null) ? (array) $deployPortSettings : [];
+    $deployPortMode = (string) ($deployPortState['mode'] ?? 'local');
+    $deployPortPath = (string) ($deployPortState['path'] ?? '');
+    $deployPortExists = !empty($deployPortState['exists']);
+    $deployPortWritable = !empty($deployPortState['writable']);
+    $deployHttpPort = (int) ($deployPortState['http_port'] ?? 8080);
+    $deployHttpsPort = (int) ($deployPortState['https_port'] ?? 8443);
+    $deployApplyCommand = (string) ($deployPortState['apply_command'] ?? 'docker compose up -d');
+    ?>
+    <details id="deploy-ports" class="admin-backups-disclosure admin-backups-maintenance" open>
+        <summary><span aria-hidden="true"><?= activity_icon_svg('bolt') ?></span><span><strong><?= e(t('admin.deploy_ports_title')) ?></strong><small><?= e($deployPortMode === 'live' ? t('admin.deploy_ports_mode_live') : t('admin.deploy_ports_mode_local')) ?></small></span><b aria-hidden="true">⌄</b></summary>
+        <div class="admin-backups-settings-form">
+            <p class="muted admin-section-help"><?= e(t('admin.deploy_ports_hint')) ?></p>
+
+            <div class="admin-backups-alert is-warning">
+                <span aria-hidden="true"><?= activity_icon_svg('check') ?></span>
+                <div>
+                    <strong><?= e(t('admin.deploy_ports_no_restart_title')) ?></strong>
+                    <p><?= e(t('admin.deploy_ports_no_restart_hint')) ?></p>
+                </div>
+            </div>
+
+            <?php if (!$deployPortExists): ?>
+                <div class="admin-backups-alert is-warning">
+                    <span aria-hidden="true"><?= activity_icon_svg('shield') ?></span>
+                    <div>
+                        <strong><?= e(t('admin.deploy_ports_defaults_title')) ?></strong>
+                        <p><?= e(t('admin.deploy_ports_defaults_hint')) ?></p>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!$deployPortWritable): ?>
+                <div class="admin-backups-alert" role="alert">
+                    <span aria-hidden="true"><?= activity_icon_svg('shield') ?></span>
+                    <div>
+                        <strong><?= e(t('admin.deploy_ports_not_writable_title')) ?></strong>
+                        <p><?= e(t('admin.deploy_ports_not_writable_hint', ['path' => $deployPortPath])) ?></p>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <div class="admin-backups-kpis">
+                <span><small><?= e(t('admin.deploy_ports_active_source')) ?></small><strong><?= e($deployPortMode === 'live' ? t('admin.deploy_ports_mode_live') : t('admin.deploy_ports_mode_local')) ?></strong><em title="<?= e($deployPortPath) ?>"><?= e($deployPortPath) ?></em></span>
+                <span><small><?= e(t('admin.deploy_ports_apply_command_label')) ?></small><strong><code><?= e($deployApplyCommand) ?></code></strong><em><?= e(t('admin.deploy_ports_apply_command_hint')) ?></em></span>
+            </div>
+
+            <form method="post" action="/?page=admin&amp;section=backups#deploy-ports" class="admin-backups-settings-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="update_deploy_ports">
+                <div class="admin-backups-settings-grid">
+                    <label><span><?= e(t('admin.deploy_ports_http_label')) ?></span><input type="number" name="http_port" min="1" max="65535" inputmode="numeric" value="<?= $deployHttpPort ?>" required<?= $deployPortWritable ? '' : ' disabled' ?>></label>
+                    <label><span><?= e(t('admin.deploy_ports_https_label')) ?></span><input type="number" name="https_port" min="1" max="65535" inputmode="numeric" value="<?= $deployHttpsPort ?>" required<?= $deployPortWritable ? '' : ' disabled' ?>></label>
+                </div>
+                <div class="admin-backups-settings-footer">
+                    <small><?= e(t('admin.deploy_ports_apply_reminder', ['command' => $deployApplyCommand])) ?></small>
+                    <button class="btn btn-primary" type="submit"<?= $deployPortWritable ? '' : ' disabled' ?>><?= e(t('common.save')) ?></button>
+                </div>
+            </form>
+        </div>
+    </details>
 </article>

@@ -1,0 +1,228 @@
+/* Dedicated PWA "install as app" guide page. Reuses global tokens only
+   (var(--surface), var(--line), var(--primary), ...) so it adapts to dark
+   mode automatically, the same way onboarding.css does. */
+
+.pwa-guide-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.pwa-guide-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 44px;
+    padding: 0.5rem 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.pwa-guide-tab svg {
+    width: 16px;
+    height: 16px;
+}
+
+.pwa-guide-tab.is-active {
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+}
+
+.pwa-guide-panel[hidden] {
+    display: none !important;
+}
+
+.pwa-guide-panel-head {
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr);
+    align-items: center;
+    gap: 0.7rem;
+    margin-bottom: 0.85rem;
+}
+
+.pwa-guide-panel-icon {
+    display: grid;
+    width: 46px;
+    height: 46px;
+    place-items: center;
+    border-radius: 15px;
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+}
+
+.pwa-guide-panel-icon svg {
+    width: 22px;
+    height: 22px;
+}
+
+.pwa-guide-panel-head h2 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.pwa-guide-panel-head p {
+    margin: 0.15rem 0 0;
+}
+
+.pwa-guide-steps {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.pwa-guide-steps li {
+    display: grid;
+    grid-template-columns: 26px minmax(0, 1fr);
+    align-items: start;
+    gap: 0.6rem;
+    padding: 0.6rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface-2);
+}
+
+.pwa-guide-steps li b {
+    display: grid;
+    width: 26px;
+    height: 26px;
+    place-items: center;
+    border-radius: 8px;
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 14%, var(--surface));
+    font-size: 0.7rem;
+}
+
+.pwa-guide-steps li span {
+    padding-top: 0.2rem;
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+.pwa-guide-callout {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 0.6rem;
+    margin-top: 0.9rem;
+    padding: 0.75rem;
+    border: 1px solid color-mix(in srgb, #f59e0b 32%, var(--line));
+    border-radius: 14px;
+    background: color-mix(in srgb, #f59e0b 9%, var(--surface));
+}
+
+.pwa-guide-callout[hidden] {
+    display: none !important;
+}
+
+.pwa-guide-callout > span {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border-radius: 11px;
+    color: #b45309;
+    background: color-mix(in srgb, #f59e0b 16%, var(--surface));
+}
+
+.pwa-guide-callout svg {
+    width: 18px;
+    height: 18px;
+}
+
+.pwa-guide-callout strong {
+    display: block;
+    margin-bottom: 0.2rem;
+    font-size: 0.82rem;
+}
+
+.pwa-guide-callout p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.76rem;
+    line-height: 1.5;
+}
+
+.pwa-guide-panel-subhead {
+    display: grid;
+    gap: 0.1rem;
+    margin: 1.1rem 0 0.6rem;
+}
+
+.pwa-guide-panel-subhead:first-of-type {
+    margin-top: 0;
+}
+
+.pwa-guide-panel-subhead strong {
+    font-size: 0.88rem;
+}
+
+.pwa-guide-panel-subhead small {
+    color: var(--muted);
+    font-size: 0.74rem;
+}
+
+.pwa-guide-browser-section[hidden] {
+    display: none !important;
+}
+
+.pwa-guide-browser-switch {
+    margin-top: 1.1rem;
+    padding-top: 0.9rem;
+    border-top: 1px dashed var(--line);
+}
+
+.pwa-guide-browser-switch p {
+    margin: 0 0 0.5rem;
+}
+
+.pwa-guide-browser-switch-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.pwa-guide-browser-pill {
+    min-height: 36px;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.pwa-guide-browser-pill.is-active {
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+}
+
+@media (max-width: 700px) {
+    .pwa-guide-tabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .pwa-guide-tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .pwa-guide-tab {
+        flex: 0 0 auto;
+    }
+
+    .pwa-guide-steps li {
+        padding: 0.55rem 0.6rem;
+    }
+}

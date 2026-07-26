@@ -104,8 +104,12 @@ body[data-page="profile"] .profile-cover-modal .app-modal-card {
     width: min(720px, 100%);
     background: var(--profile-cover-modal-bg);
 }
+/* background: inherit (not var(--profile-cover-modal-bg) again) so the head always
+   matches the card's own painted background, including in dark mode where
+   theme-dark.css forces .app-modal-card to a flat --surface with !important and the
+   teal-tinted custom property above would otherwise still leak through here. */
 body[data-page="profile"] .profile-cover-modal .app-modal-card > .app-modal-head {
-    background: var(--profile-cover-modal-bg);
+    background: inherit;
     border-bottom-color: color-mix(in srgb, var(--primary) 12%, var(--line));
 }
 body[data-page="profile"] .profile-cover-modal .app-modal-head > div { display: grid; min-width: 0; gap: 2px; }
@@ -141,7 +145,7 @@ body[data-page="profile"] .profile-cover-actions {
     gap: 8px;
     padding-top: 10px;
     border-top: 1px solid color-mix(in srgb, var(--primary) 10%, var(--line));
-    background: var(--profile-cover-modal-bg, var(--surface));
+    background: inherit;
 }
 body[data-page="profile"] .profile-cover-actions .btn { width: 100%; min-height: 44px; }
 
@@ -153,7 +157,9 @@ body[data-page="profile"] .profile-tagline-modal .app-modal-card {
     width: min(520px, 100%);
     background: var(--profile-tagline-modal-bg);
 }
-body[data-page="profile"] .profile-tagline-modal .app-modal-card > .app-modal-head { background: var(--profile-tagline-modal-bg); }
+/* background: inherit for the same reason as the cover modal head above - stays in
+   sync with the card even when dark mode forces a flat --surface onto the card. */
+body[data-page="profile"] .profile-tagline-modal .app-modal-card > .app-modal-head { background: inherit; }
 body[data-page="profile"] .profile-tagline-modal .profile-tagline-form {
     position: static;
     inset: auto;

@@ -152,7 +152,11 @@ body[data-page="team"] .team-goals-filter-empty { grid-column: 1 / -1; margin: 0
 /* Create/edit challenge uses the same focused card and mobile bottom sheet. */
 body[data-page="team"] .confirm-modal:has(.team-goal-modal-card) { z-index: 12020; }
 body[data-page="team"] .team-goal-modal-card { width: min(720px, calc(100vw - 24px)); padding: 14px !important; border-radius: 20px; }
-body[data-page="team"] .team-goal-modal-head { position: sticky; top: -14px; z-index: 5; display: grid; grid-template-columns: 42px minmax(0, 1fr) 44px; align-items: center; gap: 10px; margin: -14px -14px 10px; padding: 14px; border-bottom: 1px solid var(--line); background: var(--surface); }
+/* background: inherit (not var(--surface)) so the sticky head always matches
+   .team-goal-modal-card's own glass background instead of a flat opaque
+   surface color - a flat --surface here painted as a solid white bar on top
+   of the card's translucent glass in light mode. */
+body[data-page="team"] .team-goal-modal-head { position: sticky; top: -14px; z-index: 5; display: grid; grid-template-columns: 42px minmax(0, 1fr) 44px; align-items: center; gap: 10px; margin: -14px -14px 10px; padding: 14px; border-bottom: 1px solid var(--line); background: inherit; }
 body[data-page="team"] .team-goal-modal-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 13px; color: var(--primary-dark); background: color-mix(in srgb, var(--primary) 12%, var(--surface)); }
 body[data-page="team"] .team-goal-modal-icon svg { width: 21px; height: 21px; }
 body[data-page="team"] .team-goal-modal-head > div { display: grid; min-width: 0; gap: 2px; }

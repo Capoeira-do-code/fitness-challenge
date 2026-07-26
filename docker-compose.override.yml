@@ -10,9 +10,17 @@
 #   mtime, so CSS/JS changes bust the browser cache on a normal refresh.
 # - The base file still mounts ./public/uploads read-only and ./storage; those
 #   stay as-is (nested mounts keep working).
+# - ./.env and ./.env.live are bind-mounted read-write (single files, not the
+#   whole project root) so Admin > Backups can read/write the published
+#   HTTP_PORT/HTTPS_PORT without ever touching the Docker socket. Both files
+#   must already exist on the host before the first `docker compose up -d` —
+#   otherwise Docker creates them as directories instead of files. Run
+#   `touch .env .env.live` once beforehand if they are missing (see README).
 services:
   app:
     volumes:
       - ./app:/var/www/app
       - ./public:/var/www/public
       - ./bin:/var/www/bin
+      - ./.env:/var/www/.env
+      - ./.env.live:/var/www/.env.live

@@ -18,6 +18,7 @@ $contextualBackFallbacks = [
     'settings' => '/?page=profile',
     'week_editor' => '/?page=dashboard&section=history',
     'table' => '/?page=dashboard&section=history',
+    'pwa_install_guide' => '/?page=dashboard',
 ];
 $contextualBackDestinationKeys = [
     'analytics' => 'nav.dashboard',
@@ -30,6 +31,7 @@ $contextualBackDestinationKeys = [
     'settings' => 'nav.profile',
     'week_editor' => 'dashboard.mobile_history',
     'table' => 'dashboard.mobile_history',
+    'pwa_install_guide' => 'nav.dashboard',
 ];
 $contextualRoutePage = trim((string) ($_GET['page'] ?? $currentPage));
 $contextualBackFallback = $contextualBackFallbacks[$contextualRoutePage] ?? '';
@@ -75,6 +77,7 @@ $pageStylesAssetFile = match ($currentPage) {
     'settings' => 'settings.css',
     'register', 'onboarding', 'setup' => 'onboarding.css',
     'login' => 'login.css',
+    'pwa_install_guide' => 'pwa_install_guide.css',
     default => '',
 };
 $pageStylesAssetPath = $pageStylesAssetFile !== '' ? $projectRoot . '/public/assets/' . $pageStylesAssetFile : '';

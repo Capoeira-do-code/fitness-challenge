@@ -61,6 +61,20 @@ En `docker-compose.yml`:
 `APP_DEFAULT_LOCALE` acepta `en`, `es` o `it` (por defecto `en`).
 `HTTP_PORT` y `HTTPS_PORT` controlan los puertos publicados por Docker.
 
+`HTTP_PORT`/`HTTPS_PORT` también se pueden consultar y editar desde
+**Admin → Backups → Puertos publicados**. El panel solo escribe el archivo
+`.env` (local) o `.env.live` (live, si existe) en disco — nunca reinicia
+contenedores ni toca el socket de Docker. Tras guardar hay que aplicar el
+cambio manualmente con `docker compose up -d` o `python bin/live_manager.py
+deploy`, según el archivo detectado. Para que el contenedor `app` pueda leer y
+escribir esos archivos, `./.env` y `./.env.live` deben existir en el host
+**antes** del primer `docker compose up -d` (si no existen, Docker los crea
+como directorios en vez de archivos):
+
+```bash
+touch .env .env.live
+```
+
 La búsqueda multimedia del creador de ejercicios es opcional. Puede configurarse
 desde **Admin → Entreno y ranked → Proveedores multimedia** o mediante las tres
 variables `MEDIA_SEARCH_*`. Las claves solo se usan en PHP, se muestran
