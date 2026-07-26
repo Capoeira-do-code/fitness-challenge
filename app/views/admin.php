@@ -341,7 +341,7 @@ try {
                     <label><?= e(t('common.username')) ?><input type="text" name="username" required></label>
                     <label><?= e(t('common.display_name')) ?><input type="text" name="display_name" required></label>
                     <label><?= e(t('users.initial_password')) ?><input type="password" name="password" required></label>
-                    <label><?= e(t('common.role')) ?><select name="role"><option value="user">User</option><option value="admin"><?= e(t('common.admin')) ?></option></select></label>
+                    <label><?= e(t('common.role')) ?><select name="role"><option value="user"><?= e(t('common.user')) ?></option><option value="admin"><?= e(t('common.admin')) ?></option></select></label>
                 </div>
                 <div class="grid-inline">
                     <label><?= e(t('users.step_goal')) ?><input type="number" min="0" name="step_goal" value="10000" required></label>
@@ -382,7 +382,7 @@ try {
                     <div class="grid-inline">
                         <label><?= e(t('common.username')) ?><input type="text" value="<?= e((string) $user['username']) ?>" disabled></label>
                         <label><?= e(t('common.display_name')) ?><input type="text" name="display_name" value="<?= e((string) $user['display_name']) ?>" required></label>
-                        <label><?= e(t('common.role')) ?><select name="role"><option value="user" <?= $user['role'] === 'user' ? 'selected' : '' ?>>User</option><option value="admin" <?= $user['role'] === 'admin' ? 'selected' : '' ?>><?= e(t('common.admin')) ?></option></select></label>
+                        <label><?= e(t('common.role')) ?><select name="role"><option value="user" <?= $user['role'] === 'user' ? 'selected' : '' ?>><?= e(t('common.user')) ?></option><option value="admin" <?= $user['role'] === 'admin' ? 'selected' : '' ?>><?= e(t('common.admin')) ?></option></select></label>
                         <label><?= e(t('users.new_password_optional')) ?><input type="password" name="password" minlength="8"></label>
                     </div>
                     <div class="grid-inline">
@@ -1109,9 +1109,9 @@ try {
                             <?php $tierKey = (string) ($tier['tier_key'] ?? ''); ?>
                             <fieldset class="admin-rank-tier-row">
                                 <legend><span class="rank-dot" style="--rank-color:<?= e((string) ($tier['color'] ?? '#64748b')) ?>"></span><?= e(ucwords($tierKey)) ?></legend>
-                                <label>Points <input type="number" step="0.1" min="0" name="tiers[<?= e($tierKey) ?>][threshold]" value="<?= e((string) ($tier['threshold'] ?? 0)) ?>"></label>
-                                <label>Colour <input type="color" name="tiers[<?= e($tierKey) ?>][color]" value="<?= e((string) ($tier['color'] ?? '#64748b')) ?>"></label>
-                                <label>Order <input type="number" name="tiers[<?= e($tierKey) ?>][sort_order]" value="<?= (int) ($tier['sort_order'] ?? 0) ?>"></label>
+                                <label><?= e(t('admin.rank_tier_threshold')) ?> <input type="number" step="0.1" min="0" name="tiers[<?= e($tierKey) ?>][threshold]" value="<?= e((string) ($tier['threshold'] ?? 0)) ?>"></label>
+                                <label><?= e(t('admin.rank_tier_color')) ?> <input type="color" name="tiers[<?= e($tierKey) ?>][color]" value="<?= e((string) ($tier['color'] ?? '#64748b')) ?>"></label>
+                                <label><?= e(t('common.order')) ?> <input type="number" name="tiers[<?= e($tierKey) ?>][sort_order]" value="<?= (int) ($tier['sort_order'] ?? 0) ?>"></label>
                                 <input type="hidden" name="tiers[<?= e($tierKey) ?>][active]" value="0">
                                 <label class="check"><input type="checkbox" name="tiers[<?= e($tierKey) ?>][active]" value="1" <?= (int) ($tier['active'] ?? 0) === 1 ? 'checked' : '' ?> <?= $tierKey === 'unranked' ? 'disabled' : '' ?>><?= e(t('common.active')) ?></label>
                                 <?php if ($tierKey === 'unranked'): ?><input type="hidden" name="tiers[<?= e($tierKey) ?>][active]" value="1"><?php endif; ?>
@@ -1199,9 +1199,9 @@ try {
                             <?php endif; ?>
                             <span class="admin-training-exercise-copy">
                                 <strong><?= e((string) ($exercise['name'] ?? '')) ?></strong>
-                                <small class="muted"><?= e(ucwords((string) ($exercise['muscle_group'] ?? ''))) ?> &middot; <?= e(ucwords((string) ($exercise['equipment'] ?? ''))) ?> &middot; <?= (int) (($exercise['routine_uses'] ?? 0) + ($exercise['session_uses'] ?? 0)) ?> uses</small>
+                                <small class="muted"><?= e(trim((string) ($exercise['muscle_group'] ?? '')) !== '' ? t('workouts.muscle_' . (string) $exercise['muscle_group']) : '') ?> &middot; <?= e(trim((string) ($exercise['equipment'] ?? '')) !== '' ? t('workouts.equipment_' . (string) $exercise['equipment']) : '') ?> &middot; <?= e(t('admin.exercise_uses_count', ['n' => (int) (($exercise['routine_uses'] ?? 0) + ($exercise['session_uses'] ?? 0))])) ?></small>
                             </span>
-                            <span class="badge <?= (int) ($exercise['active'] ?? 0) === 1 ? 'badge-ok' : 'badge-warn' ?>"><?= (int) ($exercise['active'] ?? 0) === 1 ? e(t('common.active')) : 'Hidden' ?></span>
+                            <span class="badge <?= (int) ($exercise['active'] ?? 0) === 1 ? 'badge-ok' : 'badge-warn' ?>"><?= (int) ($exercise['active'] ?? 0) === 1 ? e(t('common.active')) : e(t('workout_types.hidden')) ?></span>
                             <span class="settings-chevron" aria-hidden="true">&rsaquo;</span>
                         </a>
                     <?php endforeach; ?>
@@ -1213,7 +1213,7 @@ try {
         <?php if ($selectedTrainingExerciseId === 'new'): ?>
         <div class="stack admin-create-view">
             <div class="panel-head">
-                <div><p class="eyebrow">Exercise library</p><h3>Create exercise</h3></div>
+                <div><p class="eyebrow"><?= e(t('admin.exercise_library')) ?></p><h3><?= e(t('admin.create_exercise')) ?></h3></div>
                 <?php $renderAdminBack('/?page=admin&section=training', t('admin.section_training')); ?>
             </div>
             <?php
@@ -1228,7 +1228,7 @@ try {
             <?php if ($selectedTrainingExerciseId !== (string) ((int) ($exercise['id'] ?? 0))): ?><?php continue; ?><?php endif; ?>
             <div class="stack admin-detail-view">
                 <div class="panel-head">
-                    <div><p class="eyebrow">Exercise library</p><h3><?= e((string) ($exercise['name'] ?? '')) ?></h3></div>
+                    <div><p class="eyebrow"><?= e(t('admin.exercise_library')) ?></p><h3><?= e((string) ($exercise['name'] ?? '')) ?></h3></div>
                     <?php $renderAdminBack('/?page=admin&section=training', t('admin.section_training')); ?>
                 </div>
                 <?php

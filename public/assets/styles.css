@@ -1770,6 +1770,25 @@ body.theme-active-dark .eyebrow {
     font-size: 1rem;
 }
 
+/* The shared .dashboard-kpis .metric-card grid reserves a 44px icon column
+   even when these two pages render icon-less cards, leaving the value
+   column too narrow for currency totals like "€2400.00". Combined with the
+   shared mobile rule's `overflow-wrap: anywhere`, that forced a break
+   mid-digit ("€240" / "0.00"). Scope a fix to just these two pages instead
+   of touching the shared dashboard KPI card used elsewhere. */
+.penalties-page .metric-card,
+.strikes-detail-page .metric-card {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.penalties-page .metric-card strong,
+.strikes-detail-page .metric-card strong {
+    overflow-wrap: normal;
+    word-break: normal;
+    white-space: nowrap;
+    font-size: clamp(1rem, 6vw, 1.45rem);
+}
+
 .dashboard-week-actions {
     display: inline-flex;
     align-items: center;
@@ -2200,6 +2219,18 @@ textarea {
     font-size: 0.76rem;
     font-weight: 800;
     text-transform: uppercase;
+}
+
+/* Footer/total rows are not column headers: they must not stick to the top of
+   the scroll container (that made a colspan label cell paint over the value
+   cell next to it, hiding the total) and should read as a summary row, not a
+   muted uppercase header. */
+.table tfoot th {
+    position: static;
+    color: var(--ink);
+    background: var(--surface-2);
+    font-size: 0.86rem;
+    text-transform: none;
 }
 
 .table tr:last-child td {
@@ -2903,6 +2934,35 @@ body.login-body .auth-copy-login p:not(.eyebrow) {
     margin: 0;
     font-size: 0.95rem;
     line-height: 1.2;
+}
+
+/* Analytics: when maintenance calories aren't configured, the deficit figure
+   is meaningless (backend treats it as -consumed). This swaps the two-column
+   title/value row for a stacked card with a link to go set it, instead of a
+   confident-looking negative number. */
+.calories-overview .metric-box-muted {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.2rem;
+}
+.calories-overview .metric-value.muted { font-weight: 600; }
+.calories-overview .metric-box-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin: -0.4rem 0;
+    padding: 0.4rem 0;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--primary);
+    text-decoration: none;
+}
+.calories-overview .metric-box-link:hover,
+.calories-overview .metric-box-link:focus-visible { text-decoration: underline; }
+.calories-overview .metric-box-link:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--primary) 52%, transparent);
+    outline-offset: 2px;
+    border-radius: 4px;
 }
 
 .dashboard-calories #calorieChart {
@@ -6533,6 +6593,13 @@ body[data-theme="dark"] .training-sheet-table thead th {
         padding: 0.55rem;
     }
 
+    /* These two pages' KPI cards have no icon (single <div> child), so
+       drop the reserved 44px icon column - see comment above. */
+    .penalties-page .dashboard-kpis .metric-card,
+    .strikes-detail-page .dashboard-kpis .metric-card {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
     .dashboard-kpis .progress-ring {
         width: 44px;
         height: 44px;
@@ -6551,6 +6618,18 @@ body[data-theme="dark"] .training-sheet-table thead th {
     .dashboard-kpis .metric-card strong {
         font-size: 1rem;
         overflow-wrap: anywhere;
+    }
+
+    /* Override: penalties/strikes-detail KPI cards have no icon, so their
+       value column is narrower than a normal dashboard KPI card. Keep
+       currency/number values intact instead of letting them break
+       mid-digit (see the base-rule comment above for the full story). */
+    .penalties-page .dashboard-kpis .metric-card strong,
+    .strikes-detail-page .dashboard-kpis .metric-card strong {
+        overflow-wrap: normal;
+        word-break: normal;
+        white-space: nowrap;
+        font-size: clamp(0.86rem, 5.6vw, 1rem);
     }
 
     .dashboard-kpis .metric-card p {
@@ -6928,8 +7007,7 @@ body[data-theme="dark"] .training-sheet-table thead th {
 @media (max-width: 768px) {
     .topbar .topbar-add-menu,
     .topbar .btn-add,
-    .topbar [data-add-button],
-    .topbar a[href*="entries"] {
+    .topbar [data-add-button] {
         display: none !important;
     }
 
@@ -7076,6 +7154,15 @@ body[data-theme="dark"] .training-sheet-table thead th {
     .responsive-card-table th,
     .responsive-card-table td {
         display: block;
+    }
+
+    /* .table sets a 620px min-width so it can scroll horizontally inside
+       .table-wrap. .responsive-card-table opts out of that layout entirely
+       (it re-flows into stacked cards below), so it must not inherit that
+       min-width - otherwise every card is forced to 620px wide inside a
+       ~320px wrapper and the right-aligned value column renders off-screen. */
+    .responsive-card-table {
+        min-width: 0;
     }
 
     .responsive-card-table thead {
@@ -9370,6 +9457,7 @@ body[data-theme="dark"] .gallery-empty {
 }
 
 .season-ranking-row {
+    position: relative;
     display: grid;
     grid-template-columns: 42px 38px minmax(0, 1fr) auto;
     align-items: center;
@@ -9391,6 +9479,18 @@ body[data-theme="dark"] .gallery-empty {
     gap: 0.35rem;
     color: inherit;
     text-decoration: none;
+}
+
+/* The name/XP-bar link only wrapped its own text, leaving the rank number,
+   avatar and a chunk of the row's own padding untappable (~32px tall hit box
+   inside a 52px row). Stretch the link to cover the full row so the entire
+   card is tappable, matching the row's already-established mobile-liquid
+   tap affordance. */
+.season-ranking-row > a::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
 }
 
 .season-ranking-bar,
@@ -9449,7 +9549,28 @@ body[data-theme="dark"] .gallery-empty {
     font-size: 0.7rem;
 }
 
+/* Desktop/tablet: the sheet has no mobile accordion, so the day column showed
+   nothing at all (this element used to be hidden unconditionally, with only
+   the <700px block giving it a layout). Show the weekday + date as static
+   text here; the per-day metrics, status dot and chevron stay mobile-only
+   since desktop already has dedicated columns for that data. */
 .week-day-summary {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: default;
+}
+
+/* Selector repeats .sheet-day-cell (already required by these elements'
+   only place of use) purely to out-specificity ".sheet-day-cell span",
+   which otherwise forces these back to display:block on top of the title. */
+.sheet-day-cell .week-day-summary-metrics,
+.sheet-day-cell .week-day-summary-state,
+.sheet-day-cell .week-day-summary-chevron {
     display: none;
 }
 
@@ -9734,6 +9855,7 @@ body.theme-active-dark :is(.season-ranking-hero, .season-ranking-summary, .seaso
     }
 
     .week-day-summary-state {
+        display: block !important;
         width: 8px;
         height: 8px;
         margin: 0 !important;
@@ -9746,6 +9868,7 @@ body.theme-active-dark :is(.season-ranking-hero, .season-ranking-summary, .seaso
     }
 
     .week-day-summary-chevron {
+        display: block !important;
         margin: 0 !important;
         font-size: 1.15rem !important;
         transform: rotate(90deg);
@@ -9841,7 +9964,7 @@ body.theme-active-dark :is(.season-ranking-hero, .season-ranking-summary, .seaso
 
     .week-save-all-row {
         position: sticky;
-        bottom: calc(var(--mobile-nav-height, 64px) + 8px);
+        bottom: calc(var(--mobile-bottom-nav-height, 64px) + 8px);
         z-index: 12;
         justify-content: center;
         padding: 0.65rem;
@@ -10115,7 +10238,12 @@ body.theme-active-dark :is(.season-ranking-hero, .season-ranking-summary, .seaso
 
 .photos-gallery-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+    /* auto-fit (not auto-fill): with a sparse gallery, auto-fill kept reserving
+       empty 1fr tracks past the last photo, which rendered as bare
+       background-colored boxes trailing the final row (most visible on
+       desktop widths with few photos). auto-fit collapses unused tracks to
+       0 so the real tiles take the row's full width instead. */
+    grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
     gap: 1px;
     overflow: hidden;
     border: 1px solid rgba(222, 228, 225, 0.95);
@@ -10635,6 +10763,24 @@ body.is-transitioning::after {
     backdrop-filter: blur(18px) saturate(1.3);
     -webkit-backdrop-filter: blur(18px) saturate(1.3);
     transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+/* The real <input type="month"> behind the pretty label is only there so JS
+   can call showPicker() on it - it had no styling at all, so the browser's
+   own locale-formatted value ("July 2026") rendered right next to the
+   already-localized label ("Julio 2026"), showing both at once. Keep it
+   focusable/clickable but visually hidden. */
+.calendar-visible-period-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
 }
 
 .calendar-visible-period.is-updating {
@@ -12702,6 +12848,22 @@ body[data-theme="dark"] .notification-card.is-unread {
     background: rgba(30, 41, 59, 0.86);
 }
 
+/* .dashboard-calories .metric-box (Analytics > Nutrition maintenance/deficit
+   figures) had no dark-theme override, so it kept its light-mode glass
+   gradient (near-white) with light-theme muted text on top - unreadable in
+   dark mode. Give it a dark surface consistent with the card it sits in. */
+body[data-theme="dark"] .dashboard-calories .metric-box,
+body.theme-active-dark .dashboard-calories .metric-box {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+}
+body[data-theme="dark"] .calories-overview .metric-title,
+body.theme-active-dark .calories-overview .metric-title { color: rgba(248, 250, 252, 0.62); }
+body[data-theme="dark"] .calories-overview .metric-value,
+body.theme-active-dark .calories-overview .metric-value { color: #f8fafc; }
+body[data-theme="dark"] .calories-overview .metric-value.muted,
+body.theme-active-dark .calories-overview .metric-value.muted { color: rgba(248, 250, 252, 0.7); }
+
 body[data-theme="dark"] .notification-action-btn {
     color: #f8fafc;
     background: rgba(30, 41, 59, 0.76);
@@ -14402,7 +14564,7 @@ body[data-theme="dark"] {
   }
 
   body[data-page="gallery"] .photos-gallery-grid {
-    grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
     gap: 2px;
     border: 0;
     border-radius: 18px;
@@ -14474,13 +14636,13 @@ body[data-theme="dark"] {
 
 @media (min-width: 1024px) {
   body[data-page="gallery"] .photos-gallery-grid {
-    grid-template-columns: repeat(auto-fill, minmax(152px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(152px, 1fr));
   }
 }
 
 @media (min-width: 1320px) {
   body[data-page="gallery"] .photos-gallery-grid {
-    grid-template-columns: repeat(auto-fill, minmax(166px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(166px, 1fr));
   }
 }
 
@@ -23635,6 +23797,26 @@ body.theme-active-dark .dashboard-training-progress-grid > span {
 
 @media (max-width: 390px) {
     .hierarchy-back.destination-back { max-width: 92px; padding-inline: 9px; gap: 6px; }
+    /* "Novedades" (es) / "Aggiornamenti" (it) overflow the generic 92px cap and
+       ellipsize into unreadable text ("Noveda..."). Notifications' destination
+       label is longer than the other contextual-back targets, so give it more room.
+       Quests and season share the same problem: their back target is "Recompensas"
+       (es) / "Ricompense" (it), which also overflows 92px and ellipsized down to
+       "Recom...". */
+    body[data-page="notifications"] .contextual-route-back .hierarchy-back.destination-back,
+    body[data-page="quests"] .contextual-route-back .hierarchy-back.destination-back,
+    body[data-page="season"] .contextual-route-back .hierarchy-back.destination-back { max-width: 132px; }
+    /* Admin's group titles ("Personas y acceso", "Experiencia de la app", "Sistema de
+       entreno" / "Sistema di allenamento") and team settings' hub title ("Ajustes de
+       equipo") also overflow the generic 92px cap and ellipsize into unreadable
+       fragments ("Person...", "Experie...", "Ajustes ..."). Give admin and
+       team_settings back buttons enough room for their longest back-destination label.
+       This covers both the page-header back button and the secondary in-panel back
+       link some admin sections (e.g. achievements) render next to their primary action.
+       (team_settings renders with currentPage="team" for bottom-nav purposes, so it is
+       scoped via its own .team-settings-screen root class instead of body[data-page].) */
+    body[data-page="admin"] .hierarchy-back.destination-back,
+    .team-settings-screen .hierarchy-back.destination-back { max-width: 170px; }
     .hierarchy-page-header:has(> .destination-back) { gap: 8px; }
     .hierarchy-page-header:has(> .destination-back) h1 {
         display: -webkit-box;
@@ -23951,8 +24133,14 @@ body.theme-active-dark .dashboard-training-progress-grid > span {
 .social-people-list > a > span:nth-child(2),
 .social-activity-list > a > span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
 .social-people-list strong,
-.social-activity-list strong,
 .social-activity-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.social-activity-list strong {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-height: 1.25;
+}
 .social-people-list small,
 .social-activity-list small,
 .social-activity-list time { color: var(--muted); font-size: 0.66rem; }
@@ -25122,108 +25310,20 @@ body.theme-active-dark .layout-card-controls {
     background: var(--dark-ui-surface-strong, var(--surface));
 }
 
-/* Challenge Log mobile: keep the spreadsheet useful without 180px-tall rows. */
+/* Challenge Log mobile: the accordion layout and its sizing are owned by the
+   "Challenge Log mobile" @media (max-width: 900px) block further up (search
+   .training-sheet-wrap.week-editor-grid); this used to be a second, older
+   copy of the same rules built for a horizontal-scroll table instead of the
+   accordion, and it re-broke things the newer block had already fixed (the
+   habits list got clipped back into a horizontal strip, the custom-habit
+   toggle's tap target lost its label, and the weekday/date column read
+   blank on tablet widths between 700-900px). Kept only what was not already
+   covered above. */
 @media (max-width: 700px) {
     .training-sheet-panel { border-radius: 18px; }
-    .training-sheet-head {
-        align-items: stretch;
-        gap: 0.55rem;
-        padding: 0.65rem 0.72rem;
-    }
-    .training-sheet-controls {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 0.45rem;
-        width: 100%;
-    }
-    .training-sheet-controls > label:first-child { grid-column: 1 / -1; }
-    .training-sheet-view-tabs { min-width: 0; }
-    .training-sheet-view-tabs a { min-height: 44px; padding: 0.36rem 0.55rem; }
-    .training-sheet-wrap.week-editor-grid {
-        min-height: 360px;
-        max-height: calc(100dvh - 224px);
-        overscroll-behavior: contain;
-    }
-    .training-sheet-table thead th {
-        padding: 0.5rem 0.48rem;
-        font-size: 0.66rem;
-    }
-    .training-sheet-table .sheet-day-col,
-    .training-sheet-table .sheet-day-cell {
-        width: 108px;
-        min-width: 108px;
-        max-width: 108px;
-    }
-    .training-sheet-table .sheet-day-cell { padding: 0.42rem 0.48rem; }
-    .training-sheet-table .sheet-day-cell strong { font-size: 0.75rem; }
-    .training-sheet-table .sheet-day-cell span { margin-top: 0.08rem; font-size: 0.64rem; }
-    .training-sheet-table td,
-    .training-sheet-table .sheet-check-cell,
-    .training-sheet-table .sheet-extra-cell,
-    .training-sheet-table .sheet-habits-cell,
-    .training-sheet-table .sheet-review-cell,
-    .training-sheet-table .sheet-actions-cell {
-        padding: 0.24rem !important;
-        vertical-align: middle;
-    }
-    .training-sheet-table .sheet-field input,
-    .training-sheet-table .sheet-field select,
-    .training-sheet-table .week-field.sheet-field input,
-    .training-sheet-table .week-field.sheet-field select,
-    .training-sheet-table .check,
-    .training-sheet-table .btn.small {
-        min-height: 44px;
-    }
-    .training-sheet-table .sheet-habits-cell {
-        width: 430px;
-        max-width: 430px;
-        white-space: nowrap;
-    }
-    .training-sheet-table .sheet-habits-cell > .week-help-wrap {
-        display: inline-block;
-        width: 126px;
-        vertical-align: middle;
-    }
-    .training-sheet-table .sheet-custom-habit-toggle {
-        min-height: 44px;
-        padding-inline: 0.5rem;
-        font-size: 0.68rem;
-    }
-    .training-sheet-table .sheet-habits-list {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.3rem;
-        width: 286px;
-        max-height: 48px;
-        margin: 0 0 0 0.3rem;
-        padding: 0;
-        overflow-x: auto;
-        overflow-y: hidden;
-        vertical-align: middle;
-        scrollbar-width: none;
-    }
-    .training-sheet-table .sheet-habits-list::-webkit-scrollbar { display: none; }
-    .training-sheet-table .sheet-habits-list .check {
-        flex: 0 0 auto;
-        min-height: 44px;
-        padding: 0.35rem 0.48rem;
-        font-size: 0.68rem;
-    }
     .training-sheet-table .sheet-review-details > summary {
         min-height: 44px;
         padding: 0.4rem 0.5rem;
-    }
-    .week-save-all-row {
-        position: sticky;
-        bottom: calc(var(--mobile-bottom-nav-height, 0px) + 0.45rem);
-        z-index: 18;
-        margin-top: 0.55rem;
-        padding: 0.42rem;
-        border-radius: 16px;
-        background: color-mix(in srgb, var(--surface) 90%, transparent);
-        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
-        backdrop-filter: blur(14px);
-        -webkit-backdrop-filter: blur(14px);
     }
 }
 
@@ -25335,111 +25435,13 @@ body.theme-active-dark .layout-card-controls {
         padding-block: 0.55rem;
     }
 
-    .training-sheet-wrap.week-editor-grid {
-        overflow: visible;
-        max-height: none;
-        min-height: 0;
-        padding: 0.55rem;
-    }
-
-    .training-sheet-wrap .sheet-fieldset,
-    .training-sheet-table,
-    .training-sheet-table tbody {
-        display: block;
-        width: 100%;
-        min-width: 0;
-        border: 0;
-    }
-
-    .training-sheet-table thead {
-        display: none;
-    }
-
-    .training-sheet-table tbody {
-        display: grid;
-        gap: 0.55rem;
-    }
-
-    .training-sheet-table .week-day-card,
-    .training-sheet-table .week-day-card:nth-child(even) {
-        display: block;
-        overflow: hidden;
-        width: 100%;
-        border: 1px solid var(--line);
-        border-radius: 14px;
-        background: var(--surface);
-        box-shadow: 0 5px 18px rgba(15, 23, 42, 0.05);
-    }
-
-    .training-sheet-table .sheet-day-cell {
-        position: static;
-        display: block;
-        width: auto;
-        min-width: 0;
-        max-width: none;
-        padding: 0;
-        border: 0;
-        background: transparent !important;
-    }
-
-    .week-day-summary {
-        display: grid;
-    }
-
-    .training-sheet-table .week-day-card.is-mobile-collapsed > td {
-        display: none !important;
-    }
-
-    .training-sheet-table .week-day-card > td {
-        position: static !important;
-        display: grid;
-        grid-template-columns: minmax(105px, 0.65fr) minmax(0, 1fr);
-        align-items: center;
-        width: auto !important;
-        min-width: 0;
-        min-height: 50px;
-        gap: 0.55rem;
-        padding: 0.55rem 0.65rem !important;
-        border: 0;
-        border-top: 1px solid var(--line);
-        background: transparent !important;
-    }
-
-    .training-sheet-table .week-day-card > td::before {
-        content: attr(data-label);
-        color: var(--muted);
-        font-size: 0.68rem;
-        font-weight: 800;
-    }
-
-    .training-sheet-table .week-day-card > :is(.sheet-extra-cell, .sheet-habits-cell, .sheet-review-cell) {
-        grid-template-columns: 1fr;
-    }
-
-    .training-sheet-table tbody td > .sheet-field,
-    .training-sheet-table tbody td > .week-help-wrap,
-    .training-sheet-table tbody td.sheet-workout-cell > .week-help-wrap,
-    .training-sheet-table tbody td.sheet-notes-cell > .sheet-field {
-        position: static;
-        inset: auto;
-    }
-
-    .training-sheet-table .sheet-field,
-    .training-sheet-table .week-field.sheet-field,
-    .training-sheet-table .workout-type-control,
-    .training-sheet-table .workout-type-custom {
-        width: 100%;
-        height: auto;
-    }
-
-    .training-sheet-table .sheet-field input,
-    .training-sheet-table .sheet-field select,
-    .training-sheet-table .week-field.sheet-field input,
-    .training-sheet-table .week-field.sheet-field select {
-        min-height: 44px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-    }
+    /* The week editor's mobile accordion layout is defined once, in the
+       "Challenge Log mobile" @media (max-width: 900px) block above; this used
+       to be a second, older copy of the same rules (missing the habits-list
+       and custom-habit-toggle fixes made since), and the two disagreed with
+       each other - e.g. it forced .sheet-habits-list back into a clipped
+       horizontal strip and blanked out the weekday/date column on desktop.
+       Removed rather than patched again to stop the drift. */
 
     body.has-workout-filter-sheet::after {
         z-index: 9998;
@@ -28231,7 +28233,7 @@ body[data-page="social"] .social-competition-overview .social-card-head h2 {
 
 body[data-page="social"] .social-competition-overview .social-card-head > a {
     display: inline-flex;
-    min-height: 36px;
+    min-height: 44px;
     align-items: center;
     padding: 8px 3px;
     color: var(--primary-dark);
@@ -28503,7 +28505,7 @@ body[data-page="social"]:is([data-theme="dark"], .theme-active-dark) .social-tea
     body[data-page="social"] .social-dashboard-grid > .social-overview-card { grid-column: 1; }
 
     body[data-page="social"] .social-team-overview .social-card-head > a {
-        min-height: 34px;
+        min-height: 44px;
         padding-inline: 0.58rem;
     }
 
@@ -30842,6 +30844,13 @@ body[data-page="friends"] .friend-discovery-head { display: flex; align-items: c
 body[data-page="friends"] .friend-discovery-head > div { display: grid; min-width: 0; gap: 2px; }
 body[data-page="friends"] .friend-discovery-head :is(p, h2) { margin: 0; }
 body[data-page="friends"] .friend-discovery-head .eyebrow { color: #c13584; }
+/* #c13584 only clears ~4:1 contrast against the dark-theme surface (--surface:
+   #050505), under the 4.5:1 AA text minimum. Brighten it in dark mode the same
+   way the base .eyebrow rule brightens var(--primary-dark) for dark surfaces. */
+body[data-theme="dark"][data-page="friends"] .friend-discovery-head .eyebrow,
+body.theme-active-dark[data-page="friends"] .friend-discovery-head .eyebrow {
+    color: #f472b6;
+}
 body[data-page="friends"] .friend-discovery-head h2 { font-size: 1rem; }
 body[data-page="friends"] .friend-discovery-head p:not(.eyebrow) { color: var(--muted); font-size: 0.68rem; line-height: 1.35; }
 body[data-page="friends"] .friend-search-box { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 7px; margin: 4px 14px 12px; padding: 0 11px; border: 1px solid color-mix(in srgb, #8b5cf6 22%, var(--line)); border-radius: 13px; background: var(--surface); box-shadow: 0 5px 16px rgba(15, 23, 42, 0.05); }
@@ -31135,5 +31144,36 @@ body[data-page="team"] .team-access-requested:disabled {
     .dashboard-metric-target-grid,
     .onboarding-metric-preferences {
         grid-template-columns: 1fr;
+    }
+}
+
+/* The shared .table min-width (760px) assumes wide data tables. This table
+   only has 4 short columns (category, weight %, value %, score pts) and sits
+   inside a half-width card in the two-column desktop layout, so the 760px
+   floor forced permanent horizontal scrolling that hid the Score total
+   column - the most important number on the page - off-screen by default. */
+.comparison-detail-screen .table {
+    min-width: 0;
+}
+
+/* Comparison detail (score breakdown) reuses the dashboard KPI card look, but
+   without the .progress-ring icon the dashboard version always has. On mobile
+   the shared rules reserve a 44px icon column and allow the value to break
+   anywhere, which left an empty gutter and wrapped short values like "100,0%"
+   into "100," / "0%" across two lines. Give these icon-less cards their own
+   single-column layout instead of touching the shared dashboard rules. */
+.comparison-detail-screen .dashboard-kpis .metric-card {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 700px) {
+    .comparison-detail-screen .dashboard-kpis .metric-card {
+        grid-template-columns: minmax(0, 1fr);
+        min-height: 74px;
+    }
+
+    .comparison-detail-screen .dashboard-kpis .metric-card strong {
+        overflow-wrap: normal;
+        white-space: nowrap;
     }
 }

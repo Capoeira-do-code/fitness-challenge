@@ -222,7 +222,7 @@ if ($settingsView === 'avatar') {
                     </div>
                 <?php endif; ?>
                 <?php if ($settingsRecentWeights === []): ?>
-                    <div class="settings-weight-empty"><span aria-hidden="true"><?= activity_icon_svg('target') ?></span><p><?= e(t('settings.weight_empty')) ?></p><a href="/?page=entries&amp;mode=data#entry-weight"><?= e(t('settings.weight_log_action')) ?></a></div>
+                    <div class="settings-weight-empty"><span aria-hidden="true"><?= activity_icon_svg('target') ?></span><p><?= e(t('settings.weight_empty')) ?></p><a class="btn btn-ghost small" href="/?page=entries&amp;mode=data#entry-weight"><?= e(t('settings.weight_log_action')) ?></a></div>
                 <?php else: ?>
                     <div class="settings-weight-list">
                         <?php foreach ($settingsRecentWeights as $index => $weightRow): ?>

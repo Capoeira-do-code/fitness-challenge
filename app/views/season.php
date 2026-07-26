@@ -25,8 +25,9 @@ $seasonAccentColor = season_normalize_accent_color($season['accent_color'] ?? '#
             <p class="muted"><?= e(t('season.hint')) ?></p>
         </div>
         <span class="season-countdown">
-            <?= (int) ($seasonDaysLeft ?? 0) > 0
-                ? e(t('season.days_left', ['n' => (int) $seasonDaysLeft]))
+            <?php $seasonDaysLeftValue = (int) ($seasonDaysLeft ?? 0); ?>
+            <?= $seasonDaysLeftValue > 0
+                ? e(t($seasonDaysLeftValue === 1 ? 'season.days_left_one' : 'season.days_left', ['n' => $seasonDaysLeftValue]))
                 : e(t('season.ends_today')) ?>
         </span>
     </header>

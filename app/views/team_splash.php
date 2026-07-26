@@ -19,7 +19,7 @@ declare(strict_types=1);
                 <input type="hidden" name="action" value="join_team">
                 <input type="hidden" name="team_id" value="<?= (int) $team['id'] ?>">
                 <div class="team-join-card-copy">
-                    <strong><?= e((string) $team['name']) ?></strong>
+                    <strong title="<?= e((string) $team['name']) ?>"><?= e((string) $team['name']) ?></strong>
                     <span><?= e(t((string) $team['join_mode'] === 'open' ? 'team.open' : 'team.request')) ?></span>
                 </div>
                 <button class="btn <?= $accessRequested ? 'btn-ghost team-access-requested' : 'btn-primary' ?> team-join-card-action" type="<?= $accessRequested ? 'button' : 'submit' ?>"<?= $accessRequested ? ' disabled aria-disabled="true"' : '' ?>><?= $accessRequested ? e(t('team.access_requested')) : ((string) $team['join_mode'] === 'open' ? e(t('team.join')) : e(t('team.request_join'))) ?></button>

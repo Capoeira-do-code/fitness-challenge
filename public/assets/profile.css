@@ -731,8 +731,14 @@ body[data-page="profile"] [data-profile-collapsible] {
     box-shadow: var(--ui-soft-shadow);
 }
 body[data-page="profile"] [data-profile-collapsible] > :is(.profile-home-card-head, .panel-head) {
-    display: grid !important;
-    grid-template-columns: 38px minmax(0, 1fr) auto !important;
+    /* Flex (not grid) so the actions column's own intrinsic width always
+       accounts for ALL of its children (button + collapse toggle). A CSS
+       Grid `auto`/`fit-content` track can under-measure a flex item's
+       max-content contribution when one of that item's siblings is
+       display:none (e.g. the "Editar goals" link hidden below 560px),
+       which let the visible action button overflow left into the title. */
+    display: flex !important;
+    flex-wrap: nowrap !important;
     align-items: center !important;
     min-width: 0;
     min-height: 58px;
@@ -748,7 +754,11 @@ body[data-page="profile"] [data-profile-collapsible] > :is(.profile-home-card-he
 body[data-page="profile"] [data-profile-collapsible] > :is(.profile-home-card-head, .panel-head).is-remembered-collapsible-head {
     cursor: pointer;
 }
+body[data-page="profile"] [data-profile-collapsible] > :is(.profile-home-card-head, .panel-head) > .dashboard-disclosure-icon {
+    flex: 0 0 auto;
+}
 body[data-page="profile"] [data-profile-collapsible] > :is(.profile-home-card-head, .panel-head) > :nth-child(2) {
+    flex: 1 1 auto;
     min-width: 0;
 }
 body[data-page="profile"] [data-profile-collapsible] > :is(.profile-home-card-head, .panel-head) h2 {
@@ -769,8 +779,11 @@ body[data-page="profile"] [data-profile-collapsible] > :last-child:not(.profile-
 body[data-page="profile"] :is(.profile-panel-head-actions, .profile-home-card-head .inline-actions-mini) {
     display: flex;
     min-width: 0;
-    max-width: none;
-    flex: 0 0 auto;
+    /* Cap how much of the row the actions can claim so a long action label
+       can never push the collapse toggle off the card edge; the action
+       link is allowed to shrink (with ellipsis) as a safety net instead. */
+    max-width: 62%;
+    flex: 0 1 auto;
     align-items: center;
     justify-content: flex-end;
     flex-wrap: nowrap;
@@ -778,15 +791,16 @@ body[data-page="profile"] :is(.profile-panel-head-actions, .profile-home-card-he
     overflow: visible;
 }
 body[data-page="profile"] :is(.profile-panel-head-actions, .profile-home-card-head .inline-actions-mini) > :not(.profile-panel-collapse-toggle) {
-    min-width: max-content;
+    min-width: 0;
     max-width: none;
-    flex: 0 0 auto;
-    overflow: visible;
-    text-overflow: clip;
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 body[data-page="profile"] .profile-panel-collapse-toggle {
     display: grid;
+    flex-shrink: 0;
     width: 44px;
     min-width: 44px;
     height: 44px;
@@ -847,17 +861,21 @@ body[data-page="profile"]:is([data-theme="dark"], .theme-active-dark) .profile-p
     }
     body[data-page="profile"] .profile-panel-head-actions,
     body[data-page="profile"] .profile-home-card-head .inline-actions-mini {
-        max-width: none;
-        flex: 0 0 auto;
+        /* Keep a shrink allowance + cap here too: on narrow phones this is
+           the row where a single non-shrinking action button (min-width:
+           max-content) could outgrow its own flex box and overflow left
+           into the title (see the comment on the base rule above). */
+        max-width: 60%;
+        flex: 0 1 auto;
         flex-wrap: nowrap;
         gap: 5px;
     }
     body[data-page="profile"] .profile-panel-head-actions :is(.btn, .profile-achievement-preview-link),
     body[data-page="profile"] .profile-home-card-head .inline-actions-mini .btn {
-        min-width: max-content;
-        flex: 0 0 auto;
-        overflow: visible;
-        text-overflow: clip;
+        min-width: 0;
+        flex: 0 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
         white-space: nowrap;
     }
 }

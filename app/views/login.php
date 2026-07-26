@@ -5,6 +5,7 @@ declare(strict_types=1);
 $loginIconUrl = trim((string) ($loginAppIconUrl ?? ''));
 $appName = (string) (app_setting($GLOBALS['pdo'], 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge Tracker')) ?? 'Fitness Challenge Tracker');
 $loginRememberDefault = !empty($loginRememberDefault);
+$loginRetryUsername = trim((string) ($_GET['username'] ?? ''));
 // The visual variant is retained for compatibility; this screen ships one bold look.
 $loginStyle = login_style_normalize($loginStyle ?? 'split');
 ?>
@@ -62,7 +63,7 @@ $loginStyle = login_style_normalize($loginStyle ?? 'split');
                         <span class="loginx-field-label"><?= e(t('common.username')) ?></span>
                         <span class="loginx-field-control">
                             <span class="loginx-field-icon" aria-hidden="true"><?= activity_icon_svg('user') ?></span>
-                            <input type="text" name="username" autocomplete="username" required autofocus placeholder="<?= e(t('common.username')) ?>">
+                            <input type="text" name="username" autocomplete="username" required<?= $loginRetryUsername === '' ? ' autofocus' : '' ?> placeholder="<?= e(t('common.username')) ?>" value="<?= e($loginRetryUsername) ?>">
                         </span>
                     </label>
 
@@ -70,7 +71,7 @@ $loginStyle = login_style_normalize($loginStyle ?? 'split');
                         <span class="loginx-field-label"><?= e(t('common.password')) ?></span>
                         <span class="loginx-field-control">
                             <span class="loginx-field-icon" aria-hidden="true"><?= activity_icon_svg('shield') ?></span>
-                            <input type="password" name="password" autocomplete="current-password" required placeholder="••••••••">
+                            <input type="password" name="password" autocomplete="current-password" required<?= $loginRetryUsername !== '' ? ' autofocus' : '' ?> placeholder="••••••••">
                         </span>
                     </label>
 

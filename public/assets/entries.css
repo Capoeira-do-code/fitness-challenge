@@ -419,6 +419,25 @@ body[data-page="entries"] :is(
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3 8 3 3 7-7' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
+/* theme-dark.css loads last and forces a flat `background: #0a0a0a !important` plus
+   `background-image: none !important` on every input/select/textarea so old glass
+   highlights can't leak into dark mode. That blanket rule also erases this
+   checkbox's own checked-state fill and checkmark (it has no separate wrapper
+   indicator to fall back on), so the "Entreno" toggle looked unchecked in dark
+   mode even though it was. Re-assert the checked state with matching !important. */
+body[data-theme="dark"] :is(
+    .entry-workout-toggle input[type="checkbox"],
+    .entries-toggles.pill-toggles .check input[type="checkbox"]
+):checked,
+body.theme-active-dark :is(
+    .entry-workout-toggle input[type="checkbox"],
+    .entries-toggles.pill-toggles .check input[type="checkbox"]
+):checked {
+    border-color: var(--primary) !important;
+    background-color: var(--primary) !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3 8 3 3 7-7' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+}
+
 body[data-page="entries"] :is(.entry-workout-toggle, .entries-toggles.pill-toggles .check):has(input[type="checkbox"]:focus-visible) {
     outline: 3px solid color-mix(in srgb, var(--primary) 25%, transparent);
     outline-offset: 2px;

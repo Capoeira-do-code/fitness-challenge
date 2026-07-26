@@ -307,13 +307,15 @@ if ($page === 'logout') {
 
 if ($page === 'setup') {
     $setupError = '';
+    $setupLocale = normalize_locale((string) ($_POST['locale'] ?? config_default_locale($config)), config_default_locale($config));
+    set_current_locale($setupLocale);
     $setupValues = [
         'app_name' => trim((string) ($_POST['app_name'] ?? ($config['app_name'] ?? 'Fitness Challenge'))),
-        'challenge_name' => trim((string) ($_POST['challenge_name'] ?? 'Mi reto fitness')),
-        'team_name' => trim((string) ($_POST['team_name'] ?? 'Mi equipo')),
+        'challenge_name' => trim((string) ($_POST['challenge_name'] ?? t('setup.default_challenge_name'))),
+        'team_name' => trim((string) ($_POST['team_name'] ?? t('setup.default_team_name'))),
         'display_name' => trim((string) ($_POST['display_name'] ?? '')),
         'username' => trim((string) ($_POST['username'] ?? 'admin')),
-        'locale' => normalize_locale((string) ($_POST['locale'] ?? config_default_locale($config)), config_default_locale($config)),
+        'locale' => $setupLocale,
         'challenge_start' => trim((string) ($_POST['challenge_start'] ?? date('Y-m-d'))),
         'challenge_end' => trim((string) ($_POST['challenge_end'] ?? date('Y-m-d', strtotime('+90 days')))),
     ];
@@ -327,26 +329,26 @@ if ($page === 'setup') {
         if (!csrf_verify()) {
             $setupError = t('flash.csrf');
         } elseif ($setupValues['app_name'] === '' || $setupValues['challenge_name'] === '' || $setupValues['team_name'] === '') {
-            $setupError = 'Completa todos los ajustes del sitio.';
+            $setupError = t('setup.error_required_site_settings');
         } elseif ($setupValues['display_name'] === '' || $displayNameLength > 80) {
-            $setupError = 'Indica un nombre visible de hasta 80 caracteres.';
+            $setupError = t('setup.error_display_name');
         } elseif ($usernameLength < 3 || $usernameLength > 40 || preg_match('/^[A-Za-z0-9._-]+$/', $setupValues['username']) !== 1) {
-            $setupError = 'El usuario debe tener entre 3 y 40 caracteres y solo puede usar letras, números, punto, guion y guion bajo.';
+            $setupError = t('setup.error_username');
         } elseif (strlen($password) < 10) {
-            $setupError = 'La contraseña debe tener al menos 10 caracteres.';
+            $setupError = t('setup.error_password_length');
         } elseif (!preg_match('/[A-Za-z]/', $password) || !preg_match('/\d/', $password)) {
-            $setupError = 'La contraseña debe incluir al menos una letra y un número.';
+            $setupError = t('setup.error_password_complexity');
         } elseif ($password !== $passwordConfirm) {
             $setupError = t('flash.password_mismatch');
         } elseif (date_input_to_iso($setupValues['challenge_start']) === null || date_input_to_iso($setupValues['challenge_end']) === null) {
-            $setupError = 'Las fechas del reto no son válidas.';
+            $setupError = t('setup.error_dates_invalid');
         } elseif ($setupValues['challenge_end'] < $setupValues['challenge_start']) {
-            $setupError = 'La fecha final del reto debe ser posterior a la fecha inicial.';
+            $setupError = t('setup.error_date_order');
         } else {
             try {
                 $pdo->exec('BEGIN IMMEDIATE');
                 if ((int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() !== 0) {
-                    throw new RuntimeException('La instalación ya ha sido configurada.');
+                    throw new RuntimeException(t('setup.error_already_configured'));
                 }
 
                 $now = now_iso();
@@ -439,22 +441,21 @@ if ($page === 'setup') {
                 persist_session_locale($setupValues['locale']);
                 set_current_locale($setupValues['locale']);
                 if (!login_user($pdo, $setupValues['username'], $password)) {
-                    throw new RuntimeException('La cuenta se creó, pero no se pudo iniciar sesión automáticamente.');
+                    throw new RuntimeException(t('setup.error_autologin_failed'));
                 }
-                flash_set('success', 'Instalación completada. Ya puedes administrar tu sitio.');
+                flash_set('success', t('setup.success'));
                 redirect('/?page=dashboard');
             } catch (Throwable $e) {
                 if ($pdo->inTransaction()) {
                     $pdo->rollBack();
                 }
-                $setupError = $e->getMessage() !== '' ? $e->getMessage() : 'No se pudo completar la instalación.';
+                $setupError = $e->getMessage() !== '' ? $e->getMessage() : t('setup.error_generic');
             }
         }
     }
 
-    set_current_locale($setupValues['locale']);
     render_view('setup', [
-        'title' => 'Configurar sitio',
+        'title' => t('setup.title'),
         'currentPage' => 'setup',
         'currentUser' => null,
         'setupError' => $setupError,
@@ -778,9 +779,11 @@ if ($page === 'login') {
         $password = (string) ($_POST['password'] ?? '');
         $ipAddress = request_ip_address();
 
+        $loginRetryQuery = $username !== '' ? '&username=' . urlencode($username) : '';
+
         if (login_attempt_is_blocked($pdo, $username, $ipAddress, 5, 15)) {
             flash_set('error', t('flash.login_blocked'));
-            redirect('/?page=login');
+            redirect('/?page=login' . $loginRetryQuery);
         }
 
         if (login_user($pdo, $username, $password)) {
@@ -802,7 +805,7 @@ if ($page === 'login') {
 
         register_failed_login_attempt($pdo, $username, $ipAddress);
         flash_set('error', t('flash.bad_credentials'));
-        redirect('/?page=login');
+        redirect('/?page=login' . $loginRetryQuery);
     }
 
     $appIconSetting = db_fetch_one(

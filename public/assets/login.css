@@ -184,7 +184,7 @@ body[data-page="login"] .flash {
 .loginx-field input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 15%, transparent); }
 .loginx-field:focus-within .loginx-field-icon { color: var(--primary-dark); }
 
-.loginx-remember { position: relative; display: inline-flex; align-items: center; gap: 0.55rem; cursor: pointer; user-select: none; }
+.loginx-remember { position: relative; display: inline-flex; align-items: center; gap: 0.55rem; min-height: 44px; padding: 12px 4px; margin: -12px -4px; cursor: pointer; user-select: none; }
 .loginx-remember input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .loginx-remember-box { display: grid; place-items: center; width: 20px; height: 20px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); transition: background 0.14s ease, border-color 0.14s ease; }
 .loginx-remember-box::after { content: ""; width: 10px; height: 5.5px; margin-top: -2px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-45deg) scale(0); transition: transform 0.14s ease; }

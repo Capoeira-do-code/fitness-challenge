@@ -103,6 +103,8 @@ body:is([data-theme="dark"], .theme-active-dark) :where(
     .table-wrap,
     .calendar-empty-state,
     .gallery-empty,
+    .photo-comment-item,
+    .photo-comments-empty,
     [class$="-card"],
     [class*="-card "],
     [class$="-panel"],

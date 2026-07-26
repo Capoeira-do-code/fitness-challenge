@@ -20,6 +20,12 @@ $trainingVisualMark = wk_exercise_visual_mark(array_merge(['muscle_group' => 'ch
 $trainingMarkOptions = wk_exercise_mark_options();
 $trainingActive = $trainingExerciseIsNew || (int) ($trainingExercise['active'] ?? 0) === 1;
 $trainingRankable = $trainingExerciseIsNew || (int) ($trainingExercise['rankable'] ?? 0) === 1;
+$trainingExerciseTypeLabel = static function (string $type): string {
+    return t('workouts.type_' . (in_array($type, WK_EXERCISE_TYPES, true) ? $type : 'strength'));
+};
+$trainingMuscleLabel = static fn(string $m): string => $m !== '' ? t('workouts.muscle_' . $m) : '';
+$trainingEquipmentLabel = static fn(string $equipment): string => $equipment !== '' ? t('workouts.equipment_' . $equipment) : '';
+$trainingDifficultyLabel = static fn(string $difficulty): string => t('workouts.difficulty_' . (in_array($difficulty, ['beginner', 'intermediate', 'advanced', 'custom'], true) ? $difficulty : 'beginner'));
 ?>
 <form method="post" action="/?page=admin" enctype="multipart/form-data" class="stack compact-form admin-training-exercise-form" data-workout-media-editor>
     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -28,56 +34,56 @@ $trainingRankable = $trainingExerciseIsNew || (int) ($trainingExercise['rankable
 
     <div class="grid-inline admin-training-core-fields">
         <label>
-            Name
-            <input type="text" name="name" value="<?= e((string) ($trainingExercise['name'] ?? '')) ?>" required maxlength="120" placeholder="e.g. Incline dumbbell press">
+            <?= e(t('workouts.exercise_name')) ?>
+            <input type="text" name="name" value="<?= e((string) ($trainingExercise['name'] ?? '')) ?>" required maxlength="120" placeholder="<?= e(t('workouts.exercise_name_placeholder')) ?>">
         </label>
         <label>
-            Primary muscle
+            <?= e(t('admin.exercise_primary_muscle')) ?>
             <select name="muscle_group">
                 <?php foreach ($trainingMuscleOptions as $muscle): ?>
-                    <option value="<?= e($muscle) ?>" <?= (string) ($trainingExercise['muscle_group'] ?? 'chest') === $muscle ? 'selected' : '' ?>><?= e(ucwords(str_replace('_', ' ', $muscle))) ?></option>
+                    <option value="<?= e($muscle) ?>" <?= (string) ($trainingExercise['muscle_group'] ?? 'chest') === $muscle ? 'selected' : '' ?>><?= e($trainingMuscleLabel($muscle)) ?></option>
                 <?php endforeach; ?>
             </select>
         </label>
         <label>
-            Type
+            <?= e(t('workouts.exercise_type')) ?>
             <select name="exercise_type" data-workout-exercise-type>
                 <?php foreach (WK_EXERCISE_TYPES as $type): ?>
-                    <option value="<?= e($type) ?>" <?= (string) ($trainingExercise['exercise_type'] ?? 'strength') === $type ? 'selected' : '' ?>><?= e(ucwords($type)) ?></option>
+                    <option value="<?= e($type) ?>" <?= (string) ($trainingExercise['exercise_type'] ?? 'strength') === $type ? 'selected' : '' ?>><?= e($trainingExerciseTypeLabel($type)) ?></option>
                 <?php endforeach; ?>
             </select>
         </label>
         <label>
-            Equipment
+            <?= e(t('workouts.equipment')) ?>
             <select name="equipment">
                 <?php foreach ($trainingEquipmentOptions as $equipment): ?>
-                    <option value="<?= e($equipment) ?>" <?= (string) ($trainingExercise['equipment'] ?? 'none') === $equipment ? 'selected' : '' ?>><?= e(ucwords($equipment)) ?></option>
+                    <option value="<?= e($equipment) ?>" <?= (string) ($trainingExercise['equipment'] ?? 'none') === $equipment ? 'selected' : '' ?>><?= e($trainingEquipmentLabel($equipment)) ?></option>
                 <?php endforeach; ?>
             </select>
         </label>
         <label>
-            Difficulty
+            <?= e(t('workouts.difficulty')) ?>
             <select name="difficulty">
                 <?php foreach (['beginner', 'intermediate', 'advanced'] as $difficulty): ?>
-                    <option value="<?= e($difficulty) ?>" <?= (string) ($trainingExercise['difficulty'] ?? 'beginner') === $difficulty ? 'selected' : '' ?>><?= e(ucwords($difficulty)) ?></option>
+                    <option value="<?= e($difficulty) ?>" <?= (string) ($trainingExercise['difficulty'] ?? 'beginner') === $difficulty ? 'selected' : '' ?>><?= e($trainingDifficultyLabel($difficulty)) ?></option>
                 <?php endforeach; ?>
             </select>
         </label>
         <label>
-            Rank factor
+            <?= e(t('admin.exercise_rank_factor')) ?>
             <input type="number" name="rank_factor" min="0.01" max="100" step="0.01" value="<?= e((string) ($trainingExercise['rank_factor'] ?? '1')) ?>">
         </label>
         <label>
-            Order
+            <?= e(t('common.order')) ?>
             <input type="number" name="sort_order" min="0" value="<?= (int) ($trainingExercise['sort_order'] ?? 9999) ?>">
         </label>
     </div>
 
     <fieldset class="admin-training-muscles">
-        <legend>Secondary muscles</legend>
+        <legend><?= e(t('workouts.secondary_muscles')) ?></legend>
         <div class="chip-group">
             <?php foreach ($trainingMuscleOptions as $muscle): ?>
-                <label class="chip"><input type="checkbox" name="secondary_muscles[]" value="<?= e($muscle) ?>" <?= in_array($muscle, $trainingSecondary, true) ? 'checked' : '' ?>><?= e(ucwords($muscle)) ?></label>
+                <label class="chip"><input type="checkbox" name="secondary_muscles[]" value="<?= e($muscle) ?>" <?= in_array($muscle, $trainingSecondary, true) ? 'checked' : '' ?>><?= e($trainingMuscleLabel($muscle)) ?></label>
             <?php endforeach; ?>
         </div>
     </fieldset>
@@ -85,13 +91,13 @@ $trainingRankable = $trainingExerciseIsNew || (int) ($trainingExercise['rankable
     <?php $workoutTrainingDefaultsFields = ['exercise' => array_merge(['exercise_type' => 'strength'], $trainingExercise)]; require __DIR__ . '/workout_training_defaults_fields.php'; ?>
 
     <div class="grid-inline admin-training-toggle-fields">
-        <label class="check"><input type="checkbox" name="rankable" value="1" <?= $trainingRankable ? 'checked' : '' ?>>Counts toward ranked</label>
+        <label class="check"><input type="checkbox" name="rankable" value="1" <?= $trainingRankable ? 'checked' : '' ?>><?= e(t('admin.exercise_rankable')) ?></label>
         <label class="check"><input type="checkbox" name="active" value="1" <?= $trainingActive ? 'checked' : '' ?>><?= e(t('common.active')) ?></label>
     </div>
 
     <label>
-        Short guide
-        <textarea name="summary" rows="2" maxlength="800" placeholder="What this exercise trains and when to use it."><?= e((string) ($trainingExerciseContent['summary'] ?? '')) ?></textarea>
+        <?= e(t('workouts.short_guide')) ?>
+        <textarea name="summary" rows="2" maxlength="800" placeholder="<?= e(t('workouts.short_guide_placeholder')) ?>"><?= e((string) ($trainingExerciseContent['summary'] ?? '')) ?></textarea>
     </label>
     <?php
     $workoutGuideBuilderContent = $trainingExerciseContent;
@@ -102,8 +108,8 @@ $trainingRankable = $trainingExerciseIsNew || (int) ($trainingExercise['rankable
 
     <section class="admin-training-media-fields" aria-labelledby="training-media-title-<?= (int) ($trainingExercise['id'] ?? 0) ?>">
         <div>
-            <h4 id="training-media-title-<?= (int) ($trainingExercise['id'] ?? 0) ?>">Example media</h4>
-            <p class="muted small">Upload a technique photo and optionally link a YouTube, Vimeo or direct video.</p>
+            <h4 id="training-media-title-<?= (int) ($trainingExercise['id'] ?? 0) ?>"><?= e(t('admin.exercise_media_title')) ?></h4>
+            <p class="muted small"><?= e(t('admin.exercise_media_hint')) ?></p>
         </div>
         <?php
         $workoutLivePreviewExercise = array_merge($trainingExercise, ['content' => $trainingExerciseContent]);
@@ -139,18 +145,18 @@ $trainingRankable = $trainingExerciseIsNew || (int) ($trainingExercise['rankable
         require __DIR__ . '/workout_exercise_gallery_editor.php';
         ?>
         <div class="grid-inline">
-            <label>Video URL <input type="url" name="video_url" value="<?= e($trainingVideoUrl) ?>" placeholder="https://www.youtube.com/watch?v=..." data-workout-video-input></label>
-            <label>Library cover <select name="cover_mode"><option value="auto"<?= $trainingCoverMode === 'auto' ? ' selected' : '' ?>>Auto</option><option value="photo"<?= $trainingCoverMode === 'photo' ? ' selected' : '' ?>>Photo</option><option value="video"<?= $trainingCoverMode === 'video' ? ' selected' : '' ?>>Video</option><option value="simple"<?= $trainingCoverMode === 'simple' ? ' selected' : '' ?>>Simple</option></select></label>
+            <label><?= e(t('workouts.custom_video')) ?> <input type="url" name="video_url" value="<?= e($trainingVideoUrl) ?>" placeholder="https://www.youtube.com/watch?v=..." data-workout-video-input></label>
+            <label><?= e(t('workouts.custom_cover')) ?> <select name="cover_mode"><option value="auto"<?= $trainingCoverMode === 'auto' ? ' selected' : '' ?>><?= e(t('workouts.cover_auto')) ?></option><option value="photo"<?= $trainingCoverMode === 'photo' ? ' selected' : '' ?>><?= e(t('workouts.cover_photo')) ?></option><option value="video"<?= $trainingCoverMode === 'video' ? ' selected' : '' ?>><?= e(t('workouts.cover_video')) ?></option><option value="simple"<?= $trainingCoverMode === 'simple' ? ' selected' : '' ?>><?= e(t('workouts.cover_simple')) ?></option></select></label>
         </div>
-        <button class="btn btn-ghost small" type="button" data-workout-clear-video>Clear video</button>
-        <div class="workouts-custom-video-preview" data-workout-video-preview data-empty-label="Video preview"></div>
+        <button class="btn btn-ghost small" type="button" data-workout-clear-video><?= e(t('common.clear')) ?></button>
+        <div class="workouts-custom-video-preview" data-workout-video-preview data-empty-label="<?= e(t('workouts.video_preview')) ?>"></div>
     </section>
 
     <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
 </form>
 
 <?php if (!$trainingExerciseIsNew): ?>
-    <form method="post" action="/?page=admin" class="admin-danger-zone" onsubmit="return confirm('Remove this exercise from Training? Existing session history will be preserved.');">
+    <form method="post" action="/?page=admin" class="admin-danger-zone" onsubmit="return confirm('<?= e(t('admin.exercise_delete_confirm')) ?>');">
         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
         <input type="hidden" name="action" value="delete_training_exercise">
         <input type="hidden" name="exercise_id" value="<?= (int) ($trainingExercise['id'] ?? 0) ?>">

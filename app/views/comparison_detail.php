@@ -12,7 +12,7 @@ $backUrl = (string) ($backUrl ?? '/?page=dashboard');
 $dashboardView = (string) ($dashboardView ?? 'current_week');
 $weekOptions = array_values((array) ($weekOptions ?? []));
 ?>
-<section class="screen stack-lg">
+<section class="screen stack-lg comparison-detail-screen">
     <div class="hero-panel app-page-hero">
         <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('metric.score')) ?></p>
@@ -71,15 +71,29 @@ $weekOptions = array_values((array) ($weekOptions ?? []));
         }
         ?>
         <?php foreach ($cards as $card): ?>
-            <?php $b = is_array($card['breakdown'] ?? null) ? $card['breakdown'] : []; ?>
+            <?php
+            $b = is_array($card['breakdown'] ?? null) ? $card['breakdown'] : [];
+            $cardWeights = is_array($b['weights'] ?? null) ? (array) $b['weights'] : [];
+            ?>
             <article class="panel">
                 <h3><?= e((string) ($card['title'] ?? t('common.user'))) ?></h3>
                 <div class="metric-grid dashboard-kpis">
-                    <article class="metric-card"><div><span>Steps %</span><strong><?= e((string) ($b['steps_progress'] ?? 0)) ?>%</strong></div></article>
-                    <article class="metric-card"><div><span>Workouts %</span><strong><?= e((string) ($b['workouts_progress'] ?? 0)) ?>%</strong></div></article>
-                    <article class="metric-card"><div><span><?= e(t('metric.discipline')) ?></span><strong><?= e((string) ($b['discipline_score'] ?? 0)) ?>%</strong></div></article>
-                    <?php if (($b['weight_progress'] ?? null) !== null): ?>
-                        <article class="metric-card"><div><span><?= e(t('metric.weight')) ?> %</span><strong><?= e((string) ($b['weight_progress'] ?? 0)) ?>%</strong></div></article>
+                    <?php /* Each card below is only rendered when the metric actually carries weight
+                             in this user's live score (same weights map the table below filters on).
+                             Metrics turned off in Settings > Tracked metrics still report a 0 progress
+                             value, and without this guard they showed a misleading "0,0%" card that read
+                             as a failing score instead of "not being measured". */ ?>
+                    <?php if ((float) ($cardWeights['steps'] ?? 0) > 0): ?>
+                        <article class="metric-card"><div><span><?= e(t('metric.steps')) ?> %</span><strong><?= e(number_format((float) ($b['steps_progress'] ?? 0), 1, ',', '.')) ?>%</strong></div></article>
+                    <?php endif; ?>
+                    <?php if ((float) ($cardWeights['workouts'] ?? 0) > 0): ?>
+                        <article class="metric-card"><div><span><?= e(t('metric.workouts')) ?> %</span><strong><?= e(number_format((float) ($b['workouts_progress'] ?? 0), 1, ',', '.')) ?>%</strong></div></article>
+                    <?php endif; ?>
+                    <?php if ((float) ($cardWeights['discipline'] ?? 0) > 0): ?>
+                        <article class="metric-card"><div><span><?= e(t('metric.discipline')) ?></span><strong><?= e(number_format((float) ($b['discipline_score'] ?? 0), 1, ',', '.')) ?>%</strong></div></article>
+                    <?php endif; ?>
+                    <?php if (($b['weight_progress'] ?? null) !== null && (float) ($cardWeights['weight'] ?? 0) > 0): ?>
+                        <article class="metric-card"><div><span><?= e(t('metric.weight')) ?> %</span><strong><?= e(number_format((float) ($b['weight_progress'] ?? 0), 1, ',', '.')) ?>%</strong></div></article>
                     <?php endif; ?>
                 </div>
                 <div class="table-wrap">
@@ -116,16 +130,16 @@ $weekOptions = array_values((array) ($weekOptions ?? []));
                             ?>
                             <tr>
                                 <td><?= e($label) ?></td>
-                                <td><?= e((string) round(((float) $weight) * 100, 0)) ?>%</td>
-                                <td><?= e((string) round($progressValue, 1)) ?>%</td>
-                                <td><?= e((string) round($contribution, 2)) ?></td>
+                                <td><?= e(number_format(round(((float) $weight) * 100, 0), 0, ',', '.')) ?>%</td>
+                                <td><?= e(number_format($progressValue, 1, ',', '.')) ?>%</td>
+                                <td><?= e(number_format($contribution, 2, ',', '.')) ?></td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>
                         <tfoot>
                         <tr>
                             <th colspan="3"><?= e(t('metric.score')) ?></th>
-                            <th><?= e((string) ($b['score'] ?? 0)) ?></th>
+                            <th><?= e(number_format((float) ($b['score'] ?? 0), 1, ',', '.')) ?></th>
                         </tr>
                         </tfoot>
                     </table>

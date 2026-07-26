@@ -35,14 +35,25 @@ $metricQueryBase = [
     'user_id' => (int) ($selectedUser['id'] ?? 0),
     'view' => (string) ($dashboardView ?? 'current_week'),
 ];
-$scoreComponentRows = [
+// Only list a component here if it actually carries weight in the live score
+// (score_breakdown_from_snapshot()['weights']). Metrics the user has turned off
+// in Settings > Tracked metrics still come back with a 0 progress value, and
+// without this guard they showed up as a misleading "0,0% progress x 0% weight"
+// row that looked like a failing score rather than "not being measured".
+$scoreWeights = is_array($scoreBreakdown['weights'] ?? null) ? (array) $scoreBreakdown['weights'] : [];
+$scoreComponentRowsAll = [
     'steps' => ['label' => t('metric.steps'), 'icon' => 'footsteps', 'progress' => (float) ($scoreBreakdown['steps_progress'] ?? 0)],
     'workouts' => ['label' => t('metric.workouts'), 'icon' => 'dumbbell', 'progress' => (float) ($scoreBreakdown['workouts_progress'] ?? 0)],
     'discipline' => ['label' => t('metric.discipline'), 'icon' => 'shield', 'progress' => (float) ($scoreBreakdown['discipline_score'] ?? 0)],
 ];
 if (!empty($scoreBreakdown['has_weight'])) {
-    $scoreComponentRows['weight'] = ['label' => t('metric.weight'), 'icon' => 'target', 'progress' => (float) ($scoreBreakdown['weight_progress'] ?? 0)];
+    $scoreComponentRowsAll['weight'] = ['label' => t('metric.weight'), 'icon' => 'target', 'progress' => (float) ($scoreBreakdown['weight_progress'] ?? 0)];
 }
+$scoreComponentRows = array_filter(
+    $scoreComponentRowsAll,
+    static fn(string $key): bool => (float) ($scoreWeights[$key] ?? 0) > 0,
+    ARRAY_FILTER_USE_KEY
+);
 ?>
 <section class="screen metric-detail-screen" style="--metric-tone: <?= e($metricTone) ?>" data-metric-detail="<?= e((string) $metricKey) ?>">
     <header class="hierarchy-page-header metric-page-header">

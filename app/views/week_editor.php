@@ -184,7 +184,13 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                     $stepsRaw = isset($log['steps']) ? (string) $log['steps'] : '';
                     $stepValue = $stepsRaw === '' ? null : (int) $stepsRaw;
                     $dayHasData = $log !== [];
-                    $dayIncomplete = !$dayHasData || $stepValue === null;
+                    // A saved row with 0 steps and no workout is not a logged day, it's
+                    // an untouched one (0 is also what a fresh row defaults to before
+                    // anyone has typed anything in). Only count steps or a workout as
+                    // "done" - matches the two figures shown right next to this dot.
+                    $dayIncomplete = !$dayHasData
+                        || $stepValue === null
+                        || ($stepValue <= 0 && !$completedWorkout);
                     $isToday = $date === to_date(null);
                     $logTimeValue = normalize_log_time($log['log_time'] ?? '', '00:00');
                     $showStepExcuse = $userStepGoal > 0 && ($stepValue === null || $stepValue < $userStepGoal);
@@ -524,6 +530,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
         savedWeek: <?= json_encode($isAllTrainingScope ? t('table.saved_table') : t('table.saved_week')) ?>,
         savedWeekWithErrors: <?= json_encode($isAllTrainingScope ? t('table.saved_table_with_errors') : t('table.saved_week_with_errors')) ?>,
         extraCount: <?= json_encode(t('table.extra_workout_count')) ?>,
+        extraCountOne: <?= json_encode(t('table.extra_workout_count_one')) ?>,
         extraNone: <?= json_encode(t('table.extra_workout_none')) ?>,
         customHabitSaving: <?= json_encode(t('table.custom_habit_saving')) ?>,
         customHabitCreated: <?= json_encode(t('table.custom_habit_created')) ?>,
@@ -647,7 +654,8 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
         if (count <= 0) {
             return '';
         }
-        return labels.extraCount.replace('{count}', String(count));
+        const template = count === 1 ? labels.extraCountOne : labels.extraCount;
+        return template.replace('{count}', String(count));
     };
 
     const isFilled = (value) => String(value || '').trim() !== '';
@@ -1382,9 +1390,13 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
             workout_type_id: primaryWorkout ? (primaryWorkout.workout_type_id || '') : '',
             workout_type: primaryWorkout ? (primaryWorkout.workout_type || '') : '',
             workouts: workouts,
-            step_exception_reason: row.querySelector('[name="step_exception_reason"]').value,
-            distance_exception_reason: row.querySelector('[name="distance_exception_reason"]').value,
-            workout_exception_reason: row.querySelector('[name="workout_exception_reason"]').value,
+            // These fields only exist in the DOM while penalties (and therefore
+            // excuses) are enabled - a challenge admin can turn that off, and a
+            // fresh install ships with it off by default. Falling back to '' keeps
+            // every other field on the row saveable either way.
+            step_exception_reason: row.querySelector('[name="step_exception_reason"]')?.value || '',
+            distance_exception_reason: row.querySelector('[name="distance_exception_reason"]')?.value || '',
+            workout_exception_reason: row.querySelector('[name="workout_exception_reason"]')?.value || '',
             resend_requests: forceResend ? 1 : 0,
             habits: {},
             notes: row.querySelector('[name="notes"]').value,

@@ -112,7 +112,8 @@ function friends_send_request(PDO $pdo, int $me, int $target): bool
         $target,
         'friend_request',
         t('notif.friend_request_title'),
-        t('notif.friend_request_body', ['name' => $name])
+        t('notif.friend_request_body', ['name' => $name]),
+        ['requester_id' => $me]
     );
 
     return true;
@@ -128,6 +129,9 @@ function friends_respond(PDO $pdo, int $me, int $requesterId, bool $accept): boo
     );
     if ($row === null) {
         return false;
+    }
+    if (function_exists('resolve_user_notification_by_payload')) {
+        resolve_user_notification_by_payload($pdo, $me, 'friend_request', 'requester_id', $requesterId);
     }
     if ($accept) {
         db_execute(
@@ -155,6 +159,12 @@ function friends_remove(PDO $pdo, int $me, int $other): bool
     $row = friends_relation($pdo, $me, $other);
     if ($row === null) {
         return false;
+    }
+    if ((string) $row['status'] === 'pending' && function_exists('resolve_user_notification_by_payload')) {
+        // If $me is cancelling a request they sent, $other's "new friend
+        // request" CTA is now pointing at nothing - clear it.
+        $pendingRecipient = (int) $row['addressee_id'];
+        resolve_user_notification_by_payload($pdo, $pendingRecipient, 'friend_request', 'requester_id', (int) $row['requester_id']);
     }
     db_execute($pdo, 'DELETE FROM friendships WHERE id = :id', [':id' => (int) $row['id']]);
 

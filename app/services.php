@@ -7177,6 +7177,31 @@ function achievement_metric_unit(string $metricKey): string
     };
 }
 
+/**
+ * Achievement progress rules pass their unit as a bare internal token (e.g.
+ * 'days', 'logs', 'steps') that is also used for number-formatting decisions
+ * below. Translate the handful of word-based tokens here, in one place,
+ * rather than at each of the ~50 achievement rule call sites.
+ */
+function achievement_progress_unit_label(string $unit): string
+{
+    return match ($unit) {
+        'steps' => t('achievements.unit_steps'),
+        'workouts' => t('achievements.unit_workouts'),
+        'score' => t('achievements.unit_score'),
+        'strikes' => t('achievements.unit_strikes'),
+        'rank points' => t('achievements.unit_rank_points'),
+        'days' => t('achievements.unit_days'),
+        'logs' => t('achievements.unit_logs'),
+        'types' => t('achievements.unit_types'),
+        'photos' => t('achievements.unit_photos'),
+        'weeks' => t('achievements.unit_weeks'),
+        'challenges' => t('achievements.unit_challenges'),
+        'members' => t('achievements.unit_members'),
+        default => $unit,
+    };
+}
+
 function format_achievement_progress_number(float $value, string $unit = ''): string
 {
     $absolute = abs($value);
@@ -7194,7 +7219,9 @@ function format_achievement_progress_number(float $value, string $unit = ''): st
         return '€' . $formatted;
     }
 
-    return $unit !== '' ? $formatted . ' ' . $unit : $formatted;
+    $label = achievement_progress_unit_label($unit);
+
+    return $label !== '' ? $formatted . ' ' . $label : $formatted;
 }
 
 function achievement_progress_payload(float $current, float $target, string $unit = ''): ?array
@@ -10150,6 +10177,43 @@ function delete_all_user_notifications(PDO $pdo, int $userId): int
          WHERE user_id = :user_id'
     );
     $statement->execute([':user_id' => $userId]);
+
+    return max(0, (int) $statement->rowCount());
+}
+
+/**
+ * Deletes a user's still-unread "needs action" notification(s) of a given
+ * kind whose payload matches a specific id (e.g. a duel or friend request
+ * that just got accepted/declined elsewhere). Without this, the CTA badge
+ * and the "requieren accion" filter counter stayed stuck forever on a
+ * decision the user had already made, because responding to a duel/friend
+ * request never touched the notification that had announced it.
+ * Scoped to a single payload key/id so an unrelated pending item of the
+ * same kind (e.g. a second, different duel challenge) is never touched.
+ */
+function resolve_user_notification_by_payload(PDO $pdo, int $userId, string $kind, string $payloadKey, int $payloadId): int
+{
+    if ($userId <= 0 || $kind === '' || $payloadKey === '' || $payloadId <= 0) {
+        return 0;
+    }
+
+    // CAST both sides to TEXT: PDO::execute() with an array binds scalars as
+    // strings, and comparing that directly against json_extract()'s native
+    // SQLite INTEGER affinity silently matched zero rows even though the
+    // values were equal - the delete looked like a no-op every time.
+    $statement = $pdo->prepare(
+        'DELETE FROM user_notifications
+         WHERE user_id = :user_id
+           AND kind = :kind
+           AND payload_json IS NOT NULL
+           AND CAST(json_extract(payload_json, :json_path) AS TEXT) = CAST(:payload_id AS TEXT)'
+    );
+    $statement->execute([
+        ':user_id' => $userId,
+        ':kind' => $kind,
+        ':json_path' => '$.' . $payloadKey,
+        ':payload_id' => $payloadId,
+    ]);
 
     return max(0, (int) $statement->rowCount());
 }

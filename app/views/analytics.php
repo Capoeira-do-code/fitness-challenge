@@ -148,6 +148,11 @@ $calorieMaintenanceTotal = (float) ($calorieStats['maintenance_total'] ?? 0);
 $calorieConsumedTotal = (float) ($calorieStats['total_consumed'] ?? 0);
 $calorieBurnedTotal = (float) ($calorieStats['total_burned'] ?? 0);
 $calorieDeficitTotal = (float) ($calorieStats['deficit'] ?? 0);
+// Deficit = maintenance + burned - consumed. Without a maintenance figure the
+// backend treats it as 0, so this used to render a confident-looking negative
+// "deficit" that was really just -consumed - misleading for anyone who hasn't
+// filled in their maintenance calories in Profile.
+$calorieMaintenanceConfigured = ($selectedUser['maintenance_calories'] ?? null) !== null;
 
 $foodStats = is_array($analyticsFoodStats ?? null) ? (array) $analyticsFoodStats : [];
 $foodTotals = is_array($foodStats['totals'] ?? null) ? (array) $foodStats['totals'] : [];
@@ -307,7 +312,7 @@ $analyticsSummaryCards = [
     ['label' => t('analytics.meal_entries'), 'value' => (string) ((int) ($foodStats['meal_count'] ?? 0)), 'meta' => t('analytics.meal_days') . ': ' . (string) ((int) ($foodStats['meal_days'] ?? 0)) . ' · ' . t('analytics.food_photos') . ': ' . (string) ((int) ($foodStats['photo_count'] ?? 0))],
     ['label' => t('dashboard.calories_consumed'), 'value' => $formatCalories($calorieConsumedTotal) . ' kcal', 'meta' => t('dashboard.calories_title')],
     ['label' => t('dashboard.calories_burned'), 'value' => $formatCalories($calorieBurnedTotal) . ' kcal', 'meta' => t('entries.training_calories_burned')],
-    ['label' => t('dashboard.calories_deficit'), 'value' => $formatCalories($calorieDeficitTotal) . ' kcal', 'meta' => t('dashboard.calories_hint_label')],
+    ['label' => t('dashboard.calories_deficit'), 'value' => $calorieMaintenanceConfigured ? $formatCalories($calorieDeficitTotal) . ' kcal' : t('analytics.maintenance_not_set'), 'meta' => t('dashboard.calories_hint_label')],
     ['label' => t('entries.photo_protein'), 'value' => $formatDecimal((float) ($foodTotals['protein_g'] ?? 0), 1) . 'g', 'meta' => t('analytics.macros')],
     ['label' => t('entries.photo_carbs'), 'value' => $formatDecimal((float) ($foodTotals['carbs_g'] ?? 0), 1) . 'g', 'meta' => t('analytics.macros')],
     ['label' => t('entries.photo_fat'), 'value' => $formatDecimal((float) ($foodTotals['fat_g'] ?? 0), 1) . 'g', 'meta' => t('analytics.macros')],
@@ -509,8 +514,16 @@ $topbarControls = ob_get_clean();
                     </div>
                 </div>
                 <div class="calories-overview">
-                    <div class="metric-box"><span class="metric-title"><?= e(t('dashboard.calories_maintenance')) ?></span><strong class="metric-value"><?= e($formatCalories($calorieMaintenanceTotal)) ?> kcal</strong></div>
-                    <div class="metric-box"><span class="metric-title"><?= e(t('dashboard.calories_deficit')) ?></span><strong class="metric-value"><?= e($formatCalories($calorieDeficitTotal)) ?> kcal</strong></div>
+                    <?php if ($calorieMaintenanceConfigured): ?>
+                        <div class="metric-box"><span class="metric-title"><?= e(t('dashboard.calories_maintenance')) ?></span><strong class="metric-value"><?= e($formatCalories($calorieMaintenanceTotal)) ?> kcal</strong></div>
+                        <div class="metric-box"><span class="metric-title"><?= e(t('dashboard.calories_deficit')) ?></span><strong class="metric-value"><?= e($formatCalories($calorieDeficitTotal)) ?> kcal</strong></div>
+                    <?php else: ?>
+                        <div class="metric-box metric-box-muted">
+                            <span class="metric-title"><?= e(t('dashboard.calories_maintenance')) ?></span>
+                            <strong class="metric-value muted"><?= e(t('analytics.maintenance_not_set')) ?></strong>
+                            <a class="metric-box-link" href="/?page=profile&amp;section=goals"><?= e(t('analytics.maintenance_not_set_cta')) ?></a>
+                        </div>
+                    <?php endif; ?>
                 </div>
                 <?php if ($calorieSeries === []): ?><p class="muted"><?= e(t('dashboard.no_calorie_data')) ?></p><?php else: ?><canvas id="calorieChart" height="150"></canvas><?php endif; ?>
             </article>

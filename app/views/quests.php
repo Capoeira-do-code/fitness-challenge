@@ -68,7 +68,7 @@ foreach ($questsBoard as $quest) {
                             <strong><?= e((string) ($quest['label'] ?? '')) ?></strong>
                             <small><?= e(!empty($quest['completed']) ? t('quests.status_completed') : t('quests.status_available')) ?></small>
                         </span>
-                        <span class="quest-completion-count"><strong><?= $completionCount ?></strong><small><?= e(t('quests.completed_times')) ?></small></span>
+                        <span class="quest-completion-count"><strong><?= $completionCount ?></strong><small><?= e(t($completionCount === 1 ? 'quests.completed_times_one' : 'quests.completed_times')) ?></small></span>
                         <span class="quest-catalogue-progress">
                             <span class="goal-progress" role="progressbar" aria-label="<?= e(t('metric.progress')) ?>" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= $progressPct ?>"><span style="width: <?= $progressPct ?>%"></span></span>
                             <small><?= e(number_format($progress, 0, '.', ' ')) ?> / <?= e(number_format($target, 0, '.', ' ')) ?></small>

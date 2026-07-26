@@ -206,9 +206,10 @@ $row = static function (string $href, string $icon, string $title, string $descr
             <div class="social-team-list social-team-section-list">
                 <?php foreach ($teams as $socialTeam): ?>
                     <?php $socialTeamCoverUrl = $teamMediaUrl($socialTeam, 'cover_path'); ?>
+                    <?php $socialTeamRowMemberCount = (int) ($socialTeam['member_count'] ?? 0); ?>
                     <a class="social-team-identity-row<?= $socialTeamCoverUrl !== '' ? ' has-cover' : '' ?>" href="/?page=team&amp;team_id=<?= (int) ($socialTeam['id'] ?? 0) ?>">
                         <?php $teamIcon($socialTeam); ?>
-                        <span><strong><?= e((string) ($socialTeam['name'] ?? '')) ?></strong><small><?= e(t('social_hub.members_count', ['count' => (string) ((int) ($socialTeam['member_count'] ?? 0))])) ?></small></span>
+                        <span><strong><?= e((string) ($socialTeam['name'] ?? '')) ?></strong><small><?= e(t($socialTeamRowMemberCount === 1 ? 'social_hub.member_count_one' : 'social_hub.members_count', ['count' => (string) $socialTeamRowMemberCount])) ?></small></span>
                         <span aria-hidden="true">&rsaquo;</span>
                         <?php if ($socialTeamCoverUrl !== ''): ?><img class="social-team-row-cover" src="<?= e($socialTeamCoverUrl) ?>" alt="" loading="lazy" aria-hidden="true"><?php endif; ?>
                     </a>

@@ -39,7 +39,7 @@ $archives = is_array($archives ?? null) ? array_values((array) $archives) : [];
                     <<?= $archiveTag ?> class="challenge-archive-card<?= $archiveHref !== '' ? ' mini-card-link' : '' ?>"<?= $archiveHref !== '' ? ' href="' . e($archiveHref) . '"' : '' ?>>
                         <span class="challenge-archive-head">
                             <strong><?= e((string) ($archive['challenge_name'] ?? t('challenges.unnamed'))) ?></strong>
-                            <span class="badge"><?= e(t('goals.archive')) ?></span>
+                            <span class="badge"><?= e(t('challenges.archived_badge')) ?></span>
                         </span>
                         <span class="challenge-archive-dates">
                             <span><small><?= e(t('goals.start_date')) ?></small><strong><?= e($start !== '' ? format_date_eu($start) : '-') ?></strong></span>

@@ -54,7 +54,12 @@ foreach ($nutritionFields as $field => $meta) {
 
     $numeric = (float) $value;
     $formatted = number_format($numeric, (int) ($meta['decimals'] ?? 0), '.', '');
-    $formatted = rtrim(rtrim($formatted, '0'), '.');
+    // Only trim trailing zeros out of the fractional part (e.g. "60.20" -> "60.2").
+    // Trimming unconditionally also ate trailing zeros from whole numbers with no
+    // decimal point at all, turning 650 kcal into "65" and 700 mg into "7".
+    if (str_contains($formatted, '.')) {
+        $formatted = rtrim(rtrim($formatted, '0'), '.');
+    }
     if ($formatted === '') {
         $formatted = '0';
     }

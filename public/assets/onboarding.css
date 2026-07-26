@@ -10,6 +10,24 @@ body[data-page="onboarding"] {
 body[data-page="register"] main.container,
 body[data-page="onboarding"] main.container { width: min(100%, 1040px); margin: 0 auto; padding: clamp(18px, 4vw, 44px); }
 
+/* These pages render their own in-page header (brand + step progress) with no
+   topbar above it, so the app-wide fixed/floating flash toast would land on top
+   of that header instead of a stable position at the very top of the shell. Put
+   it back in normal document flow, above the header, like setup/login already get. */
+body[data-page="register"] main.container > .flash,
+body[data-page="onboarding"] main.container > .flash {
+    position: relative;
+    inset: auto;
+    left: auto;
+    right: auto;
+    top: auto;
+    width: 100%;
+    max-width: none;
+    margin: 0 0 14px;
+    transform: none;
+    animation: none;
+}
+
 .registration-shell { display: grid; width: min(100%, 720px); min-height: calc(100dvh - 88px); align-content: center; gap: 18px; margin-inline: auto; }
 .registration-brand,
 .onboarding-brand { display: flex; align-items: center; gap: 12px; }

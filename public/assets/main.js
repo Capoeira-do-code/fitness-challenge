@@ -5362,6 +5362,13 @@ window.addEventListener('appinstalled', () => {
                 if (!response.ok) {
                     throw new Error(`In-page request failed (${response.status})`);
                 }
+                // Some pjax-safe routes (e.g. ?page=notifications&open_notification_id=)
+                // 302-redirect server-side to a different page (e.g. ?page=duels).
+                // fetch() follows that redirect transparently, so response.url is the
+                // real final address - pushing targetUrl instead left the address bar,
+                // history entries and reload behavior stuck on the page the user
+                // clicked from while the content shown was the redirect target.
+                const resolvedUrl = new URL(response.url || targetUrl.toString(), window.location.origin);
                 const html = await response.text();
                 const doc = new DOMParser().parseFromString(html, 'text/html');
                 const nextMain = doc.querySelector('main.container');
@@ -5378,7 +5385,7 @@ window.addEventListener('appinstalled', () => {
                         __fcPjaxDepth: Number.isFinite(currentDepth) ? currentDepth + 1 : 1,
                         scrollX: 0,
                         scrollY: 0,
-                    }, '', targetUrl.toString());
+                    }, '', resolvedUrl.toString());
                 }
 
                 document.title = doc.title || document.title;
@@ -5420,7 +5427,7 @@ window.addEventListener('appinstalled', () => {
                 }
                 document.dispatchEvent(new CustomEvent('fc:afterPageSwap', {
                     detail: {
-                        url: targetUrl.toString(),
+                        url: resolvedUrl.toString(),
                         push,
                     },
                 }));

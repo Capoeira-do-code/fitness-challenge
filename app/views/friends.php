@@ -91,7 +91,7 @@ $fmtVal = static function (string $fmt, $v): string {
                 <?php endif; ?>
                 <h1 data-navigation-focus tabindex="-1"><?= e(t('friends.your_friends')) ?></h1>
             </div>
-            <span class="badge" aria-label="<?= count($friendsList) ?> <?= e(t('friends.count_label')) ?>"><?= count($friendsList) ?></span>
+            <span class="badge" aria-label="<?= count($friendsList) ?> <?= e(t(count($friendsList) === 1 ? 'friends.count_label_one' : 'friends.count_label')) ?>"><?= count($friendsList) ?></span>
         </div>
         <?php if ($friendsList === []): ?>
             <p class="muted"><?= e(t('friends.none')) ?></p>

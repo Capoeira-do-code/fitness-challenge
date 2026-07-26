@@ -122,6 +122,7 @@ function duels_create(PDO $pdo, int $challengerId, int $opponentId, string $metr
          VALUES (:c, :o, :m, :d, "pending", :now, :now)',
         [':c' => $challengerId, ':o' => $opponentId, ':m' => $metric, ':d' => $days, ':now' => $now]
     );
+    $newDuelId = (int) $pdo->lastInsertId();
 
     if (function_exists('social_notify')) {
         social_notify(
@@ -132,7 +133,8 @@ function duels_create(PDO $pdo, int $challengerId, int $opponentId, string $metr
             t('notif.duel_challenge_body', [
                 'name' => social_user_name($pdo, $challengerId),
                 'metric' => duels_metric_label($metric),
-            ])
+            ]),
+            $newDuelId > 0 ? ['duel_id' => $newDuelId] : []
         );
     }
 
@@ -149,6 +151,9 @@ function duels_respond(PDO $pdo, int $duelId, int $me, bool $accept): bool
     );
     if ($duel === null) {
         return false;
+    }
+    if (function_exists('resolve_user_notification_by_payload')) {
+        resolve_user_notification_by_payload($pdo, $me, 'duel_challenge', 'duel_id', $duelId);
     }
     if (!$accept) {
         db_execute($pdo, 'UPDATE user_duels SET status = "declined", updated_at = :now WHERE id = :id', [':now' => now_iso(), ':id' => $duelId]);
@@ -186,6 +191,11 @@ function duels_cancel(PDO $pdo, int $duelId, int $me): bool
     );
     if ($duel === null) {
         return false;
+    }
+    if (function_exists('resolve_user_notification_by_payload')) {
+        // The opponent's "you've been challenged" CTA is meaningless once the
+        // challenger pulls the duel back - clear it from their side too.
+        resolve_user_notification_by_payload($pdo, (int) $duel['opponent_id'], 'duel_challenge', 'duel_id', $duelId);
     }
     db_execute($pdo, 'UPDATE user_duels SET status = "cancelled", updated_at = :now WHERE id = :id', [':now' => now_iso(), ':id' => $duelId]);
 

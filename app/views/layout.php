@@ -390,7 +390,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
 <?php endif; ?>
 
 <main class="container <?= $loggedIn && !$minimalAppShell ? 'container-with-nav' : '' ?>">
-    <?php if (!$loggedIn && !in_array($currentPage, ['login', 'register'], true)): ?>
+    <?php if (!$loggedIn && !in_array($currentPage, ['login', 'register', 'setup'], true)): ?>
         <?php
         $localeScope = 'login';
         $localeFormClass = 'locale-form auth-locale';

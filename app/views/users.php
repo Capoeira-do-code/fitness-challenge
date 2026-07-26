@@ -43,7 +43,7 @@ for ($i = 0; $i < 7; $i++) {
                 <label>
                     <?= e(t('common.role')) ?>
                     <select name="role">
-                        <option value="user">User</option>
+                        <option value="user"><?= e(t('common.user')) ?></option>
                         <option value="admin"><?= e(t('common.admin')) ?></option>
                     </select>
                 </label>
@@ -120,7 +120,7 @@ for ($i = 0; $i < 7; $i++) {
                         <label>
                             <?= e(t('common.role')) ?>
                             <select name="role">
-                                <option value="user" <?= $user['role'] === 'user' ? 'selected' : '' ?>>User</option>
+                                <option value="user" <?= $user['role'] === 'user' ? 'selected' : '' ?>><?= e(t('common.user')) ?></option>
                                 <option value="admin" <?= $user['role'] === 'admin' ? 'selected' : '' ?>><?= e(t('common.admin')) ?></option>
                             </select>
                         </label>

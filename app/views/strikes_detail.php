@@ -24,7 +24,7 @@ $statusClass = static function (string $status): string {
     };
 };
 ?>
-<section class="screen stack-lg">
+<section class="screen stack-lg strikes-detail-page">
     <div class="hero-panel app-page-hero">
         <div class="hero-copy hero-copy-page-title">
             <p class="eyebrow"><?= e(t('metric.strikes')) ?></p>
