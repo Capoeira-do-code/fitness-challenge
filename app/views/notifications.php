@@ -87,10 +87,15 @@ $checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 
             </div>
         <?php else: ?>
             <div class="notifications-list">
+                <?php $notificationGroup = ''; ?>
                 <?php foreach ($notifications as $notification): ?>
                     <?php
                     $isRead = (int) ($notification['is_read'] ?? 0) === 1;
                     $createdAt = trim((string) ($notification['created_at'] ?? ''));
+                    $createdDate = $createdAt !== '' ? substr($createdAt, 0, 10) : '';
+                    $nextNotificationGroup = $createdDate === to_date(null)
+                        ? 'Hoy'
+                        : ($createdDate === (new DateTimeImmutable('yesterday'))->format('Y-m-d') ? 'Ayer' : format_date_eu($createdDate));
                     $kind = (string) ($notification['kind'] ?? 'info');
                     $kindToken = strtolower((string) (preg_split('/[_:.\-]+/', $kind)[0] ?? 'info'));
                     $categoryLabel = match ($kindToken) {
@@ -107,7 +112,10 @@ $checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 
                     // button that accepts something.
                     $pendingCta = notification_pending_action($kind);
                     ?>
-                    <article class="notification-card kind-<?= e($kind) ?><?= $isRead ? ' is-read' : ' is-unread' ?><?= $pendingCta !== null ? ' needs-action' : '' ?>">
+                    <?php if ($nextNotificationGroup !== $notificationGroup): $notificationGroup = $nextNotificationGroup; ?>
+                        <h2 class="notification-date-heading"><?= e($notificationGroup) ?></h2>
+                    <?php endif; ?>
+                    <article class="notification-card kind-<?= e($kind) ?><?= $isRead ? ' is-read' : ' is-unread' ?><?= $pendingCta !== null ? ' needs-action' : '' ?>" data-notification-swipe>
                         <span class="notification-icon" aria-hidden="true"><?= activity_icon_svg(notification_icon($kind)) ?></span>
                         <a class="notification-main" href="/?page=notifications&amp;open_notification_id=<?= (int) ($notification['id'] ?? 0) ?>">
                             <span class="notification-meta-row"><em><?= e($categoryLabel) ?></em><em class="notification-state"><?= e(t($isRead ? 'notifications.state_read' : 'notifications.state_unread')) ?></em></span>

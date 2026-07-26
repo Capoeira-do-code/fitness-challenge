@@ -242,6 +242,113 @@ function initialize_database(PDO $pdo, array $config): void
     );
 
     $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS custom_metric_definitions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            unit TEXT NOT NULL DEFAULT "",
+            frequency TEXT NOT NULL DEFAULT "daily",
+            target_value REAL,
+            direction TEXT NOT NULL DEFAULT "increase",
+            color TEXT NOT NULL DEFAULT "#18a999",
+            icon TEXT NOT NULL DEFAULT "chart",
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(owner_user_id, name),
+            FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS custom_metric_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            metric_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            entry_date TEXT NOT NULL,
+            value REAL NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(metric_id, user_id, entry_date),
+            FOREIGN KEY (metric_id) REFERENCES custom_metric_definitions(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS nutrition_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            photo_entry_id INTEGER,
+            entry_date TEXT NOT NULL,
+            entry_time TEXT,
+            meal_type TEXT NOT NULL DEFAULT "other",
+            notes TEXT NOT NULL DEFAULT "",
+            photo_path TEXT,
+            calories REAL NOT NULL DEFAULT 0,
+            protein_g REAL,
+            carbs_g REAL,
+            fat_g REAL,
+            fiber_g REAL,
+            sugar_g REAL,
+            sodium_mg REAL,
+            version INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (photo_entry_id) REFERENCES photo_entries(id) ON DELETE SET NULL
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS goal_metric_targets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            goal_id INTEGER NOT NULL,
+            metric_key TEXT NOT NULL,
+            target_value REAL NOT NULL,
+            baseline_value REAL,
+            weight_percent REAL NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS sync_mutations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            resource_type TEXT NOT NULL,
+            resource_key TEXT NOT NULL,
+            response_json TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(user_id, idempotency_key),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS weekly_report_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT "pending",
+            file_path TEXT,
+            error_message TEXT,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            sent_at TEXT,
+            UNIQUE(user_id, period_start, period_end),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )'
+    );
+
+    $pdo->exec(
         'CREATE TABLE IF NOT EXISTS user_dashboard_panel_preferences (
             user_id INTEGER NOT NULL,
             panel_key TEXT NOT NULL,
@@ -891,8 +998,17 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'users', 'telegram_last_reminded_at', 'TEXT');
     ensure_column($pdo, 'users', 'telegram_reminder_count', 'INTEGER NOT NULL DEFAULT 0');
     ensure_column($pdo, 'users', 'telegram_last_motivation_on', 'TEXT');
+    ensure_column($pdo, 'users', 'birth_date', 'TEXT');
+    ensure_column($pdo, 'users', 'tdee_sex', "TEXT NOT NULL DEFAULT ''");
+    ensure_column($pdo, 'users', 'activity_level', "TEXT NOT NULL DEFAULT 'moderate'");
+    ensure_column($pdo, 'users', 'tdee_override', 'REAL');
+    ensure_column($pdo, 'users', 'weekly_report_enabled', 'INTEGER NOT NULL DEFAULT 1');
+    ensure_column($pdo, 'users', 'weekly_report_day', 'INTEGER NOT NULL DEFAULT 1');
+    ensure_column($pdo, 'users', 'weekly_report_time', "TEXT NOT NULL DEFAULT '09:00'");
+    ensure_column($pdo, 'users', 'weekly_report_tz', "TEXT NOT NULL DEFAULT ''");
 
     ensure_column($pdo, 'daily_logs', 'extra_workout', 'INTEGER NOT NULL DEFAULT 0');
+    ensure_column($pdo, 'daily_logs', 'version', 'INTEGER NOT NULL DEFAULT 1');
     ensure_column($pdo, 'daily_logs', 'base_steps', 'INTEGER');
     ensure_column($pdo, 'daily_logs', 'base_distance_km', 'REAL');
     ensure_column($pdo, 'daily_logs', 'base_training_calories_burned', 'REAL');
@@ -928,6 +1044,55 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'photo_entries', 'sugar_g', 'REAL');
     ensure_column($pdo, 'photo_entries', 'sodium_mg', 'REAL');
     ensure_column($pdo, 'photo_entries', 'updated_at', 'TEXT');
+    ensure_column($pdo, 'nutrition_entries', 'photo_entry_id', 'INTEGER');
+    ensure_column($pdo, 'habit_definitions', 'is_personal', 'INTEGER NOT NULL DEFAULT 0');
+
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_custom_metrics_owner ON custom_metric_definitions(owner_user_id, active, name)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_custom_metric_entries_user_date ON custom_metric_entries(user_id, entry_date)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_nutrition_entries_user_date ON nutrition_entries(user_id, entry_date, entry_time)');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_nutrition_entries_photo ON nutrition_entries(photo_entry_id) WHERE photo_entry_id IS NOT NULL');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_goal_metric_targets_goal ON goal_metric_targets(goal_id, sort_order)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_weekly_report_due ON weekly_report_runs(status, updated_at)');
+
+    // Preserve every historical meal while moving nutrition away from the
+    // photo-only model. The NOT EXISTS guard keeps this migration idempotent.
+    $pdo->exec(
+        'INSERT INTO nutrition_entries (
+            user_id, photo_entry_id, entry_date, entry_time, meal_type, notes, photo_path, calories,
+            protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, version, created_at, updated_at
+         )
+         SELECT p.user_id, p.id, p.log_date, NULL,
+                CASE WHEN p.category IN ("breakfast","lunch","dinner","snack") THEN p.category ELSE "other" END,
+                COALESCE(p.caption, ""),
+                CASE WHEN COALESCE(p.has_photo, 1) = 1 AND TRIM(COALESCE(p.file_path, "")) <> "" THEN p.file_path ELSE NULL END,
+                COALESCE(p.calories, 0), p.protein_g, p.carbs_g, p.fat_g, p.fiber_g, p.sugar_g, p.sodium_mg,
+                1, p.created_at, COALESCE(p.updated_at, p.created_at)
+         FROM photo_entries p
+         WHERE p.category IN ("breakfast","lunch","dinner","meal","snack","other")
+           AND NOT EXISTS (
+               SELECT 1 FROM nutrition_entries n
+               WHERE n.user_id = p.user_id AND n.entry_date = p.log_date
+                 AND COALESCE(n.photo_path, "") = CASE WHEN COALESCE(p.has_photo, 1) = 1 THEN COALESCE(p.file_path, "") ELSE "" END
+                 AND n.created_at = p.created_at
+           )'
+    );
+    $pdo->exec(
+        'UPDATE nutrition_entries
+         SET photo_entry_id = (
+             SELECT p.id FROM photo_entries p
+             WHERE p.user_id = nutrition_entries.user_id
+               AND p.log_date = nutrition_entries.entry_date
+               AND p.created_at = nutrition_entries.created_at
+             ORDER BY p.id LIMIT 1
+         )
+         WHERE photo_entry_id IS NULL
+           AND EXISTS (
+             SELECT 1 FROM photo_entries p
+             WHERE p.user_id = nutrition_entries.user_id
+               AND p.log_date = nutrition_entries.entry_date
+               AND p.created_at = nutrition_entries.created_at
+         )'
+    );
 
     ensure_column($pdo, 'teams', 'join_mode', 'TEXT NOT NULL DEFAULT "closed"');
     ensure_column($pdo, 'teams', 'visibility', 'TEXT NOT NULL DEFAULT "visible"');

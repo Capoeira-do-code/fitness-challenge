@@ -12,11 +12,36 @@ $categoryLabels = [
     'workout' => t('entries.workout'),
 ];
 $entryMode = in_array(($entryMode ?? 'data'), ['data', 'nutrition', 'calendar'], true) ? (string) $entryMode : 'data';
+$entryDisplay = ($entryDisplay ?? 'cards') === 'table' ? 'table' : 'cards';
 $calendarView = in_array(($calendarView ?? 'month'), ['month', 'week', 'day'], true) ? (string) $calendarView : 'month';
 $entryPrimaryGoals = is_array($entryPrimaryGoals ?? null) ? array_values((array) $entryPrimaryGoals) : [];
 $entryEnabledMetricKeys = array_values(array_map('strval', (array) ($entryEnabledMetrics ?? [])));
 $entryMetricEnabled = static fn(string $key): bool => in_array($key, $entryEnabledMetricKeys, true);
 $entryHasEnabledHabits = count(array_filter($entryEnabledMetricKeys, static fn(string $key): bool => str_starts_with($key, 'habit:'))) > 0;
+$entryVisibleCustomMetrics = array_values(array_filter(
+    (array) ($entryCustomMetrics ?? []),
+    static fn(array $metric): bool => in_array(custom_metric_key((int) ($metric['id'] ?? 0)), $entryEnabledMetricKeys, true)
+));
+$entryCustomMetricValuesById = [];
+foreach ((array) ($entryCustomMetricValues ?? []) as $entryCustomValue) {
+    $entryCustomMetricValuesById[(int) ($entryCustomValue['metric_id'] ?? 0)] = $entryCustomValue;
+}
+$entryRecentCustomByDate = [];
+foreach ((array) ($entryRecentCustomMetricValues ?? []) as $recentCustomValue) {
+    $entryRecentCustomByDate[(string) ($recentCustomValue['entry_date'] ?? '')][(int) ($recentCustomValue['metric_id'] ?? 0)] = $recentCustomValue['value'] ?? null;
+}
+$entryRecentHabitsByDate = [];
+foreach ((array) ($entryRecentHabitValues ?? []) as $recentHabitValue) {
+    $entryRecentHabitsByDate[(string) ($recentHabitValue['log_date'] ?? '')][(string) ($recentHabitValue['code'] ?? '')] = (int) ($recentHabitValue['value'] ?? 0);
+}
+$entryRecentNutritionByDate = [];
+foreach ((array) ($entryRecentNutritionValues ?? []) as $recentNutritionValue) {
+    $entryRecentNutritionByDate[(string) ($recentNutritionValue['entry_date'] ?? '')] = (float) ($recentNutritionValue['calories'] ?? 0);
+}
+$entryVisibleHabits = array_values(array_filter(
+    (array) ($habits ?? []),
+    static fn(array $habit): bool => in_array('habit:' . (string) ($habit['code'] ?? ''), $entryEnabledMetricKeys, true)
+));
 $entryPrimaryGoalsJson = json_encode($entryPrimaryGoals, JSON_UNESCAPED_SLASHES);
 if (!is_string($entryPrimaryGoalsJson)) {
     $entryPrimaryGoalsJson = '[]';
@@ -233,9 +258,80 @@ if ($entryMode === 'calendar') {
                             <input type="time" name="log_time" value="<?= e($logTimeValue) ?>" form="entry-data-form" aria-label="<?= e(t('entries.log_time')) ?>" data-entry-picker-control>
                         </span>
                     </label>
+                    <a class="btn btn-ghost small entry-table-view" href="/?<?= e(http_build_query(['page' => 'entries', 'mode' => 'data', 'date' => $selectedDate, 'display' => $entryDisplay === 'table' ? 'cards' : 'table'])) ?>"><?= activity_icon_svg($entryDisplay === 'table' ? 'grid' : 'table') ?><span><?= $entryDisplay === 'table' ? 'Vista tarjetas' : 'Vista tabla' ?></span></a>
                 </div>
             </div>
 
+            <?php if ($entryDisplay === 'table'): ?>
+                <?php $entryTableLogs = (array) ($entryRecentLogs ?? []); ?>
+                <div class="entry-table-controls">
+                    <label><span>Filtrar fecha o notas</span><input type="search" placeholder="Buscar…" data-entry-table-filter></label>
+                    <label><span>Orden</span><select data-entry-table-sort><option value="date_desc">Más reciente</option><option value="date_asc">Más antiguo</option><option value="steps_desc">Más pasos</option><option value="distance_desc">Más distancia</option></select></label>
+                </div>
+                <div class="entry-inline-table-wrap" data-entry-table-wrap>
+                    <table class="data-table entry-inline-table" data-entry-table>
+                        <thead><tr>
+                            <th>Fecha</th>
+                            <?php if ($entryMetricEnabled('steps')): ?><th><?= e(t('metric.steps')) ?></th><?php endif; ?>
+                            <?php if ($entryMetricEnabled('distance')): ?><th><?= e(t('metric.distance_km')) ?></th><?php endif; ?>
+                            <?php if ($entryMetricEnabled('workouts')): ?><th><?= e(t('metric.workouts')) ?></th><?php endif; ?>
+                            <?php if ($entryMetricEnabled('calories_burned')): ?><th><?= e(t('dashboard.calories_burned')) ?></th><?php endif; ?>
+                            <?php if ($entryMetricEnabled('calories_consumed')): ?><th><?= e(t('dashboard.calories_consumed')) ?></th><?php endif; ?>
+                            <?php if ($entryMetricEnabled('weight')): ?><th><?= e(t('metric.weight')) ?></th><?php endif; ?>
+                            <?php foreach ($entryVisibleCustomMetrics as $tableMetric): ?><th><?= e((string) $tableMetric['name']) ?></th><?php endforeach; ?>
+                            <?php foreach ($entryVisibleHabits as $tableHabit): ?><th><?= e((string) $tableHabit['label']) ?></th><?php endforeach; ?>
+                            <th></th>
+                        </tr></thead>
+                        <tbody>
+                        <?php foreach ($entryTableLogs as $recentLog): ?>
+                            <?php $recentDate = (string) $recentLog['log_date']; ?>
+                            <tr data-entry-date="<?= e((string) $recentLog['log_date']) ?>" data-entry-steps="<?= e((string) ($recentLog['steps'] ?? 0)) ?>" data-entry-distance="<?= e((string) ($recentLog['distance_km'] ?? 0)) ?>" data-entry-search="<?= e(strtolower((string) $recentLog['log_date'] . ' ' . (string) ($recentLog['notes'] ?? ''))) ?>">
+                                <td data-label="Fecha"><?= e(format_date_eu((string) $recentLog['log_date'])) ?></td>
+                                <?php if ($entryMetricEnabled('steps')): ?><td data-label="<?= e(t('metric.steps')) ?>"><?= e(number_format((float) ($recentLog['steps'] ?? 0), 0, '.', '')) ?></td><?php endif; ?>
+                                <?php if ($entryMetricEnabled('distance')): ?><td data-label="<?= e(t('metric.distance_km')) ?>"><?= $recentLog['distance_km'] !== null ? e(number_format((float) $recentLog['distance_km'], 2, '.', '')) : '—' ?></td><?php endif; ?>
+                                <?php if ($entryMetricEnabled('workouts')): ?><td data-label="<?= e(t('metric.workouts')) ?>"><?= (int) ($recentLog['workout_done'] ?? 0) + (int) ($recentLog['extra_workout'] ?? 0) ?></td><?php endif; ?>
+                                <?php if ($entryMetricEnabled('calories_burned')): ?><td data-label="<?= e(t('dashboard.calories_burned')) ?>"><?= e(number_format((float) ($recentLog['training_calories_burned'] ?? 0), 0, '.', '')) ?> kcal</td><?php endif; ?>
+                                <?php if ($entryMetricEnabled('calories_consumed')): ?><td data-label="<?= e(t('dashboard.calories_consumed')) ?>"><?= isset($entryRecentNutritionByDate[$recentDate]) ? e(number_format($entryRecentNutritionByDate[$recentDate], 0, '.', '')) . ' kcal' : '—' ?></td><?php endif; ?>
+                                <?php if ($entryMetricEnabled('weight')): ?><td data-label="<?= e(t('metric.weight')) ?>"><?= $recentLog['weight'] !== null ? e(number_format((float) $recentLog['weight'], 1, '.', '')) . ' kg' : '—' ?></td><?php endif; ?>
+                                <?php foreach ($entryVisibleCustomMetrics as $tableMetric): ?>
+                                    <?php $tableMetricValue = $entryRecentCustomByDate[$recentDate][(int) $tableMetric['id']] ?? null; ?>
+                                    <td data-label="<?= e((string) $tableMetric['name']) ?>"><?= $tableMetricValue !== null ? e(number_format((float) $tableMetricValue, 2, '.', '')) . (trim((string) ($tableMetric['unit'] ?? '')) !== '' ? ' ' . e((string) $tableMetric['unit']) : '') : '—' ?></td>
+                                <?php endforeach; ?>
+                                <?php foreach ($entryVisibleHabits as $tableHabit): ?><td data-label="<?= e((string) $tableHabit['label']) ?>"><?= !empty($entryRecentHabitsByDate[$recentDate][(string) $tableHabit['code']]) ? '✓' : '—' ?></td><?php endforeach; ?>
+                                <td class="entry-inline-table-action"><a class="btn btn-ghost btn-small" href="/?<?= e(http_build_query(['page' => 'entries', 'mode' => 'data', 'date' => (string) $recentLog['log_date']])) ?>">Editar</a></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="entry-mobile-log-list" data-entry-mobile-list>
+                    <?php foreach ($entryTableLogs as $recentLog): ?>
+                        <?php $recentDate = (string) $recentLog['log_date']; ?>
+                        <article class="entry-mobile-log-card" data-entry-mobile-row data-entry-date="<?= e((string) $recentLog['log_date']) ?>" data-entry-steps="<?= e((string) ($recentLog['steps'] ?? 0)) ?>" data-entry-distance="<?= e((string) ($recentLog['distance_km'] ?? 0)) ?>" data-entry-search="<?= e(strtolower((string) $recentLog['log_date'] . ' ' . (string) ($recentLog['notes'] ?? ''))) ?>">
+                            <header>
+                                <strong><?= e(format_date_eu((string) $recentLog['log_date'])) ?></strong>
+                                <a class="btn btn-ghost btn-small" href="/?<?= e(http_build_query(['page' => 'entries', 'mode' => 'data', 'date' => (string) $recentLog['log_date']])) ?>">Editar</a>
+                            </header>
+                            <dl>
+                                <?php if ($entryMetricEnabled('steps')): ?><div><dt><?= e(t('metric.steps')) ?></dt><dd><?= e(number_format((float) ($recentLog['steps'] ?? 0), 0, '.', '')) ?></dd></div><?php endif; ?>
+                                <?php if ($entryMetricEnabled('distance')): ?><div><dt><?= e(t('metric.distance_km')) ?></dt><dd><?= $recentLog['distance_km'] !== null ? e(number_format((float) $recentLog['distance_km'], 2, '.', '')) . ' km' : '—' ?></dd></div><?php endif; ?>
+                                <?php if ($entryMetricEnabled('workouts')): ?><div><dt><?= e(t('metric.workouts')) ?></dt><dd><?= (int) ($recentLog['workout_done'] ?? 0) + (int) ($recentLog['extra_workout'] ?? 0) ?></dd></div><?php endif; ?>
+                                <?php if ($entryMetricEnabled('calories_burned')): ?><div><dt><?= e(t('dashboard.calories_burned')) ?></dt><dd><?= e(number_format((float) ($recentLog['training_calories_burned'] ?? 0), 0, '.', '')) ?> kcal</dd></div><?php endif; ?>
+                                <?php if ($entryMetricEnabled('calories_consumed')): ?><div><dt><?= e(t('dashboard.calories_consumed')) ?></dt><dd><?= isset($entryRecentNutritionByDate[$recentDate]) ? e(number_format($entryRecentNutritionByDate[$recentDate], 0, '.', '')) . ' kcal' : '—' ?></dd></div><?php endif; ?>
+                                <?php if ($entryMetricEnabled('weight')): ?><div><dt><?= e(t('metric.weight')) ?></dt><dd><?= $recentLog['weight'] !== null ? e(number_format((float) $recentLog['weight'], 1, '.', '')) . ' kg' : '—' ?></dd></div><?php endif; ?>
+                                <?php foreach ($entryVisibleCustomMetrics as $tableMetric): ?>
+                                    <?php $tableMetricValue = $entryRecentCustomByDate[$recentDate][(int) $tableMetric['id']] ?? null; ?>
+                                    <div><dt><?= e((string) $tableMetric['name']) ?></dt><dd><?= $tableMetricValue !== null ? e(number_format((float) $tableMetricValue, 2, '.', '')) . (trim((string) ($tableMetric['unit'] ?? '')) !== '' ? ' ' . e((string) $tableMetric['unit']) : '') : '—' ?></dd></div>
+                                <?php endforeach; ?>
+                                <?php foreach ($entryVisibleHabits as $tableHabit): ?><div><dt><?= e((string) $tableHabit['label']) ?></dt><dd><?= !empty($entryRecentHabitsByDate[$recentDate][(string) $tableHabit['code']]) ? '✓' : '—' ?></dd></div><?php endforeach; ?>
+                            </dl>
+                        </article>
+                    <?php endforeach; ?>
+                    <?php if ($entryTableLogs === []): ?>
+                        <p class="entry-mobile-log-empty">Todavía no hay registros.</p>
+                    <?php endif; ?>
+                </div>
+            <?php else: ?>
             <form id="entry-data-form" method="post" action="/?page=entries" class="stack entry-data-form" data-testid="entry-form" data-workout-fields="<?= e($workoutFieldsJson) ?>" data-primary-goal-type="<?= e((string) ($currentUser['primary_goal_type'] ?? 'steps')) ?>" data-primary-goal-value="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>" data-step-goal="<?= e((string) ($currentUser['step_goal'] ?? 0)) ?>" data-km-goal="<?= e((string) ($currentUser['primary_goal_value'] ?? 0)) ?>" data-primary-goals="<?= e($entryPrimaryGoalsJson) ?>" data-label-steps="<?= e(t('metric.steps')) ?>" data-label-km="<?= e(t('metric.distance_km')) ?>" data-label-workouts="<?= e(t('metric.workouts')) ?>" data-missing-label="<?= e(t('entries.missing_reason')) ?>" data-missing-prefix="<?= e(t('entries.missing_reason_for')) ?>" data-penalties-enabled="<?= $entryPenaltiesEnabled ? '1' : '0' ?>">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="save_log">
@@ -384,10 +480,25 @@ if ($entryMode === 'calendar') {
                             <label class="check">
                                 <input type="checkbox" name="habit[<?= e($code) ?>]" value="1" <?= !empty($log['habits'][$code]) && (int) $log['habits'][$code]['value'] === 1 ? 'checked' : '' ?>>
                                 <?= e((string) $habit['label']) ?>
+                                <a class="entry-metric-chart-link" href="/?<?= e(http_build_query(['page' => 'metric', 'metric' => 'habit:' . $code])) ?>" aria-label="Ver gráfica de <?= e((string) $habit['label']) ?>">↗</a>
                             </label>
                         <?php endforeach; ?>
                     </div>
                 </details><?php endif; ?>
+
+                <details class="entry-habits-disclosure entry-custom-metrics" <?= !empty($_GET['metric_new']) ? 'open' : '' ?>>
+                    <summary class="entry-section-title"><span aria-hidden="true"><?= activity_icon_svg('chart') ?></span><span>Mis métricas</span><span class="entry-habits-count"><?= count($entryVisibleCustomMetrics) ?></span><span class="entry-habits-chevron" aria-hidden="true">⌄</span></summary>
+                    <div class="entry-custom-metric-grid" data-custom-metric-list>
+                        <?php foreach ($entryVisibleCustomMetrics as $customMetric): ?>
+                            <?php $customMetricId = (int) $customMetric['id']; $customEntry = $entryCustomMetricValuesById[$customMetricId] ?? []; ?>
+                            <label class="entry-custom-metric-field" style="--custom-metric-color:<?= e((string) ($customMetric['color'] ?? '#18a999')) ?>">
+                                <span><strong><?= e((string) $customMetric['name']) ?></strong><small><?= e((string) ($customMetric['unit'] ?? '')) ?></small></span>
+                                <input type="number" step="any" name="custom_metric[<?= $customMetricId ?>]" value="<?= e((string) ($customEntry['value'] ?? '')) ?>" inputmode="decimal">
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                    <button class="btn btn-ghost small" type="button" data-custom-metric-open><span aria-hidden="true">+</span> Nueva métrica custom</button>
+                </details>
 
                 <?php if ($entryPenaltiesEnabled): ?>
                     <div class="grid-inline entries-two-col entry-reason-section">
@@ -408,6 +519,7 @@ if ($entryMode === 'calendar') {
                     <button type="submit" class="btn btn-primary btn-block" data-testid="entry-save"><span aria-hidden="true"><?= activity_icon_svg('check') ?></span><span><?= e(t('entries.save_data')) ?></span></button>
                 </div>
             </form>
+            <?php endif; ?>
 
             <?php if ($entryPenaltiesEnabled): ?>
                 <p class="muted small entry-pending-hint"><?= e(t('entries.pending_hint')) ?></p>
@@ -686,3 +798,21 @@ if ($entryMode === 'calendar') {
         </article>
     <?php endif; ?>
 </section>
+
+<dialog class="app-dialog custom-metric-dialog" data-custom-metric-dialog>
+    <form class="stack" data-custom-metric-form>
+        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+        <input type="hidden" name="action" value="create">
+        <header><div><p class="eyebrow">Tracked metrics</p><h2>Nueva métrica</h2></div><button type="button" class="dialog-close" data-dialog-close aria-label="<?= e(t('menu.close')) ?>">&times;</button></header>
+        <div class="grid-inline two">
+            <label>Nombre<input name="name" maxlength="60" required placeholder="Agua"></label>
+            <label>Unidad<input name="unit" maxlength="20" placeholder="L, horas, cm…"></label>
+            <label>Frecuencia<select name="frequency"><option value="daily">Diaria</option><option value="weekly">Semanal</option><option value="monthly">Mensual</option></select></label>
+            <label>Objetivo <em>(opcional)</em><input type="number" step="any" name="target_value"></label>
+            <label>Mejora cuando<select name="direction"><option value="increase">Sube</option><option value="decrease">Baja</option><option value="maintain">Se mantiene</option></select></label>
+            <label>Color<input type="color" name="color" value="#18a999"></label>
+        </div>
+        <p class="form-error" data-custom-metric-error hidden></p>
+        <button class="btn btn-primary btn-block" type="submit">Crear y añadir</button>
+    </form>
+</dialog>

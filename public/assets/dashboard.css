@@ -248,6 +248,61 @@ body[data-page="dashboard"] .dashboard-achievement-empty small { align-self: sta
 body[data-page="dashboard"] .dashboard-training-rank {
     border-color: color-mix(in srgb, var(--rank-color) 22%, var(--line));
 }
+
+/* Mobile Today empty state: compact identity plus a proper configuration CTA. */
+@media (max-width: 899px) {
+    body[data-page="dashboard"] .mobile-today-card.is-empty-state {
+        gap: 0;
+        padding: 0;
+        border-color: color-mix(in srgb, var(--primary) 24%, var(--line));
+        background:
+            radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 42%),
+            linear-gradient(145deg, color-mix(in srgb, var(--primary) 5%, var(--surface)), var(--surface) 56%);
+        box-shadow: 0 12px 30px rgba(9, 24, 39, 0.055);
+    }
+
+    body[data-page="dashboard"] .mobile-today-card.is-empty-state .mobile-today-overview {
+        grid-template-columns: minmax(0, 1fr) auto;
+        min-height: 58px;
+        gap: 8px;
+        padding: 9px 10px;
+        border: 0;
+    }
+
+    body[data-page="dashboard"] .mobile-today-card.is-empty-state .mobile-today-identity {
+        align-content: center;
+        gap: 2px;
+        padding-left: 2px;
+    }
+
+    body[data-page="dashboard"] .mobile-today-card.is-empty-state .mobile-today-identity h1 {
+        font-size: clamp(1rem, 4.8vw, 1.28rem);
+    }
+
+    body[data-page="dashboard"] .mobile-today-card.is-empty-state .mobile-today-identity small {
+        display: none;
+    }
+
+    body[data-page="dashboard"] .mobile-today-configure {
+        width: auto;
+        min-width: 0;
+        min-height: 40px;
+        padding: 7px 10px;
+        border-radius: 12px;
+        font-size: 0.62rem;
+        white-space: nowrap;
+    }
+}
+
+@media (max-width: 390px) {
+    body[data-page="dashboard"] .mobile-today-card.is-empty-state .mobile-today-overview {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 6px;
+        padding: 8px;
+    }
+    body[data-page="dashboard"] .mobile-today-card.is-empty-state .mobile-today-identity p { font-size: 0.55rem; }
+    body[data-page="dashboard"] .mobile-today-configure { min-height: 38px; padding-inline: 8px; font-size: 0.58rem; }
+}
 body[data-page="dashboard"] .dashboard-training-rank-heading {
     display: grid;
     grid-template-columns: 38px minmax(0, 1fr);
@@ -582,6 +637,8 @@ body[data-page="dashboard"] .dashboard-training-rank > .dashboard-training-board
    Their inner cards keep their own accent tint, while the panel supplies the
    white base below them and enough intrinsic room for localized actions. */
 body[data-page="dashboard"] :is(
+    .dashboard-nutrition-widget,
+    .dashboard-active-challenge-panel,
     .dashboard-training-progress,
     .quests-widget,
     .season-widget,
@@ -599,6 +656,8 @@ body[data-page="dashboard"] :is(
     background: var(--surface) !important;
 }
 body[data-page="dashboard"] :is(
+    .dashboard-nutrition-widget,
+    .dashboard-active-challenge-panel,
     .dashboard-training-progress,
     .quests-widget,
     .season-widget,
@@ -615,6 +674,8 @@ body[data-page="dashboard"] :is(
     background: transparent;
 }
 body[data-page="dashboard"] :is(
+    .dashboard-nutrition-widget,
+    .dashboard-active-challenge-panel,
     .dashboard-training-progress,
     .quests-widget,
     .season-widget,
@@ -628,6 +689,8 @@ body[data-page="dashboard"] :is(
     border-bottom-color: transparent;
 }
 body[data-page="dashboard"] :is(
+    .dashboard-nutrition-widget,
+    .dashboard-active-challenge-panel,
     .dashboard-training-progress,
     .quests-widget,
     .season-widget,
@@ -641,6 +704,8 @@ body[data-page="dashboard"] :is(
     overflow: visible;
 }
 body[data-page="dashboard"] :is(
+    .dashboard-nutrition-widget,
+    .dashboard-active-challenge-panel,
     .dashboard-training-progress,
     .quests-widget,
     .season-widget,
@@ -956,6 +1021,345 @@ body[data-page="dashboard"]:is([data-theme="dark"], .theme-active-dark) [data-da
     background: var(--surface) !important;
     background-image: none !important;
     box-shadow: none !important;
+}
+
+/* Active challenge: match the compact Home widgets and keep its hierarchy
+   readable when a challenge has a long title or contributor list. */
+body[data-page="dashboard"] .dashboard-active-challenge-panel .dashboard-active-challenge-status-row {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 0 10px;
+    padding: 0 2px;
+}
+
+body[data-page="dashboard"] .dashboard-active-challenge-panel .team-active-challenge-status {
+    flex: 0 0 auto;
+    min-height: 27px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    font-size: 0.6rem;
+    font-weight: 900;
+    letter-spacing: 0.035em;
+    text-transform: uppercase;
+}
+
+body[data-page="dashboard"] .dashboard-active-challenge-panel .dashboard-active-challenge-status-row > small {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.63rem;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body[data-page="dashboard"] .dashboard-active-challenge-panel > .goal-progress-wrap {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 10px;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--primary) 16%, var(--line));
+    border-radius: 13px;
+    background: color-mix(in srgb, var(--primary) 5%, var(--surface));
+}
+
+body[data-page="dashboard"] .dashboard-active-challenge-panel > .goal-progress-wrap .goal-progress {
+    height: 8px;
+    margin: 0;
+    overflow: hidden;
+    border-radius: 999px;
+}
+
+body[data-page="dashboard"] .dashboard-active-challenge-panel > .goal-progress-wrap > small {
+    min-width: 34px;
+    color: var(--primary-dark);
+    font-size: 0.7rem;
+    font-weight: 900;
+    text-align: right;
+}
+
+body[data-page="dashboard"] .dashboard-active-challenge-panel > .compact-metrics-row {
+    gap: 0;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--ui-soft-border, var(--line));
+    border-radius: 13px;
+    background: var(--surface);
+}
+
+body[data-page="dashboard"] .dashboard-active-challenge-panel > .compact-metrics-row > span {
+    min-height: 66px;
+    padding: 10px 12px;
+}
+
+body[data-page="dashboard"] .dashboard-active-challenge-panel > .compact-metrics-row strong {
+    font-size: clamp(0.9rem, 2.4vw, 1.08rem);
+    line-height: 1.15;
+}
+
+body[data-page="dashboard"] .dashboard-active-challenge-panel .dashboard-active-challenge-contributors {
+    margin: 11px 0 0;
+    padding-top: 10px;
+    border-top: 1px solid var(--ui-soft-border, var(--line));
+}
+
+body[data-page="dashboard"] .dashboard-active-challenge-panel .dashboard-active-challenge-contributors > p {
+    margin: 0 0 6px;
+    font-size: 0.63rem;
+    font-weight: 850;
+}
+
+body[data-page="dashboard"] .dashboard-active-challenge-panel .leaderboard-list {
+    gap: 4px;
+}
+
+body[data-page="dashboard"] .dashboard-active-challenge-panel .leaderboard-row {
+    min-height: 46px;
+    padding: 5px 7px;
+    border-radius: 11px;
+    box-shadow: none;
+}
+
+body[data-page="dashboard"] .dashboard-active-challenge-panel .leaderboard-position {
+    font-size: 0.65rem;
+}
+
+body[data-page="dashboard"] .dashboard-active-challenge-panel .leaderboard-avatar {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+}
+
+body[data-page="dashboard"] .dashboard-active-challenge-panel .leaderboard-name-text strong,
+body[data-page="dashboard"] .dashboard-active-challenge-panel .leaderboard-end strong {
+    font-size: 0.72rem;
+}
+
+@media (max-width: 700px) {
+    body[data-page="dashboard"] .dashboard-active-challenge-panel .dashboard-active-challenge-status-row {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    body[data-page="dashboard"] .dashboard-active-challenge-panel .dashboard-active-challenge-status-row > small {
+        width: 100%;
+        text-align: left;
+    }
+
+    body[data-page="dashboard"] .dashboard-active-challenge-panel > .compact-metrics-row > span {
+        min-height: 60px;
+        padding: 9px 10px;
+    }
+
+    body[data-page="dashboard"] .dashboard-active-challenge-panel .dashboard-active-challenge-contributors .leaderboard-row:nth-child(n + 4) {
+        display: none;
+    }
+}
+
+/* Training rank finishing pass: preserve the compact composition while
+   making the current tier, progress and selected member easier to scan. */
+body[data-page="dashboard"] .dashboard-training-rank[data-dashboard-collapsible] {
+    border-color: color-mix(in srgb, var(--rank-color) 30%, var(--line)) !important;
+    box-shadow: 0 12px 30px color-mix(in srgb, var(--rank-color) 9%, transparent);
+}
+
+body[data-page="dashboard"] .dashboard-training-rank > .panel-head .dashboard-disclosure-icon {
+    color: var(--rank-color);
+    background: color-mix(in srgb, var(--rank-color) 12%, var(--surface));
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-summary {
+    gap: 11px;
+    padding: 10px;
+    border: 1px solid color-mix(in srgb, var(--rank-color) 22%, var(--line));
+    background:
+        radial-gradient(circle at 3% 0%, color-mix(in srgb, var(--rank-color) 17%, transparent), transparent 45%),
+        linear-gradient(135deg, color-mix(in srgb, var(--rank-color) 5%, var(--surface)), var(--surface));
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-emblem {
+    position: relative;
+    min-height: 108px;
+    overflow: hidden;
+    border-color: color-mix(in srgb, var(--rank-color) 36%, var(--line));
+    background:
+        radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--rank-color) 18%, transparent), transparent 52%),
+        color-mix(in srgb, var(--rank-color) 8%, var(--surface));
+    box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 64%, transparent);
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-emblem::after {
+    content: "";
+    position: absolute;
+    inset: 7px;
+    pointer-events: none;
+    border: 1px solid color-mix(in srgb, var(--rank-color) 15%, transparent);
+    border-radius: 10px;
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-mark,
+body[data-page="dashboard"] .dashboard-training-rank-emblem > strong,
+body[data-page="dashboard"] .dashboard-training-rank-score {
+    position: relative;
+    z-index: 1;
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-mark {
+    box-shadow: 0 6px 16px color-mix(in srgb, var(--rank-color) 18%, transparent);
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-emblem > strong {
+    font-family: var(--ui-heading-font);
+    font-weight: 900;
+    letter-spacing: -0.02em;
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-score b {
+    font-family: var(--ui-heading-font);
+    font-size: 1.18rem;
+    font-weight: 900;
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-copy {
+    gap: 8px;
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-status strong {
+    font-size: 0.82rem;
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-status span {
+    min-width: 42px;
+    padding: 4px 7px;
+    border: 1px solid color-mix(in srgb, var(--rank-color) 20%, transparent);
+    text-align: center;
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-progress {
+    height: 10px;
+    overflow: visible;
+    border: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--rank-color) 11%, var(--surface-2));
+    box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-progress > span {
+    position: relative;
+    min-width: 8px;
+    box-shadow: 0 4px 10px color-mix(in srgb, var(--rank-color) 22%, transparent);
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-progress > span::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 0;
+    width: 8px;
+    height: 8px;
+    border: 2px solid var(--surface);
+    border-radius: 50%;
+    background: var(--rank-color);
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--rank-color) 34%, transparent);
+    transform: translate(2px, -50%);
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-scale {
+    padding-inline: 1px;
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-facts {
+    gap: 6px;
+}
+
+body[data-page="dashboard"] .dashboard-training-rank-facts > :is(span, strong) {
+    min-height: 31px;
+    padding: 7px 8px;
+    border: 1px solid color-mix(in srgb, var(--rank-color) 10%, var(--line));
+    background: color-mix(in srgb, var(--rank-color) 4%, var(--surface));
+}
+
+body[data-page="dashboard"] .dashboard-training-board-head {
+    margin: 4px 2px 6px;
+    padding-top: 2px;
+}
+
+body[data-page="dashboard"] .dashboard-training-board-head strong {
+    font-size: 0.72rem;
+    font-weight: 900;
+}
+
+body[data-page="dashboard"] .dashboard-training-board-row {
+    position: relative;
+    overflow: hidden;
+    min-height: 48px;
+    padding: 5px 7px;
+    border-color: color-mix(in srgb, var(--rank-color) 9%, var(--line));
+    transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+body[data-page="dashboard"] .dashboard-training-board-row:where(:hover, :focus-visible) {
+    border-color: color-mix(in srgb, var(--rank-color) 35%, var(--line));
+    outline: none;
+    transform: translateY(-1px);
+}
+
+body[data-page="dashboard"] .dashboard-training-board-row.is-selected {
+    border-color: color-mix(in srgb, var(--rank-color) 36%, var(--line));
+    background: color-mix(in srgb, var(--rank-color) 9%, var(--surface));
+    box-shadow: inset 3px 0 0 var(--rank-color);
+}
+
+body[data-page="dashboard"] .dashboard-training-board-row.is-selected > strong {
+    color: var(--rank-color);
+    font-weight: 950;
+}
+
+body[data-page="dashboard"] .dashboard-training-board-row img,
+body[data-page="dashboard"] .dashboard-training-board-avatar {
+    border: 2px solid color-mix(in srgb, var(--rank-color) 16%, var(--surface));
+    box-shadow: 0 3px 9px color-mix(in srgb, var(--ink) 11%, transparent);
+}
+
+@media (max-width: 420px) {
+    body[data-page="dashboard"] .dashboard-training-rank-summary {
+        gap: 8px;
+        padding: 8px;
+    }
+
+    body[data-page="dashboard"] .dashboard-training-rank-emblem {
+        min-height: 100px;
+    }
+
+    body[data-page="dashboard"] .dashboard-training-rank-facts {
+        gap: 4px;
+    }
+
+    body[data-page="dashboard"] .dashboard-training-rank-facts > :is(span, strong) {
+        min-height: 29px;
+        padding: 6px;
+    }
+
+    body[data-page="dashboard"] .dashboard-training-board-row {
+        min-height: 46px;
+        padding-inline: 5px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body[data-page="dashboard"] .dashboard-training-board-row {
+        transition: none;
+    }
+}
+
+body[data-page="dashboard"]:is([data-theme="dark"], .theme-active-dark) .dashboard-training-rank[data-dashboard-collapsible] {
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
 }
 
 @media (max-width: 560px) {

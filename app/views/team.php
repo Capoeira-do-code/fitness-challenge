@@ -681,7 +681,7 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
             <?= $activeChallengeHero ?>
         <?php endif; ?>
 
-        <article class="panel team-layout-item team-widget-leaderboard team-leaderboard-panel" data-team-widget="leaderboard" style="<?= e($teamWidgetStyle('leaderboard', 30)) ?>">
+        <article class="panel team-layout-item team-widget-leaderboard team-leaderboard-panel" data-team-widget="leaderboard" data-team-panel-collapsible style="<?= e($teamWidgetStyle('leaderboard', 30)) ?>">
             <div class="panel-head">
                 <div>
                     <p class="eyebrow"><?= e(t('dashboard.ranking')) ?></p>
@@ -695,7 +695,9 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                         <div class="metric-help-popover-content"><?= e(t('team.leaderboard_help_text')) ?></div>
                     </details>
                 <?php endif; ?>
+                <button class="dashboard-panel-collapse-toggle" type="button" data-team-panel-toggle aria-expanded="true" aria-label="Contraer panel"><span aria-hidden="true">›</span></button>
             </div>
+            <div data-team-panel-content>
             <?php if ($teamSection === 'leaderboard'): ?>
                 <div class="team-leaderboard-cards">
                     <?php foreach ($leaderboardRows as $idx => $row): ?>
@@ -759,6 +761,7 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                     <?php endif; ?>
                 </div>
             <?php endif; ?>
+            </div>
         </article>
 
             <?php
@@ -770,7 +773,7 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                 }
             }
             ?>
-            <article class="panel team-layout-item team-widget-challenges team-challenges-panel<?= $teamSection === 'challenge' ? ' team-goals-section' : '' ?>" data-team-widget="challenges"<?= $teamSection === 'challenge' ? ' data-team-goal-collection' : '' ?> style="<?= e($teamWidgetStyle('challenges', 40)) ?>">
+            <article class="panel team-layout-item team-widget-challenges team-challenges-panel<?= $teamSection === 'challenge' ? ' team-goals-section' : '' ?>" data-team-widget="challenges" data-team-panel-collapsible<?= $teamSection === 'challenge' ? ' data-team-goal-collection' : '' ?> style="<?= e($teamWidgetStyle('challenges', 40)) ?>">
                 <div class="panel-head">
                     <div>
                         <p class="eyebrow"><?= count($goals) ?> · <?= e((string) ($team['name'] ?? t('nav.team'))) ?></p>
@@ -779,8 +782,9 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                     <?php if (!empty($canManageTeam) && $teamSection !== 'challenge'): ?>
                         <button class="btn btn-primary small team-panel-create-btn team-goal-new-button" type="button" data-team-goal-open data-goal-mode="create"><span aria-hidden="true">+</span><strong><?= e(t('common.create')) ?></strong></button>
                     <?php endif; ?>
+                    <button class="dashboard-panel-collapse-toggle" type="button" data-team-panel-toggle aria-expanded="true" aria-label="Contraer panel"><span aria-hidden="true">›</span></button>
                 </div>
-
+                <div data-team-panel-content>
                 <?php if ($goals === []): ?>
                     <p class="muted"><?= e(t('goals.empty')) ?></p>
                 <?php else: ?>
@@ -867,7 +871,17 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                                         <strong><?= e((string) $goal['title']) ?></strong>
                                         <span class="team-goal-status status-<?= e($statusBadgeClass) ?>"><?= e($statusBadgeText) ?></span>
                                     </div>
-                                    <div class="team-goal-objective-grid<?= $goalSecondaryEnabled ? ' has-two' : '' ?>">
+                                    <?php $goalMetricTargets = array_values((array) ($goal['metric_targets'] ?? [])); ?>
+                                    <div class="team-goal-objective-grid<?= count($goalMetricTargets) > 1 || $goalSecondaryEnabled ? ' has-two' : '' ?>">
+                                        <?php if ($goalMetricTargets !== []): ?>
+                                            <?php foreach ($goalMetricTargets as $goalMetricTarget): ?>
+                                                <span class="team-goal-objective-pill">
+                                                    <small><?= e(number_format((float) ($goalMetricTarget['weight_percent'] ?? 0), 0)) ?>% · <?= e((string) ($goalMetricTarget['label'] ?? t('goals.target'))) ?></small>
+                                                    <strong><?= e((string) ($goalMetricTarget['progress_display'] ?? '0')) ?> / <?= e((string) ($goalMetricTarget['target_display'] ?? '-')) ?></strong>
+                                                    <i class="team-goal-mobile-preview-bar" aria-hidden="true"><i style="width:<?= e((string) ($goalMetricTarget['progress_pct_visual'] ?? 0)) ?>%"></i></i>
+                                                </span>
+                                            <?php endforeach; ?>
+                                        <?php else: ?>
                                         <span class="team-goal-objective-pill">
                                             <small><?= e(t('goals.target')) ?></small>
                                             <strong><?= e($goalTargetLabel) ?> · <?= e((string) ($goal['target_display'] ?? '-')) ?></strong>
@@ -877,6 +891,7 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                                                 <small><?= e(t('goals.second_objective')) ?></small>
                                                 <strong><?= e($goalSecondaryTargetLabel) ?> · <?= e((string) ($goal['secondary_target_display'] ?? '-')) ?></strong>
                                             </span>
+                                        <?php endif; ?>
                                         <?php endif; ?>
                                     </div>
                                     <div class="team-goal-meta-grid">
@@ -961,6 +976,14 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                                             'data-goal-secondary-custom-unit' => $goalSecondaryCustomUnit, 'data-goal-reward-text' => $rewardText,
                                             'data-goal-start-date' => $startDate, 'data-goal-start-time' => $startTime,
                                             'data-goal-due-date' => $dueDate, 'data-goal-due-time' => $dueTime,
+                                            'data-goal-metric-targets' => json_encode(array_map(
+                                                static fn(array $target): array => [
+                                                    'metric_key' => (string) ($target['metric_key'] ?? ''),
+                                                    'target_value' => (float) ($target['target_value'] ?? 0),
+                                                    'weight_percent' => (float) ($target['weight_percent'] ?? 0),
+                                                ],
+                                                $goalMetricTargets
+                                            ), JSON_UNESCAPED_SLASHES) ?: '[]',
                                         ],
                                     ]];
                                     if ($goalStatusItems !== []) {
@@ -989,6 +1012,7 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                         <p class="muted panel-inline-empty team-goals-filter-empty" hidden data-team-goal-empty><?= e(t('profile.no_goals_match')) ?></p>
                     </div>
                 <?php endif; ?>
+                </div>
             </article>
             <?php // Competitions used to be a separate top-level page. They are a team
                   // activity, so they surface here, with the full manager one click away. ?>
@@ -1210,6 +1234,10 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                         <?= e(t('goals.target')) ?>
                         <input type="number" step="0.1" name="target_value" value="" required data-goal-target-input>
                     </label>
+                    <label>
+                        Peso (%)
+                        <input type="number" min="0" max="100" step="0.1" name="primary_weight_percent" placeholder="100" data-goal-weight>
+                    </label>
                     <p class="muted small team-goal-form-helper team-goal-form-full"><?= e(t('goals.progress_starts_zero')) ?></p>
                     <label data-goal-custom-unit-wrap hidden>
                         <?= e(t('goals.custom_unit')) ?>
@@ -1252,6 +1280,10 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                         <?= e(t('goals.target')) ?> (<?= e(t('goals.second_objective')) ?>)
                         <input type="number" step="0.1" name="secondary_target_value" value="" data-goal-secondary-target-input>
                     </label>
+                    <label data-goal-secondary-wrap hidden>
+                        Peso (%) (<?= e(t('goals.second_objective')) ?>)
+                        <input type="number" min="0" max="100" step="0.1" name="secondary_weight_percent" data-goal-weight>
+                    </label>
                     <label data-goal-secondary-custom-unit-wrap hidden>
                         <?= e(t('goals.custom_unit')) ?> (<?= e(t('goals.second_objective')) ?>)
                         <input type="text" name="secondary_custom_unit" maxlength="24" placeholder="<?= e(t('goals.custom_unit_placeholder')) ?>">
@@ -1265,6 +1297,27 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                             <?php endforeach; ?>
                         </select>
                     </label>
+                    <div class="stack compact-stack team-goal-form-full" data-extra-goal-targets></div>
+                    <template data-extra-goal-target-template>
+                        <div class="team-goal-extra-grid goal-extra-target" data-extra-goal-target>
+                            <label><?= e(t('goals.type')) ?>
+                                <select name="extra_metric_key[]">
+                                    <option value="steps"><?= e(t('metric.steps')) ?></option>
+                                    <option value="km"><?= e(t('metric.distance_km')) ?></option>
+                                    <option value="workouts"><?= e(t('metric.workouts')) ?></option>
+                                    <option value="score"><?= e(t('metric.score')) ?></option>
+                                    <option value="calories_burned"><?= e(t('dashboard.calories_burned')) ?></option>
+                                    <option value="calories_consumed"><?= e(t('dashboard.calories_consumed')) ?></option>
+                                    <option value="weight_lifted"><?= e(t('metric.weight_lifted')) ?></option>
+                                    <option value="weight"><?= e(t('metric.weight')) ?></option>
+                                </select>
+                            </label>
+                            <label><?= e(t('goals.target')) ?><input type="number" min="0.01" step="0.1" name="extra_metric_target[]" required></label>
+                            <label>Peso (%)<input type="number" min="0" max="100" step="0.1" name="extra_metric_weight[]" data-goal-weight></label>
+                            <button class="btn btn-ghost btn-small" type="button" data-remove-goal-target>Eliminar</button>
+                        </div>
+                    </template>
+                    <button class="btn btn-ghost team-goal-form-full" type="button" data-add-goal-target>+ Añadir objetivo</button>
                     <label class="check team-goal-reward-toggle team-goal-form-full">
                         <input type="checkbox" name="reward_enabled" value="1" data-goal-reward-toggle>
                         <?= e(t('goals.add_reward')) ?>
@@ -1777,6 +1830,10 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
         const rewardWrap = goalModal.querySelector('[data-goal-reward-wrap]');
         const rewardInput = goalModal.querySelector('input[name="reward_text"]');
         const submitButton = goalModal.querySelector('[data-team-goal-submit]');
+        const primaryWeightInput = goalModal.querySelector('input[name="primary_weight_percent"]');
+        const secondaryWeightInput = goalModal.querySelector('input[name="secondary_weight_percent"]');
+        const extraTargetsContainer = goalModal.querySelector('[data-extra-goal-targets]');
+        const extraTargetTemplate = goalModal.querySelector('[data-extra-goal-target-template]');
         const defaultPlaceholder = '100';
         let opener = null;
 
@@ -1900,6 +1957,9 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
             if (goalForm instanceof HTMLFormElement) {
                 goalForm.reset();
             }
+            if (extraTargetsContainer instanceof HTMLElement) {
+                extraTargetsContainer.replaceChildren();
+            }
             if (goalActionInput instanceof HTMLInputElement) {
                 goalActionInput.value = isEdit ? 'update_goal' : 'create_goal';
             }
@@ -1945,6 +2005,36 @@ $teamWidgetStyle = static function (string $widget, int $mobileOrder) use ($team
                 secondaryToggle.checked = isEdit && trigger instanceof HTMLElement
                     ? String(trigger.dataset.goalSecondaryEnabled || '').trim() === '1'
                     : false;
+            }
+            let savedTargets = [];
+            if (isEdit && trigger instanceof HTMLElement) {
+                try {
+                    const parsedTargets = JSON.parse(String(trigger.dataset.goalMetricTargets || '[]'));
+                    savedTargets = Array.isArray(parsedTargets) ? parsedTargets : [];
+                } catch {
+                    savedTargets = [];
+                }
+            }
+            if (primaryWeightInput instanceof HTMLInputElement) {
+                primaryWeightInput.value = savedTargets[0] ? String(savedTargets[0].weight_percent || '') : '';
+            }
+            if (secondaryWeightInput instanceof HTMLInputElement) {
+                secondaryWeightInput.value = savedTargets[1] && secondaryToggle instanceof HTMLInputElement && secondaryToggle.checked
+                    ? String(savedTargets[1].weight_percent || '')
+                    : '';
+            }
+            if (extraTargetsContainer instanceof HTMLElement && extraTargetTemplate instanceof HTMLTemplateElement) {
+                savedTargets.slice(secondaryToggle instanceof HTMLInputElement && secondaryToggle.checked ? 2 : 1).forEach((target) => {
+                    const fragment = extraTargetTemplate.content.cloneNode(true);
+                    const row = fragment.querySelector('[data-extra-goal-target]');
+                    const keyInput = row?.querySelector('select[name="extra_metric_key[]"]');
+                    const valueInput = row?.querySelector('input[name="extra_metric_target[]"]');
+                    const weightInput = row?.querySelector('input[name="extra_metric_weight[]"]');
+                    if (keyInput instanceof HTMLSelectElement) keyInput.value = String(target.metric_key || '');
+                    if (valueInput instanceof HTMLInputElement) valueInput.value = String(target.target_value || '');
+                    if (weightInput instanceof HTMLInputElement) weightInput.value = String(target.weight_percent || '');
+                    extraTargetsContainer.append(fragment);
+                });
             }
             if (startDateInput instanceof HTMLInputElement) {
                 startDateInput.value = isEdit && trigger instanceof HTMLElement ? String(trigger.dataset.goalStartDate || '').trim() : '';

@@ -391,6 +391,7 @@ if ($settingsView === 'avatar') {
                     <div class="settings-group-head">
                         <span class="settings-group-icon" aria-hidden="true"><?= activity_icon_svg('sliders') ?></span>
                         <div><h3><?= e(t('settings.tracked_metrics')) ?></h3><p class="muted small"><?= e(t('settings.tracked_metrics_hint')) ?></p></div>
+                        <button class="btn btn-ghost small" type="button" data-app-modal-open="settings-custom-metric-modal">+ Métrica personal</button>
                     </div>
                     <div class="settings-metric-toggle-grid">
                         <?php foreach ((array) ($settingsMetricDefinitions ?? []) as $metricKey => $metricDefinition): ?>
@@ -414,6 +415,19 @@ if ($settingsView === 'avatar') {
             </fieldset>
             <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
         </form>
+        <div class="app-modal settings-custom-metric-modal" id="settings-custom-metric-modal" hidden role="dialog" aria-modal="true" aria-labelledby="settings-custom-metric-title">
+            <div class="app-modal-card">
+                <div class="app-modal-head"><div><p class="eyebrow">Tracked metrics</p><h2 id="settings-custom-metric-title">Nueva métrica personal</h2><small>Es privada: solo aparecerá en tu cuenta. No necesita traducciones.</small></div><button class="app-modal-close" type="button" data-app-modal-close aria-label="<?= e(t('common.cancel')) ?>">&times;</button></div>
+                <form method="post" action="/?page=settings&amp;view=preferences" class="stack compact-form">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="create_custom_metric">
+                    <label>Nombre<input type="text" name="custom_metric_name" maxlength="80" placeholder="Horas de sueño" required autofocus></label>
+                    <div class="grid-inline two"><label>Unidad<input type="text" name="custom_metric_unit" maxlength="24" placeholder="h"></label><label>Frecuencia<select name="custom_metric_frequency"><option value="daily">Diaria</option><option value="weekly">Semanal</option><option value="occasional">Ocasional</option></select></label></div>
+                    <div class="grid-inline two"><label>Objetivo opcional<input type="number" name="custom_metric_target" min="0" step="0.01"></label><label>Mejora cuando<select name="custom_metric_direction"><option value="higher">Sube</option><option value="lower">Baja</option><option value="neutral">Solo seguimiento</option></select></label></div>
+                    <label>Color<input type="color" name="custom_metric_color" value="#6d5dfc"></label>
+                    <div class="app-modal-actions"><button class="btn btn-ghost" type="button" data-app-modal-close><?= e(t('common.cancel')) ?></button><button class="btn btn-primary" type="submit">Crear y activar</button></div>
+                </form>
+            </div>
+        </div>
     </article>
     <?php endif; ?>
 
@@ -494,6 +508,22 @@ if ($settingsView === 'avatar') {
                     <div class="toggle-row"><label class="check standalone-check"><input type="checkbox" name="telegram_notify_social" value="1" <?= (int) ($currentUser['telegram_notify_social'] ?? 1) === 1 ? 'checked' : '' ?>><?= e(t('settings.telegram_notify_social')) ?></label></div>
                 </fieldset>
 
+                <fieldset class="settings-preference-group">
+                    <legend>Informe PDF semanal</legend>
+                    <div class="toggle-row"><label class="check standalone-check"><input type="checkbox" name="weekly_report_enabled" value="1" <?= (int) ($currentUser['weekly_report_enabled'] ?? 1) === 1 ? 'checked' : '' ?>>Enviar informe semanal</label></div>
+                    <div class="grid-inline two">
+                        <label>Día<select name="weekly_report_day"><?php foreach ([1 => 'Lunes', 2 => 'Martes', 3 => 'Miércoles', 4 => 'Jueves', 5 => 'Viernes', 6 => 'Sábado', 7 => 'Domingo'] as $dayNumber => $dayLabel): ?><option value="<?= $dayNumber ?>" <?= (int) ($currentUser['weekly_report_day'] ?? 1) === $dayNumber ? 'selected' : '' ?>><?= e($dayLabel) ?></option><?php endforeach; ?></select></label>
+                        <label>Hora<input type="time" name="weekly_report_time" value="<?= e((string) ($currentUser['weekly_report_time'] ?? '09:00')) ?>"></label>
+                    </div>
+                    <label>Zona horaria
+                        <select name="weekly_report_tz">
+                            <option value="">Usar zona de Telegram</option>
+                            <?php foreach (timezone_identifiers_list() as $tzId): ?><option value="<?= e($tzId) ?>" <?= ($currentUser['weekly_report_tz'] ?? '') === $tzId ? 'selected' : '' ?>><?= e($tzId) ?></option><?php endforeach; ?>
+                        </select>
+                    </label>
+                    <p class="muted small">Se adjuntará en Telegram y también aparecerá en tus notificaciones.</p>
+                </fieldset>
+
                 <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
             </form>
             <?php if ($telegramBotUrl !== ''): ?>
@@ -516,6 +546,25 @@ if ($settingsView === 'avatar') {
                 </form>
             </div>
         <?php endif; ?>
+    </article>
+    <article class="panel settings-telegram-card" id="weekly-report">
+        <div class="settings-integration-head">
+            <span class="settings-integration-icon" aria-hidden="true"><?= activity_icon_svg('file') ?></span>
+            <div><h2>Informe PDF semanal</h2><p class="muted small">Un resumen privado de progreso, nutrición, hábitos y métricas personales.</p></div>
+            <span class="settings-integration-status <?= (int) ($currentUser['weekly_report_enabled'] ?? 1) === 1 ? 'is-linked' : 'is-offline' ?>"><?= (int) ($currentUser['weekly_report_enabled'] ?? 1) === 1 ? 'Activo' : 'Desactivado' ?></span>
+        </div>
+        <form method="post" action="/?page=settings&amp;view=integrations" class="stack compact-form">
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="weekly_report_update">
+            <div class="toggle-row"><label class="check standalone-check"><input type="checkbox" name="weekly_report_enabled" value="1" <?= (int) ($currentUser['weekly_report_enabled'] ?? 1) === 1 ? 'checked' : '' ?>>Generar cada semana</label></div>
+            <div class="grid-inline two">
+                <label>Día<select name="weekly_report_day"><?php foreach ([1 => 'Lunes', 2 => 'Martes', 3 => 'Miércoles', 4 => 'Jueves', 5 => 'Viernes', 6 => 'Sábado', 7 => 'Domingo'] as $dayNumber => $dayLabel): ?><option value="<?= $dayNumber ?>" <?= (int) ($currentUser['weekly_report_day'] ?? 1) === $dayNumber ? 'selected' : '' ?>><?= e($dayLabel) ?></option><?php endforeach; ?></select></label>
+                <label>Hora<input type="time" name="weekly_report_time" value="<?= e((string) ($currentUser['weekly_report_time'] ?? '09:00')) ?>"></label>
+            </div>
+            <label>Zona horaria<select name="weekly_report_tz"><option value="">Zona de la cuenta</option><?php foreach (timezone_identifiers_list() as $tzId): ?><option value="<?= e($tzId) ?>" <?= ($currentUser['weekly_report_tz'] ?? '') === $tzId ? 'selected' : '' ?>><?= e($tzId) ?></option><?php endforeach; ?></select></label>
+            <p class="muted small">Si Telegram está conectado, se adjuntará allí. La notificación interna se crea siempre.</p>
+            <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
+        </form>
     </article>
     <?php endif; ?>
 </section>

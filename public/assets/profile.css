@@ -566,6 +566,20 @@ body[data-page="profile"] .profile-widget-feed-actions :is(button, a) {
     text-decoration: none;
 }
 body[data-page="profile"] .profile-widget-feed-actions button { border-color: color-mix(in srgb, var(--primary) 34%, var(--line)); color: var(--primary-dark); cursor: pointer; }
+body[data-page="profile"] .profile-widget-feed-actions .profile-widget-add-button {
+    display: grid;
+    width: 38px;
+    min-width: 38px;
+    padding: 0;
+    place-items: center;
+    border-color: color-mix(in srgb, var(--primary) 34%, var(--line));
+    border-radius: 50%;
+    color: #fff;
+    background: var(--primary);
+    font-size: 1.2rem;
+    line-height: 1;
+    box-shadow: 0 7px 16px color-mix(in srgb, var(--primary) 24%, transparent);
+}
 body[data-page="profile"] .profile-achievement-preview-link { display: inline-flex; min-height: 38px; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 12px; color: inherit; background: var(--surface-2); font-size: 0.66rem; font-weight: 850; text-decoration: none; }
 body[data-page="profile"] .profile-achievement-preview-link b { color: var(--primary); font-size: 1.05rem; line-height: 1; }
 body[data-page="profile"] .profile-achievement-preview-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
@@ -593,11 +607,7 @@ body[data-page="profile"] .profile-custom-showcase {
         var(--surface);
 }
 body[data-page="profile"] .profile-custom-showcase::before {
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 3px;
-    background: var(--showcase-accent);
-    content: "";
+    display: none;
 }
 body[data-page="profile"] .profile-custom-showcase.is-owner-hidden { border-style: dashed; opacity: 0.78; }
 body[data-page="profile"] .profile-showcase-head { align-items: center; }
@@ -628,6 +638,52 @@ body[data-page="profile"] .profile-showcase-media {
     background: #06080d;
 }
 body[data-page="profile"] .profile-showcase-media :is(img, video, iframe) { display: block; width: 100%; height: 100%; min-height: 180px; max-height: 520px; border: 0; object-fit: contain; }
+body[data-page="profile"] .profile-custom-showcase.is-image-only {
+    position: relative;
+    display: block;
+    grid-column: 1 / -1;
+    overflow: visible;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+body[data-page="profile"] .profile-custom-showcase.is-image-only::before { display: none; }
+body[data-page="profile"] .profile-custom-showcase.is-image-only .profile-showcase-media {
+    width: 100%;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+body[data-page="profile"] .profile-custom-showcase.is-image-only .profile-showcase-media img {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    object-fit: contain;
+}
+body[data-page="profile"] .profile-showcase-image-edit {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 3;
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.38);
+    background: rgba(7, 13, 23, 0.66);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
 body[data-page="profile"] .profile-showcase-video { aspect-ratio: 16 / 9; }
 body[data-page="profile"] .profile-showcase-video iframe { position: absolute; inset: 0; }
 body[data-page="profile"] .profile-showcase-achievements { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
@@ -892,3 +948,1007 @@ body[data-page="profile"]:is([data-theme="dark"], .theme-active-dark) .profile-p
     }
 }
 
+/* Current setup: a compact, scannable account snapshot on phones. */
+@media (max-width: 700px) {
+    body[data-page="profile"] .profile-current-setup-card {
+        border-radius: 20px !important;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card > .profile-home-card-head {
+        min-height: 62px;
+        padding: 0.55rem 0.62rem !important;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card > .profile-home-card-head > div:nth-child(2) {
+        display: grid;
+        gap: 0.12rem;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card > .profile-home-card-head .eyebrow,
+    body[data-page="profile"] .profile-current-setup-card > .profile-home-card-head .muted {
+        overflow: hidden;
+        margin: 0;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card > .profile-home-card-head .eyebrow {
+        color: var(--ink);
+        font-size: 0.8rem;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card > .profile-home-card-head .muted {
+        font-size: 0.64rem;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-panel-head-actions {
+        max-width: none;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-panel-head-actions .btn {
+        min-height: 38px;
+        padding: 0.35rem 0.55rem;
+        border-radius: 11px;
+        font-size: 0.66rem;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-panel-collapse-toggle {
+        width: 40px;
+        min-width: 40px;
+        height: 40px;
+        min-height: 40px;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card > .profile-current-primary {
+        position: relative;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.22rem 0.7rem;
+        padding: 0.78rem 0.85rem;
+        border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--line));
+        border-radius: 15px;
+        background:
+            linear-gradient(135deg, color-mix(in srgb, var(--primary) 12%, var(--surface)), var(--surface));
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-primary > span {
+        grid-column: 1 / -1;
+        font-size: 0.62rem;
+        letter-spacing: 0.045em;
+        text-transform: uppercase;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-primary strong {
+        display: contents;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-primary strong span {
+        align-self: end;
+        font-size: 0.84rem;
+        font-weight: 850;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-primary strong b {
+        grid-column: 2;
+        grid-row: 2 / span 2;
+        align-self: center;
+        color: var(--primary-dark);
+        font-family: var(--ui-heading-font);
+        font-size: clamp(1.25rem, 7vw, 1.65rem);
+        font-weight: 900;
+        letter-spacing: -0.035em;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-primary small {
+        grid-column: 1;
+        font-size: 0.62rem;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card > .profile-current-goals {
+        gap: 0.42rem;
+        padding: 0.66rem 0.72rem;
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--surface-2) 64%, transparent);
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-goals > span {
+        font-size: 0.65rem;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-goal-chips {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.38rem;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-goal-chips > span {
+        display: grid;
+        min-height: 48px;
+        gap: 0.12rem;
+        align-content: center;
+        padding: 0.45rem 0.56rem;
+        border-radius: 12px;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-goal-chips strong {
+        font-size: 0.88rem;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-goal-chips small {
+        overflow: hidden;
+        font-size: 0.61rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card > .profile-home-facts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.42rem;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card > .profile-home-facts > div,
+    body[data-page="profile"] .profile-current-setup-card .profile-setup-more .profile-home-facts > div {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-content: start;
+        gap: 0.18rem;
+        min-height: 62px;
+        padding: 0.58rem 0.62rem;
+        border: 1px solid color-mix(in srgb, var(--ink) 8%, var(--line));
+        border-radius: 13px;
+        background: color-mix(in srgb, var(--surface-2) 42%, var(--surface));
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-home-facts dt {
+        overflow: hidden;
+        font-size: 0.61rem;
+        line-height: 1.2;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-home-facts dd {
+        color: var(--ink);
+        font-size: 0.76rem;
+        line-height: 1.22;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-setup-more {
+        padding-top: 0.5rem;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-setup-more > summary {
+        gap: 0.4rem;
+        min-height: 42px;
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--primary) 7%, transparent);
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-setup-more > summary::after {
+        content: "›";
+        font-size: 1.15rem;
+        line-height: 1;
+        transform: rotate(90deg);
+        transition: transform 160ms ease;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-setup-more[open] > summary::after {
+        transform: rotate(-90deg);
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-setup-more > .profile-home-facts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.42rem;
+    }
+}
+
+@media (max-width: 370px) {
+    body[data-page="profile"] .profile-current-setup-card .profile-current-goal-chips,
+    body[data-page="profile"] .profile-current-setup-card > .profile-home-facts,
+    body[data-page="profile"] .profile-current-setup-card .profile-setup-more > .profile-home-facts {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* Profile training rank: mirror the polished Home rank language without
+   turning this compact profile widget into a second full dashboard. */
+body[data-page="profile"] .profile-training-rank-card[data-profile-collapsible] {
+    border-color: color-mix(in srgb, var(--rank-color) 30%, var(--line)) !important;
+    box-shadow: 0 12px 30px color-mix(in srgb, var(--rank-color) 9%, transparent);
+}
+
+body[data-page="profile"] .profile-training-rank-card > .profile-home-card-head .dashboard-disclosure-icon {
+    color: var(--rank-color);
+    background: color-mix(in srgb, var(--rank-color) 12%, var(--surface));
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-rank-heading-link:where(:hover, :focus-visible) {
+    outline: none;
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-rank-heading-link:where(:hover, :focus-visible) h2 {
+    color: var(--rank-color);
+}
+
+body[data-page="profile"] .profile-training-rank-card > .profile-training-rank-main {
+    grid-template-columns: 104px minmax(0, 1fr);
+    gap: 12px;
+    padding: 10px;
+    border: 1px solid color-mix(in srgb, var(--rank-color) 22%, var(--line));
+    border-radius: 17px;
+    background:
+        radial-gradient(circle at 3% 0%, color-mix(in srgb, var(--rank-color) 17%, transparent), transparent 46%),
+        linear-gradient(135deg, color-mix(in srgb, var(--rank-color) 5%, var(--surface)), var(--surface));
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem {
+    position: relative;
+    min-height: 108px;
+    overflow: hidden;
+    gap: 3px;
+    border-color: color-mix(in srgb, var(--rank-color) 36%, var(--line));
+    border-radius: 15px;
+    background:
+        radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--rank-color) 18%, transparent), transparent 54%),
+        color-mix(in srgb, var(--rank-color) 8%, var(--surface));
+    box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 64%, transparent);
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem::after {
+    content: "";
+    position: absolute;
+    inset: 7px;
+    pointer-events: none;
+    border: 1px solid color-mix(in srgb, var(--rank-color) 15%, transparent);
+    border-radius: 10px;
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem > * {
+    position: relative;
+    z-index: 1;
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem strong {
+    color: var(--ink);
+    font-family: var(--ui-heading-font);
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: -0.01em;
+    text-transform: none;
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem b {
+    font-family: var(--ui-heading-font);
+    font-size: 1.75rem;
+    font-weight: 900;
+    letter-spacing: -0.045em;
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem small {
+    font-size: 0.52rem;
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-detail {
+    align-content: center;
+    gap: 7px;
+    padding: 3px 2px;
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-detail > strong {
+    overflow: hidden;
+    font-size: 0.86rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-detail > small {
+    font-size: 0.64rem;
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-bar {
+    position: relative;
+    height: 10px;
+    margin-top: 17px;
+    overflow: visible;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--rank-color) 11%, var(--surface-2));
+    box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-bar::before {
+    content: attr(data-progress) "%";
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 5px);
+    min-width: 38px;
+    padding: 3px 6px;
+    border: 1px solid color-mix(in srgb, var(--rank-color) 20%, transparent);
+    border-radius: 999px;
+    color: var(--rank-color);
+    background: color-mix(in srgb, var(--rank-color) 9%, var(--surface));
+    font-size: 0.58rem;
+    font-weight: 900;
+    text-align: center;
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-bar i {
+    position: relative;
+    min-width: 8px;
+    background: linear-gradient(90deg, var(--rank-color), color-mix(in srgb, var(--rank-color) 65%, #fff));
+    box-shadow: 0 4px 10px color-mix(in srgb, var(--rank-color) 22%, transparent);
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-bar i::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 0;
+    width: 8px;
+    height: 8px;
+    border: 2px solid var(--surface);
+    border-radius: 50%;
+    background: var(--rank-color);
+    transform: translate(2px, -50%);
+}
+
+body[data-page="profile"] .profile-training-rank-card > .profile-training-muscles {
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid color-mix(in srgb, var(--rank-color) 12%, var(--line));
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-muscles > span {
+    position: relative;
+    min-height: 58px;
+    gap: 3px;
+    overflow: hidden;
+    padding: 9px 10px 9px 13px;
+    border-color: color-mix(in srgb, var(--rank-color) 14%, var(--line));
+    background: color-mix(in srgb, var(--rank-color) 4%, var(--surface));
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-muscles > span::before {
+    content: "";
+    position: absolute;
+    inset: 8px auto 8px 0;
+    width: 3px;
+    border-radius: 0 999px 999px 0;
+    background: var(--rank-color);
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-muscles strong {
+    color: var(--rank-color);
+    font-size: 0.84rem;
+}
+
+@media (max-width: 440px) {
+    body[data-page="profile"] .profile-training-rank-card > .profile-training-rank-main {
+        grid-template-columns: 88px minmax(0, 1fr);
+        gap: 9px;
+        padding: 8px;
+    }
+
+    body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem {
+        min-height: 98px;
+        padding-inline: 4px;
+    }
+
+    body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem b {
+        font-size: 1.45rem;
+    }
+
+    body[data-page="profile"] .profile-training-rank-card > .profile-training-muscles {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 8px;
+        padding-top: 8px;
+    }
+}
+
+body[data-page="profile"]:is([data-theme="dark"], .theme-active-dark) .profile-training-rank-card[data-profile-collapsible] {
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.2);
+}
+
+/* Profile training progress: four quick signals plus a compact activity
+   timeline, visually paired with the rank card immediately above it. */
+body[data-page="profile"] .profile-training-progress-card[data-profile-collapsible] {
+    border-color: color-mix(in srgb, var(--primary) 24%, var(--line)) !important;
+    box-shadow: 0 12px 30px color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+body[data-page="profile"] .profile-training-progress-card > .profile-home-card-head .dashboard-disclosure-icon {
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+}
+
+body[data-page="profile"] .profile-training-progress-card > .profile-training-stat-grid {
+    gap: 0;
+    overflow: hidden;
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--primary) 16%, var(--line));
+    border-radius: 15px;
+    background:
+        linear-gradient(135deg, color-mix(in srgb, var(--primary) 5%, var(--surface)), var(--surface));
+    box-shadow: none;
+}
+
+body[data-page="profile"] .profile-training-progress-card .profile-training-stat-grid > span {
+    position: relative;
+    min-height: 76px;
+    gap: 5px;
+    justify-items: start;
+    padding: 12px 11px 10px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+body[data-page="profile"] .profile-training-progress-card .profile-training-stat-grid > span + span {
+    border-inline-start: 1px solid color-mix(in srgb, var(--primary) 12%, var(--line));
+}
+
+body[data-page="profile"] .profile-training-progress-card .profile-training-stat-grid > span::before {
+    content: "";
+    width: 22px;
+    height: 3px;
+    border-radius: 999px;
+    background: var(--metric-accent, var(--primary));
+}
+
+body[data-page="profile"] .profile-training-progress-card .profile-training-stat-grid > span:nth-child(1) { --metric-accent: #0ea5e9; }
+body[data-page="profile"] .profile-training-progress-card .profile-training-stat-grid > span:nth-child(2) { --metric-accent: #8b5cf6; }
+body[data-page="profile"] .profile-training-progress-card .profile-training-stat-grid > span:nth-child(3) { --metric-accent: #f59e0b; }
+body[data-page="profile"] .profile-training-progress-card .profile-training-stat-grid > span:nth-child(4) { --metric-accent: #10b981; }
+
+body[data-page="profile"] .profile-training-progress-card .profile-training-stat-grid strong {
+    order: 0;
+    max-width: 100%;
+    color: var(--ink);
+    font-family: var(--ui-heading-font);
+    font-size: clamp(1.05rem, 3.2vw, 1.3rem);
+    font-weight: 900;
+    letter-spacing: -0.035em;
+    line-height: 1;
+}
+
+body[data-page="profile"] .profile-training-progress-card .profile-training-stat-grid small {
+    order: 1;
+    max-width: 100%;
+    font-size: 0.59rem;
+    font-weight: 800;
+}
+
+body[data-page="profile"] .profile-training-progress-card > .profile-training-recent {
+    position: relative;
+    gap: 0;
+    padding: 2px 0 0 13px;
+}
+
+body[data-page="profile"] .profile-training-progress-card > .profile-training-recent::before {
+    content: "";
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    left: 4px;
+    width: 1px;
+    background: color-mix(in srgb, var(--primary) 22%, var(--line));
+}
+
+body[data-page="profile"] .profile-training-progress-card .profile-training-recent > span {
+    position: relative;
+    grid-template-columns: minmax(78px, auto) minmax(0, 1fr);
+    min-height: 42px;
+    gap: 10px;
+    padding: 8px 9px;
+    border: 0;
+    border-radius: 11px;
+    transition: background 150ms ease;
+}
+
+body[data-page="profile"] .profile-training-progress-card .profile-training-recent > span::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: -13px;
+    width: 7px;
+    height: 7px;
+    border: 2px solid var(--surface);
+    border-radius: 50%;
+    background: var(--primary);
+    transform: translateY(-50%);
+}
+
+body[data-page="profile"] .profile-training-progress-card .profile-training-recent > span:where(:hover, :focus-within) {
+    background: color-mix(in srgb, var(--primary) 5%, var(--surface));
+}
+
+body[data-page="profile"] .profile-training-progress-card .profile-training-recent > span > small {
+    font-size: 0.61rem;
+    font-weight: 800;
+}
+
+body[data-page="profile"] .profile-training-progress-card .profile-training-recent > span > strong {
+    font-size: 0.74rem;
+}
+
+body[data-page="profile"] .profile-training-progress-card .profile-training-recent > span.is-record {
+    margin-top: 4px;
+    border: 1px solid color-mix(in srgb, #f59e0b 20%, var(--line));
+    background: color-mix(in srgb, #f59e0b 6%, var(--surface));
+}
+
+body[data-page="profile"] .profile-training-progress-card .profile-training-recent > span.is-record::before {
+    background: #f59e0b;
+}
+
+body[data-page="profile"] .profile-training-progress-card .profile-training-recent > span.is-record > strong {
+    color: color-mix(in srgb, #f59e0b 72%, var(--ink));
+}
+
+@media (max-width: 560px) {
+    body[data-page="profile"] .profile-training-progress-card > .profile-training-stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    body[data-page="profile"] .profile-training-progress-card .profile-training-stat-grid > span {
+        min-height: 68px;
+        padding: 10px;
+    }
+
+    body[data-page="profile"] .profile-training-progress-card .profile-training-stat-grid > span:nth-child(3) {
+        border-inline-start: 0;
+    }
+
+    body[data-page="profile"] .profile-training-progress-card .profile-training-stat-grid > span:nth-child(n + 3) {
+        border-top: 1px solid color-mix(in srgb, var(--primary) 12%, var(--line));
+    }
+
+    body[data-page="profile"] .profile-training-progress-card .profile-training-recent > span {
+        grid-template-columns: 72px minmax(0, 1fr);
+        gap: 7px;
+        padding-inline: 7px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body[data-page="profile"] .profile-training-progress-card .profile-training-recent > span {
+        transition: none;
+    }
+}
+
+body[data-page="profile"]:is([data-theme="dark"], .theme-active-dark) .profile-training-progress-card[data-profile-collapsible] {
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.2);
+}
+
+/* Full profile achievement collection: unlocked and locked are deliberately
+   separated so the page works as both a trophy case and a progress map. */
+body[data-page="profile"] .profile-achievements-panel {
+    display: grid;
+    gap: 12px;
+    width: min(100%, 980px);
+    margin-inline: auto;
+    padding: clamp(12px, 2vw, 18px);
+    border-radius: 22px;
+}
+
+body[data-page="profile"] .profile-achievement-summary-modern {
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 14px;
+    margin: 0;
+    padding: 13px;
+    border-color: color-mix(in srgb, #f59e0b 22%, var(--line));
+    border-radius: 17px;
+    background:
+        radial-gradient(circle at 0 0, color-mix(in srgb, #f59e0b 13%, transparent), transparent 44%),
+        var(--surface);
+}
+
+body[data-page="profile"] .profile-achievement-summary-modern > span {
+    min-height: 68px;
+    align-content: center;
+    padding-right: 13px;
+}
+
+body[data-page="profile"] .profile-achievement-summary-modern > span strong {
+    color: #d97706;
+    font-family: var(--ui-heading-font);
+    font-size: 1.55rem;
+    font-weight: 900;
+    letter-spacing: -0.045em;
+}
+
+body[data-page="profile"] .profile-achievement-summary-modern > div {
+    display: grid;
+    align-content: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+body[data-page="profile"] .profile-achievement-summary-counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+body[data-page="profile"] .profile-achievement-summary-counts > span {
+    min-height: 27px;
+    padding: 5px 8px;
+    border-radius: 999px;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--ink) 5%, var(--surface));
+    font-size: 0.62rem;
+    font-weight: 800;
+}
+
+body[data-page="profile"] .profile-achievement-summary-counts b {
+    color: var(--ink);
+}
+
+body[data-page="profile"] .profile-achievement-summary-progress {
+    height: 7px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: color-mix(in srgb, #f59e0b 11%, var(--surface-2));
+}
+
+body[data-page="profile"] .profile-achievement-summary-progress i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+    box-shadow: 0 3px 9px rgba(245, 158, 11, 0.28);
+}
+
+body[data-page="profile"] .profile-achievement-group {
+    display: grid;
+    gap: 8px;
+}
+
+body[data-page="profile"] .profile-achievement-group + .profile-achievement-group {
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+}
+
+body[data-page="profile"] .profile-achievement-group-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-inline: 2px;
+}
+
+body[data-page="profile"] .profile-achievement-group-head > div {
+    display: grid;
+    gap: 2px;
+}
+
+body[data-page="profile"] .profile-achievement-group-head :is(p, h3) {
+    margin: 0;
+}
+
+body[data-page="profile"] .profile-achievement-group-head h3 {
+    font-family: var(--ui-heading-font);
+    font-size: 0.94rem;
+}
+
+body[data-page="profile"] .profile-achievement-group-head > span {
+    display: grid;
+    min-width: 30px;
+    height: 30px;
+    place-items: center;
+    padding-inline: 7px;
+    border-radius: 999px;
+    color: var(--achievement-tone, #d97706);
+    background: color-mix(in srgb, var(--achievement-tone, #f59e0b) 10%, var(--surface));
+    font-size: 0.68rem;
+    font-weight: 900;
+}
+
+body[data-page="profile"] .profile-achievement-group.is-locked {
+    --achievement-tone: var(--muted);
+}
+
+body[data-page="profile"] .profile-achievement-collection {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+body[data-page="profile"] .profile-collection-achievement {
+    display: grid;
+    grid-template-columns: 58px minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+    min-width: 0;
+    min-height: 112px;
+    padding: 10px;
+    border: 1px solid color-mix(in srgb, #f59e0b 19%, var(--line));
+    border-radius: 16px;
+    color: inherit;
+    background: color-mix(in srgb, #f59e0b 4%, var(--surface));
+    cursor: pointer;
+    transition: border-color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+
+body[data-page="profile"] .profile-collection-achievement:where(:hover, :focus-visible) {
+    border-color: color-mix(in srgb, #f59e0b 45%, var(--line));
+    outline: none;
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+    transform: translateY(-1px);
+}
+
+body[data-page="profile"] .profile-collection-achievement > .achievement-visual {
+    width: 58px;
+    height: 58px;
+    min-height: 58px;
+    border-radius: 14px;
+}
+
+body[data-page="profile"] .profile-collection-achievement-copy {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-width: 0;
+}
+
+body[data-page="profile"] .profile-collection-achievement-copy > div:first-child {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 0;
+}
+
+body[data-page="profile"] .profile-collection-achievement-copy > div:first-child strong {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.79rem;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body[data-page="profile"] .profile-collection-achievement-copy > div:first-child span {
+    flex: 0 0 auto;
+    padding: 3px 6px;
+    border-radius: 999px;
+    color: #b45309;
+    background: color-mix(in srgb, #f59e0b 11%, var(--surface));
+    font-size: 0.5rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+body[data-page="profile"] .profile-collection-achievement-copy > p {
+    display: -webkit-box;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.64rem;
+    line-height: 1.35;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+body[data-page="profile"] .profile-collection-achievement-copy > small,
+body[data-page="profile"] .profile-achievement-progress small {
+    color: var(--muted);
+    font-size: 0.56rem;
+    font-weight: 750;
+}
+
+body[data-page="profile"] .profile-collection-achievement.is-locked {
+    border-color: var(--line);
+    background: color-mix(in srgb, var(--ink) 2%, var(--surface));
+}
+
+body[data-page="profile"] .profile-collection-achievement.is-locked > .achievement-visual {
+    filter: grayscale(1);
+    opacity: 0.48;
+}
+
+body[data-page="profile"] .profile-collection-achievement.is-locked .profile-collection-achievement-copy > div:first-child span {
+    color: var(--muted);
+    background: color-mix(in srgb, var(--ink) 6%, var(--surface));
+}
+
+body[data-page="profile"] .profile-achievement-progress {
+    display: grid;
+    gap: 4px;
+}
+
+body[data-page="profile"] .profile-achievement-progress > span {
+    height: 5px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+
+body[data-page="profile"] .profile-achievement-progress i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--primary);
+}
+
+/* Current setup uses the same compact hierarchy as rank and training cards:
+   one highlighted primary value, optional secondary goals and factual tiles. */
+body[data-page="profile"] .profile-current-setup-card[data-profile-collapsible] {
+    border-color: color-mix(in srgb, var(--primary) 22%, var(--line)) !important;
+    box-shadow: 0 12px 30px color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+body[data-page="profile"] .profile-current-setup-card > .profile-home-card-head .dashboard-disclosure-icon {
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+}
+
+@media (min-width: 701px) {
+    body[data-page="profile"] .profile-current-setup-card > .profile-current-primary {
+        position: relative;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 4px 18px;
+        min-height: 92px;
+        padding: 14px 16px;
+        overflow: hidden;
+        border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--line));
+        border-radius: 16px;
+        background:
+            radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--primary) 15%, transparent), transparent 46%),
+            linear-gradient(135deg, color-mix(in srgb, var(--primary) 8%, var(--surface)), var(--surface));
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-primary > span {
+        grid-column: 1 / -1;
+        font-size: 0.63rem;
+        letter-spacing: 0.045em;
+        text-transform: uppercase;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-primary strong {
+        display: contents;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-primary strong span {
+        align-self: end;
+        font-size: 0.9rem;
+        font-weight: 850;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-primary strong b {
+        grid-column: 2;
+        grid-row: 2 / span 2;
+        align-self: center;
+        color: var(--primary-dark);
+        font-family: var(--ui-heading-font);
+        font-size: 1.75rem;
+        font-weight: 900;
+        letter-spacing: -0.045em;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-primary small {
+        grid-column: 1;
+        font-size: 0.63rem;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card > .profile-current-goals {
+        gap: 8px;
+        padding: 10px 12px;
+        border: 1px solid color-mix(in srgb, var(--primary) 10%, var(--line));
+        border-radius: 15px;
+        background: color-mix(in srgb, var(--primary) 3%, var(--surface));
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-current-goal-chips span {
+        min-height: 38px;
+        border-radius: 11px;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card > .profile-home-facts,
+    body[data-page="profile"] .profile-current-setup-card .profile-setup-more > .profile-home-facts {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 7px;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-home-facts > div {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-content: start;
+        gap: 5px;
+        min-height: 70px;
+        padding: 11px;
+        border: 1px solid color-mix(in srgb, var(--ink) 8%, var(--line));
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--ink) 2%, var(--surface));
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-home-facts dt {
+        overflow: hidden;
+        font-size: 0.61rem;
+        line-height: 1.2;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-home-facts dd {
+        color: var(--ink);
+        font-size: 0.78rem;
+        line-height: 1.25;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-setup-more {
+        padding-top: 8px;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-setup-more > summary {
+        gap: 6px;
+        background: color-mix(in srgb, var(--primary) 6%, transparent);
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-setup-more > summary::after {
+        content: "›";
+        font-size: 1.1rem;
+        transform: rotate(90deg);
+        transition: transform 160ms ease;
+    }
+
+    body[data-page="profile"] .profile-current-setup-card .profile-setup-more[open] > summary::after {
+        transform: rotate(-90deg);
+    }
+}
+
+body[data-page="profile"]:is([data-theme="dark"], .theme-active-dark) .profile-current-setup-card[data-profile-collapsible] {
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.2);
+}
+
+@media (max-width: 700px) {
+    body[data-page="profile"] .profile-achievements-panel {
+        gap: 10px;
+        padding: 10px;
+        border-radius: 18px;
+    }
+
+    body[data-page="profile"] .profile-achievement-summary-modern {
+        grid-template-columns: 68px minmax(0, 1fr);
+        gap: 10px;
+        padding: 10px;
+    }
+
+    body[data-page="profile"] .profile-achievement-summary-modern > span {
+        min-width: 0;
+        padding-right: 10px;
+    }
+
+    body[data-page="profile"] .profile-achievement-summary-modern > span strong {
+        font-size: 1.3rem;
+    }
+
+    body[data-page="profile"] .profile-achievement-collection {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 6px;
+    }
+
+    body[data-page="profile"] .profile-collection-achievement {
+        grid-template-columns: 52px minmax(0, 1fr);
+        min-height: 96px;
+        gap: 9px;
+        padding: 9px;
+        border-radius: 14px;
+    }
+
+    body[data-page="profile"] .profile-collection-achievement > .achievement-visual {
+        width: 52px;
+        height: 52px;
+        min-height: 52px;
+        border-radius: 13px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body[data-page="profile"] .profile-collection-achievement {
+        transition: none;
+    }
+}

@@ -117,9 +117,6 @@ function save_profile_custom_widget_media(array $config, array $file, int $userI
         'image/png' => 'png',
         'image/webp' => 'webp',
         'image/gif' => 'gif',
-        'video/mp4' => 'mp4',
-        'video/webm' => 'webm',
-        'video/quicktime' => 'mov',
     ];
     // Keep this aligned with the bundled PHP runtime upload_max_filesize.
     $maxBytes = 20 * 1024 * 1024;

@@ -102,6 +102,17 @@ $scoreComponentRows = array_filter(
         </form>
     </article>
 
+    <?php if (str_starts_with((string) $metricKey, 'habit:') && is_array($habitAnalytics ?? null)): ?>
+        <section class="metric-summary-section habit-analytics-summary" aria-label="Resumen del hábito">
+            <div class="metric-summary-grid">
+                <article><small>Cumplimiento</small><strong><?= e(number_format((float) $habitAnalytics['completion_pct'], 1, ',', '.')) ?>%</strong></article>
+                <article><small>Racha actual</small><strong><?= (int) $habitAnalytics['current_streak'] ?> días</strong></article>
+                <article><small>Mejor racha</small><strong><?= (int) $habitAnalytics['max_streak'] ?> días</strong></article>
+                <article><small>Días completados</small><strong><?= (int) $habitAnalytics['completed_days'] ?> / <?= (int) $habitAnalytics['total_days'] ?></strong></article>
+            </div>
+        </section>
+    <?php endif; ?>
+
     <section class="metric-summary-section" aria-labelledby="metric-summary-title">
         <div class="metric-section-heading">
             <div><p class="eyebrow"><?= e(t('metric.period_summary')) ?></p><h2 id="metric-summary-title"><?= e((string) $metricLabel) ?></h2></div>

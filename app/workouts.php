@@ -264,13 +264,6 @@ function workouts_ensure_schema(PDO $pdo): void
 function wk_catalog_media_defaults(array $item): array
 {
     $equipment = trim((string) ($item['equipment'] ?? 'none'));
-    $assetKey = match ($equipment) {
-        'bodyweight', 'none' => 'none',
-        'cardio_machine' => 'cardio_machine',
-        default => in_array($equipment, ['machine', 'cable', 'outdoor', 'dumbbell', 'barbell', 'kettlebell', 'band'], true)
-            ? $equipment
-            : 'none',
-    };
     $equipmentTags = array_values(array_unique(array_filter(array_map(
         static fn(mixed $value): string => trim((string) $value),
         (array) ($item['equipment_tags'] ?? [$equipment])
@@ -293,10 +286,12 @@ function wk_catalog_media_defaults(array $item): array
     }
 
     return [
-        'image_path' => trim((string) ($item['image_path'] ?? '')) ?: '/assets/workouts/catalog/' . $assetKey . '.webp',
-        'image_source_url' => trim((string) ($item['image_source_url'] ?? '')) ?: 'generated://fitness-challenge/catalog/' . $assetKey,
-        'image_license' => trim((string) ($item['image_license'] ?? '')) ?: 'Original generated asset',
-        'image_attribution' => trim((string) ($item['image_attribution'] ?? '')) ?: 'Fitness Challenge catalogue artwork',
+        // Built-in exercises deliberately use the neutral UI placeholder until
+        // a real, curated photograph with source and licence is provided.
+        'image_path' => trim((string) ($item['image_path'] ?? '')),
+        'image_source_url' => trim((string) ($item['image_source_url'] ?? '')),
+        'image_license' => trim((string) ($item['image_license'] ?? '')),
+        'image_attribution' => trim((string) ($item['image_attribution'] ?? '')),
         'video_url' => $videoUrl,
         'video_attribution' => trim((string) ($item['video_attribution'] ?? '')) ?: 'YouTube public exercise search',
         'equipment_tags' => $equipmentTags,
@@ -365,10 +360,10 @@ function workouts_seed_system_exercises(PDO $pdo): void
                      exercise_type = :type, equipment = :equipment, equipment_tags_json = :equipment_tags,
                      contexts_json = :contexts, difficulty = :difficulty,
                      guide_json = :guide, rank_factor = :factor, rankable = :rankable,
-                     image_path = CASE WHEN TRIM(COALESCE(image_path, "")) = "" THEN :image_path ELSE image_path END,
-                     image_source_url = CASE WHEN TRIM(COALESCE(image_source_url, "")) = "" THEN :image_source_url ELSE image_source_url END,
-                     image_license = CASE WHEN TRIM(COALESCE(image_license, "")) = "" THEN :image_license ELSE image_license END,
-                     image_attribution = CASE WHEN TRIM(COALESCE(image_attribution, "")) = "" THEN :image_attribution ELSE image_attribution END,
+                     image_path = CASE WHEN image_source_url LIKE "generated://%" THEN "" WHEN TRIM(COALESCE(image_path, "")) = "" THEN :image_path ELSE image_path END,
+                     image_source_url = CASE WHEN image_source_url LIKE "generated://%" THEN "" WHEN TRIM(COALESCE(image_source_url, "")) = "" THEN :image_source_url ELSE image_source_url END,
+                     image_license = CASE WHEN image_source_url LIKE "generated://%" THEN "" WHEN TRIM(COALESCE(image_license, "")) = "" THEN :image_license ELSE image_license END,
+                     image_attribution = CASE WHEN image_source_url LIKE "generated://%" THEN "" WHEN TRIM(COALESCE(image_attribution, "")) = "" THEN :image_attribution ELSE image_attribution END,
                      video_url = CASE WHEN TRIM(COALESCE(video_url, "")) = "" THEN :video_url ELSE video_url END,
                      video_attribution = CASE WHEN TRIM(COALESCE(video_attribution, "")) = "" THEN :video_attribution ELSE video_attribution END,
                      visual_mark = :visual_mark, accent_color = :accent, sort_order = :sort, is_system = 1, updated_at = :now

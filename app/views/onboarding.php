@@ -12,6 +12,7 @@ $profileCoverPath = trim((string) ($currentUser['profile_cover_path'] ?? ''));
 $profileCoverUrl = $profileCoverPath !== '' ? media_url($profileCoverPath) : '';
 $hasStepGoal = (int) ($currentUser['step_goal'] ?? 0) > 0;
 $hasWorkoutGoal = (int) ($currentUser['workout_target'] ?? 0) > 0;
+$hasDistanceGoal = false;
 $onboardingGoalInput = is_array($_SESSION['onboarding_goal_input'] ?? null) ? (array) $_SESSION['onboarding_goal_input'] : [];
 if ($onboardingGoalInput !== []) {
     $hasStepGoal = isset($onboardingGoalInput['enable_step_goal']);
@@ -21,11 +22,23 @@ $onboardingMetricDefinitions = metric_preference_definitions($GLOBALS['pdo'], $c
 $onboardingEnabledMetrics = metric_enabled_keys($GLOBALS['pdo'], $currentUser);
 $onboardingRequestedMetrics = array_values(array_unique(array_map(
     'strval',
-    (array) ($onboardingGoalInput['enabled_metrics'] ?? $onboardingEnabledMetrics)
+    (array) ($onboardingGoalInput['enabled_metrics'] ?? array_keys($onboardingMetricDefinitions))
 )));
 $onboardingDailyGoals = user_primary_goals($currentUser);
 if (array_key_exists('primary_goals_spec', $onboardingGoalInput)) {
     $onboardingDailyGoals = parse_primary_goals_spec((string) $onboardingGoalInput['primary_goals_spec'], false);
+}
+$distanceGoalValue = 5.0;
+foreach ($onboardingDailyGoals as $onboardingDailyGoal) {
+    if ((string) ($onboardingDailyGoal['type'] ?? '') === 'km') {
+        $hasDistanceGoal = true;
+        $distanceGoalValue = max(0.1, (float) ($onboardingDailyGoal['value'] ?? 5));
+        break;
+    }
+}
+if ($onboardingGoalInput !== []) {
+    $hasDistanceGoal = isset($onboardingGoalInput['enable_distance_goal']);
+    $distanceGoalValue = max(0.1, (float) ($onboardingGoalInput['distance_goal'] ?? $distanceGoalValue));
 }
 $onboardingExtraGoals = array_values(array_filter(
     $onboardingDailyGoals,
@@ -34,7 +47,6 @@ $onboardingExtraGoals = array_values(array_filter(
 $onboardingGoalOptions = [
     ['value' => 'steps', 'label' => (string) t('metric.steps'), 'step' => '1', 'placeholder' => '10000'],
     ['value' => 'km', 'label' => (string) t('metric.distance_km'), 'step' => '0.1', 'placeholder' => '5'],
-    ['value' => 'workouts', 'label' => (string) t('metric.workouts'), 'step' => '1', 'placeholder' => '1'],
 ];
 $onboardingExtraGoalsSpec = format_primary_goals_spec($onboardingExtraGoals);
 $onboardingPrivacyVisibility = privacy_normalize((string) ($onboardingPrivacyVisibility ?? ($currentUser['profile_visibility'] ?? 'public')));
@@ -121,29 +133,17 @@ try {
                         <label class="onboarding-option-toggle"><input type="checkbox" name="enable_workout_goal" value="1" <?= $hasWorkoutGoal ? 'checked' : '' ?> data-onboarding-optional-toggle><span class="onboarding-option-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span><span><strong><?= e(t('onboarding.weekly_workouts')) ?></strong><small><?= e(t('onboarding.weekly_workouts_hint')) ?></small></span><i aria-hidden="true"></i></label>
                         <div class="onboarding-option-value" data-onboarding-optional-content <?= $hasWorkoutGoal ? '' : 'hidden' ?>><label><span><?= e(t('onboarding.target_optional')) ?></span><input type="number" name="workout_target" min="1" max="14" value="<?= e((string) ($onboardingGoalInput['workout_target'] ?? ($hasWorkoutGoal ? (int) $currentUser['workout_target'] : 3))) ?>" <?= $hasWorkoutGoal ? '' : 'disabled' ?>></label></div>
                     </section>
-                    <section class="onboarding-goal-option onboarding-multi-goals">
-                        <div class="onboarding-primary-head"><span class="onboarding-option-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span><span><strong><?= e(t('settings.primary_goals_spec')) ?></strong><small><?= e(t('settings.primary_goals_spec_hint')) ?></small></span></div>
-                        <input type="hidden" name="primary_goals_spec" value="<?= e($onboardingExtraGoalsSpec) ?>" data-primary-goals-spec-input>
-                        <div class="primary-goals-editor onboarding-primary-goals-editor" data-primary-goals-editor>
-                            <div class="primary-goals-list" data-primary-goals-list>
-                                <?php foreach ($onboardingExtraGoals as $goal): ?>
-                                    <?php $goalType = (string) ($goal['type'] ?? 'km'); $goalValue = (float) ($goal['value'] ?? 0); ?>
-                                    <div class="primary-goal-row" data-primary-goal-row>
-                                        <label><span><?= e(t('onboarding.metric_optional')) ?></span><select data-primary-goal-type><?php foreach ($onboardingGoalOptions as $option): ?><option value="<?= e($option['value']) ?>" data-step="<?= e($option['step']) ?>" data-placeholder="<?= e($option['placeholder']) ?>" <?= $goalType === $option['value'] ? 'selected' : '' ?>><?= e($option['label']) ?></option><?php endforeach; ?></select></label>
-                                        <label><span><?= e(t('settings.primary_goal_value')) ?></span><input type="number" min="0.1" step="<?= e($goalType === 'km' ? '0.1' : '1') ?>" value="<?= e($goalType === 'km' ? rtrim(rtrim(number_format($goalValue, 2, '.', ''), '0'), '.') : (string) (int) round($goalValue)) ?>" data-primary-goal-value></label>
-                                        <button class="btn btn-ghost primary-goal-remove" type="button" data-primary-goal-remove aria-label="<?= e(t('settings.remove_primary_goal')) ?>">&times;</button>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                            <button class="btn btn-ghost primary-goal-add" type="button" data-primary-goal-add data-label-empty="<?= e(t('settings.add_first_goal')) ?>" data-label-more="<?= e(t('settings.add_primary_goal')) ?>"><span aria-hidden="true">+</span><span data-primary-goal-add-label><?= e($onboardingExtraGoals === [] ? t('settings.add_first_goal') : t('settings.add_primary_goal')) ?></span></button>
-                            <template data-primary-goal-template><div class="primary-goal-row" data-primary-goal-row><label><span><?= e(t('onboarding.metric_optional')) ?></span><select data-primary-goal-type><?php foreach ($onboardingGoalOptions as $option): ?><option value="<?= e($option['value']) ?>" data-step="<?= e($option['step']) ?>" data-placeholder="<?= e($option['placeholder']) ?>"><?= e($option['label']) ?></option><?php endforeach; ?></select></label><label><span><?= e(t('settings.primary_goal_value')) ?></span><input type="number" min="0.1" step="1" data-primary-goal-value></label><button class="btn btn-ghost primary-goal-remove" type="button" data-primary-goal-remove aria-label="<?= e(t('settings.remove_primary_goal')) ?>">&times;</button></div></template>
-                        </div>
+                    <section class="onboarding-goal-option<?= $hasDistanceGoal ? ' is-enabled' : '' ?>" data-onboarding-optional-card>
+                        <label class="onboarding-option-toggle"><input type="checkbox" name="enable_distance_goal" value="1" <?= $hasDistanceGoal ? 'checked' : '' ?> data-onboarding-optional-toggle><span class="onboarding-option-icon" aria-hidden="true"><?= activity_icon_svg('run') ?></span><span><strong><?= e(t('metric.distance_km')) ?></strong><small><?= e(t('onboarding.distance_goal_hint')) ?></small></span><i aria-hidden="true"></i></label>
+                        <div class="onboarding-option-value" data-onboarding-optional-content <?= $hasDistanceGoal ? '' : 'hidden' ?>><label><span><?= e(t('onboarding.target_optional')) ?></span><input type="number" name="distance_goal" min="0.1" step="0.1" value="<?= e(rtrim(rtrim(number_format($distanceGoalValue, 2, '.', ''), '0'), '.')) ?>" <?= $hasDistanceGoal ? '' : 'disabled' ?>></label></div>
                     </section>
+                    <details class="onboarding-goals-more">
+                        <summary><span><strong><?= e(t('settings.tracked_metrics')) ?></strong><small><?= e(t('onboarding.metrics_more_hint')) ?></small></span><b aria-hidden="true">⌄</b></summary>
                     <section class="onboarding-goal-option onboarding-multi-goals">
                         <div class="onboarding-primary-head"><span class="onboarding-option-icon" aria-hidden="true"><?= activity_icon_svg('sliders') ?></span><span><strong><?= e(t('settings.tracked_metrics')) ?></strong><small><?= e(t('settings.tracked_metrics_hint')) ?></small></span></div>
                         <div class="onboarding-metric-preferences">
                             <?php foreach ($onboardingMetricDefinitions as $metricKey => $metricDefinition): ?>
-                                <?php if (in_array($metricKey, ['steps', 'workouts', 'distance'], true)) {
+                                <?php if (in_array($metricKey, ['steps', 'workouts'], true)) {
                                     continue;
                                 } ?>
                                 <label class="onboarding-metric-toggle">
@@ -158,7 +158,16 @@ try {
                             <label><?= e(t('settings.calorie_consumed_max')) ?><input type="number" min="1" step="1" name="calorie_consumed_max" value="<?= e((string) ($onboardingGoalInput['calorie_consumed_max'] ?? ($currentUser['calorie_consumed_max'] ?? ''))) ?>"></label>
                             <label><?= e(t('settings.ideal_weight')) ?><input type="number" min="25" max="400" step="0.1" name="ideal_weight" value="<?= e((string) ($onboardingGoalInput['ideal_weight'] ?? ($currentUser['ideal_weight'] ?? ''))) ?>"></label>
                         </div>
+                        <details class="onboarding-custom-metrics">
+                            <summary class="btn btn-ghost">+ Crear métricas personales</summary>
+                            <p class="muted small">Estas métricas solo aparecerán en tu cuenta. Podrás configurar objetivo y gráficas después.</p>
+                            <div class="grid-inline two">
+                                <label>Nombre<input type="text" name="custom_metric_name[]" maxlength="60" placeholder="Agua"></label>
+                                <label>Unidad<input type="text" name="custom_metric_unit[]" maxlength="20" placeholder="litros"></label>
+                            </div>
+                        </details>
                     </section>
+                    </details>
                 </div>
             <?php elseif ($step === 'profile'): ?>
                 <div class="onboarding-media-grid">
@@ -173,6 +182,14 @@ try {
                         <input class="sr-only" type="file" name="cover" accept="image/jpeg,image/png,image/webp" data-onboarding-image-input="cover">
                     </label>
                 </div>
+                <label class="onboarding-profile-message"><span><?= e(t('profile.edit_tagline')) ?></span><input type="text" name="profile_tagline" maxlength="<?= profile_tagline_max_length() ?>" value="<?= e(normalize_profile_tagline((string) ($currentUser['profile_tagline'] ?? ''))) ?>" placeholder="<?= e(t('profile.subtitle')) ?>"><small><?= e(t('onboarding.profile_message_hint')) ?></small></label>
+                <fieldset class="onboarding-theme-choice">
+                    <legend>Tema inicial</legend>
+                    <div class="onboarding-privacy-options">
+                        <label class="onboarding-privacy-option"><input type="radio" name="theme_mode" value="light" <?= ($currentUser['theme_mode'] ?? 'light') !== 'dark' ? 'checked' : '' ?> data-onboarding-theme-choice><span><strong>Claro</strong><small>Fondos luminosos y alto contraste.</small></span><i aria-hidden="true"></i></label>
+                        <label class="onboarding-privacy-option"><input type="radio" name="theme_mode" value="dark" <?= ($currentUser['theme_mode'] ?? '') === 'dark' ? 'checked' : '' ?> data-onboarding-theme-choice><span><strong>Oscuro</strong><small>Menos brillo para entrenar de noche.</small></span><i aria-hidden="true"></i></label>
+                    </div>
+                </fieldset>
             <?php elseif ($step === 'privacy'): ?>
                 <div class="onboarding-privacy-stack" data-privacy-controls>
                     <section class="onboarding-privacy-section">
@@ -257,11 +274,26 @@ try {
                     <label><span><?= e(t('onboarding.challenge_metric')) ?></span><select name="target_type"><option value="steps" <?= $onboardingChallengeType === 'steps' ? 'selected' : '' ?>><?= e(t('metric.steps')) ?></option><option value="km" <?= $onboardingChallengeType === 'km' ? 'selected' : '' ?>><?= e(t('metric.distance_km')) ?></option><option value="workouts" <?= $onboardingChallengeType === 'workouts' ? 'selected' : '' ?>><?= e(t('metric.workouts')) ?></option></select></label>
                     <label><span><?= e(t('onboarding.challenge_target')) ?></span><input type="number" name="target_value" min="0.1" step="0.1" value="<?= e((string) ($onboardingGoal['target_value'] ?? 10000)) ?>"></label>
                     <label class="onboarding-field-wide"><span><?= e(t('onboarding.challenge_due')) ?> <em><?= e(t('onboarding.optional')) ?></em></span><input type="text" name="due_date" inputmode="numeric" autocomplete="off" placeholder="DD/MM/AAAA" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" value="<?= e(format_date_eu((string) ($onboardingGoal['due_date'] ?? $defaultChallengeDate))) ?>" data-eu-date-input><small><?= e(t('onboarding.challenge_date_hint')) ?></small></label>
+                    <details class="onboarding-field-wide onboarding-challenge-metrics">
+                        <summary>
+                        <div class="onboarding-primary-head"><span class="onboarding-option-icon" aria-hidden="true"><?= activity_icon_svg('analytics') ?></span><span><strong>Más métricas</strong><small>Añade todas las que quieras y reparte el peso hasta llegar al 100%.</small></span></div>
+                        <b aria-hidden="true">⌄</b>
+                        </summary>
+                        <div class="onboarding-challenge-metrics-body"><p class="muted small">La métrica principal usa el peso restante. Deja las filas vacías si el reto solo tiene una métrica.</p>
+                        <?php for ($challengeMetricIndex = 0; $challengeMetricIndex < 4; $challengeMetricIndex++): ?>
+                            <div class="grid-inline three challenge-extra-metric-row">
+                                <label>Métrica<select name="extra_metric_type[]"><option value="">Ninguna</option><option value="steps"><?= e(t('metric.steps')) ?></option><option value="km"><?= e(t('metric.distance_km')) ?></option><option value="workouts"><?= e(t('metric.workouts')) ?></option><option value="calories_burned"><?= e(t('dashboard.calories_burned')) ?></option><option value="calories_consumed"><?= e(t('dashboard.calories_consumed')) ?></option><?php foreach (custom_metrics_for_user($GLOBALS['pdo'], (int) $currentUser['id']) as $challengeCustomMetric): ?><option value="<?= e(custom_metric_key((int) $challengeCustomMetric['id'])) ?>"><?= e((string) $challengeCustomMetric['name']) ?></option><?php endforeach; ?></select></label>
+                                <label>Objetivo<input type="number" name="extra_metric_value[]" min="0.1" step="0.1"></label>
+                                <label>Peso %<input type="number" name="extra_metric_weight[]" min="1" max="99" step="1"></label>
+                            </div>
+                        <?php endfor; ?></div>
+                    </details>
                 </div>
             <?php elseif ($step === 'teams'): ?>
                 <?php if ((array) ($joinableTeams ?? []) === []): ?>
                     <div class="onboarding-empty"><span aria-hidden="true"><?= activity_icon_svg('users') ?></span><strong><?= e(t('onboarding.no_teams')) ?></strong><p><?= e(t('onboarding.no_teams_hint')) ?></p></div>
                 <?php else: ?>
+                    <div class="onboarding-team-summary"><span aria-hidden="true"><?= activity_icon_svg('users') ?></span><div><strong><?= count((array) $joinableTeams) ?> <?= e(t('onboarding.teams_available')) ?></strong><small><?= e(t('onboarding.teams_multiple_hint')) ?></small></div></div>
                     <div class="onboarding-team-list">
                         <?php foreach ((array) $joinableTeams as $team): ?>
                             <label class="onboarding-team-option">
@@ -272,11 +304,11 @@ try {
                             </label>
                         <?php endforeach; ?>
                     </div>
-                    <p class="onboarding-team-note"><?= e(t('onboarding.teams_multiple_hint')) ?></p>
                 <?php endif; ?>
             <?php elseif ($step === 'install'): ?>
                 <div class="onboarding-install" data-pwa-install-reminder data-install-default-label="<?= e(t('onboarding.install_not_installed')) ?>" data-install-ready-label="<?= e(t('onboarding.install_ready')) ?>" data-install-installed-label="<?= e(t('onboarding.install_installed')) ?>">
                     <section class="onboarding-install-hero">
+                        <span class="onboarding-install-app-badge"><?= e(t('onboarding.install_app_badge')) ?></span>
                         <div class="onboarding-install-phone" aria-hidden="true">
                             <span class="onboarding-install-phone-speaker"></span>
                             <span class="onboarding-install-app-icon"><img src="<?= e($onboardingAppIconUrl) ?>" alt=""></span>

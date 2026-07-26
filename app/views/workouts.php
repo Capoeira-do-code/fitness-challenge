@@ -61,12 +61,13 @@ $workoutExerciseAccent = static fn(array $exercise): string => wk_normalize_exer
 );
 $workoutExerciseStyle = static fn(array $exercise): string => '--exercise-accent: ' . $workoutExerciseAccent($exercise);
 $workoutExerciseMark = static fn(array $exercise): string => wk_exercise_visual_mark($exercise);
-$hubViews = ['list', 'plan', 'library', 'ranks', 'analytics'];
+$hubViews = ['list', 'plan', 'library', 'friends', 'ranks', 'analytics'];
 $tabView = $wkView === 'analytics' ? 'stats' : ($wkView === 'list' ? 'overview' : $wkView);
 $workoutHubLabels = [
     'overview' => [t('workouts.tab_overview'), t('workouts.subtitle')],
     'plan' => [t('workouts.tab_plan'), t('workouts.plan_subtitle')],
     'library' => [t('workouts.tab_library'), t('workouts.library_subtitle')],
+    'friends' => [t('workouts.friend_routines'), t('workouts.friend_routines_subtitle')],
     'ranks' => [t('workouts.tab_ranks'), t('workouts.rank_subtitle')],
     'stats' => [t('workouts.stats'), t('workouts.stats_subtitle')],
 ];
@@ -505,7 +506,7 @@ $libraryClearUrl = $libraryUrl([
             </summary>
             <div class="workouts-overview-disclosure-body">
                 <ul class="workouts-friend-routine-list">
-                    <?php foreach ((array) $wkFriendRoutines as $fr): ?>
+                    <?php foreach (array_slice((array) $wkFriendRoutines, 0, 3) as $fr): ?>
                         <?php $frEx = (int) ($fr['exercise_count'] ?? 0); ?>
                         <li class="workouts-friend-routine">
                             <span class="workouts-friend-routine-icon" aria-hidden="true" style="--routine-accent: <?= e(wk_normalize_routine_color($fr['accent_color'] ?? '#14b8a6')) ?>"><?= activity_icon_svg(wk_normalize_routine_icon($fr['icon'] ?? 'dumbbell')) ?></span>
@@ -520,6 +521,10 @@ $libraryClearUrl = $libraryUrl([
                         </li>
                     <?php endforeach; ?>
                 </ul>
+                <a class="workouts-friend-routines-more" href="/?page=workouts&amp;view=friends">
+                    <span><strong><?= e(t('common.view_all')) ?></strong><small><?= e(t('workouts.friend_routines_subtitle')) ?></small></span>
+                    <b aria-hidden="true">&rarr;</b>
+                </a>
             </div>
         </details>
     <?php endif; ?>
@@ -562,6 +567,51 @@ $libraryClearUrl = $libraryUrl([
     </div>
         </div>
     </details>
+
+<?php elseif ($wkView === 'friends'): ?>
+    <section class="workouts-friends-catalog" aria-labelledby="workouts-friends-catalog-title">
+        <header class="panel workouts-friends-catalog-head">
+            <span class="workouts-friends-catalog-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span>
+            <div>
+                <p class="eyebrow"><?= count((array) $wkFriendRoutines) ?></p>
+                <h2 id="workouts-friends-catalog-title"><?= e(t('workouts.friend_routines')) ?></h2>
+                <p><?= e(t('workouts.friend_routines_subtitle')) ?></p>
+            </div>
+            <a class="btn btn-ghost small" href="/?page=workouts"><?= e(t('workouts.tab_overview')) ?></a>
+        </header>
+
+        <?php if (($wkFriendRoutines ?? []) === []): ?>
+            <article class="panel workouts-friends-empty">
+                <span aria-hidden="true"><?= activity_icon_svg('users') ?></span>
+                <div><strong><?= e(t('workouts.friend_routines_empty')) ?></strong><p><?= e(t('workouts.friend_routines_empty_hint')) ?></p></div>
+                <a class="btn btn-primary" href="/?page=friends"><?= e(t('nav.friends')) ?></a>
+            </article>
+        <?php else: ?>
+            <div class="workouts-friends-catalog-grid">
+                <?php foreach ((array) $wkFriendRoutines as $fr): ?>
+                    <?php
+                    $frEx = (int) ($fr['exercise_count'] ?? 0);
+                    $frDays = wk_days_from_mask((string) ($fr['recommended_days_mask'] ?? '0000000'));
+                    ?>
+                    <article class="panel workouts-friend-routine-card" style="--routine-accent: <?= e(wk_normalize_routine_color($fr['accent_color'] ?? '#14b8a6')) ?>">
+                        <span class="workouts-friend-routine-card-icon" aria-hidden="true"><?= activity_icon_svg(wk_normalize_routine_icon($fr['icon'] ?? 'dumbbell')) ?></span>
+                        <div class="workouts-friend-routine-card-copy">
+                            <small><?= e((string) ($fr['friend_name'] ?? '')) ?></small>
+                            <h3><?= e((string) ($fr['name'] ?? '')) ?></h3>
+                            <p><?= e(t($frEx === 1 ? 'workouts.exercise_count_one' : 'workouts.exercise_count', ['count' => $frEx])) ?><?php if ($frDays !== []): ?> · <?= e(implode(' · ', array_map($dayShortLabel, $frDays))) ?><?php endif; ?></p>
+                        </div>
+                        <form method="post" action="/?page=workouts" class="workouts-friend-routine-card-action">
+                            <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
+                            <input type="hidden" name="action" value="routine_copy_friend">
+                            <input type="hidden" name="source_user_id" value="<?= (int) ($fr['friend_id'] ?? 0) ?>">
+                            <input type="hidden" name="source_routine_id" value="<?= (int) ($fr['id'] ?? 0) ?>">
+                            <button type="submit" class="btn btn-primary"><?= e(t('workouts.copy_routine')) ?></button>
+                        </form>
+                    </article>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </section>
 
 <?php elseif ($wkView === 'plan'): ?>
     <article class="panel workouts-section-intro">
@@ -971,7 +1021,7 @@ $libraryClearUrl = $libraryUrl([
                     </div>
                 </div>
             </article>
-            <details class="workouts-rank-calculation" open>
+            <details class="workouts-rank-calculation">
                 <summary>
                     <span class="workouts-rank-calculation-icon" aria-hidden="true"><?= activity_icon_svg('info') ?></span>
                     <span><strong><?= e(t('workouts.rank_calculation_title')) ?></strong><small><?= e(t('workouts.rank_calculation_hint')) ?></small></span>

@@ -13,6 +13,8 @@ declare(strict_types=1);
 function dashboard_panel_preference_keys(): array
 {
     return [
+        'dashboard.nutrition',
+        'dashboard.active-challenge',
         'dashboard.training-rank',
         'dashboard.training-progress',
         'dashboard.achievements',

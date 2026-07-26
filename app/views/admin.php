@@ -329,43 +329,65 @@ try {
         </div>
         <p class="admin-users-empty" data-admin-users-empty hidden><?= e(t('admin.users_no_results')) ?></p>
 
-        <div class="stack admin-create-view" data-spa-param-show="create_user" data-spa-value="1" <?= $createUserMode ? '' : 'hidden' ?>>
-            <div class="panel-head">
-                <h3><?= e(t('users.create')) ?></h3>
+        <div class="admin-create-view admin-user-create" data-spa-param-show="create_user" data-spa-value="1" <?= $createUserMode ? '' : 'hidden' ?>>
+            <header class="admin-user-create-head">
+                <span class="admin-user-create-mark" aria-hidden="true"><?= activity_icon_svg('user') ?></span>
+                <div>
+                    <p class="eyebrow"><?= e(t('admin.section_users')) ?></p>
+                    <h2><?= e(t('users.create')) ?></h2>
+                    <p><?= e(t('admin.user_create_hint')) ?></p>
+                </div>
                 <?php $renderAdminBack('/?page=admin&section=users', t('admin.section_users')); ?>
-            </div>
-            <form method="post" action="/?page=admin" class="stack">
+            </header>
+            <form method="post" action="/?page=admin" class="admin-user-create-form">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="create_user">
-                <div class="grid-inline">
-                    <label><?= e(t('common.username')) ?><input type="text" name="username" required></label>
-                    <label><?= e(t('common.display_name')) ?><input type="text" name="display_name" required></label>
-                    <label><?= e(t('users.initial_password')) ?><input type="password" name="password" required></label>
-                    <label><?= e(t('common.role')) ?><select name="role"><option value="user"><?= e(t('common.user')) ?></option><option value="admin"><?= e(t('common.admin')) ?></option></select></label>
-                </div>
-                <div class="grid-inline">
-                    <label><?= e(t('users.step_goal')) ?><input type="number" min="0" name="step_goal" value="10000" required></label>
-                    <label><?= e(t('settings.primary_goal')) ?><select name="primary_goal_type"><option value="steps"><?= e(t('metric.steps')) ?></option><option value="km"><?= e(t('metric.distance_km')) ?></option></select></label>
-                    <label><?= e(t('settings.primary_goal_value')) ?><input type="number" step="0.01" name="primary_goal_value"></label>
-                    <label><?= e(t('users.workout_target_week')) ?><input type="number" min="0" name="workout_target" value="3" required></label>
-                    <label><?= e(t('metric.ideal_weight')) ?> (kg)<input type="number" step="0.1" name="ideal_weight"></label>
-                    <label><?= e(t('users.workout_strict_days')) ?><select name="workout_strict"><option value="0"><?= e(t('common.no')) ?></option><option value="1"><?= e(t('common.yes')) ?></option></select></label>
-                </div>
-                <div class="chip-group">
-                    <span><?= e(t('users.step_goal_days')) ?>:</span>
-                    <?php foreach ($days as $idx => $label): ?>
-                        <label class="chip"><input type="checkbox" name="step_days[]" value="<?= $idx ?>" checked> <?= e($label) ?></label>
-                    <?php endforeach; ?>
-                </div>
-                <div class="chip-group">
-                    <span><?= e(t('users.workout_goal_days')) ?>:</span>
-                    <?php foreach ($days as $idx => $label): ?>
-                        <label class="chip"><input type="checkbox" name="workout_days[]" value="<?= $idx ?>"> <?= e($label) ?></label>
-                    <?php endforeach; ?>
-                </div>
-                <label class="check standalone-check"><input type="checkbox" name="active" value="1" checked><?= e(t('users.active_user')) ?></label>
-                <label class="check standalone-check"><input type="checkbox" name="require_onboarding" value="1" checked><?= e(t('admin.require_onboarding')) ?></label>
-                <button type="submit" class="btn btn-primary"><?= e(t('users.create')) ?></button>
+                <section class="admin-user-create-section">
+                    <header><span aria-hidden="true"><?= activity_icon_svg('user') ?></span><div><h3><?= e(t('admin.user_create_account')) ?></h3><p><?= e(t('admin.user_create_account_hint')) ?></p></div></header>
+                    <div class="admin-user-create-grid is-account">
+                        <label><span><?= e(t('common.username')) ?></span><input type="text" name="username" autocomplete="username" required></label>
+                        <label><span><?= e(t('common.display_name')) ?></span><input type="text" name="display_name" autocomplete="name" required></label>
+                        <label><span><?= e(t('users.initial_password')) ?></span><input type="password" name="password" autocomplete="new-password" required></label>
+                        <label><span><?= e(t('common.role')) ?></span><select name="role"><option value="user"><?= e(t('common.user')) ?></option><option value="admin"><?= e(t('common.admin')) ?></option></select></label>
+                    </div>
+                </section>
+
+                <section class="admin-user-create-section">
+                    <header><span aria-hidden="true"><?= activity_icon_svg('target') ?></span><div><h3><?= e(t('admin.user_create_goals')) ?></h3><p><?= e(t('admin.user_create_goals_hint')) ?></p></div></header>
+                    <div class="admin-user-create-grid is-goals">
+                        <label><span><?= e(t('users.step_goal')) ?></span><input type="number" min="0" name="step_goal" value="10000" inputmode="numeric" required></label>
+                        <label><span><?= e(t('settings.primary_goal')) ?></span><select name="primary_goal_type"><option value="steps"><?= e(t('metric.steps')) ?></option><option value="km"><?= e(t('metric.distance_km')) ?></option></select></label>
+                        <label><span><?= e(t('settings.primary_goal_value')) ?></span><input type="number" min="0" step="0.01" name="primary_goal_value" inputmode="decimal"></label>
+                        <label><span><?= e(t('users.workout_target_week')) ?></span><input type="number" min="0" name="workout_target" value="3" inputmode="numeric" required></label>
+                        <label><span><?= e(t('metric.ideal_weight')) ?> (kg)</span><input type="number" min="0" step="0.1" name="ideal_weight" inputmode="decimal"></label>
+                        <label><span><?= e(t('users.workout_strict_days')) ?></span><select name="workout_strict"><option value="0"><?= e(t('common.no')) ?></option><option value="1"><?= e(t('common.yes')) ?></option></select></label>
+                    </div>
+                </section>
+
+                <section class="admin-user-create-section admin-user-create-schedule">
+                    <header><span aria-hidden="true"><?= activity_icon_svg('calendar') ?></span><div><h3><?= e(t('admin.user_create_schedule')) ?></h3><p><?= e(t('admin.user_create_schedule_hint')) ?></p></div></header>
+                    <fieldset class="admin-user-create-days">
+                        <legend><?= e(t('users.step_goal_days')) ?></legend>
+                        <div><?php foreach ($days as $idx => $label): ?><label><input type="checkbox" name="step_days[]" value="<?= $idx ?>" checked><span><?= e($label) ?></span></label><?php endforeach; ?></div>
+                    </fieldset>
+                    <fieldset class="admin-user-create-days">
+                        <legend><?= e(t('users.workout_goal_days')) ?></legend>
+                        <div><?php foreach ($days as $idx => $label): ?><label><input type="checkbox" name="workout_days[]" value="<?= $idx ?>"><span><?= e($label) ?></span></label><?php endforeach; ?></div>
+                    </fieldset>
+                </section>
+
+                <section class="admin-user-create-section admin-user-create-access">
+                    <header><span aria-hidden="true"><?= activity_icon_svg('shield') ?></span><div><h3><?= e(t('admin.user_create_access')) ?></h3><p><?= e(t('admin.user_create_access_hint')) ?></p></div></header>
+                    <div class="admin-user-create-toggles">
+                        <label><input type="checkbox" name="active" value="1" checked><span><strong><?= e(t('users.active_user')) ?></strong><small><?= e(t('admin.user_create_active_hint')) ?></small></span><i aria-hidden="true"></i></label>
+                        <label><input type="checkbox" name="require_onboarding" value="1" checked><span><strong><?= e(t('admin.require_onboarding')) ?></strong><small><?= e(t('admin.user_create_onboarding_hint')) ?></small></span><i aria-hidden="true"></i></label>
+                    </div>
+                </section>
+
+                <footer class="admin-user-create-actions">
+                    <a class="btn btn-ghost" href="/?page=admin&amp;section=users" data-spa-link><?= e(t('common.cancel')) ?></a>
+                    <button type="submit" class="btn btn-primary"><span aria-hidden="true">+</span><?= e(t('users.create')) ?></button>
+                </footer>
             </form>
         </div>
 

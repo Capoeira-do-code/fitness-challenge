@@ -43,7 +43,7 @@ db_execute(
     'UPDATE users
      SET step_goal = 1000, workout_target = 2, primary_goal_type = "steps",
          primary_goal_value = 1000, primary_goals_spec = :spec,
-         calorie_burn_goal = 500, calorie_consumed_max = 2000, updated_at = :updated_at
+         calorie_burn_goal = 500, calorie_consumed_max = 2000, step_days_mask = "1111111", updated_at = :updated_at
      WHERE id = :id',
     [
         ':spec' => format_primary_goals_spec([
@@ -151,15 +151,10 @@ save_user_metric_preferences($pdo, $updatedUser, [], $today);
 $emptySnapshot = metric_snapshot_for_view($metric, $today);
 $check(array_key_exists('score', $emptySnapshot) && $emptySnapshot['score'] === null, 'sin métricas activas el score es null');
 
-$invalidTargetRejected = false;
 db_execute($pdo, 'UPDATE users SET step_goal = 0 WHERE id = :id', [':id' => $userId]);
 $invalidUser = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => $userId]) ?? $updatedUser;
-try {
-    save_user_metric_preferences($pdo, $invalidUser, ['steps'], $today);
-} catch (InvalidArgumentException) {
-    $invalidTargetRejected = true;
-}
-$check($invalidTargetRejected, 'una métrica con objetivo inválido no se puede activar');
+$enabledWithoutTarget = save_user_metric_preferences($pdo, $invalidUser, ['steps'], $today);
+$check(in_array('steps', $enabledWithoutTarget, true), 'una métrica se puede seguir aunque todavía no tenga objetivo');
 
 if ($failures !== []) {
     fwrite(STDERR, PHP_EOL . count($failures) . ' checks failed: ' . implode(', ', $failures) . PHP_EOL);

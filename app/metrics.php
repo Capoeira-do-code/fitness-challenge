@@ -26,6 +26,10 @@ function metric_preference_is_valid_key(PDO $pdo, string $key): bool
     if (in_array($key, metric_preference_base_keys(), true)) {
         return true;
     }
+    if (str_starts_with($key, 'custom:')) {
+        $id = (int) substr($key, 7);
+        return $id > 0 && db_fetch_one($pdo, 'SELECT id FROM custom_metric_definitions WHERE id = :id AND active = 1', [':id' => $id]) !== null;
+    }
     if (!str_starts_with($key, 'habit:')) {
         return false;
     }
@@ -44,12 +48,12 @@ function metric_preference_is_valid_key(PDO $pdo, string $key): bool
 function metric_preference_definitions(PDO $pdo, array $user): array
 {
     $definitions = [
-        'steps' => ['label' => t('metric.steps'), 'icon' => 'footsteps', 'period' => 'daily', 'target_required' => true],
-        'distance' => ['label' => t('metric.distance_km'), 'icon' => 'run', 'period' => 'daily', 'target_required' => true],
-        'workouts' => ['label' => t('metric.workouts'), 'icon' => 'dumbbell', 'period' => 'weekly', 'target_required' => true],
-        'calories_burned' => ['label' => t('dashboard.calories_burned'), 'icon' => 'bolt', 'period' => 'daily', 'target_required' => true],
-        'calories_consumed' => ['label' => t('dashboard.calories_consumed'), 'icon' => 'flame', 'period' => 'daily', 'target_required' => true],
-        'weight' => ['label' => t('metric.weight'), 'icon' => 'target', 'period' => 'weekly', 'target_required' => true],
+        'steps' => ['label' => t('metric.steps'), 'icon' => 'footsteps', 'period' => 'daily', 'target_required' => false],
+        'distance' => ['label' => t('metric.distance_km'), 'icon' => 'run', 'period' => 'daily', 'target_required' => false],
+        'workouts' => ['label' => t('metric.workouts'), 'icon' => 'dumbbell', 'period' => 'weekly', 'target_required' => false],
+        'calories_burned' => ['label' => t('dashboard.calories_burned'), 'icon' => 'bolt', 'period' => 'daily', 'target_required' => false],
+        'calories_consumed' => ['label' => t('dashboard.calories_consumed'), 'icon' => 'flame', 'period' => 'daily', 'target_required' => false],
+        'weight' => ['label' => t('metric.weight'), 'icon' => 'target', 'period' => 'weekly', 'target_required' => false],
         'discipline' => ['label' => t('metric.discipline'), 'icon' => 'shield', 'period' => 'weekly', 'target_required' => false],
     ];
     foreach (list_habit_definitions($pdo, true) as $habit) {
@@ -66,9 +70,27 @@ function metric_preference_definitions(PDO $pdo, array $user): array
             'habit_code' => $code,
         ];
     }
+    foreach (custom_metrics_for_user($pdo, (int) ($user['id'] ?? 0)) as $customMetric) {
+        $id = (int) ($customMetric['id'] ?? 0);
+        if ($id <= 0) {
+            continue;
+        }
+        $definitions[custom_metric_key($id)] = [
+            'label' => (string) $customMetric['name'],
+            'icon' => (string) ($customMetric['icon'] ?? 'chart'),
+            'period' => (string) ($customMetric['frequency'] ?? 'daily'),
+            'target_required' => false,
+            'target' => $customMetric['target_value'] ?? null,
+            'unit' => (string) ($customMetric['unit'] ?? ''),
+            'custom_metric_id' => $id,
+            'color' => (string) ($customMetric['color'] ?? '#18a999'),
+        ];
+    }
     foreach ($definitions as $key => &$definition) {
         $definition['key'] = $key;
-        $definition['target'] = metric_target_for_user($user, $key);
+        if (!array_key_exists('target', $definition)) {
+            $definition['target'] = metric_target_for_user($user, $key);
+        }
     }
     unset($definition);
 
@@ -433,10 +455,10 @@ function metric_progress_between(
     if ($key === 'calories_consumed') {
         $rows = db_fetch_all(
             $pdo,
-            'SELECT log_date, SUM(COALESCE(calories, 0)) AS total, COUNT(*) AS meal_count
-             FROM photo_entries
-             WHERE user_id = :user_id AND log_date BETWEEN :start AND :end
-             GROUP BY log_date',
+            'SELECT entry_date AS log_date, SUM(COALESCE(calories, 0)) AS total, COUNT(*) AS meal_count
+             FROM nutrition_entries
+             WHERE user_id = :user_id AND entry_date BETWEEN :start AND :end
+             GROUP BY entry_date',
             [':user_id' => $userId, ':start' => $start, ':end' => $end]
         );
         $valid = 0;

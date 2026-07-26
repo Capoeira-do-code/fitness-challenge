@@ -400,10 +400,6 @@ function wk_builtin_exercise_catalog(): array
             'difficulty' => $difficulty,
             'rank_factor' => $type === 'cardio' ? 1.0 : 0.65,
             'rankable' => $type !== 'cardio',
-            'image_path' => '/assets/workouts/catalog/' . $equipment . '.webp',
-            'image_source_url' => 'generated://openai/workout-catalog-2026',
-            'image_license' => 'Original generated asset',
-            'image_attribution' => 'Original fitness-challenge catalogue artwork',
             'video_url' => 'https://www.youtube.com/results?search_query=' . rawurlencode($nameEn . ' exercise form tutorial'),
             'video_attribution' => 'YouTube search: exercise form tutorial',
             'guide' => $guide(

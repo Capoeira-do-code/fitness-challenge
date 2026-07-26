@@ -208,6 +208,25 @@ function telegram_send_message(array $settings, string $chatId, string $text, ?a
     return $response['ok'];
 }
 
+function telegram_send_document(array $settings, string $chatId, string $filePath, string $caption = ''): bool
+{
+    if (!telegram_is_enabled($settings) || !is_file($filePath) || !function_exists('curl_file_create')) {
+        return false;
+    }
+    $curl = curl_init(TELEGRAM_API_BASE . '/bot' . (string) $settings['token'] . '/sendDocument');
+    if ($curl === false) {
+        return false;
+    }
+    curl_setopt_array($curl, [
+        CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30,
+        CURLOPT_POSTFIELDS => ['chat_id' => $chatId, 'caption' => $caption, 'document' => curl_file_create($filePath, 'application/pdf', basename($filePath))],
+    ]);
+    $raw = curl_exec($curl);
+    curl_close($curl);
+    $decoded = is_string($raw) ? json_decode($raw, true) : null;
+    return is_array($decoded) && !empty($decoded['ok']);
+}
+
 /** One prominent destination for alerts that can be resolved in the app. */
 function telegram_action_keyboard(array $settings, string $path, ?string $label = null): ?array
 {
@@ -220,6 +239,24 @@ function telegram_action_keyboard(array $settings, string $path, ?string $label 
         'text' => $label !== null && $label !== '' ? $label : '↗ ' . t('common.open'),
         'url' => $baseUrl . $path,
     ]]]];
+}
+
+function telegram_main_menu_keyboard(array $settings): ?array
+{
+    $baseUrl = rtrim(trim((string) ($settings['base_url'] ?? '')), '/');
+    if ($baseUrl === '') {
+        return null;
+    }
+    return ['inline_keyboard' => [
+        [
+            ['text' => '📝 Daily log', 'url' => $baseUrl . '/?page=entries&mode=data'],
+            ['text' => '🍽 Meal', 'url' => $baseUrl . '/?page=nutrition'],
+        ],
+        [
+            ['text' => '📊 Metrics', 'url' => $baseUrl . '/?page=dashboard'],
+            ['text' => '⚙ Reports', 'url' => $baseUrl . '/?page=settings&view=preferences'],
+        ],
+    ]];
 }
 
 function telegram_edit_message(array $settings, string $chatId, int $messageId, string $text, array $replyMarkup): bool
@@ -307,6 +344,7 @@ function telegram_unlink_user(PDO $pdo, int $userId): void
 
 function telegram_update_user_prefs(PDO $pdo, int $userId, array $input): void
 {
+    $existingPrefs = db_fetch_one($pdo, 'SELECT weekly_report_enabled, weekly_report_day, weekly_report_time, weekly_report_tz FROM users WHERE id = :id', [':id' => $userId]) ?? [];
     db_execute(
         $pdo,
         'UPDATE users
@@ -320,6 +358,10 @@ function telegram_update_user_prefs(PDO $pdo, int $userId, array $input): void
              telegram_notify_duel = :notify_duel,
              telegram_notify_streak = :notify_streak,
              telegram_notify_social = :notify_social,
+             weekly_report_enabled = :weekly_report,
+             weekly_report_day = :weekly_day,
+             weekly_report_time = :weekly_time,
+             weekly_report_tz = :weekly_tz,
              updated_at = :updated_at
          WHERE id = :id',
         [
@@ -333,6 +375,12 @@ function telegram_update_user_prefs(PDO $pdo, int $userId, array $input): void
             ':notify_duel' => !empty($input['telegram_notify_duel']) ? 1 : 0,
             ':notify_streak' => !empty($input['telegram_notify_streak']) ? 1 : 0,
             ':notify_social' => !empty($input['telegram_notify_social']) ? 1 : 0,
+            ':weekly_report' => array_key_exists('weekly_report_enabled', $input) || array_key_exists('weekly_report_day', $input)
+                ? (!empty($input['weekly_report_enabled']) ? 1 : 0)
+                : (int) ($existingPrefs['weekly_report_enabled'] ?? 1),
+            ':weekly_day' => max(1, min(7, (int) ($input['weekly_report_day'] ?? ($existingPrefs['weekly_report_day'] ?? 1)))),
+            ':weekly_time' => telegram_normalize_time((string) ($input['weekly_report_time'] ?? ($existingPrefs['weekly_report_time'] ?? '09:00'))),
+            ':weekly_tz' => telegram_normalize_tz((string) ($input['weekly_report_tz'] ?? ($existingPrefs['weekly_report_tz'] ?? ($input['telegram_tz'] ?? '')))),
             ':updated_at' => now_iso(),
             ':id' => $userId,
         ]
@@ -599,6 +647,58 @@ function telegram_handle_incoming(PDO $pdo, array $settings, string $chatId, str
                 return;
             }
             telegram_send_preferences($pdo, $settings, $chatId, $user);
+            return;
+        }
+        if (in_array($command, ['start', 'menu', 'help', 'ayuda'], true)) {
+            telegram_with_user_locale($user, static fn() => telegram_send_message(
+                $settings,
+                $chatId,
+                "Fitness Challenge\n\n/today — resumen de hoy\n/week — resumen semanal\n/metrics — métricas personales\n/report — generar PDF\n/settings — preferencias",
+                telegram_main_menu_keyboard($settings)
+            ));
+            return;
+        }
+        if (in_array($command, ['today', 'hoy', 'week', 'semana', 'metrics', 'metricas'], true)) {
+            $today = telegram_user_now($user);
+            $end = (string) $today['date'];
+            $start = in_array($command, ['week', 'semana'], true)
+                ? (new DateTimeImmutable($end))->modify('-6 days')->format('Y-m-d')
+                : $end;
+            $summary = db_fetch_one($pdo, 'SELECT COALESCE(SUM(steps),0) steps, COALESCE(SUM(distance_km),0) distance, COALESCE(SUM(training_calories_burned),0) burned, COALESCE(SUM(workout_done),0) workouts FROM daily_logs WHERE user_id = :user AND log_date BETWEEN :start AND :end', [
+                ':user' => (int) $user['id'], ':start' => $start, ':end' => $end,
+            ]) ?? [];
+            $nutritionRows = nutrition_daily_summary($pdo, $user, $start, $end);
+            $consumed = array_sum(array_map(static fn(array $row): float => (float) ($row['consumed'] ?? 0), $nutritionRows));
+            $message = ($start === $end ? 'Hoy' : 'Últimos 7 días')
+                . "\n👟 " . number_format((float) ($summary['steps'] ?? 0), 0, '.', ',') . ' pasos'
+                . "\n📍 " . number_format((float) ($summary['distance'] ?? 0), 2) . ' km'
+                . "\n🏋️ " . (int) ($summary['workouts'] ?? 0) . ' entrenamientos'
+                . "\n🍽 " . number_format($consumed, 0) . ' kcal consumidas'
+                . "\n🔥 " . number_format((float) ($summary['burned'] ?? 0), 0) . ' kcal de ejercicio';
+            if (in_array($command, ['metrics', 'metricas'], true)) {
+                foreach (custom_metrics_for_user($pdo, (int) $user['id']) as $customMetric) {
+                    if (($customMetric['latest_value'] ?? '') !== '') {
+                        $message .= "\n• " . (string) $customMetric['name'] . ': ' . (string) $customMetric['latest_value'] . ' ' . (string) $customMetric['unit'];
+                    }
+                }
+            }
+            telegram_send_message($settings, $chatId, $message, telegram_main_menu_keyboard($settings));
+            return;
+        }
+        if (in_array($command, ['report', 'informe'], true)) {
+            $today = new DateTimeImmutable((string) telegram_user_now($user)['date']);
+            $end = $today->modify('-1 day')->format('Y-m-d');
+            $start = $today->modify('-7 days')->format('Y-m-d');
+            try {
+                $config = (array) ($GLOBALS['config'] ?? []);
+                $path = weekly_report_build($pdo, $config, $user, $start, $end);
+                $absolute = rtrim((string) ($config['upload_dir'] ?? ''), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $path;
+                if (!telegram_send_document($settings, $chatId, $absolute, 'Informe semanal · ' . $start . ' – ' . $end)) {
+                    telegram_send_message($settings, $chatId, 'No he podido adjuntar el informe. Inténtalo de nuevo o descárgalo desde Ajustes.', telegram_main_menu_keyboard($settings));
+                }
+            } catch (Throwable) {
+                telegram_send_message($settings, $chatId, 'No he podido generar el informe. Revisa tus datos e inténtalo de nuevo.', telegram_main_menu_keyboard($settings));
+            }
             return;
         }
         telegram_with_user_locale($user, static fn() => telegram_send_message($settings, $chatId, t('telegram.help')));
@@ -974,6 +1074,7 @@ function telegram_run_scheduler(PDO $pdo, array $config): void
 {
     try {
         $settings = telegram_settings($pdo);
+        weekly_reports_run_due($pdo, $config, $settings);
         if (!telegram_is_enabled($settings)) {
             return;
         }

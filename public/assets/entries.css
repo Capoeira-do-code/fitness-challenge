@@ -997,6 +997,277 @@ body[data-page="entries"]:is([data-theme="dark"], .theme-active-dark) :is(
     }
 }
 
+/* Daily Log mobile pass: compact controls and a table that becomes cards. */
+body[data-page="entries"] .entry-table-view {
+    display: inline-flex;
+    min-height: 48px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: 14px;
+    white-space: nowrap;
+}
+body[data-page="entries"] .entry-table-view svg { width: 17px; height: 17px; }
+body[data-page="entries"] .entry-mobile-log-list { display: none; }
+
+@media (max-width: 700px) {
+    body[data-page="entries"] main.container {
+        padding-inline: 9px;
+    }
+
+    body[data-page="entries"] .entries-data-screen {
+        width: 100%;
+        gap: 8px;
+    }
+
+    body[data-page="entries"] .entry-mode-tabs {
+        position: sticky;
+        z-index: 9;
+        top: calc(var(--mobile-topbar-height, 0px) + 5px);
+        padding: 3px;
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--surface) 94%, transparent);
+        backdrop-filter: blur(14px);
+    }
+
+    body[data-page="entries"] .entry-mode-tabs a {
+        min-height: 42px;
+        gap: 5px;
+        padding-inline: 7px;
+        font-size: 0.7rem;
+    }
+
+    body[data-page="entries"] .entry-data-panel {
+        padding: 8px;
+        border-radius: 18px;
+    }
+
+    body[data-page="entries"] .entry-data-toolbar {
+        margin-bottom: 8px;
+        padding: 7px;
+        border-radius: 14px;
+    }
+
+    body[data-page="entries"] .entry-date-time-row {
+        grid-template-columns: minmax(0, 1fr) minmax(112px, 0.45fr);
+        grid-template-areas:
+            "date date"
+            "time view";
+        gap: 7px;
+    }
+
+    body[data-page="entries"] .entry-date-nav { grid-area: date; }
+    body[data-page="entries"] .entry-time-inline { grid-area: time; }
+    body[data-page="entries"] .entry-table-view {
+        grid-area: view;
+        align-self: end;
+        min-height: 46px;
+        padding-inline: 9px;
+        font-size: 0.64rem;
+    }
+
+    body[data-page="entries"] .entry-data-form .entry-form-section.entry-metric-pair {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 7px;
+    }
+
+    body[data-page="entries"] .entry-metric-field {
+        grid-template-columns: minmax(0, 1fr) minmax(96px, 0.42fr);
+        align-items: center;
+        gap: 8px;
+        min-height: 60px;
+        padding: 8px;
+        border-radius: 14px;
+    }
+
+    body[data-page="entries"] .entry-metric-field > input {
+        min-height: 44px;
+        text-align: right;
+    }
+
+    body[data-page="entries"] .entry-weight-control {
+        min-height: 60px;
+        padding: 8px;
+        border-radius: 14px;
+    }
+
+    body[data-page="entries"] .entry-data-form .workout-repeater,
+    body[data-page="entries"] .entry-reason-section .conditional-reason,
+    body[data-page="entries"] .entry-notes-field {
+        padding: 8px;
+        border-radius: 14px;
+    }
+
+    body[data-page="entries"] .entry-habits-disclosure {
+        border-radius: 14px;
+    }
+
+    body[data-page="entries"] .entry-habits-disclosure > summary.entry-section-title {
+        min-height: 46px;
+        padding: 7px 9px;
+    }
+
+    body[data-page="entries"] .entries-toggles.pill-toggles {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 6px;
+        padding: 8px;
+    }
+
+    body[data-page="entries"] .entries-toggles.pill-toggles .check {
+        min-height: 44px;
+        padding: 7px 9px;
+        border-radius: 12px;
+    }
+
+    body[data-page="entries"] .entry-custom-metric-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 6px;
+        margin: 0;
+        padding: 8px;
+        border-top: 1px solid var(--entry-border);
+    }
+
+    body[data-page="entries"] .entry-custom-metric-field {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 96px;
+        min-height: 54px;
+        gap: 8px;
+        padding: 7px 8px;
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--custom-metric-color) 7%, var(--surface));
+    }
+
+    body[data-page="entries"] .entry-custom-metric-field input {
+        width: 100%;
+        min-width: 0;
+        min-height: 42px;
+        text-align: right;
+    }
+
+    body[data-page="entries"] .entry-custom-metrics > .btn {
+        width: calc(100% - 16px);
+        margin: 0 8px 8px;
+    }
+
+    body[data-page="entries"] .entry-notes-field textarea {
+        min-height: 72px;
+    }
+
+    body[data-page="entries"] .entry-table-controls {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(118px, 0.42fr);
+        align-items: end;
+        gap: 7px;
+        margin-bottom: 8px;
+    }
+
+    body[data-page="entries"] .entry-table-controls label {
+        min-width: 0;
+        gap: 4px;
+    }
+
+    body[data-page="entries"] .entry-table-controls :is(input, select) {
+        width: 100%;
+        min-width: 0;
+        min-height: 44px;
+        font-size: 16px;
+    }
+
+    body[data-page="entries"] .entry-inline-table-wrap {
+        display: none;
+    }
+
+    body[data-page="entries"] .entry-mobile-log-list {
+        display: grid;
+        gap: 8px;
+    }
+
+    body[data-page="entries"] .entry-mobile-log-card {
+        overflow: hidden;
+        padding: 9px;
+        border: 1px solid var(--entry-border);
+        border-radius: 14px;
+        background: var(--entry-soft);
+    }
+
+    body[data-page="entries"] .entry-mobile-log-card[hidden] { display: none; }
+
+    body[data-page="entries"] .entry-mobile-log-card > header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--entry-border);
+    }
+
+    body[data-page="entries"] .entry-mobile-log-card > header strong {
+        font-size: 0.86rem;
+    }
+
+    body[data-page="entries"] .entry-mobile-log-card > header .btn {
+        min-height: 34px;
+        padding: 5px 11px;
+    }
+
+    body[data-page="entries"] .entry-mobile-log-card dl {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1px;
+        margin: 8px 0 0;
+        overflow: hidden;
+        border-radius: 10px;
+        background: var(--entry-border);
+    }
+
+    body[data-page="entries"] .entry-mobile-log-card dl > div {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 6px;
+        min-width: 0;
+        padding: 8px;
+        background: var(--surface);
+    }
+
+    body[data-page="entries"] .entry-mobile-log-card :is(dt, dd) {
+        margin: 0;
+    }
+
+    body[data-page="entries"] .entry-mobile-log-card dt {
+        color: var(--muted);
+        font-size: 0.54rem;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+
+    body[data-page="entries"] .entry-mobile-log-card dd {
+        overflow: hidden;
+        font-size: 0.76rem;
+        font-weight: 850;
+        text-overflow: ellipsis;
+    }
+
+    body[data-page="entries"] .entry-mobile-log-empty {
+        margin: 0;
+        padding: 22px 12px;
+        border: 1px dashed var(--entry-border);
+        border-radius: 14px;
+        color: var(--muted);
+        text-align: center;
+    }
+}
+
+@media (max-width: 390px) {
+    body[data-page="entries"] .entry-date-time-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+    body[data-page="entries"] .entry-table-view span { display: none; }
+    body[data-page="entries"] .entry-table-view { width: 46px; min-width: 46px; padding: 0; }
+    body[data-page="entries"] .entry-table-controls { grid-template-columns: minmax(0, 1fr); }
+    body[data-page="entries"] .entry-mobile-log-card dl { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* Meal entry: one predictable flow on iPhone, two balanced columns on desktop. */
 body[data-page="entries"] .entries-meal-screen,
 body[data-page="entries"] .entries-meal-screen *,

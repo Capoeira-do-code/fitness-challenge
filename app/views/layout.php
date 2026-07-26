@@ -107,6 +107,7 @@ $themeStylesAssetUrl = is_file($themeStylesAssetPath) ? $compressedAssetUrl($the
 $mainJsAssetUrl = $compressedAssetUrl('main.js', $mainJsAssetVersion);
 $desktopNavItems = [
     'dashboard' => ['label' => t('nav.dashboard'), 'href' => '/?page=dashboard', 'icon' => 'home'],
+    'nutrition' => ['label' => 'Nutrition', 'href' => '/?page=nutrition', 'icon' => 'analytics'],
     'table' => ['label' => t('nav.table'), 'href' => '/?page=workouts', 'icon' => 'dumbbell'],
     'gallery' => ['label' => t('gallery.title'), 'href' => '/?page=gallery&gallery_view=recent', 'icon' => 'gallery'],
     'analytics' => ['label' => t('nav.analytics'), 'href' => '/?page=analytics', 'icon' => 'analytics'],
@@ -158,6 +159,9 @@ $isNavActive = static function (string $pageKey) use ($currentPage): bool {
     if ($pageKey === 'table') {
         return in_array($currentPage, ['table', 'week_editor', 'workouts'], true);
     }
+    if ($pageKey === 'nutrition') {
+        return $currentPage === 'nutrition' || ($currentPage === 'entries' && (string) ($_GET['mode'] ?? '') === 'nutrition');
+    }
     return $currentPage === $pageKey;
 };
 $isMobileNavActive = static function (string $pageKey) use ($currentPage): bool {
@@ -196,7 +200,7 @@ $renderQuickActionIcon = static function (string $mode): string {
 };
 ?>
 <!doctype html>
-<html lang="<?= e($activeLocale) ?>">
+<html lang="<?= e($activeLocale) ?>" data-user-id="<?= (int) ($currentUser['id'] ?? 0) ?>">
 <head>
     <meta charset="utf-8">
     <?php // Pinch-zoom stays available: blocking it fails WCAG 1.4.4 and makes the dense
@@ -209,6 +213,15 @@ $renderQuickActionIcon = static function (string $mode): string {
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="<?= e($appName) ?>">
     <meta name="theme-color" content="#18a999">
+    <meta name="description" content="Track fitness, nutrition, habits, personal metrics and weekly challenges in one clear view.">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="<?= e($appName) ?>">
+    <meta property="og:description" content="Your progress. One clear view.">
+    <meta property="og:image" content="<?= e(rtrim(request_app_base_url(), '/') . '/assets/og-fitness-challenge.png') ?>">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="<?= e($appName) ?>">
+    <meta name="twitter:description" content="Your progress. One clear view.">
+    <meta name="twitter:image" content="<?= e(rtrim(request_app_base_url(), '/') . '/assets/og-fitness-challenge.png') ?>">
     <link rel="manifest" href="/?page=manifest">
     <?php if ($appIconWebUrl !== ''): ?>
         <link rel="icon" href="<?= e($appIconWebUrl) ?>">
@@ -348,7 +361,9 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                 </summary>
                 <div class="add-menu-panel">
                     <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><?= e(t('entries.quick_data')) ?></span></a>
-                    <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=nutrition"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
+                    <a class="btn btn-ghost quick-entry-action" href="/?page=nutrition"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
+                    <a class="btn btn-ghost quick-entry-action" href="/?page=workouts"><span class="quick-entry-icon"><?= $renderQuickActionIcon('workout') ?></span><span><?= e(t('quick_actions.workout')) ?></span></a>
+                    <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=data&metric_new=1"><span class="quick-entry-icon"><?= $renderQuickActionIcon('goal') ?></span><span>Metric</span></a>
                 </div>
             </details>
             <details class="user-menu">
@@ -423,7 +438,9 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
         <summary class="add-menu-trigger" aria-label="<?= e(t('entries.title')) ?>">+</summary>
         <div class="add-menu-panel floating-add-panel">
             <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><?= e(t('entries.quick_data')) ?></span></a>
-            <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=nutrition"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
+            <a class="btn btn-ghost quick-entry-action" href="/?page=nutrition"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
+            <a class="btn btn-ghost quick-entry-action" href="/?page=workouts"><span class="quick-entry-icon"><?= $renderQuickActionIcon('workout') ?></span><span><?= e(t('quick_actions.workout')) ?></span></a>
+            <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=data&metric_new=1"><span class="quick-entry-icon"><?= $renderQuickActionIcon('goal') ?></span><span>Metric</span></a>
         </div>
     </details>
     <nav class="bottom-nav mobile-liquid-nav" aria-label="<?= e(t('nav.mobile_primary')) ?>">
@@ -434,7 +451,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                     <details class="bottom-nav-plus liquid-nav-plus add-menu" data-nav-action="create">
                         <summary aria-label="<?= e(t('quick_actions.title')) ?>" aria-haspopup="menu">
                             <span class="nav-icon bottom-nav-plus-icon" aria-hidden="true">+</span>
-                            <span class="nav-label"><?= e(t('common.create')) ?></span>
+                            <span class="nav-label">Log</span>
                         </summary>
                         <div class="add-menu-panel bottom-nav-plus-menu mobile-quick-sheet" data-menu-stack>
                             <div class="mobile-quick-view" data-menu-view="main">
@@ -442,28 +459,10 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                                     <div><strong><?= e(t('quick_actions.title')) ?></strong><small><?= e(t('quick_actions.subtitle')) ?></small></div>
                                     <button type="button" data-menu-close aria-label="<?= e(t('menu.close')) ?>">&times;</button>
                                 </div>
-                                <button type="button" class="mobile-quick-nav" data-tone="blue" data-menu-open="quick-register">
-                                    <span class="mobile-quick-nav-icon" aria-hidden="true"><?= $renderQuickActionIcon('register') ?></span><span class="mobile-quick-nav-copy"><strong><?= e(t('quick_actions.register')) ?></strong><small><?= e(t('quick_actions.register_hint')) ?></small></span><span class="mobile-quick-chevron" aria-hidden="true">&rsaquo;</span>
-                                </button>
-                                <button type="button" class="mobile-quick-nav" data-tone="violet" data-menu-open="quick-create">
-                                    <span class="mobile-quick-nav-icon" aria-hidden="true"><?= $renderQuickActionIcon('create') ?></span><span class="mobile-quick-nav-copy"><strong><?= e(t('quick_actions.create')) ?></strong><small><?= e(t('quick_actions.create_hint')) ?></small></span><span class="mobile-quick-chevron" aria-hidden="true">&rsaquo;</span>
-                                </button>
-                            </div>
-                            <div class="mobile-quick-view" data-menu-view="quick-register" hidden>
-                                <div class="mobile-quick-head"><button class="menu-destination-back" type="button" data-menu-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('quick_actions.title')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('quick_actions.title')) ?></strong></button><strong><?= e(t('quick_actions.register')) ?></strong><button type="button" data-menu-close aria-label="<?= e(t('menu.close')) ?>">&times;</button></div>
                                 <a class="mobile-quick-action" data-tone="blue" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><strong><?= e(t('entries.quick_data')) ?></strong><small><?= e(t('quick_actions.daily_hint')) ?></small></span></a>
-                                <a class="mobile-quick-action" data-tone="orange" href="/?page=entries&mode=nutrition"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><strong><?= e(t('entries.quick_meal')) ?></strong><small><?= e(t('quick_actions.meal_hint')) ?></small></span></a>
+                                <a class="mobile-quick-action" data-tone="orange" href="/?page=nutrition"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><strong><?= e(t('entries.quick_meal')) ?></strong><small><?= e(t('quick_actions.meal_hint')) ?></small></span></a>
                                 <a class="mobile-quick-action" data-tone="green" href="/?page=workouts"><span class="quick-entry-icon"><?= $renderQuickActionIcon('workout') ?></span><span><strong><?= e(t('quick_actions.workout')) ?></strong><small><?= e(t('quick_actions.workout_hint')) ?></small></span></a>
-                            </div>
-                            <div class="mobile-quick-view" data-menu-view="quick-create" hidden>
-                                <div class="mobile-quick-head"><button class="menu-destination-back" type="button" data-menu-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('quick_actions.title')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('quick_actions.title')) ?></strong></button><strong><?= e(t('quick_actions.create')) ?></strong><button type="button" data-menu-close aria-label="<?= e(t('menu.close')) ?>">&times;</button></div>
-                                <a class="mobile-quick-action" data-tone="violet" href="/?page=profile&section=goals&goal_new=1"><span class="quick-entry-icon"><?= $renderQuickActionIcon('goal') ?></span><span><strong><?= e(t('quick_actions.goal')) ?></strong><small><?= e(t('quick_actions.goal_hint')) ?></small></span></a>
-                                <?php if ($mobileChallengeTeamId > 0): ?>
-                                    <a class="mobile-quick-action" data-tone="orange" href="/?page=team&team_id=<?= $mobileChallengeTeamId ?>&section=challenge&create=1"><span class="quick-entry-icon"><?= $renderQuickActionIcon('challenge') ?></span><span><strong><?= e(t('quick_actions.challenge')) ?></strong><small><?= e(t('quick_actions.challenge_hint')) ?></small></span></a>
-                                <?php endif; ?>
-                                <?php if ($mobileCanCreateCompetition): ?>
-                                    <a class="mobile-quick-action" data-tone="amber" href="/?page=competitions#competition-teams"><span class="quick-entry-icon"><?= $renderQuickActionIcon('competition') ?></span><span><strong><?= e(t('quick_actions.competition')) ?></strong><small><?= e(t('quick_actions.competition_hint')) ?></small></span></a>
-                                <?php endif; ?>
+                                <a class="mobile-quick-action" data-tone="violet" href="/?page=entries&mode=data&metric_new=1"><span class="quick-entry-icon"><?= $renderQuickActionIcon('goal') ?></span><span><strong>Metric</strong><small>Registra o crea una métrica personal</small></span></a>
                             </div>
                         </div>
                     </details>
@@ -480,6 +479,11 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
 <?php endif; ?>
 
 <?php if ($loggedIn && !$minimalAppShell): ?>
+    <aside class="sync-conflict-tray" data-sync-conflict-tray hidden aria-live="polite">
+        <div><strong>Cambios pendientes de revisar</strong><small data-sync-conflict-count></small></div>
+        <button class="btn btn-ghost btn-small" type="button" data-sync-conflict-review>Revisar</button>
+        <div class="sync-conflict-list" data-sync-conflict-list hidden></div>
+    </aside>
     <aside class="pwa-install-nudge" data-pwa-install-nudge data-ios-hint="<?= e(t('pwa.nudge_ios')) ?>" data-android-hint="<?= e(t('pwa.nudge_android')) ?>" hidden role="region" aria-labelledby="pwa-install-nudge-title">
         <span class="pwa-install-nudge-icon" aria-hidden="true"><img src="<?= e($appIconWebUrl !== '' ? $appIconWebUrl : '/?page=app_icon_default&size=192') ?>" alt=""></span>
         <span class="pwa-install-nudge-copy"><strong id="pwa-install-nudge-title"><?= e(t('pwa.nudge_title')) ?></strong><small data-pwa-nudge-hint><?= e(t('pwa.nudge_hint')) ?></small></span>

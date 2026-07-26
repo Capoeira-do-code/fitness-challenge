@@ -70,8 +70,10 @@ $formatChallengeCount = static fn(int|float $value, int $decimals = 0): string =
 
         <details class="admin-challenge-action-card admin-challenge-new-card">
             <summary><span aria-hidden="true"><?= activity_icon_svg('plus') ?></span><span><strong><?= e(t('admin.start_new_challenge')) ?></strong><small><?= e(t('admin.challenge_new_hint')) ?></small></span><b aria-hidden="true">⌄</b></summary>
-            <form method="post" action="/?page=admin" class="admin-challenge-form">
+            <form method="post" action="/?page=admin" class="admin-challenge-form" data-new-challenge-form>
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="start_new_challenge">
+                <input type="hidden" name="ranked_season_action" value="keep" data-ranked-season-action>
+                <input type="hidden" name="xp_action" value="keep" data-xp-action>
                 <label class="admin-challenge-name-field"><span><?= e(t('admin.new_challenge_name')) ?></span><input type="text" name="new_challenge_name" placeholder="<?= e($challengeName) ?>" maxlength="100" required></label>
                 <label><span><?= e(t('audit.from')) ?></span><input type="date" name="new_challenge_start" value="<?= e($nextChallengeStart) ?>" required></label>
                 <label><span><?= e(t('audit.to')) ?></span><input type="date" name="new_challenge_end" value="<?= e($nextChallengeEnd) ?>" required></label>
@@ -79,6 +81,28 @@ $formatChallengeCount = static fn(int|float $value, int $decimals = 0): string =
                 <button class="btn btn-secondary" type="submit"><?= e(t('admin.start_new_challenge')) ?></button>
             </form>
         </details>
+    </div>
+
+    <div class="app-modal challenge-reset-modal" data-challenge-reset-modal hidden role="dialog" aria-modal="true" aria-labelledby="challenge-reset-title">
+        <div class="app-modal-card">
+            <div class="app-modal-head">
+                <div><p class="eyebrow">Nuevo challenge</p><h2 id="challenge-reset-title">¿Qué quieres reiniciar?</h2><small>El challenge actual se archivará. Decide cómo debe empezar la nueva etapa.</small></div>
+                <button type="button" class="app-modal-close" data-challenge-reset-cancel aria-label="<?= e(t('common.cancel')) ?>">&times;</button>
+            </div>
+            <div class="challenge-reset-options">
+                <fieldset>
+                    <legend>Ranked season</legend>
+                    <label><input type="radio" name="modal_ranked_action" value="reset" checked><span><strong>Crear una season nueva</strong><small>El ranking empezará desde cero usando las fechas del nuevo challenge.</small></span></label>
+                    <label><input type="radio" name="modal_ranked_action" value="keep"><span><strong>Mantener la actual</strong><small>No se crea una nueva temporada ranked.</small></span></label>
+                </fieldset>
+                <fieldset>
+                    <legend>XP y niveles</legend>
+                    <label><input type="radio" name="modal_xp_action" value="keep" checked><span><strong>Conservar XP y niveles</strong><small>Los usuarios mantienen su progreso histórico.</small></span></label>
+                    <label><input type="radio" name="modal_xp_action" value="reset"><span><strong>Restablecer a nivel 1</strong><small>Se añade un ajuste auditado que deja la XP actual a cero.</small></span></label>
+                </fieldset>
+            </div>
+            <div class="app-modal-actions"><button class="btn btn-ghost" type="button" data-challenge-reset-cancel><?= e(t('common.cancel')) ?></button><button class="btn btn-primary" type="button" data-challenge-reset-confirm>Archivar e iniciar</button></div>
+        </div>
     </div>
 
     <section class="admin-challenge-history">

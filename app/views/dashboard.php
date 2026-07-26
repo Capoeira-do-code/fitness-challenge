@@ -11,8 +11,8 @@ $penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
 $dashboardLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
 $dashboardMobileSurfaces = ['mobile_today', 'mobile_primary', 'mobile_progress', 'mobile_shortcuts'];
 $dashboardDesktopWidgets = $penaltiesEnabled
-    ? ['kpis', 'training_rank', 'training_progress', 'active_challenge', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
-    : ['kpis', 'training_rank', 'training_progress', 'active_challenge', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'ranking', 'weekly'];
+    ? ['kpis', 'nutrition', 'training_rank', 'training_progress', 'active_challenge', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
+    : ['kpis', 'nutrition', 'training_rank', 'training_progress', 'active_challenge', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'ranking', 'weekly'];
 $dashboardWidgets = array_merge($dashboardMobileSurfaces, $dashboardDesktopWidgets);
 $visibleWidgets = [];
 if (is_array($dashboardLayout) && $dashboardLayout !== []) {
@@ -170,7 +170,10 @@ $calorieConsumedMeta = $calorieConsumedMaxTotal > 0
     : t('dashboard.calories_goal_not_set');
 $viewSnapshot = is_array($selectedMetricSnapshot ?? null) ? (array) $selectedMetricSnapshot : [];
 $dashboardScoreDecimal = current_locale() === 'en' ? '.' : ',';
-$activeMetricKeys = array_values(array_map('strval', (array) ($viewSnapshot['active_metric_keys'] ?? ($dashboardEnabledMetrics ?? []))));
+$activeMetricKeys = array_values(array_unique(array_merge(
+    array_map('strval', (array) ($dashboardEnabledMetrics ?? [])),
+    array_map('strval', (array) ($viewSnapshot['active_metric_keys'] ?? []))
+)));
 $metricEnabled = static fn(string $key): bool => in_array($key, $activeMetricKeys, true);
 $scoreMetricDetails = is_array($viewSnapshot['score_components_detailed'] ?? null)
     ? (array) $viewSnapshot['score_components_detailed']
@@ -319,6 +322,7 @@ foreach ($scoreMetricDetails as $detailKey => $detail) {
 $todayCaloriesConsumed = max(0.0, (float) ($todayCalorieStats['total_consumed'] ?? 0));
 $todayCaloriesBurned = max(0.0, (float) ($todayCalorieStats['total_burned'] ?? 0));
 $dashboardHasScore = !empty($viewSnapshot['has_active_metrics']) && is_numeric($viewSnapshot['score'] ?? null);
+$dashboardHasConfiguredMetrics = $activeMetricKeys !== [];
 $dashboardScoreValue = $dashboardHasScore ? (float) $viewSnapshot['score'] : 0.0;
 $trainingRank = (array) ($dashboardTrainingRank ?? wk_rank_from_score(0.0));
 $trainingRankKey = (string) ($trainingRank['key'] ?? 'unranked');
@@ -471,7 +475,9 @@ $topbarControls = ob_get_clean();
         </article>
     <?php endif; ?>
     <div class="dashboard-mobile-home">
-        <article class="mobile-today-card" data-dashboard-mobile-surface="mobile_today"<?= $showWidget('mobile_today') ? '' : ' hidden' ?>>
+        <?php if (empty($dashboardShowOnboardingPrompt)): ?>
+        <?php $hasMobileTodayMetrics = $todayKpis !== [] || $metricEnabled('calories_consumed') || $metricEnabled('calories_burned'); ?>
+        <article class="mobile-today-card<?= $hasMobileTodayMetrics ? '' : ' is-empty-state' ?>" data-dashboard-mobile-surface="mobile_today"<?= $showWidget('mobile_today') ? '' : ' hidden' ?>>
             <header class="mobile-today-overview">
                 <div class="mobile-today-identity">
                     <p><?= e(t('dashboard.mobile_today')) ?></p>
@@ -484,10 +490,13 @@ $topbarControls = ob_get_clean();
                         <strong><?= e(number_format($dashboardScoreValue, 1, $dashboardScoreDecimal, '')) ?></strong>
                         <small>/ 100</small>
                     </a>
+                <?php elseif ($dashboardHasConfiguredMetrics): ?>
+                    <a class="btn btn-primary small mobile-today-configure" href="/?page=entries&amp;mode=data"><?= e(t('entries.title')) ?></a>
                 <?php else: ?>
-                    <a class="mobile-today-score mobile-score-link is-empty" href="/?page=settings&amp;view=preferences"><span><?= e(t('metric.score')) ?></span><strong><?= e(t('settings.configure_goals')) ?></strong></a>
+                    <a class="btn btn-primary small mobile-today-configure" href="/?page=settings&amp;view=preferences"><?= e(t('settings.configure_goals')) ?></a>
                 <?php endif; ?>
             </header>
+            <?php if ($hasMobileTodayMetrics): ?>
             <div class="mobile-today-metrics">
                 <?php foreach ($todayKpis as $kpi): ?>
                     <?php $mobileKpiKey = (string) ($kpi['key'] ?? ''); $mobileKpiHref = (string) ($kpi['href'] ?? ($mobileKpiKey === 'strikes' ? $strikesHref : '/?' . http_build_query($metricQueryBase + ['metric' => $mobileKpiKey]))); ?>
@@ -499,7 +508,9 @@ $topbarControls = ob_get_clean();
                 <?php if ($metricEnabled('calories_consumed')): ?><a href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'calories_consumed'])) ?>" data-metric="calories_consumed"><span class="mobile-today-metric-icon" aria-hidden="true"><?= activity_icon_svg($dashboardTodayMetricIcon('calories_consumed')) ?></span><span class="mobile-today-metric-copy"><strong><?= e($formatCalories($todayCaloriesConsumed)) ?> kcal</strong><small><?= e(t('dashboard.calories_consumed')) ?></small></span></a><?php endif; ?>
                 <?php if ($metricEnabled('calories_burned')): ?><a href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'calories_burned'])) ?>" data-metric="calories_burned"><span class="mobile-today-metric-icon" aria-hidden="true"><?= activity_icon_svg($dashboardTodayMetricIcon('calories_burned')) ?></span><span class="mobile-today-metric-copy"><strong><?= e($formatCalories($todayCaloriesBurned)) ?> kcal</strong><small><?= e(t('dashboard.calories_burned')) ?></small></span></a><?php endif; ?>
             </div>
+            <?php endif; ?>
         </article>
+        <?php endif; ?>
         <a class="mobile-primary-action" data-dashboard-mobile-surface="mobile_primary"<?= $showWidget('mobile_primary') ? '' : ' hidden' ?> href="/?page=entries&mode=data"><span><strong><?= e(t('dashboard.quick_action_training')) ?></strong><small><?= e(t('dashboard.mobile_primary_hint')) ?></small></span><span aria-hidden="true">&rsaquo;</span></a>
         <a class="mobile-progress-brief" data-dashboard-mobile-surface="mobile_progress"<?= $showWidget('mobile_progress') ? '' : ' hidden' ?> href="/?page=workouts&amp;view=ranks" style="--rank-color: <?= e($trainingRankColor) ?>">
             <span class="mobile-progress-rank-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span>
@@ -660,6 +671,16 @@ $topbarControls = ob_get_clean();
                     <p><?= e($calorieBurnMeta) ?></p>
                 </div>
             </a><?php endif; ?>
+            <?php foreach ((array) ($dashboardCustomMetrics ?? []) as $customMetric): ?>
+                <a class="metric-card metric-card-link metric-card-custom" href="/?<?= e(http_build_query(['page' => 'metric', 'metric' => custom_metric_key((int) $customMetric['id'])])) ?>" style="--metric-accent: <?= e((string) ($customMetric['color'] ?? '#6d5dfc')) ?>">
+                    <div class="progress-ring" style="--value: 100;"><span><?= e((string) ($customMetric['icon'] ?? '◎')) ?></span></div>
+                    <div>
+                        <span><?= e((string) $customMetric['name']) ?></span>
+                        <strong><?= $customMetric['latest_value'] !== null ? e(number_format((float) $customMetric['latest_value'], 1, '.', '')) : '—' ?> <?= e((string) ($customMetric['unit'] ?? '')) ?></strong>
+                        <p><?= !empty($customMetric['latest_date']) ? e(format_date_eu((string) $customMetric['latest_date'])) : 'Sin datos todavía' ?></p>
+                    </div>
+                </a>
+            <?php endforeach; ?>
         </div>
         <?php endif; ?>
 
@@ -668,11 +689,36 @@ $topbarControls = ob_get_clean();
                 <a class="btn btn-primary dashboard-quick-action" href="/?page=entries&mode=data">
                     <?= e(t('dashboard.quick_action_training')) ?>
                 </a>
-                <a class="btn btn-secondary dashboard-quick-action" href="/?page=entries&mode=nutrition">
+                <a class="btn btn-secondary dashboard-quick-action" href="/?page=nutrition">
                     <?= e(t('dashboard.quick_action_meal')) ?>
                 </a>
             </div>
         </article>
+
+        <?php if ($showWidget('nutrition')): ?>
+            <?php
+            $nutritionConsumedToday = (float) ($todayCalorieStats['total_consumed'] ?? 0);
+            $nutritionExerciseToday = (float) ($todayCalorieStats['total_burned'] ?? 0);
+            $nutritionMaintenanceToday = (float) ($todayCalorieStats['maintenance_total'] ?? 0);
+            $nutritionDeficitToday = (float) ($todayCalorieStats['deficit'] ?? 0);
+            ?>
+            <article class="panel dashboard-panel dashboard-nutrition-widget compact-panel glass-panel compact-progress-panel<?= $dashboardPanelClass('dashboard.nutrition') ?>" data-dashboard-widget="nutrition" data-dashboard-collapsible="dashboard.nutrition"<?= $dashboardPanelStateAttribute('dashboard.nutrition') ?> style="order: <?= $contentWidgetOrder('nutrition') ?>">
+                <div class="panel-head dashboard-panel-head-compact">
+                    <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('flame') ?></span>
+                    <div class="dashboard-widget-heading">
+                        <p class="eyebrow"><?= e(t('dashboard.widget_nutrition')) ?></p>
+                        <p class="muted small">Balance de hoy</p>
+                    </div>
+                    <div class="dashboard-panel-head-actions"><a class="btn btn-ghost small dashboard-panel-action" href="/?page=nutrition"><?= e(t('common.view_all')) ?></a><?= $dashboardCollapseControl('dashboard.nutrition') ?></div>
+                </div>
+                <div class="dashboard-nutrition-grid" data-dashboard-panel-content>
+                    <span><small>Consumidas</small><strong><?= e(number_format($nutritionConsumedToday, 0, ',', '.')) ?> kcal</strong></span>
+                    <span><small>Base / TDEE</small><strong><?= $nutritionMaintenanceToday > 0 ? e(number_format($nutritionMaintenanceToday, 0, ',', '.')) . ' kcal' : '—' ?></strong></span>
+                    <span><small>Ejercicio</small><strong><?= e(number_format($nutritionExerciseToday, 0, ',', '.')) ?> kcal</strong></span>
+                    <span class="<?= $nutritionDeficitToday >= 0 ? 'is-deficit' : 'is-surplus' ?>"><small><?= $nutritionDeficitToday >= 0 ? 'Déficit' : 'Superávit' ?></small><strong><?= e(number_format(abs($nutritionDeficitToday), 0, ',', '.')) ?> kcal</strong></span>
+                </div>
+            </article>
+        <?php endif; ?>
 
         <?php if ($penaltiesEnabled): ?>
         <article class="panel dashboard-panel dashboard-penalty-compact penalties-only" style="order: <?= $dashboardUtilityOrder + 1 ?>">

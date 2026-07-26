@@ -9,6 +9,15 @@ window.addEventListener('appinstalled', () => {
     window.__fitnessPwaInstallPrompt = null;
     window.dispatchEvent(new CustomEvent('fitness:pwa-installed'));
 });
+document.addEventListener('click', (event) => {
+    const logoutLink = event.target instanceof Element ? event.target.closest('a[href*="page=logout"]') : null;
+    if (!logoutLink) return;
+    if (navigator.serviceWorker?.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_PRIVATE_CACHES' });
+    }
+    const cleanup = indexedDB.deleteDatabase('fitness-challenge-offline');
+    cleanup.onerror = () => undefined;
+});
 
 (() => {
     const rows = document.querySelectorAll('tbody tr');
@@ -6231,7 +6240,43 @@ window.addEventListener('appinstalled', () => {
 
     if ('serviceWorker' in navigator && (window.isSecureContext || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
         window.addEventListener('load', function () {
-            navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).catch(function () {
+            navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).then(function (registration) {
+                var syncServiceWorkerUser = function () {
+                    var worker = navigator.serviceWorker.controller || registration.active;
+                    if (worker) {
+                        worker.postMessage({
+                            type: 'SET_ACTIVE_USER',
+                            userId: Number(document.documentElement.dataset.userId || 0)
+                        });
+                    }
+                };
+                syncServiceWorkerUser();
+                var announceUpdate = function (worker) {
+                    if (!worker) return;
+                    var button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'pwa-update-toast';
+                    button.textContent = 'Nueva versión disponible · Actualizar';
+                    button.addEventListener('click', function () {
+                        worker.postMessage({ type: 'SKIP_WAITING' });
+                        button.remove();
+                    });
+                    if (!document.querySelector('.pwa-update-toast')) document.body.appendChild(button);
+                };
+                if (registration.waiting) announceUpdate(registration.waiting);
+                registration.addEventListener('updatefound', function () {
+                    var worker = registration.installing;
+                    worker?.addEventListener('statechange', function () {
+                        if (worker.state === 'installed' && navigator.serviceWorker.controller) announceUpdate(worker);
+                    });
+                });
+                var refreshing = false;
+                navigator.serviceWorker.addEventListener('controllerchange', function () {
+                    if (refreshing) return;
+                    refreshing = true;
+                    window.location.reload();
+                });
+            }).catch(function () {
                 // Asset compression still works when service workers are unavailable.
             });
         }, { once: true });
@@ -6344,6 +6389,23 @@ window.addEventListener('appinstalled', () => {
                 image.src = localUrl;
                 image.alt = '';
                 preview.replaceChildren(image);
+            });
+        });
+    }
+
+    function initOnboardingThemePreview() {
+        document.querySelectorAll('[data-onboarding-theme-choice]').forEach(function (input) {
+            if (!(input instanceof HTMLInputElement) || input.dataset.onboardingThemeReady === '1') {
+                return;
+            }
+            input.dataset.onboardingThemeReady = '1';
+            input.addEventListener('change', function () {
+                if (!input.checked || !['light', 'dark'].includes(input.value)) {
+                    return;
+                }
+                document.body.setAttribute('data-theme', input.value);
+                document.body.classList.toggle('theme-active-dark', input.value === 'dark');
+                document.body.classList.toggle('theme-active-light', input.value === 'light');
             });
         });
     }
@@ -6555,6 +6617,7 @@ window.addEventListener('appinstalled', () => {
         initInviteCopy();
         initAdminUserSearch();
         initOnboardingImagePreviews();
+        initOnboardingThemePreview();
         initOnboardingOptionalGoals();
         initEuropeanDateInputs();
         initOptionalPrimaryGoalSelectors();
@@ -10779,4 +10842,386 @@ window.addEventListener('appinstalled', () => {
     }
     document.addEventListener('pjax:loaded', init);
     document.addEventListener('fc:afterPageSwap', init);
+})();
+// Nutrition dialogs, private metrics, PWA installation and offline mutation queue.
+(() => {
+    const offlineUserId = Number(document.documentElement.dataset.userId || 0);
+    const bindProductDialogs = () => {
+        const bindDialog = (triggerSelector, dialogSelector) => {
+            const dialog = document.querySelector(dialogSelector);
+            if (!(dialog instanceof HTMLDialogElement) || dialog.dataset.bound === '1') return;
+            dialog.dataset.bound = '1';
+            document.querySelectorAll(triggerSelector).forEach((trigger) => trigger.addEventListener('click', () => dialog.showModal()));
+            dialog.querySelectorAll('[data-dialog-close]').forEach((button) => button.addEventListener('click', () => dialog.close()));
+            dialog.addEventListener('click', (event) => {
+                if (event.target === dialog) dialog.close();
+            });
+        };
+        bindDialog('[data-nutrition-open]', '[data-nutrition-dialog]');
+        bindDialog('[data-tdee-open]', '[data-tdee-dialog]');
+        bindDialog('[data-custom-metric-open]', '[data-custom-metric-dialog]');
+
+        const metricForm = document.querySelector('[data-custom-metric-form]');
+        if (metricForm instanceof HTMLFormElement && metricForm.dataset.bound !== '1') {
+            metricForm.dataset.bound = '1';
+            metricForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const error = metricForm.querySelector('[data-custom-metric-error]');
+                const submit = metricForm.querySelector('button[type="submit"]');
+                if (submit instanceof HTMLButtonElement) submit.disabled = true;
+                try {
+                    const payload = Object.fromEntries(new FormData(metricForm).entries());
+                    const response = await fetch('/?page=api_custom_metrics', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(payload)
+                    });
+                    const result = await response.json();
+                    if (!response.ok || !result.ok) throw new Error(result.message || 'No se pudo crear la métrica.');
+                    window.location.reload();
+                } catch (reason) {
+                    if (error instanceof HTMLElement) {
+                        error.hidden = false;
+                        error.textContent = reason instanceof Error ? reason.message : String(reason);
+                    }
+                } finally {
+                    if (submit instanceof HTMLButtonElement) submit.disabled = false;
+                }
+            });
+        }
+    };
+
+    const revealInstallActions = () => {
+        document.querySelectorAll('[data-pwa-install]').forEach((button) => button.removeAttribute('hidden'));
+    };
+    if (window.__fitnessPwaInstallPrompt) revealInstallActions();
+    window.addEventListener('fitness:pwa-install-ready', revealInstallActions);
+    document.addEventListener('click', async (event) => {
+        const target = event.target instanceof Element ? event.target.closest('[data-pwa-install]') : null;
+        const installPrompt = window.__fitnessPwaInstallPrompt;
+        if (!target || !installPrompt) return;
+        await installPrompt.prompt();
+        window.__fitnessPwaInstallPrompt = null;
+    });
+    window.addEventListener('appinstalled', () => {
+        document.documentElement.dataset.pwaInstalled = '1';
+        document.querySelectorAll('[data-pwa-install]').forEach((button) => button.setAttribute('hidden', ''));
+    });
+
+    const openOfflineDb = () => new Promise((resolve, reject) => {
+        const request = indexedDB.open('fitness-challenge-offline', 3);
+        request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains('mutations')) db.createObjectStore('mutations', {keyPath: 'idempotency_key'});
+            if (!db.objectStoreNames.contains('conflicts')) db.createObjectStore('conflicts', {keyPath: 'idempotency_key'});
+            if (!db.objectStoreNames.contains('forms')) db.createObjectStore('forms', {keyPath: 'idempotency_key'});
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+    const readStore = async (storeName) => {
+        const db = await openOfflineDb();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(storeName, 'readonly');
+            const request = tx.objectStore(storeName).getAll();
+            request.onsuccess = () => resolve((request.result || []).filter((record) =>
+                Number(record?.user_id || 0) === offlineUserId
+            ));
+            request.onerror = () => reject(request.error);
+        });
+    };
+    const mutateStore = async (storeName, mode, callback) => {
+        const db = await openOfflineDb();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(storeName, mode);
+            callback(tx.objectStore(storeName));
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+        });
+    };
+    const renderSyncConflicts = async () => {
+        const tray = document.querySelector('[data-sync-conflict-tray]');
+        if (!(tray instanceof HTMLElement)) return;
+        const conflicts = await readStore('conflicts');
+        tray.hidden = conflicts.length === 0;
+        const count = tray.querySelector('[data-sync-conflict-count]');
+        if (count) count.textContent = `${conflicts.length} ${conflicts.length === 1 ? 'conflicto' : 'conflictos'}`;
+        const list = tray.querySelector('[data-sync-conflict-list]');
+        if (!(list instanceof HTMLElement)) return;
+        list.replaceChildren(...conflicts.map((conflict) => {
+            const row = document.createElement('div');
+            row.className = 'sync-conflict-row';
+            const copy = document.createElement('span');
+            copy.textContent = conflict.message || 'Este dato cambió también en otro dispositivo.';
+            const comparison = document.createElement('div');
+            comparison.className = 'sync-conflict-comparison';
+            const summarize = (value) => {
+                const ignored = new Set(['csrf_token', 'created_at', 'updated_at', 'user_id', 'idempotency_key']);
+                return Object.entries(value || {})
+                    .filter(([key]) => !ignored.has(key))
+                    .slice(0, 8)
+                    .map(([key, item]) => `${key}: ${item ?? '—'}`)
+                    .join(' · ');
+            };
+            comparison.append(
+                Object.assign(document.createElement('small'), {textContent: `Servidor · ${summarize(conflict.server) || 'sin datos'}`}),
+                Object.assign(document.createElement('small'), {textContent: `Tu cambio · ${summarize(conflict.payload) || 'formulario offline'}`})
+            );
+            const discard = document.createElement('button');
+            discard.type = 'button';
+            discard.className = 'btn btn-ghost btn-small';
+            discard.textContent = 'Usar servidor';
+            discard.addEventListener('click', async () => {
+                await mutateStore('conflicts', 'readwrite', (store) => store.delete(conflict.idempotency_key));
+                await renderSyncConflicts();
+            });
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.className = 'btn btn-primary btn-small';
+            retry.textContent = 'Usar mi cambio';
+            retry.addEventListener('click', async () => {
+                const nextKey = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+                if (conflict.resource_type) {
+                    const payload = {...(conflict.payload || {})};
+                    delete payload.version;
+                    await mutateStore('mutations', 'readwrite', (store) => store.put({...conflict, payload, idempotency_key: nextKey, conflict: false, user_id: offlineUserId}));
+                } else if (conflict.entries) {
+                    await mutateStore('forms', 'readwrite', (store) => store.put({...conflict, idempotency_key: nextKey, user_id: offlineUserId}));
+                }
+                await mutateStore('conflicts', 'readwrite', (store) => store.delete(conflict.idempotency_key));
+                await renderSyncConflicts();
+                flushOfflineMutations();
+            });
+            row.append(copy, comparison, discard, retry);
+            return row;
+        }));
+    };
+    const flushOfflineMutations = async () => {
+        if (!navigator.onLine) return;
+        const queuedForms = await readStore('forms');
+        for (const queued of queuedForms) {
+            const body = new FormData();
+            for (const item of queued.entries || []) {
+                if (item.value instanceof Blob && item.filename) body.append(item.name, item.value, item.filename);
+                else body.append(item.name, item.value);
+            }
+            try {
+                const response = await fetch(queued.action, {
+                    method: 'POST',
+                    body,
+                    headers: {'X-Idempotency-Key': queued.idempotency_key, 'X-Offline-Replay': '1'}
+                });
+                if (response.status === 409) {
+                    await mutateStore('conflicts', 'readwrite', (store) => store.put({...queued, message: 'Este registro también cambió en otro dispositivo.'}));
+                    await mutateStore('forms', 'readwrite', (store) => store.delete(queued.idempotency_key));
+                } else if (response.ok) {
+                    await mutateStore('forms', 'readwrite', (store) => store.delete(queued.idempotency_key));
+                }
+            } catch {
+                break;
+            }
+        }
+        const mutations = await readStore('mutations');
+        if (!mutations.length) return;
+        const csrf = document.querySelector('input[name="csrf_token"]')?.value || '';
+        const response = await fetch('/?page=api_sync', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({csrf_token: csrf, mutations})
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        for (const result of payload.results || []) {
+            if (result.conflict) {
+                const original = mutations.find((mutation) => mutation.idempotency_key === result.idempotency_key) || {};
+                await mutateStore('conflicts', 'readwrite', (store) => store.put({...original, ...result, created_at: new Date().toISOString()}));
+            }
+            if (result.ok || result.conflict) {
+                await mutateStore('mutations', 'readwrite', (store) => store.delete(result.idempotency_key));
+            }
+        }
+        window.dispatchEvent(new CustomEvent('fitness:sync-complete', {detail: payload}));
+        await renderSyncConflicts();
+    };
+    window.addEventListener('online', flushOfflineMutations);
+    window.addEventListener('load', flushOfflineMutations);
+    document.addEventListener('submit', async (event) => {
+        if (navigator.onLine || !(event.target instanceof HTMLFormElement)) return;
+        const form = event.target;
+        const actionUrl = new URL(form.action || location.href, location.href);
+        const page = actionUrl.searchParams.get('page') || '';
+        if (form.method.toLowerCase() !== 'post' || ['login', 'register', 'admin', 'telegram_test', 'logout'].includes(page)) return;
+        event.preventDefault();
+        const entries = [];
+        for (const [name, value] of new FormData(form).entries()) {
+            entries.push(value instanceof File
+                ? {name, value, filename: value.name}
+                : {name, value: String(value)});
+        }
+        const idempotencyKey = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+        await mutateStore('forms', 'readwrite', (store) => store.put({
+            idempotency_key: idempotencyKey,
+            user_id: offlineUserId,
+            action: actionUrl.pathname + actionUrl.search,
+            entries,
+            created_at: new Date().toISOString()
+        }));
+        form.dispatchEvent(new CustomEvent('fitness:queued-offline', {bubbles: true}));
+        const button = form.querySelector('button[type="submit"]');
+        if (button instanceof HTMLButtonElement) {
+            const original = button.textContent;
+            button.textContent = 'Guardado offline · se sincronizará';
+            setTimeout(() => { button.textContent = original; }, 2500);
+        }
+    }, true);
+    document.addEventListener('click', (event) => {
+        const review = event.target.closest('[data-sync-conflict-review]');
+        if (review) {
+            const list = review.closest('[data-sync-conflict-tray]')?.querySelector('[data-sync-conflict-list]');
+            if (list instanceof HTMLElement) list.hidden = !list.hidden;
+            return;
+        }
+        const addButton = event.target.closest('[data-add-goal-target]');
+        if (addButton) {
+            const form = addButton.closest('form');
+            const template = form?.querySelector('[data-extra-goal-target-template]');
+            const container = form?.querySelector('[data-extra-goal-targets]');
+            if (template instanceof HTMLTemplateElement && container) {
+                const count = container.querySelectorAll('[data-extra-goal-target]').length;
+                if (count < 18) container.append(template.content.cloneNode(true));
+            }
+            return;
+        }
+        const removeButton = event.target.closest('[data-remove-goal-target]');
+        if (removeButton) removeButton.closest('[data-extra-goal-target]')?.remove();
+    });
+    document.addEventListener('submit', (event) => {
+        const form = event.target.closest?.('[data-multi-goal-form], [data-team-goal-form]');
+        if (!form) return;
+        const weights = Array.from(form.querySelectorAll('[data-goal-weight]'))
+            .filter((input) => !input.closest('[hidden]') && input.closest('[data-extra-goal-target], label') !== null)
+            .map((input) => Number(input.value || 0));
+        const explicit = weights.reduce((total, value) => total + value, 0);
+        if (explicit > 0 && Math.abs(explicit - 100) > 0.01) {
+            event.preventDefault();
+            window.alert('Los pesos de los objetivos deben sumar 100%. Déjalos vacíos para repartirlos por igual.');
+        }
+    }, true);
+    const bindEntryTable = () => {
+        document.querySelectorAll('[data-entry-table]').forEach((table) => {
+            if (table.dataset.bound === '1') return;
+            table.dataset.bound = '1';
+            const body = table.tBodies[0];
+            const panel = table.closest('.entry-data-panel');
+            const filter = panel?.querySelector('[data-entry-table-filter]');
+            const sort = panel?.querySelector('[data-entry-table-sort]');
+            const mobileList = panel?.querySelector('[data-entry-mobile-list]');
+            const refresh = () => {
+                const query = filter instanceof HTMLInputElement ? filter.value.trim().toLocaleLowerCase() : '';
+                const rows = Array.from(body?.rows || []);
+                const mobileRows = Array.from(mobileList?.querySelectorAll('[data-entry-mobile-row]') || []);
+                [...rows, ...mobileRows].forEach((row) => {
+                    row.hidden = query !== '' && !String(row.dataset.entrySearch || '').includes(query);
+                });
+                const mode = sort instanceof HTMLSelectElement ? sort.value : 'date_desc';
+                const compare = (left, right) => {
+                    if (mode === 'steps_desc') return Number(right.dataset.entrySteps || 0) - Number(left.dataset.entrySteps || 0);
+                    if (mode === 'distance_desc') return Number(right.dataset.entryDistance || 0) - Number(left.dataset.entryDistance || 0);
+                    const comparison = String(left.dataset.entryDate || '').localeCompare(String(right.dataset.entryDate || ''));
+                    return mode === 'date_asc' ? comparison : -comparison;
+                };
+                rows.sort(compare);
+                mobileRows.sort(compare);
+                rows.forEach((row) => body?.append(row));
+                mobileRows.forEach((row) => mobileList?.append(row));
+            };
+            filter?.addEventListener('input', refresh);
+            sort?.addEventListener('change', refresh);
+            refresh();
+        });
+    };
+    const bindNotificationSwipe = () => {
+        document.querySelectorAll('[data-notification-swipe]').forEach((card) => {
+            if (card.dataset.swipeBound === '1') return;
+            card.dataset.swipeBound = '1';
+            let startX = null;
+            card.addEventListener('touchstart', (event) => {
+                startX = event.touches[0]?.clientX ?? null;
+            }, {passive: true});
+            card.addEventListener('touchend', (event) => {
+                if (startX === null) return;
+                const endX = event.changedTouches[0]?.clientX ?? startX;
+                const distance = endX - startX;
+                if (distance < -45) card.classList.add('is-swiped');
+                if (distance > 45) card.classList.remove('is-swiped');
+                startX = null;
+            }, {passive: true});
+        });
+    };
+    const bindChallengeResetDialog = () => {
+        const form = document.querySelector('[data-new-challenge-form]');
+        const modal = document.querySelector('[data-challenge-reset-modal]');
+        if (!(form instanceof HTMLFormElement) || !(modal instanceof HTMLElement) || form.dataset.resetBound === '1') return;
+        form.dataset.resetBound = '1';
+        let confirmed = false;
+        const close = () => {
+            modal.hidden = true;
+            modal.classList.remove('is-open');
+        };
+        form.addEventListener('submit', (event) => {
+            if (confirmed || !form.reportValidity()) return;
+            event.preventDefault();
+            modal.hidden = false;
+            modal.classList.add('is-open');
+        });
+        modal.querySelectorAll('[data-challenge-reset-cancel]').forEach((button) => button.addEventListener('click', close));
+        modal.querySelector('[data-challenge-reset-confirm]')?.addEventListener('click', () => {
+            const ranked = modal.querySelector('input[name="modal_ranked_action"]:checked');
+            const xp = modal.querySelector('input[name="modal_xp_action"]:checked');
+            const rankedTarget = form.querySelector('[data-ranked-season-action]');
+            const xpTarget = form.querySelector('[data-xp-action]');
+            if (rankedTarget instanceof HTMLInputElement) rankedTarget.value = ranked instanceof HTMLInputElement ? ranked.value : 'keep';
+            if (xpTarget instanceof HTMLInputElement) xpTarget.value = xp instanceof HTMLInputElement ? xp.value : 'keep';
+            confirmed = true;
+            close();
+            form.requestSubmit();
+        });
+    };
+    const bindTeamPanels = () => {
+        document.querySelectorAll('[data-team-panel-collapsible]').forEach((panel) => {
+            if (panel.dataset.collapseBound === '1') return;
+            panel.dataset.collapseBound = '1';
+            const button = panel.querySelector('[data-team-panel-toggle]');
+            const content = panel.querySelector('[data-team-panel-content]');
+            if (!(button instanceof HTMLButtonElement) || !(content instanceof HTMLElement)) return;
+            const key = `fitness:team-panel:${panel.getAttribute('data-team-widget') || 'panel'}`;
+            const apply = (collapsed) => {
+                panel.classList.toggle('is-collapsed', collapsed);
+                content.hidden = collapsed;
+                button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                button.setAttribute('aria-label', collapsed ? 'Expandir panel' : 'Contraer panel');
+            };
+            apply(localStorage.getItem(key) === 'collapsed');
+            button.addEventListener('click', () => {
+                const collapsed = !panel.classList.contains('is-collapsed');
+                localStorage.setItem(key, collapsed ? 'collapsed' : 'expanded');
+                apply(collapsed);
+            });
+        });
+    };
+    document.addEventListener('DOMContentLoaded', bindProductDialogs);
+    document.addEventListener('DOMContentLoaded', renderSyncConflicts);
+    document.addEventListener('DOMContentLoaded', bindEntryTable);
+    document.addEventListener('DOMContentLoaded', bindNotificationSwipe);
+    document.addEventListener('DOMContentLoaded', bindChallengeResetDialog);
+    document.addEventListener('DOMContentLoaded', bindTeamPanels);
+    document.addEventListener('fitness:navigation-complete', bindProductDialogs);
+    document.addEventListener('fitness:navigation-complete', bindEntryTable);
+    document.addEventListener('fitness:navigation-complete', bindNotificationSwipe);
+    document.addEventListener('fitness:navigation-complete', bindChallengeResetDialog);
+    document.addEventListener('fitness:navigation-complete', bindTeamPanels);
+    if (document.readyState !== 'loading') bindProductDialogs();
+    if (document.readyState !== 'loading') bindEntryTable();
+    if (document.readyState !== 'loading') bindNotificationSwipe();
+    if (document.readyState !== 'loading') bindChallengeResetDialog();
+    if (document.readyState !== 'loading') bindTeamPanels();
 })();

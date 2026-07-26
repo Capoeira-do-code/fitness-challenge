@@ -1398,15 +1398,27 @@ function fetch_habit_translations(PDO $pdo, array $habitIds): array
     return $grouped;
 }
 
-function list_habit_definitions(PDO $pdo, bool $activeOnly = true, ?string $locale = null): array
+function list_habit_definitions(PDO $pdo, bool $activeOnly = true, string|int|null $locale = null, ?int $userId = null): array
 {
-    $where = $activeOnly ? 'WHERE hd.active = 1' : '';
+    if (is_int($locale)) {
+        $userId = $userId ?? $locale;
+        $locale = null;
+    }
+    $userId = $userId ?? (int) ($_SESSION['user_id'] ?? 0);
+    $conditions = [];
+    if ($activeOnly) {
+        $conditions[] = 'hd.active = 1';
+    }
+    // Seeded/admin habits are shared. A habit created from a user's Daily Log
+    // remains private to that user, including direct API and admin-table reads.
+    $conditions[] = '(COALESCE(hd.is_personal, 0) = 0 OR hd.created_by = :viewer)';
+    $where = 'WHERE ' . implode(' AND ', $conditions);
     $locale = normalize_locale($locale ?? current_locale(), 'en');
 
     return db_fetch_all(
         $pdo,
         'SELECT hd.id, hd.code, hd.label AS base_label, hd.active, hd.sort_order,
-                hd.created_by, hd.created_at, hd.updated_at,
+                hd.created_by, COALESCE(hd.is_personal, 0) AS is_personal, hd.created_at, hd.updated_at,
                 COALESCE(NULLIF(localized.label, ""), NULLIF(english.label, ""), hd.label) AS label
          FROM habit_definitions hd
          LEFT JOIN habit_definition_translations localized ON localized.habit_id = hd.id AND localized.locale = :locale
@@ -1414,12 +1426,14 @@ function list_habit_definitions(PDO $pdo, bool $activeOnly = true, ?string $loca
          ' . $where . '
          ORDER BY hd.active DESC, hd.sort_order ASC,
                   COALESCE(NULLIF(localized.label, ""), NULLIF(english.label, ""), hd.label) COLLATE NOCASE ASC',
-        [':locale' => $locale]
+        [':locale' => $locale, ':viewer' => $userId]
     );
 }
 
 function fetch_log_habit_values(PDO $pdo, int $logId): array
 {
+    $owner = db_fetch_one($pdo, 'SELECT user_id FROM daily_logs WHERE id = :id', [':id' => $logId]);
+    $ownerId = (int) ($owner['user_id'] ?? 0);
     $rows = db_fetch_all(
         $pdo,
         'SELECT hd.code, hd.id,
@@ -1429,9 +1443,10 @@ function fetch_log_habit_values(PDO $pdo, int $logId): array
          LEFT JOIN daily_log_habits dlh ON dlh.habit_id = hd.id AND dlh.log_id = :log_id
          LEFT JOIN habit_definition_translations localized ON localized.habit_id = hd.id AND localized.locale = :locale
          LEFT JOIN habit_definition_translations english ON english.habit_id = hd.id AND english.locale = "en"
+         WHERE COALESCE(hd.is_personal, 0) = 0 OR hd.created_by = :owner
          ORDER BY hd.sort_order ASC,
                   COALESCE(NULLIF(localized.label, ""), NULLIF(english.label, ""), hd.label) COLLATE NOCASE ASC',
-        [':log_id' => $logId, ':locale' => current_locale()]
+        [':log_id' => $logId, ':locale' => current_locale(), ':owner' => $ownerId]
     );
 
     $values = [];
@@ -1448,7 +1463,8 @@ function fetch_log_habit_values(PDO $pdo, int $logId): array
 
 function sync_log_habits(PDO $pdo, int $logId, array $values): void
 {
-    $definitions = list_habit_definitions($pdo, false);
+    $owner = db_fetch_one($pdo, 'SELECT user_id FROM daily_logs WHERE id = :id', [':id' => $logId]);
+    $definitions = list_habit_definitions($pdo, false, null, (int) ($owner['user_id'] ?? 0));
     $now = now_iso();
     foreach ($definitions as $definition) {
         $code = (string) $definition['code'];
@@ -1550,6 +1566,11 @@ function create_custom_habit_from_label(PDO $pdo, string $label, int $actorUserI
     $nextSort = max(0, (int) ($sortRow['max_order'] ?? 0)) + 10;
 
     save_habit_definition($pdo, null, $code, $normalizedLabel, true, $nextSort, $actorUserId);
+    db_execute(
+        $pdo,
+        'UPDATE habit_definitions SET is_personal = 1 WHERE code = :code AND created_by = :user',
+        [':code' => $code, ':user' => $actorUserId]
+    );
 
     return db_fetch_one($pdo, 'SELECT * FROM habit_definitions WHERE code = :code', [':code' => $code]);
 }
@@ -1873,8 +1894,51 @@ function save_photo_entry(
     if ($created === null) {
         throw new RuntimeException(t('flash.save_failed'));
     }
+    sync_nutrition_from_photo_entry($pdo, $created);
 
     return $created;
+}
+
+function sync_nutrition_from_photo_entry(PDO $pdo, array $photo): void
+{
+    $photoId = (int) ($photo['id'] ?? 0);
+    $userId = (int) ($photo['user_id'] ?? 0);
+    if ($photoId <= 0 || $userId <= 0) {
+        return;
+    }
+    $category = (string) ($photo['category'] ?? 'other');
+    $mealType = in_array($category, ['breakfast', 'lunch', 'dinner', 'snack'], true) ? $category : 'other';
+    $photoPath = (int) ($photo['has_photo'] ?? 0) === 1 && trim((string) ($photo['file_path'] ?? '')) !== ''
+        ? (string) $photo['file_path'] : null;
+    $existing = db_fetch_one($pdo, 'SELECT id FROM nutrition_entries WHERE photo_entry_id = :photo', [':photo' => $photoId]);
+    $params = [
+        ':user' => $userId,
+        ':photo' => $photoId,
+        ':date' => (string) ($photo['log_date'] ?? to_date(null)),
+        ':type' => $mealType,
+        ':notes' => (string) ($photo['caption'] ?? ''),
+        ':path' => $photoPath,
+        ':calories' => max(0.0, (float) ($photo['calories'] ?? 0)),
+        ':protein' => $photo['protein_g'] ?? null,
+        ':carbs' => $photo['carbs_g'] ?? null,
+        ':fat' => $photo['fat_g'] ?? null,
+        ':fiber' => $photo['fiber_g'] ?? null,
+        ':sugar' => $photo['sugar_g'] ?? null,
+        ':sodium' => $photo['sodium_mg'] ?? null,
+        ':now' => now_iso(),
+    ];
+    if ($existing === null) {
+        db_execute($pdo, 'INSERT INTO nutrition_entries
+            (user_id, photo_entry_id, entry_date, entry_time, meal_type, notes, photo_path, calories,
+             protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, version, created_at, updated_at)
+            VALUES (:user,:photo,:date,NULL,:type,:notes,:path,:calories,:protein,:carbs,:fat,:fiber,:sugar,:sodium,1,:now,:now)', $params);
+        return;
+    }
+    $params[':id'] = (int) $existing['id'];
+    db_execute($pdo, 'UPDATE nutrition_entries SET user_id=:user, photo_entry_id=:photo, entry_date=:date,
+        meal_type=:type, notes=:notes, photo_path=:path, calories=:calories, protein_g=:protein,
+        carbs_g=:carbs, fat_g=:fat, fiber_g=:fiber, sugar_g=:sugar, sodium_mg=:sodium,
+        version=version+1, updated_at=:now WHERE id=:id', $params);
 }
 
 function update_photo_entry(
@@ -1959,7 +2023,11 @@ function update_photo_entry(
         remove_media_file_if_unreferenced($pdo, $config, $oldFilePath, 'update_photo_entry');
     }
 
-    return db_fetch_one($pdo, 'SELECT * FROM photo_entries WHERE id = :id', [':id' => $photoId]);
+    $updated = db_fetch_one($pdo, 'SELECT * FROM photo_entries WHERE id = :id', [':id' => $photoId]);
+    if ($updated !== null) {
+        sync_nutrition_from_photo_entry($pdo, $updated);
+    }
+    return $updated;
 }
 
 function delete_photo_entry(PDO $pdo, array $config, int $photoId): ?array
@@ -1974,6 +2042,10 @@ function delete_photo_entry(PDO $pdo, array $config, int $photoId): ?array
     }
 
     $filePath = trim((string) ($photo['file_path'] ?? ''));
+    db_execute($pdo, 'UPDATE nutrition_entries SET photo_entry_id = NULL, photo_path = NULL, version = version + 1, updated_at = :now WHERE photo_entry_id = :photo', [
+        ':now' => now_iso(),
+        ':photo' => $photoId,
+    ]);
     db_execute($pdo, 'DELETE FROM photo_entries WHERE id = :id', [':id' => $photoId]);
 
     remove_media_file_if_unreferenced($pdo, $config, $filePath, 'delete_photo_entry');
@@ -4372,7 +4444,147 @@ function create_goal(PDO $pdo, array $payload, int $actorUserId): int
     $goal = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = last_insert_rowid()');
     audit_log($pdo, $actorUserId, 'goal_created', 'goal', (string) ($goal['id'] ?? ''), 'Goal created.', null, audit_snapshot($goal));
 
-    return (int) ($goal['id'] ?? 0);
+    $goalId = (int) ($goal['id'] ?? 0);
+    if (!empty($payload['metric_targets']) && is_array($payload['metric_targets'])) {
+        save_goal_metric_targets($pdo, $goalId, (array) $payload['metric_targets']);
+    }
+    return $goalId;
+}
+
+function save_goal_metric_targets(PDO $pdo, int $goalId, array $targets): void
+{
+    $goal = db_fetch_one($pdo, 'SELECT scope, owner_id FROM goals WHERE id = :id', [':id' => $goalId]);
+    if ($goal === null) {
+        throw new InvalidArgumentException('Challenge not found.');
+    }
+    $normalized = [];
+    foreach (array_slice(array_values($targets), 0, 20) as $target) {
+        if (!is_array($target)) {
+            continue;
+        }
+        $key = trim((string) ($target['metric_key'] ?? ''));
+        $value = (float) ($target['target_value'] ?? 0);
+        $weight = (float) ($target['weight_percent'] ?? 0);
+        if ($key === '' || $value <= 0 || $weight <= 0) {
+            continue;
+        }
+        if (str_starts_with($key, 'custom:')) {
+            $customId = (int) substr($key, 7);
+            $owned = (string) ($goal['scope'] ?? '') === 'user'
+                ? custom_metric_get($pdo, $customId, (int) ($goal['owner_id'] ?? 0))
+                : null;
+            if ($owned === null) {
+                throw new InvalidArgumentException('Invalid private challenge metric.');
+            }
+        }
+        if (str_starts_with($key, 'habit:')) {
+            $habitCode = substr($key, 6);
+            $habit = db_fetch_one($pdo, 'SELECT owner_user_id, is_personal FROM habit_definitions WHERE code = :code AND active = 1', [':code' => $habitCode]);
+            if ($habit === null || ((int) ($habit['is_personal'] ?? 0) === 1
+                && ((string) ($goal['scope'] ?? '') !== 'user' || (int) ($habit['owner_user_id'] ?? 0) !== (int) ($goal['owner_id'] ?? 0)))) {
+                throw new InvalidArgumentException('Invalid private challenge habit.');
+            }
+        }
+        $normalized[] = ['metric_key' => $key, 'target_value' => $value, 'weight_percent' => $weight];
+    }
+    $weightTotal = array_sum(array_column($normalized, 'weight_percent'));
+    if ($normalized === [] || abs($weightTotal - 100.0) > 0.01) {
+        throw new InvalidArgumentException('Challenge metric weights must add up to 100%.');
+    }
+    db_execute($pdo, 'DELETE FROM goal_metric_targets WHERE goal_id = :goal', [':goal' => $goalId]);
+    foreach ($normalized as $index => $target) {
+        db_execute($pdo, 'INSERT INTO goal_metric_targets (goal_id, metric_key, target_value, weight_percent, sort_order, created_at, updated_at) VALUES (:goal,:key,:value,:weight,:sort,:now,:now)', [
+            ':goal' => $goalId, ':key' => $target['metric_key'], ':value' => $target['target_value'],
+            ':weight' => $target['weight_percent'], ':sort' => $index, ':now' => now_iso(),
+        ]);
+    }
+}
+
+function goal_metric_targets_from_form(
+    array $source,
+    string $primaryType,
+    float $primaryValue,
+    ?string $secondaryType = null,
+    ?float $secondaryValue = null
+): array {
+    $targets = [];
+    if ($primaryValue > 0) {
+        $targets[] = [
+            'metric_key' => $primaryType,
+            'target_value' => $primaryValue,
+            'weight_percent' => (float) ($source['primary_weight_percent'] ?? 0),
+        ];
+    }
+    if ($secondaryType !== null && $secondaryValue !== null && $secondaryValue > 0) {
+        $targets[] = [
+            'metric_key' => $secondaryType,
+            'target_value' => $secondaryValue,
+            'weight_percent' => (float) ($source['secondary_weight_percent'] ?? 0),
+        ];
+    }
+
+    $keys = array_values((array) ($source['extra_metric_key'] ?? []));
+    $values = array_values((array) ($source['extra_metric_target'] ?? []));
+    $weights = array_values((array) ($source['extra_metric_weight'] ?? []));
+    foreach (array_slice($keys, 0, 18) as $index => $keyValue) {
+        $key = trim((string) $keyValue);
+        $value = (float) ($values[$index] ?? 0);
+        if ($key === '' || $value <= 0) {
+            continue;
+        }
+        $targets[] = [
+            'metric_key' => $key,
+            'target_value' => $value,
+            'weight_percent' => (float) ($weights[$index] ?? 0),
+        ];
+    }
+
+    if ($targets === []) {
+        return [];
+    }
+    $explicitTotal = array_sum(array_column($targets, 'weight_percent'));
+    if ($explicitTotal <= 0.0) {
+        $equal = round(100 / count($targets), 4);
+        foreach ($targets as &$target) {
+            $target['weight_percent'] = $equal;
+        }
+        unset($target);
+        $targets[array_key_last($targets)]['weight_percent'] += 100 - array_sum(array_column($targets, 'weight_percent'));
+    } elseif (abs($explicitTotal - 100.0) > 0.01) {
+        throw new InvalidArgumentException('Challenge metric weights must add up to 100%.');
+    }
+
+    $seen = [];
+    foreach ($targets as $target) {
+        $key = (string) $target['metric_key'];
+        if (isset($seen[$key])) {
+            throw new InvalidArgumentException('Each challenge metric can only be selected once.');
+        }
+        $seen[$key] = true;
+    }
+
+    return $targets;
+}
+
+function goal_metric_targets(PDO $pdo, int $goalId): array
+{
+    return db_fetch_all($pdo, 'SELECT * FROM goal_metric_targets WHERE goal_id = :goal ORDER BY sort_order, id', [':goal' => $goalId]);
+}
+
+function goal_weighted_progress(PDO $pdo, int $goalId, array $metricValues): ?float
+{
+    $targets = goal_metric_targets($pdo, $goalId);
+    if ($targets === []) {
+        return null;
+    }
+    $progress = 0.0;
+    foreach ($targets as $target) {
+        $key = (string) $target['metric_key'];
+        $current = (float) ($metricValues[$key] ?? 0);
+        $targetValue = max(0.000001, (float) $target['target_value']);
+        $progress += min(1.0, max(0.0, $current / $targetValue)) * ((float) $target['weight_percent'] / 100);
+    }
+    return min(100.0, max(0.0, $progress * 100));
 }
 
 function update_goal_status(PDO $pdo, int $goalId, string $status, int $actorUserId): void
@@ -4469,6 +4681,9 @@ function update_goal(PDO $pdo, int $goalId, array $payload, int $actorUserId): v
         ]
     );
     $after = db_fetch_one($pdo, 'SELECT * FROM goals WHERE id = :id', [':id' => $goalId]);
+    if (array_key_exists('metric_targets', $payload) && is_array($payload['metric_targets'])) {
+        save_goal_metric_targets($pdo, $goalId, (array) $payload['metric_targets']);
+    }
     audit_log($pdo, $actorUserId, 'goal_updated', 'goal', (string) $goalId, 'Goal updated.', audit_snapshot($before), audit_snapshot($after));
 }
 
@@ -4502,6 +4717,9 @@ function normalize_goal_target_type(string $targetType): string
         $habitCode = trim(substr($normalized, 6));
         $habitCode = preg_replace('/[^a-z0-9_\-]/', '', strtolower($habitCode)) ?? '';
         return $habitCode !== '' ? 'habit:' . $habitCode : 'custom';
+    }
+    if (preg_match('/^custom:\\d+$/', $normalized) === 1) {
+        return $normalized;
     }
 
     return 'custom';
@@ -5096,6 +5314,43 @@ function goal_team_progress_state(PDO $pdo, array $goal, array $teamSummary, ?Da
         $targetReached = $targetReached && !empty($secondaryState['target_reached']);
     }
 
+    $weightedTargets = $goalId > 0 ? goal_metric_targets($pdo, $goalId) : [];
+    $weightedStates = [];
+    if ($weightedTargets !== []) {
+        $combinedProgressPctRaw = 0.0;
+        $targetReached = true;
+        foreach ($weightedTargets as $weightedTarget) {
+            $weightedType = normalize_goal_target_type((string) ($weightedTarget['metric_key'] ?? 'custom'));
+            $weightedTargetValue = max(0.0, (float) ($weightedTarget['target_value'] ?? 0));
+            $weightPercent = max(0.0, (float) ($weightedTarget['weight_percent'] ?? 0));
+            $weightedGoal = array_merge($goal, ['target_type' => $weightedType, 'target_value' => $weightedTargetValue]);
+            $currentValue = goal_target_type_uses_dynamic_window_progress($weightedType)
+                ? goal_window_metric_value_for_team($pdo, $weightedGoal, $resolveTeamUsers())
+                : goal_team_metric_value_for_type($weightedType, $teamSummary, 0.0);
+            $progressValue = goal_target_type_uses_dynamic_window_progress($weightedType)
+                ? $currentValue
+                : goal_progress_from_baseline_for_type($weightedType, (float) ($weightedTarget['baseline_value'] ?? 0), $currentValue);
+            $progressPct = $weightedTargetValue > 0
+                ? max(0.0, min(100.0, round(($progressValue / $weightedTargetValue) * 100, 1)))
+                : 0.0;
+            $reached = $weightedTargetValue > 0 && $progressValue >= $weightedTargetValue;
+            $combinedProgressPctRaw += $progressPct * ($weightPercent / 100);
+            $targetReached = $targetReached && $reached;
+            $weightedStates[] = [
+                'metric_key' => (string) $weightedTarget['metric_key'],
+                'target_value' => $weightedTargetValue,
+                'weight_percent' => $weightPercent,
+                'current_metric_value' => $currentValue,
+                'progress_value' => $progressValue,
+                'progress_pct_raw' => $progressPct,
+                'target_reached' => $reached,
+            ];
+        }
+        $combinedProgressPctRaw = round($combinedProgressPctRaw, 1);
+        $primaryState = $weightedStates[0] ?? $primaryState;
+        $secondaryState = $weightedStates[1] ?? null;
+    }
+
     return [
         'goal' => $goal,
         'has_started' => $hasStarted,
@@ -5107,6 +5362,7 @@ function goal_team_progress_state(PDO $pdo, array $goal, array $teamSummary, ?Da
         'target_reached' => $targetReached,
         'primary' => $primaryState,
         'secondary' => $secondaryState,
+        'weighted_targets' => $weightedStates,
     ];
 }
 
@@ -5195,6 +5451,7 @@ function team_challenge_view_data(PDO $pdo, array $team, array $teamSummaryTotal
         }
         $goalProgressState = goal_team_progress_state($pdo, $goal, $teamSummaryTotal, $nowDateTime);
         $goalForProgress = is_array($goalProgressState['goal'] ?? null) ? (array) $goalProgressState['goal'] : $goal;
+        $weightedStates = array_values((array) ($goalProgressState['weighted_targets'] ?? []));
         $primaryState = is_array($goalProgressState['primary'] ?? null) ? (array) $goalProgressState['primary'] : [];
         $secondaryState = is_array($goalProgressState['secondary'] ?? null) ? (array) $goalProgressState['secondary'] : [];
         $hasStarted = !empty($goalProgressState['has_started']);
@@ -5222,7 +5479,7 @@ function team_challenge_view_data(PDO $pdo, array $team, array $teamSummaryTotal
         $secondaryProgressPctRaw = $secondaryEnabled && $secondaryTargetValue > 0
             ? round(($secondaryProgressValue / $secondaryTargetValue) * 100, 1)
             : 0.0;
-        if ($secondaryEnabled) {
+        if ($secondaryEnabled && $weightedStates === []) {
             $progressPctRaw = round(($primaryProgressPctRaw + $secondaryProgressPctRaw) / 2, 1);
         }
         if ((string) ($goal['status'] ?? '') === 'complete') {
@@ -5251,6 +5508,17 @@ function team_challenge_view_data(PDO $pdo, array $team, array $teamSummaryTotal
             $countdownDeadline = $goalDueAt instanceof DateTimeImmutable ? $goalDueAt : $challengeEndDeadline;
         }
         $isExpired = $hasStarted && $countdownMode === 'end' && $countdownDeadline instanceof DateTimeImmutable && $nowDateTime >= $countdownDeadline;
+
+        $formattedWeightedTargets = [];
+        foreach ($weightedStates as $weightedState) {
+            $weightedStateType = normalize_goal_target_type((string) ($weightedState['metric_key'] ?? 'custom'));
+            $formattedWeightedTargets[] = array_merge($weightedState, [
+                'label' => $goalTypeLabel($weightedStateType),
+                'progress_display' => $formatGoalValue((float) ($weightedState['progress_value'] ?? 0), $weightedStateType),
+                'target_display' => $formatGoalValue((float) ($weightedState['target_value'] ?? 0), $weightedStateType),
+                'progress_pct_visual' => max(0.0, min(100.0, (float) ($weightedState['progress_pct_raw'] ?? 0))),
+            ]);
+        }
 
         $teamGoals[] = array_merge($goalForProgress, [
             'target_type_normalized' => $type,
@@ -5283,6 +5551,7 @@ function team_challenge_view_data(PDO $pdo, array $team, array $teamSummaryTotal
             'secondary_baseline_display' => $secondaryBaselineDisplay,
             'secondary_progress_pct_raw' => $secondaryProgressPctRaw,
             'secondary_progress_pct_visual' => max(0.0, min(100.0, $secondaryProgressPctRaw)),
+            'metric_targets' => $formattedWeightedTargets,
             'current_metric_value' => $currentMetricValue,
             'baseline_value_numeric' => is_numeric($goalForProgress['baseline_value'] ?? null) ? (float) $goalForProgress['baseline_value'] : null,
             'progress_debug' => [
@@ -5456,6 +5725,7 @@ function goal_target_label_for_type(string $rawType, array $habitLabels = []): s
         $type === 'workouts' => (string) t('metric.workouts'),
         $type === 'weight' => (string) t('metric.weight'),
         str_starts_with($type, 'habit:') => $habitLabels[substr($type, 6)] ?? $type,
+        str_starts_with($type, 'custom:') => (string) t('metrics.custom_metric'),
         default => $rawType !== '' ? $rawType : (string) t('common.other'),
     };
 }
@@ -5508,6 +5778,74 @@ function goal_progress_percent_for_metric(array $goal, float $currentValue, arra
     return max(0.0, min(100.0, round(($currentValue / $targetValue) * 100, 1)));
 }
 
+function goal_metric_value_for_user_key(PDO $pdo, int $userId, string $key, string $startDate, string $endDate, array $metric): float
+{
+    if (str_starts_with($key, 'custom:')) {
+        $metricId = (int) substr($key, 7);
+        $row = db_fetch_one(
+            $pdo,
+            'SELECT SUM(e.value) AS total
+             FROM custom_metric_entries e
+             JOIN custom_metric_definitions d ON d.id = e.metric_id
+             WHERE e.metric_id = :metric AND e.user_id = :user AND d.owner_user_id = :user
+               AND e.entry_date BETWEEN :start AND :end',
+            [':metric' => $metricId, ':user' => $userId, ':start' => $startDate, ':end' => $endDate]
+        );
+        return (float) ($row['total'] ?? 0);
+    }
+    if (str_starts_with($key, 'habit:')) {
+        $habitCode = substr($key, 6);
+        $row = db_fetch_one(
+            $pdo,
+            'SELECT COUNT(*) AS total
+             FROM daily_log_habits h
+             JOIN daily_logs l ON l.id = h.log_id
+             JOIN habit_definitions d ON d.id = h.habit_id
+             WHERE l.user_id = :user AND d.code = :code AND h.value = 1
+               AND l.log_date BETWEEN :start AND :end',
+            [':user' => $userId, ':code' => $habitCode, ':start' => $startDate, ':end' => $endDate]
+        );
+        return (float) ($row['total'] ?? 0);
+    }
+
+    return goal_progress_value_from_metric(['target_type' => $key], $metric);
+}
+
+function hydrate_user_goal_metric_targets(PDO $pdo, array $goals, int $userId, string $startDate, string $endDate, array $metric): array
+{
+    foreach ($goals as &$goal) {
+        if (!is_array($goal)) {
+            continue;
+        }
+        $targets = goal_metric_targets($pdo, (int) ($goal['id'] ?? 0));
+        if ($targets === []) {
+            continue;
+        }
+        $combined = 0.0;
+        foreach ($targets as &$target) {
+            $key = (string) ($target['metric_key'] ?? '');
+            $current = goal_metric_value_for_user_key($pdo, $userId, $key, $startDate, $endDate, $metric);
+            $targetValue = max(0.000001, (float) ($target['target_value'] ?? 0));
+            $pct = min(100.0, max(0.0, ($current / $targetValue) * 100));
+            $combined += $pct * ((float) ($target['weight_percent'] ?? 0) / 100);
+            $target['current_value'] = $current;
+            $target['progress_pct'] = round($pct, 1);
+            $target['type_label'] = goal_target_label_for_type($key);
+            if (str_starts_with($key, 'custom:')) {
+                $definition = custom_metric_get($pdo, (int) substr($key, 7), $userId);
+                if ($definition !== null) {
+                    $target['type_label'] = (string) $definition['name'];
+                }
+            }
+        }
+        unset($target);
+        $goal['_metric_targets'] = $targets;
+        $goal['_weighted_progress_pct'] = round(min(100.0, $combined), 1);
+    }
+    unset($goal);
+    return $goals;
+}
+
 function build_user_goal_view_models(array $goals, array $metric = [], array $habits = []): array
 {
     $habitLabels = [];
@@ -5525,7 +5863,9 @@ function build_user_goal_view_models(array $goals, array $metric = [], array $ha
         $type = normalize_goal_target_type((string) ($goal['target_type'] ?? 'custom'));
         $target = (float) ($goal['target_value'] ?? 0);
         $current = $metric !== [] ? goal_progress_value_from_metric($goal, $metric) : (float) ($goal['current_value'] ?? 0);
-        $progress = goal_progress_percent_for_metric($goal, $current, $metric);
+        $progress = isset($goal['_weighted_progress_pct'])
+            ? (float) $goal['_weighted_progress_pct']
+            : goal_progress_percent_for_metric($goal, $current, $metric);
         $dueDate = trim((string) ($goal['due_date'] ?? ''));
         $status = (string) ($goal['status'] ?? 'active');
         $rows[] = [
@@ -5544,6 +5884,7 @@ function build_user_goal_view_models(array $goals, array $metric = [], array $ha
             'target' => $target,
             'target_label' => format_goal_display_value($target, $type),
             'progress_pct' => $progress,
+            'metric_targets' => (array) ($goal['_metric_targets'] ?? []),
             'due_date' => $dueDate,
             'due_label' => $dueDate !== '' ? format_date_eu($dueDate) : '',
         ];
@@ -5585,9 +5926,18 @@ function auto_complete_user_goals(PDO $pdo, int $userId, string $startDate, stri
 
     $completedCount = 0;
     foreach ($activeGoals as $goal) {
+        $weightedGoals = hydrate_user_goal_metric_targets($pdo, [$goal], $userId, $startDate, $endDate, $metric);
+        $weightedGoal = $weightedGoals[0] ?? $goal;
+        if (!empty($weightedGoal['_metric_targets'])) {
+            $progressValue = (float) ($weightedGoal['_weighted_progress_pct'] ?? 0);
+            if ($progressValue < 100.0) {
+                continue;
+            }
+        } else {
         $progressValue = goal_progress_value_from_metric($goal, $metric);
         if (!goal_target_reached($goal, $metric, $progressValue)) {
             continue;
+        }
         }
 
         db_execute(
@@ -10228,6 +10578,9 @@ function resolve_notification_destination(PDO $pdo, array $notification): string
         if (is_array($decoded)) {
             $payload = $decoded;
         }
+    }
+    if ($kind === 'weekly_report') {
+        return '/?page=weekly_report&start=' . rawurlencode((string) ($payload['report_start'] ?? ''));
     }
 
     if (in_array($kind, ['strike_review_request', 'strike_review_resolved'], true)) {

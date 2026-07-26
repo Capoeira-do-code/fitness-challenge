@@ -65,7 +65,9 @@ if (!$penaltiesEnabled) {
     $personalGoals = array_values(array_filter((array) ($personalGoals ?? []), static fn(array $goal): bool => !$isPenaltyRelatedProfileItem($goal)));
     $profileGoalCards = array_values(array_filter((array) ($profileGoalCards ?? []), static fn(array $goal): bool => !$isPenaltyRelatedProfileItem($goal)));
     $userAchievements = array_values(array_filter((array) ($userAchievements ?? []), static fn(array $achievement): bool => !$isPenaltyRelatedProfileItem($achievement)));
+    $profileAchievementCollection = array_values(array_filter((array) ($profileAchievementCollection ?? []), static fn(array $achievement): bool => !$isPenaltyRelatedProfileItem($achievement)));
 }
+$profileAchievementCollection = array_values((array) ($profileAchievementCollection ?? []));
 $primaryGoalsSpec = trim((string) ($profileUser['primary_goals_spec'] ?? ''));
 $profileTaglineLimit = profile_tagline_max_length();
 $profileTagline = normalize_profile_tagline((string) ($profileUser['profile_tagline'] ?? ''));
@@ -313,7 +315,6 @@ $habitLabels = [];
 foreach ($habitsList as $habit) {
     $habitLabels[(string) $habit['code']] = (string) ($habit['label'] ?? $habit['code']);
 }
-
 $goalTypeOptions = [
     ['value' => 'steps', 'label' => (string) t('metric.steps')],
     ['value' => 'km', 'label' => (string) t('metric.distance_km')],
@@ -324,6 +325,12 @@ foreach ($habitsList as $habit) {
     $goalTypeOptions[] = [
         'value' => 'habit:' . (string) $habit['code'],
         'label' => (string) $habit['label'],
+    ];
+}
+foreach ((array) ($profileCustomMetrics ?? []) as $customMetric) {
+    $goalTypeOptions[] = [
+        'value' => custom_metric_key((int) ($customMetric['id'] ?? 0)),
+        'label' => (string) ($customMetric['name'] ?? ''),
     ];
 }
 
@@ -731,6 +738,21 @@ $profileCurrentGoalChips = array_values(array_filter(array_map(
     },
     $profileCurrentGoalRows
 )));
+$profileAdditionalGoalChips = array_values(array_filter(array_map(
+    static function (array $goal) use ($profilePrimaryGoalType, $profilePrimaryGoalValue, $primaryGoalLabels, $formatPrimarySetupValue): ?array {
+        $type = strtolower((string) ($goal['type'] ?? ''));
+        $value = is_numeric($goal['value'] ?? null) ? (float) $goal['value'] : 0.0;
+        if ($type === '' || $value <= 0 || ($type === $profilePrimaryGoalType && abs($value - $profilePrimaryGoalValue) < 0.001)) {
+            return null;
+        }
+
+        return [
+            'label' => $primaryGoalLabels[$type] ?? $type,
+            'value' => $formatPrimarySetupValue($value, $type),
+        ];
+    },
+    $profilePrimaryGoalsParsed
+)));
 $profileCalorieConfigDisplay = $calorieConfigParts !== [] ? implode(' / ', $calorieConfigParts) : '-';
 $profileTrainingRankKey = (string) ($profileTrainingRank['key'] ?? 'unranked');
 if (!array_key_exists($profileTrainingRankKey, wk_rank_tiers())) {
@@ -744,11 +766,9 @@ $latestAchievements = array_slice(array_values((array) ($userAchievements ?? [])
 $latestActivity = array_slice(array_values((array) ($recentActivity ?? [])), 0, 5);
 $profileSetupRows = [
     ['label' => t('common.username'), 'value' => '@' . (string) ($profileUser['username'] ?? '')],
-    ['label' => t('settings.primary_goal'), 'value' => $profilePrimaryGoalLabel . ' ' . $profilePrimaryGoalValueDisplay],
     ['label' => t('profile.workout_target'), 'value' => (string) ($profileUser['workout_target'] ?? 0) . '/' . strtolower(t('common.week'))],
     ['label' => t('metric.ideal_weight'), 'value' => ($profileUser['ideal_weight'] ?? null) !== null ? (string) $profileUser['ideal_weight'] . ' kg' : '-'],
     ['label' => t('profile.calorie_config'), 'value' => $profileCalorieConfigDisplay],
-    ['label' => t('metric.steps'), 'value' => number_format((int) ($profileUser['step_goal'] ?? 0))],
     ['label' => t('dashboard.training_rank_title'), 'value' => t('workouts.rank_' . $profileTrainingRankKey) . ' · ' . number_format((float) ($profileTrainingRank['score'] ?? 0), 1, '.', '')],
     ['label' => t('workouts.stat_sessions') . ' · ' . t('workouts.this_month'), 'value' => number_format((int) ($profileTrainingMonth['sessions'] ?? 0))],
     ['label' => t('workouts.stat_sessions') . ' · ' . t('workouts.all_time'), 'value' => number_format((int) ($profileTrainingAll['sessions'] ?? 0))],
@@ -891,13 +911,6 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
 
     <?php if ($activeSection === ''): ?>
         <div class="profile-mobile-root">
-            <?php if ($isOwnProfile): ?>
-                <div class="hierarchy-status-strip">
-                    <span><strong><?= count($profileActiveGoalCards) ?></strong><small><?= e(t('goals.personal')) ?></small></span>
-                    <span><strong><?= count((array) ($userAchievements ?? [])) ?></strong><small><?= e(t('profile.achievements')) ?></small></span>
-                    <span><strong><?= count($profileFriends) ?></strong><small><?= e(t('nav.friends')) ?></small></span>
-                </div>
-            <?php endif; ?>
             <nav class="hierarchy-nav-list mobile-hub-section-grid" aria-label="<?= e(t('nav.profile')) ?>">
                 <a class="hierarchy-nav-row" data-tone="orange" href="<?= e($profileUrl('goals')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('profile.mobile_goals')) ?></strong><small><?= e(t('profile.mobile_goals_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count($profileActiveGoalCards) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
                 <a class="hierarchy-nav-row" data-tone="blue" href="<?= e($profileUrl('training')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.training_short')) ?></strong><small><?= e(t('profile.mobile_training_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= e(t('workouts.rank_' . $profileTrainingRankKey)) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
@@ -1082,7 +1095,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         </div>
     <?php endif; ?>
 
-    <?php if ($activeSection === ''): ?><header class="mobile-widget-feed-head profile-widget-feed-head"><div><p><?= e(t('dashboard.visible_widgets')) ?></p><h2><?= e(t('nav.profile')) ?></h2></div><?php if ($isOwnProfile): ?><div class="profile-widget-feed-actions"><button type="button" data-app-modal-open="profile-widget-create-modal"><?= e(t('profile.add_widget_short')) ?></button><a href="<?= e($profileUrl('', ['layout_edit' => '1'])) ?>"><?= e(t('profile.customize_layout')) ?></a></div><?php endif; ?></header><?php endif; ?>
+    <?php if ($activeSection === ''): ?><header class="mobile-widget-feed-head profile-widget-feed-head"><div><p><?= e(t('dashboard.visible_widgets')) ?></p><h2><?= e(t('nav.profile')) ?></h2></div><?php if ($isOwnProfile): ?><div class="profile-widget-feed-actions"><button class="profile-widget-add-button" type="button" data-app-modal-open="profile-widget-create-modal" aria-label="<?= e(t('profile.add_widget')) ?>" title="<?= e(t('profile.add_widget')) ?>"><span aria-hidden="true">+</span></button><a href="<?= e($profileUrl('', ['layout_edit' => '1'])) ?>"><?= e(t('profile.customize_layout')) ?></a></div><?php endif; ?></header><?php endif; ?>
     <section class="profile-home-grid<?= $activeSection !== '' ? ' hidden' : '' ?>" data-spa-main <?= $activeSection !== '' ? 'hidden' : '' ?>>
         <article class="panel profile-home-card profile-home-goals compact-panel glass-panel" data-profile-block="goals" data-profile-collapsible="<?= e($profileCollapseStateKey('goals')) ?>" style="<?= e($profileBlockStyle('goals')) ?>">
             <div class="profile-home-card-head">
@@ -1240,7 +1253,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                         'ranked' => (int) ($profileTrainingRank['body_parts_ranked'] ?? 0),
                         'total' => (int) ($profileTrainingRank['body_parts_total'] ?? 0),
                     ])) ?></small>
-                    <span class="profile-training-rank-bar"><i style="width: <?= (int) ($profileTrainingRank['progress'] ?? 0) ?>%"></i></span>
+                    <span class="profile-training-rank-bar" role="progressbar" aria-label="<?= e(t('workouts.overall_rank')) ?>" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= (int) ($profileTrainingRank['progress'] ?? 0) ?>" data-progress="<?= (int) ($profileTrainingRank['progress'] ?? 0) ?>"><i style="width: <?= (int) ($profileTrainingRank['progress'] ?? 0) ?>%"></i></span>
                 </span>
             </div>
             <?php if ($profileTrainingMuscles !== []): ?>
@@ -1279,7 +1292,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                         <span><small><?= e(format_date_eu(substr((string) ($trainingSession['started_at'] ?? ''), 0, 10))) ?></small><strong><?= e((string) (($trainingSession['title'] ?? '') !== '' ? $trainingSession['title'] : t('workouts.session'))) ?></strong></span>
                     <?php endforeach; ?>
                     <?php foreach (array_slice($profileTrainingRecords, 0, 1) as $trainingRecord): ?>
-                        <span><small><?= e(t('workouts.personal_records')) ?></small><strong><?= e((string) ($trainingRecord['exercise_name'] ?? '')) ?> · <?= e(number_format((float) ($trainingRecord['value'] ?? 0), 1, '.', '')) ?> kg</strong></span>
+                        <span class="is-record"><small><?= e(t('workouts.personal_records')) ?></small><strong><?= e((string) ($trainingRecord['exercise_name'] ?? '')) ?> · <?= e(number_format((float) ($trainingRecord['value'] ?? 0), 1, '.', '')) ?> kg</strong></span>
                     <?php endforeach; ?>
                 </div>
             <?php else: ?>
@@ -1323,15 +1336,18 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
             $customWidgetMediaUrl = $customWidgetMediaPath !== '' ? media_url($customWidgetMediaPath, $profileCustomWidget['updated_at'] ?? null) : '';
             $customWidgetMediaMime = strtolower(trim((string) ($profileCustomWidget['media_mime'] ?? '')));
             $customWidgetExternalUrl = profile_custom_widget_url((string) ($profileCustomWidget['external_url'] ?? ''));
-            $customWidgetEmbedUrl = profile_custom_widget_video_embed($customWidgetExternalUrl);
             $customWidgetExternalIsImage = $customWidgetExternalUrl !== '' && preg_match('/\.(?:gif|png|jpe?g|webp)(?:[?#].*)?$/i', $customWidgetExternalUrl) === 1;
-            $customWidgetExternalIsVideo = $customWidgetExternalUrl !== '' && preg_match('/\.(?:mp4|webm|mov)(?:[?#].*)?$/i', $customWidgetExternalUrl) === 1;
+            $customWidgetIsImage = $customWidgetType === 'media'
+                && (($customWidgetMediaUrl !== '' && str_starts_with($customWidgetMediaMime, 'image/')) || $customWidgetExternalIsImage);
             $customWidgetAchievementIds = profile_custom_widget_achievement_ids((string) ($profileCustomWidget['achievement_ids_json'] ?? ''));
             if ($customWidgetType === 'achievements' && $customWidgetAchievementIds === []) {
                 $customWidgetAchievementIds = array_slice(array_keys($profileAchievementById), 0, PROFILE_CUSTOM_WIDGET_ACHIEVEMENT_LIMIT);
             }
             ?>
-            <article class="panel profile-home-card profile-custom-showcase glass-panel<?= empty($profileCustomWidget['is_visible']) ? ' is-owner-hidden' : '' ?>" data-profile-block="<?= e($customWidgetKey) ?>" data-profile-collapsible="<?= e($profileCollapseStateKey($customWidgetKey)) ?>" style="<?= e($profileBlockStyle($customWidgetKey)) ?>--showcase-accent:<?= e(profile_custom_widget_accent((string) ($profileCustomWidget['accent_color'] ?? ''))) ?>;">
+            <article class="panel profile-home-card profile-custom-showcase glass-panel<?= $customWidgetIsImage ? ' is-image-only' : '' ?><?= empty($profileCustomWidget['is_visible']) ? ' is-owner-hidden' : '' ?>" data-profile-block="<?= e($customWidgetKey) ?>"<?= $customWidgetIsImage ? '' : ' data-profile-collapsible="' . e($profileCollapseStateKey($customWidgetKey)) . '"' ?> style="<?= e($profileBlockStyle($customWidgetKey)) ?>--showcase-accent:<?= e(profile_custom_widget_accent((string) ($profileCustomWidget['accent_color'] ?? ''))) ?>;">
+                <?php if ($customWidgetIsImage && $isOwnProfile): ?>
+                    <button class="profile-showcase-edit profile-showcase-image-edit" type="button" data-app-modal-open="profile-widget-edit-modal-<?= $customWidgetId ?>" aria-label="<?= e(t('profile.edit_widget')) ?>" title="<?= e(t('profile.edit_widget')) ?>"><?= activity_icon_svg('sliders') ?></button>
+                <?php elseif (!$customWidgetIsImage): ?>
                 <div class="profile-home-card-head profile-showcase-head">
                     <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('spark') ?></span>
                     <div>
@@ -1340,8 +1356,9 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                     </div>
                     <div class="profile-panel-head-actions"><?php if ($isOwnProfile): ?><button class="profile-showcase-edit" type="button" data-app-modal-open="profile-widget-edit-modal-<?= $customWidgetId ?>" aria-label="<?= e(t('profile.edit_widget')) ?>" title="<?= e(t('profile.edit_widget')) ?>"><?= activity_icon_svg('sliders') ?></button><?php endif; ?><?= $profileCollapseControl() ?></div>
                 </div>
+                <?php endif; ?>
 
-                <?php if (trim((string) ($profileCustomWidget['body'] ?? '')) !== ''): ?>
+                <?php if (!$customWidgetIsImage && trim((string) ($profileCustomWidget['body'] ?? '')) !== ''): ?>
                     <p class="profile-showcase-body"><?= nl2br(e((string) $profileCustomWidget['body'])) ?></p>
                 <?php endif; ?>
 
@@ -1361,21 +1378,13 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                 <?php else: ?>
                     <?php if ($customWidgetMediaUrl !== '' && str_starts_with($customWidgetMediaMime, 'image/')): ?>
                         <div class="profile-showcase-media"><img src="<?= e($customWidgetMediaUrl) ?>" alt="<?= e((string) ($profileCustomWidget['title'] ?? '')) ?>" loading="lazy"></div>
-                    <?php elseif ($customWidgetMediaUrl !== '' && str_starts_with($customWidgetMediaMime, 'video/')): ?>
-                        <div class="profile-showcase-media"><video src="<?= e($customWidgetMediaUrl) ?>" controls playsinline preload="metadata"></video></div>
-                    <?php elseif ($customWidgetEmbedUrl !== ''): ?>
-                        <div class="profile-showcase-media profile-showcase-video"><iframe src="<?= e($customWidgetEmbedUrl) ?>" title="<?= e((string) ($profileCustomWidget['title'] ?? '')) ?>" loading="lazy" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
                     <?php elseif ($customWidgetExternalIsImage): ?>
                         <div class="profile-showcase-media"><img src="<?= e($customWidgetExternalUrl) ?>" alt="<?= e((string) ($profileCustomWidget['title'] ?? '')) ?>" loading="lazy" referrerpolicy="no-referrer"></div>
-                    <?php elseif ($customWidgetExternalIsVideo): ?>
-                        <div class="profile-showcase-media"><video src="<?= e($customWidgetExternalUrl) ?>" controls playsinline preload="metadata"></video></div>
-                    <?php elseif ($customWidgetExternalUrl !== ''): ?>
-                        <a class="profile-showcase-external" href="<?= e($customWidgetExternalUrl) ?>" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">↗</span><strong><?= e(t('profile.widget_open_media')) ?></strong></a>
                     <?php endif; ?>
                 <?php endif; ?>
 
                 <?php $customWidgetLinkUrl = profile_custom_widget_url((string) ($profileCustomWidget['link_url'] ?? '')); ?>
-                <?php if ($customWidgetLinkUrl !== ''): ?>
+                <?php if (!$customWidgetIsImage && $customWidgetLinkUrl !== ''): ?>
                     <a class="profile-showcase-link" href="<?= e($customWidgetLinkUrl) ?>" target="_blank" rel="noopener noreferrer"><?= e(t('profile.widget_visit_link')) ?> <span aria-hidden="true">↗</span></a>
                 <?php endif; ?>
             </article>
@@ -1431,7 +1440,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                 <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('sliders') ?></span>
                 <div>
                     <p class="eyebrow"><?= e(t('profile.current_config')) ?></p>
-                    <h2><?= e(t('profile.current_config')) ?></h2>
+                    <p class="muted small"><?= e($profilePrimaryGoalLabel) ?> · <?= e($profilePrimaryGoalValueDisplay) ?></p>
                 </div>
                 <div class="profile-panel-head-actions"><?php if ($canEditProfile): ?><a class="btn btn-ghost small" href="<?= e($profileUrl('config', ['edit' => 1])) ?>" data-spa-link><?= e(t('common.edit')) ?></a><?php endif; ?><?= $profileCollapseControl() ?></div>
             </div>
@@ -1441,19 +1450,18 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                     <span><?= e($profilePrimaryGoalLabel) ?></span>
                     <b><?= e($profilePrimaryGoalValueDisplay) ?></b>
                 </strong>
-                <small><?= e(count($profilePrimaryGoalsParsed) > 0 ? t('settings.primary_goals_spec') : t('settings.no_extra_goals')) ?></small>
+                <small><?= e($profileAdditionalGoalChips !== [] ? t('settings.primary_goals_spec') : t('settings.no_extra_goals')) ?></small>
             </div>
+            <?php if ($profileAdditionalGoalChips !== []): ?>
             <div class="profile-current-goals">
                 <span><?= e(t('settings.primary_goals_spec')) ?></span>
                 <div class="profile-current-goal-chips">
-                    <?php foreach ($profileCurrentGoalChips as $goalChip): ?>
+                    <?php foreach ($profileAdditionalGoalChips as $goalChip): ?>
                         <span aria-label="<?= e((string) $goalChip['value'] . ' ' . (string) $goalChip['label']) ?>"><strong><?= e((string) $goalChip['value']) ?></strong><small><?= e((string) $goalChip['label']) ?></small></span>
                     <?php endforeach; ?>
-                    <?php if ($profileCurrentGoalChips === []): ?>
-                        <span class="is-empty"><?= e(t('settings.no_extra_goals')) ?></span>
-                    <?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
             <dl class="profile-home-facts">
                 <?php foreach ($profileSetupVisibleRows as $row): ?>
                     <div>
@@ -1600,7 +1608,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                         <span aria-hidden="true"><?= activity_icon_svg('target') ?></span>
                         <div><strong><?= e(t('profile.goal_create_title')) ?></strong><small><?= e(t('profile.goal_create_hint')) ?></small></div>
                     </div>
-                    <form method="post" action="<?= e($profileUrl('goals')) ?>" class="profile-goal-form">
+                    <form method="post" action="<?= e($profileUrl('goals')) ?>" class="profile-goal-form" data-multi-goal-form>
                         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                         <input type="hidden" name="action" value="create_goal">
                         <input type="hidden" name="profile_user_id" value="<?= (int) $profileUser['id'] ?>">
@@ -1623,9 +1631,24 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                                 <?php endforeach; ?>
                             </select></label>
                             <label><span><?= e(t('goals.target')) ?></span><input type="number" min="0" step="0.1" name="target_value" required></label>
+                            <label><span>Peso (%)</span><input type="number" min="0" max="100" step="0.1" name="primary_weight_percent" placeholder="100" data-goal-weight></label>
                             <label><span><?= e(t('goals.due_date')) ?></span><input type="date" name="due_date" min="<?= e($profileTodayDate) ?>"></label>
                         </div>
+                        <div class="stack compact-stack" data-extra-goal-targets></div>
+                        <template data-extra-goal-target-template>
+                            <div class="profile-goal-form-grid goal-extra-target" data-extra-goal-target>
+                                <label><span><?= e(t('goals.type')) ?></span><select name="extra_metric_key[]">
+                                    <?php foreach ($goalTypeOptions as $option): ?>
+                                        <option value="<?= e((string) $option['value']) ?>"><?= e((string) $option['label']) ?></option>
+                                    <?php endforeach; ?>
+                                </select></label>
+                                <label><span><?= e(t('goals.target')) ?></span><input type="number" min="0.01" step="0.1" name="extra_metric_target[]" required></label>
+                                <label><span>Peso (%)</span><input type="number" min="0" max="100" step="0.1" name="extra_metric_weight[]" data-goal-weight></label>
+                                <button class="btn btn-ghost btn-small" type="button" data-remove-goal-target>Eliminar</button>
+                            </div>
+                        </template>
                         <div class="profile-goal-form-actions">
+                            <button class="btn btn-ghost" type="button" data-add-goal-target>+ Añadir objetivo</button>
                             <a class="btn btn-ghost" href="<?= e($profileUrl('goals')) ?>" data-spa-link><?= e(t('common.cancel')) ?></a>
                             <button class="btn btn-primary" type="submit"><span aria-hidden="true">+</span><?= e(t('profile.create_goal_action')) ?></button>
                         </div>
@@ -1641,7 +1664,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
             <?php $goalType = normalize_goal_target_type($goalRawType); ?>
             <?php $goalTarget = (float) ($goal['target_value'] ?? 0); ?>
             <?php $goalCurrent = $goalCurrentValue($goal); ?>
-            <?php $goalProgress = $goalProgressPercent($goal, $goalCurrent); ?>
+            <?php $goalProgress = isset($goal['_weighted_progress_pct']) ? (float) $goal['_weighted_progress_pct'] : $goalProgressPercent($goal, $goalCurrent); ?>
             <?php $goalDueDate = (string) ($goal['due_date'] ?? ''); ?>
             <?php $goalDetailStatus = (string) ($goal['status'] ?? 'active'); ?>
             <div class="stack goal-subview profile-detail-view" data-spa-param-show="goal_id" data-spa-value="<?= (int) $goal['id'] ?>" <?= $isActiveGoalDetail ? '' : 'hidden' ?>>
@@ -1659,6 +1682,18 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                             <span><b><?= e($goalTypeLabel($goalRawType)) ?></b><i aria-hidden="true">·</i><em class="goal-status-chip"><?= e($goalStatusLabel($goalDetailStatus)) ?></em></span>
                             <strong><?= e($formatGoalValue($goalCurrent, $goalType)) ?> <small>/ <?= e($formatGoalValue($goalTarget, $goalType)) ?></small></strong>
                             <div class="goal-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= e((string) $goalProgress) ?>" aria-label="<?= e(t('profile.current_progress')) ?>"><span style="width: <?= e((string) $goalProgress) ?>%"></span></div>
+                            <?php if (!empty($goal['_metric_targets'])): ?>
+                                <div class="goal-target-breakdown">
+                                    <?php foreach ((array) $goal['_metric_targets'] as $targetRow): ?>
+                                        <small>
+                                            <?= e((string) ($targetRow['type_label'] ?? $targetRow['metric_key'] ?? '')) ?>
+                                            · <?= e(format_goal_display_value((float) ($targetRow['current_value'] ?? 0), (string) ($targetRow['metric_key'] ?? 'custom'))) ?>
+                                            / <?= e(format_goal_display_value((float) ($targetRow['target_value'] ?? 0), (string) ($targetRow['metric_key'] ?? 'custom'))) ?>
+                                            · <?= e((string) round((float) ($targetRow['weight_percent'] ?? 0))) ?>%
+                                        </small>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
                         </div>
                         <strong class="profile-goal-detail-percent"><?= e((string) round($goalProgress)) ?><small>%</small></strong>
                     </div>
@@ -1708,7 +1743,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                         <div><small><?= e(t('profile.current_progress')) ?></small><strong><?= e($formatGoalValue($goalCurrent, $goalType)) ?> / <?= e($formatGoalValue($goalTarget, $goalType)) ?> · <?= e($goalTypeLabel($goalRawType)) ?></strong></div>
                         <b><?= e((string) round($goalProgress)) ?>%</b>
                     </div>
-                    <form method="post" action="<?= e($profileUrl('goals')) ?>" class="goal-editor profile-goal-form" id="<?= e($editFormId) ?>" data-goal-edit-form>
+                    <form method="post" action="<?= e($profileUrl('goals')) ?>" class="goal-editor profile-goal-form" id="<?= e($editFormId) ?>" data-goal-edit-form data-multi-goal-form>
                         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                         <input type="hidden" name="action" value="update_goal">
                         <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
@@ -1734,9 +1769,33 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                                 </select>
                             </label>
                             <label><span><?= e(t('goals.target')) ?></span><input type="number" min="0" step="0.1" name="target_value" value="<?= e((string) ($goal['target_value'] ?? '')) ?>" required></label>
+                            <label><span>Peso (%)</span><input type="number" min="0" max="100" step="0.1" name="primary_weight_percent" value="<?= !empty($goal['_metric_targets'][0]) ? e((string) ($goal['_metric_targets'][0]['weight_percent'] ?? '')) : '100' ?>" data-goal-weight></label>
                             <label><span><?= e(t('goals.due_date')) ?></span><input type="date" name="due_date" value="<?= e((string) ($goal['due_date'] ?? '')) ?>"></label>
                         </div>
+                        <div class="stack compact-stack" data-extra-goal-targets>
+                            <?php foreach (array_slice((array) ($goal['_metric_targets'] ?? []), 1) as $existingTarget): ?>
+                                <div class="profile-goal-form-grid goal-extra-target" data-extra-goal-target>
+                                    <label><span><?= e(t('goals.type')) ?></span><select name="extra_metric_key[]">
+                                        <?php foreach ($goalTypeOptions as $option): ?>
+                                            <option value="<?= e((string) $option['value']) ?>" <?= (string) $option['value'] === (string) ($existingTarget['metric_key'] ?? '') ? 'selected' : '' ?>><?= e((string) $option['label']) ?></option>
+                                        <?php endforeach; ?>
+                                    </select></label>
+                                    <label><span><?= e(t('goals.target')) ?></span><input type="number" min="0.01" step="0.1" name="extra_metric_target[]" value="<?= e((string) ($existingTarget['target_value'] ?? '')) ?>" required></label>
+                                    <label><span>Peso (%)</span><input type="number" min="0" max="100" step="0.1" name="extra_metric_weight[]" value="<?= e((string) ($existingTarget['weight_percent'] ?? '')) ?>" data-goal-weight></label>
+                                    <button class="btn btn-ghost btn-small" type="button" data-remove-goal-target>Eliminar</button>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <template data-extra-goal-target-template>
+                            <div class="profile-goal-form-grid goal-extra-target" data-extra-goal-target>
+                                <label><span><?= e(t('goals.type')) ?></span><select name="extra_metric_key[]"><?php foreach ($goalTypeOptions as $option): ?><option value="<?= e((string) $option['value']) ?>"><?= e((string) $option['label']) ?></option><?php endforeach; ?></select></label>
+                                <label><span><?= e(t('goals.target')) ?></span><input type="number" min="0.01" step="0.1" name="extra_metric_target[]" required></label>
+                                <label><span>Peso (%)</span><input type="number" min="0" max="100" step="0.1" name="extra_metric_weight[]" data-goal-weight></label>
+                                <button class="btn btn-ghost btn-small" type="button" data-remove-goal-target>Eliminar</button>
+                            </div>
+                        </template>
                         <div class="goal-editor-actions profile-goal-form-actions">
+                            <button class="btn btn-ghost" type="button" data-add-goal-target>+ Añadir objetivo</button>
                             <button class="btn btn-ghost" type="button" data-app-modal-close><?= e(t('common.cancel')) ?></button>
                             <button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button>
                         </div>
@@ -1776,38 +1835,67 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         </nav>
     </article>
 
+    <?php
+    $profileUnlockedAchievements = array_values(array_filter($profileAchievementCollection, static fn(array $achievement): bool => !empty($achievement['is_unlocked'])));
+    $profileLockedAchievements = array_values(array_filter($profileAchievementCollection, static fn(array $achievement): bool => empty($achievement['is_unlocked'])));
+    $profileAchievementTotal = count($profileAchievementCollection);
+    $profileAchievementUnlockedTotal = count($profileUnlockedAchievements);
+    $profileAchievementCompletion = $profileAchievementTotal > 0
+        ? (int) round(($profileAchievementUnlockedTotal / $profileAchievementTotal) * 100)
+        : 0;
+    $renderProfileAchievementCollectionCard = static function (array $achievement): void {
+        $isUnlocked = !empty($achievement['is_unlocked']);
+        $progressPct = is_numeric($achievement['progress_pct'] ?? null)
+            ? max(0.0, min(100.0, (float) $achievement['progress_pct']))
+            : null;
+        ?>
+        <article class="profile-collection-achievement<?= $isUnlocked ? ' is-unlocked' : ' is-locked' ?>" <?= achievement_modal_attrs($achievement) ?>>
+            <?= achievement_visual_html($achievement, 'achievement-visual profile-achievement-media') ?>
+            <div class="profile-collection-achievement-copy">
+                <div><strong><?= e((string) ($achievement['name'] ?? '')) ?></strong><span><?= e($isUnlocked ? t('achievements.unlocked') : t('achievements.locked')) ?></span></div>
+                <p><?= e((string) ($achievement['description'] ?? '')) ?></p>
+                <?php if ($isUnlocked && !empty($achievement['awarded_at'])): ?>
+                    <small><?= e(t('profile.unlocked_on')) ?> <?= e(format_date_eu((string) $achievement['awarded_at'])) ?></small>
+                <?php elseif ($progressPct !== null): ?>
+                    <div class="profile-achievement-progress">
+                        <span><i style="width:<?= e((string) $progressPct) ?>%"></i></span>
+                        <small><?= e((string) ($achievement['progress_text'] ?? number_format($progressPct, 0) . '%')) ?></small>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </article>
+        <?php
+    };
+    ?>
     <article class="panel settings-panel profile-native-section profile-achievements-panel<?= $activeSection === 'achievements' ? ' active' : '' ?>" data-spa-section="achievements" <?= $activeSection === 'achievements' ? '' : 'hidden' ?>>
         <div class="panel-head profile-section-header">
             <a class="hierarchy-back destination-back profile-section-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.profile')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.profile')) ?></strong></a>
             <div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.achievements')) ?></h2></div>
         </div>
-        <div class="profile-achievement-collection-summary">
-            <span><strong><?= count((array) ($userAchievements ?? [])) ?></strong><small><?= e(t('achievements.unlocked')) ?></small></span>
-            <p><?= e(t('profile.achievement_collection_hint')) ?></p>
+        <div class="profile-achievement-collection-summary profile-achievement-summary-modern">
+            <span><strong><?= $profileAchievementCompletion ?>%</strong><small><?= e(t('achievements.completion')) ?></small></span>
+            <div>
+                <p><?= e(t('profile.achievement_collection_hint')) ?></p>
+                <div class="profile-achievement-summary-counts">
+                    <span><b><?= $profileAchievementUnlockedTotal ?></b> <?= e(t('achievements.unlocked')) ?></span>
+                    <span><b><?= count($profileLockedAchievements) ?></b> <?= e(t('achievements.locked')) ?></span>
+                </div>
+                <div class="profile-achievement-summary-progress" role="progressbar" aria-label="<?= e(t('achievements.completion')) ?>" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= $profileAchievementCompletion ?>"><i style="width:<?= $profileAchievementCompletion ?>%"></i></div>
+            </div>
         </div>
-        <div class="achievement-grid profile-achievement-collection" data-achievement-grid>
-            <?php if (($userAchievements ?? []) === []): ?>
-                <p class="muted"><?= e(t('achievements.empty')) ?></p>
-            <?php else: ?>
-                <?php foreach ($userAchievements as $achievementIndex => $achievement): ?>
-                    <article class="achievement-card profile-achievement-card" <?= achievement_modal_attrs($achievement) ?>>
-                        <?= achievement_visual_html($achievement, 'achievement-visual profile-achievement-media') ?>
-                        <div class="profile-achievement-content">
-                            <strong><?= e((string) $achievement['name']) ?></strong>
-                            <p><?= e((string) $achievement['description']) ?></p>
-                            <div class="achievement-card-meta">
-                                <?php if (!empty($achievement['reward_text'])): ?>
-                                    <span class="achievement-chip"><?= e(t('achievements.reward')) ?>: <?= e((string) $achievement['reward_text']) ?></span>
-                                <?php endif; ?>
-                                <?php if (!empty($achievement['awarded_at'])): ?>
-                                    <span class="achievement-chip achievement-unlocked-date"><?= e(t('profile.unlocked_on')) ?> <?= e(format_date_eu((string) $achievement['awarded_at'])) ?></span>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    </article>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </div>
+        <section class="profile-achievement-group is-unlocked">
+            <div class="profile-achievement-group-head"><div><p class="eyebrow"><?= e(t('achievements.unlocked')) ?></p><h3><?= e(t('achievements.unlocked_title')) ?></h3></div><span><?= $profileAchievementUnlockedTotal ?></span></div>
+            <div class="profile-achievement-collection">
+                <?php if ($profileUnlockedAchievements === []): ?><p class="muted panel-inline-empty"><?= e(t('achievements.no_unlocked')) ?></p><?php endif; ?>
+                <?php foreach ($profileUnlockedAchievements as $achievement): ?><?php $renderProfileAchievementCollectionCard($achievement); ?><?php endforeach; ?>
+            </div>
+        </section>
+        <section class="profile-achievement-group is-locked">
+            <div class="profile-achievement-group-head"><div><p class="eyebrow"><?= e(t('achievements.locked')) ?></p><h3><?= e(t('achievements.locked_title')) ?></h3></div><span><?= count($profileLockedAchievements) ?></span></div>
+            <div class="profile-achievement-collection">
+                <?php foreach ($profileLockedAchievements as $achievement): ?><?php $renderProfileAchievementCollectionCard($achievement); ?><?php endforeach; ?>
+            </div>
+        </section>
     </article>
 
     <?php if ($isOwnProfile): ?>
@@ -2125,9 +2213,9 @@ $renderProfileWidgetForm = static function (?array $widget = null) use ($profile
 
         <section class="profile-widget-media-fields" data-profile-widget-fields="media">
             <div class="profile-widget-source-grid">
-                <label class="profile-widget-upload"><span><?= e(t('profile.widget_upload')) ?></span><input type="file" name="widget_media" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"><small><?= e(t('profile.widget_upload_hint')) ?></small></label>
+                <label class="profile-widget-upload"><span><?= e(t('profile.widget_upload')) ?></span><input type="file" name="widget_media" accept="image/jpeg,image/png,image/webp,image/gif"><small><?= e(t('profile.widget_upload_hint')) ?></small></label>
                 <span class="profile-widget-or"><?= e(t('common.or')) ?></span>
-                <label><span><?= e(t('profile.widget_external_url')) ?></span><input type="url" name="external_url" maxlength="1000" value="<?= e((string) ($widget['external_url'] ?? '')) ?>" inputmode="url" placeholder="https://youtube.com/..."><small><?= e(t('profile.widget_external_hint')) ?></small></label>
+                <label><span><?= e(t('profile.widget_external_url')) ?></span><input type="url" name="external_url" maxlength="1000" value="<?= e((string) ($widget['external_url'] ?? '')) ?>" inputmode="url" placeholder="https://example.com/image.jpg"><small><?= e(t('profile.widget_external_hint')) ?></small></label>
             </div>
             <?php if ($isEdit && trim((string) ($widget['media_path'] ?? '')) !== ''): ?>
                 <label class="profile-widget-remove-media"><input type="checkbox" name="remove_widget_media" value="1"><span><?= e(t('profile.widget_remove_media')) ?></span></label>
