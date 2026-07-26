@@ -1192,6 +1192,15 @@ if ($page === 'onboarding') {
                 if ($workoutTarget > 0) {
                     $enabledMetrics[] = 'workouts';
                 }
+                if ($idealWeightRaw !== '') {
+                    $enabledMetrics[] = 'weight';
+                }
+                if ($calorieBurnRaw !== '') {
+                    $enabledMetrics[] = 'calories_burned';
+                }
+                if ($calorieConsumedRaw !== '') {
+                    $enabledMetrics[] = 'calories_consumed';
+                }
                 foreach ($dailyGoals as $dailyGoal) {
                     if ((string) ($dailyGoal['type'] ?? '') === 'km') {
                         $enabledMetrics[] = 'distance';
@@ -3415,6 +3424,61 @@ if ($page === 'workouts') {
         };
 
         switch ($wkAction) {
+            case 'session_share':
+                $shareSessionId = max(0, (int) ($_POST['session_id'] ?? 0));
+                $shareSession = $shareSessionId > 0 ? wk_session_get($pdo, $shareSessionId, $meId) : null;
+                if ($shareSession === null || (string) ($shareSession['status'] ?? '') !== 'completed') {
+                    flash_set('error', t('workouts.share_invalid'));
+                    redirect('/?page=workouts&view=stats');
+                }
+                $acceptedFriends = friends_list($pdo, $meId);
+                $acceptedFriendIds = array_fill_keys(array_map(
+                    static fn(array $friend): int => (int) ($friend['id'] ?? 0),
+                    $acceptedFriends
+                ), true);
+                $recipientIds = array_values(array_unique(array_filter(
+                    array_map('intval', (array) ($_POST['friend_ids'] ?? [])),
+                    static fn(int $friendId): bool => $friendId > 0 && isset($acceptedFriendIds[$friendId])
+                )));
+                $recipientIds = array_slice($recipientIds, 0, 50);
+                if ($recipientIds === []) {
+                    flash_set('error', t('workouts.share_choose_friend'));
+                    redirect('/?page=workouts&view=stats&detail_session=' . $shareSessionId);
+                }
+                $shareExercises = wk_session_exercises($pdo, $shareSessionId);
+                $shareVolume = 0.0;
+                $shareSets = 0;
+                foreach ($shareExercises as $shareExercise) {
+                    foreach ((array) ($shareExercise['sets'] ?? []) as $shareSet) {
+                        if ((int) ($shareSet['completed'] ?? 0) !== 1) {
+                            continue;
+                        }
+                        $shareVolume += (float) ($shareSet['weight'] ?? 0) * (int) ($shareSet['reps'] ?? 0);
+                        $shareSets++;
+                    }
+                }
+                $shareVolumeLabel = number_format($shareVolume, abs($shareVolume - round($shareVolume)) < 0.001 ? 0 : 1, ',', '.') . ' Kg';
+                $shareTitle = trim((string) ($shareSession['title'] ?? '')) ?: t('workouts.session');
+                $senderName = trim((string) ($currentUser['display_name'] ?? $currentUser['username'] ?? ''));
+                foreach ($recipientIds as $recipientId) {
+                    upsert_user_notification(
+                        $pdo,
+                        $recipientId,
+                        'workout_share',
+                        t('workouts.share_notification_title', ['name' => $senderName]),
+                        t('workouts.share_notification_message', [
+                            'title' => $shareTitle,
+                            'volume' => $shareVolumeLabel,
+                            'sets' => $shareSets,
+                            'exercises' => count($shareExercises),
+                        ]),
+                        'workout-share:' . $shareSessionId . ':' . $meId,
+                        ['sender_user_id' => $meId, 'session_id' => $shareSessionId]
+                    );
+                }
+                flash_set('success', t('workouts.share_success', ['count' => count($recipientIds)]));
+                redirect('/?page=workouts&view=stats&detail_session=' . $shareSessionId);
+
             case 'library_layout_update':
                 $libraryLayout = in_array((string) ($_POST['library_layout'] ?? ''), ['cards', 'compact'], true)
                     ? (string) $_POST['library_layout']
@@ -4401,6 +4465,7 @@ if ($page === 'workouts') {
         'wkStats' => $wkStats,
         'wkStatsSession' => $wkStatsSession ?? null,
         'wkStatsSessionExercises' => $wkStatsSessionExercises ?? [],
+        'wkShareFriends' => friends_list($pdo, $meId),
         'wkStatsExercise' => $wkStatsExercise ?? null,
         'wkStatsExerciseHistory' => $wkStatsExerciseHistory ?? [],
         'wkFriendRoutines' => $wkFriendRoutines ?? [],
@@ -4691,6 +4756,52 @@ if ($page === 'settings') {
             $after = db_fetch_one($pdo, 'SELECT id, ideal_weight, height_cm, competitive_division FROM users WHERE id = :id', [':id' => (int) $currentUser['id']]);
             audit_log($pdo, (int) $currentUser['id'], 'body_settings_updated', 'user', (string) $currentUser['id'], 'Body settings updated.', $before, $after);
             flash_set('success', t('settings.body_profile_saved'));
+            redirect($settingsRedirect('body'));
+        }
+
+        if ($action === 'save_weight_entry') {
+            $weightDate = to_date((string) ($_POST['weight_date'] ?? null));
+            $weightRaw = trim((string) ($_POST['weight'] ?? ''));
+            if ($weightRaw === '' || !is_numeric($weightRaw) || (float) $weightRaw < 25 || (float) $weightRaw > 400) {
+                flash_set('error', t('settings.weight_entry_invalid'));
+                redirect($settingsRedirect('body'));
+            }
+            $weightValue = round((float) $weightRaw, 1);
+            $weightUserId = (int) $currentUser['id'];
+            $before = fetch_log($pdo, $weightUserId, $weightDate);
+            $now = now_iso();
+            db_execute(
+                $pdo,
+                'INSERT INTO daily_logs (user_id, log_date, log_time, weight, created_at, updated_at)
+                 VALUES (:user_id, :log_date, :log_time, :weight, :created_at, :updated_at)
+                 ON CONFLICT(user_id, log_date) DO UPDATE SET
+                    weight = excluded.weight,
+                    version = daily_logs.version + 1,
+                    updated_at = excluded.updated_at',
+                [
+                    ':user_id' => $weightUserId,
+                    ':log_date' => $weightDate,
+                    ':log_time' => (new DateTimeImmutable('now'))->format('H:i'),
+                    ':weight' => $weightValue,
+                    ':created_at' => $now,
+                    ':updated_at' => $now,
+                ]
+            );
+            $enabledMetrics = metric_enabled_keys($pdo, $currentUser);
+            $enabledMetrics[] = 'weight';
+            save_user_metric_preferences($pdo, $currentUser, array_values(array_unique($enabledMetrics)));
+            $after = fetch_log($pdo, $weightUserId, $weightDate);
+            audit_log(
+                $pdo,
+                $weightUserId,
+                'weight_entry_saved',
+                'daily_log',
+                $weightUserId . ':' . $weightDate,
+                'Weight entry saved from body settings.',
+                audit_snapshot($before),
+                audit_snapshot($after)
+            );
+            flash_set('success', t('settings.weight_entry_saved'));
             redirect($settingsRedirect('body'));
         }
 

@@ -1289,10 +1289,22 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
             <?php if ($profileTrainingRecentSessions !== [] || $profileTrainingRecords !== []): ?>
                 <div class="profile-training-recent">
                     <?php foreach (array_slice($profileTrainingRecentSessions, 0, 2) as $trainingSession): ?>
-                        <span><small><?= e(format_date_eu(substr((string) ($trainingSession['started_at'] ?? ''), 0, 10))) ?></small><strong><?= e((string) (($trainingSession['title'] ?? '') !== '' ? $trainingSession['title'] : t('workouts.session'))) ?></strong></span>
+                        <?php if ($isOwnProfile): ?>
+                            <a href="/?page=workouts&amp;view=stats&amp;detail_session=<?= (int) ($trainingSession['id'] ?? 0) ?>" aria-label="<?= e(t('workouts.session_summary')) ?>: <?= e((string) (($trainingSession['title'] ?? '') !== '' ? $trainingSession['title'] : t('workouts.session'))) ?>">
+                                <small><?= e(format_date_eu(substr((string) ($trainingSession['started_at'] ?? ''), 0, 10))) ?></small><strong><?= e((string) (($trainingSession['title'] ?? '') !== '' ? $trainingSession['title'] : t('workouts.session'))) ?></strong><b aria-hidden="true">&rsaquo;</b>
+                            </a>
+                        <?php else: ?>
+                            <span><small><?= e(format_date_eu(substr((string) ($trainingSession['started_at'] ?? ''), 0, 10))) ?></small><strong><?= e((string) (($trainingSession['title'] ?? '') !== '' ? $trainingSession['title'] : t('workouts.session'))) ?></strong></span>
+                        <?php endif; ?>
                     <?php endforeach; ?>
                     <?php foreach (array_slice($profileTrainingRecords, 0, 1) as $trainingRecord): ?>
-                        <span class="is-record"><small><?= e(t('workouts.personal_records')) ?></small><strong><?= e((string) ($trainingRecord['exercise_name'] ?? '')) ?> · <?= e(number_format((float) ($trainingRecord['value'] ?? 0), 1, '.', '')) ?> kg</strong></span>
+                        <?php if ($isOwnProfile): ?>
+                            <a class="is-record" href="/?page=workouts&amp;view=stats&amp;exercise_stats=<?= (int) ($trainingRecord['exercise_def_id'] ?? 0) ?>" aria-label="<?= e(t('workouts.exercise_summary')) ?>: <?= e((string) ($trainingRecord['exercise_name'] ?? '')) ?>">
+                                <small><?= e(t('workouts.personal_records')) ?></small><strong><?= e((string) ($trainingRecord['exercise_name'] ?? '')) ?> · <?= e(number_format((float) ($trainingRecord['value'] ?? 0), 1, ',', '.')) ?> Kg</strong><b aria-hidden="true">&rsaquo;</b>
+                            </a>
+                        <?php else: ?>
+                            <span class="is-record"><small><?= e(t('workouts.personal_records')) ?></small><strong><?= e((string) ($trainingRecord['exercise_name'] ?? '')) ?> · <?= e(number_format((float) ($trainingRecord['value'] ?? 0), 1, ',', '.')) ?> Kg</strong></span>
+                        <?php endif; ?>
                     <?php endforeach; ?>
                 </div>
             <?php else: ?>
@@ -1820,7 +1832,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
             <a class="hierarchy-nav-row" href="/?page=workouts&view=ranks"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('workouts.tab_ranks')) ?></strong><small><?= e(t('workouts.rank_subtitle')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
             <a class="hierarchy-nav-row" href="/?page=workouts&view=stats"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('run') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('workouts.stats')) ?></strong><small><?= e(t('workouts.stats_subtitle')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
         </nav>
-        <?php if ($profileTrainingRecentSessions !== []): ?><article class="native-list-card"><h3><?= e(t('workouts.recent_sessions')) ?></h3><?php foreach ($profileTrainingRecentSessions as $session): ?><div class="native-list-row"><span><strong><?= e((string) (($session['title'] ?? '') !== '' ? $session['title'] : t('workouts.session'))) ?></strong><small><?= e(human_time_ago((string) ($session['started_at'] ?? ''))) ?></small></span><strong><?= e(number_format((float) ($session['total_volume'] ?? 0), 0, '.', ' ')) ?> kg</strong></div><?php endforeach; ?></article><?php endif; ?>
+        <?php if ($profileTrainingRecentSessions !== []): ?><article class="native-list-card"><h3><?= e(t('workouts.recent_sessions')) ?></h3><?php foreach ($profileTrainingRecentSessions as $session): ?><?php if ($isOwnProfile): ?><a class="native-list-row" href="/?page=workouts&amp;view=stats&amp;detail_session=<?= (int) ($session['id'] ?? 0) ?>"><span><strong><?= e((string) (($session['title'] ?? '') !== '' ? $session['title'] : t('workouts.session'))) ?></strong><small><?= e(human_time_ago((string) ($session['started_at'] ?? ''))) ?></small></span><b aria-hidden="true">&rsaquo;</b></a><?php else: ?><div class="native-list-row"><span><strong><?= e((string) (($session['title'] ?? '') !== '' ? $session['title'] : t('workouts.session'))) ?></strong><small><?= e(human_time_ago((string) ($session['started_at'] ?? ''))) ?></small></span></div><?php endif; ?><?php endforeach; ?></article><?php endif; ?>
     </article>
     <?php endif; ?>
 
@@ -2294,6 +2306,14 @@ $renderProfileWidgetForm = static function (?array $widget = null) use ($profile
                 <small><?= e(t('profile.avatar_photo_hint')) ?></small>
             </span>
         </a>
+
+        <button class="avatar-menu-option" type="button" data-app-modal-open="profile-tagline-modal">
+            <span class="avatar-menu-icon" aria-hidden="true">&#9998;</span>
+            <span class="avatar-menu-copy">
+                <strong><?= e(t('profile.cover_text_edit')) ?></strong>
+                <small><?= e(t('profile.cover_text_hint')) ?></small>
+            </span>
+        </button>
 
         <?php $cosmetics = (array) ($profileCosmetics ?? []); ?>
         <?php if ($cosmetics !== []): ?>

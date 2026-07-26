@@ -242,6 +242,71 @@ body[data-page="profile"] .profile-context-back { max-width: 144px; }
 body[data-page="profile"] .profile-config-edit-action { gap: 6px; }
 body[data-page="profile"] .profile-config-edit-action svg { width: 16px; height: 16px; }
 
+/* The multi-goal editor had zero CSS of its own: extra goal rows rendered as
+   plain unbordered labels, visually identical to the single primary-goal
+   field above them, with no cue that they belong to a separate repeatable
+   list. Give the widget its own card treatment so it reads as one distinct
+   group, and let it span the full form width (it holds up to 3 sub-fields
+   per row, too cramped in a half-width grid column). */
+body[data-page="profile"] .profile-primary-goals-field {
+    grid-column: 1 / -1;
+}
+body[data-page="profile"] .profile-field-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+    margin-bottom: 8px;
+}
+body[data-page="profile"] .profile-field-head > span {
+    font-weight: 600;
+}
+body[data-page="profile"] .profile-field-head > small {
+    flex: 1 1 100%;
+}
+body[data-page="profile"] .primary-goals-list {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+body[data-page="profile"] .primary-goal-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    align-items: end;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--surface-2);
+}
+body[data-page="profile"] .primary-goal-row label {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+body[data-page="profile"] .primary-goal-remove {
+    align-self: end;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    font-size: 1.05rem;
+    color: var(--muted);
+}
+body[data-page="profile"] .primary-goals-empty {
+    margin: 2px 0 10px;
+}
+@media (max-width: 640px) {
+    body[data-page="profile"] .primary-goal-row {
+        grid-template-columns: 1fr 1fr;
+    }
+    body[data-page="profile"] .primary-goal-remove {
+        grid-column: 1 / -1;
+        width: 100%;
+    }
+}
+
 body[data-page="profile"] .profile-goal-new-button { gap: 7px; border-radius: 999px; }
 body[data-page="profile"] .profile-goal-new-button > span {
     display: grid;

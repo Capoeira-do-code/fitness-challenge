@@ -191,7 +191,7 @@ if ($settingsView === 'avatar') {
                     <div><h2><?= e(t('settings.weight_log_title')) ?></h2><p class="muted small"><?= e(t('settings.weight_log_hint')) ?></p></div>
                 </div>
                 <div class="settings-weight-actions">
-                    <a class="btn btn-primary" href="/?page=entries&amp;mode=data#entry-weight"><span aria-hidden="true"><?= activity_icon_svg('plus') ?></span><strong><?= e(t('settings.weight_log_action')) ?></strong></a>
+                    <button class="btn btn-primary" type="button" data-app-modal-open="settings-weight-entry-modal"><span aria-hidden="true"><?= activity_icon_svg('plus') ?></span><strong><?= e(t('settings.weight_log_action')) ?></strong></button>
                     <a class="btn btn-ghost" href="/?page=analytics&amp;section=body"><span aria-hidden="true"><?= activity_icon_svg('sliders') ?></span><strong><?= e(t('settings.weight_open_analytics')) ?></strong></a>
                 </div>
             </section>
@@ -215,14 +215,17 @@ if ($settingsView === 'avatar') {
             </form>
 
             <section class="settings-preference-group settings-weight-history">
-                <div class="settings-weight-history-head"><div><h2><?= e(t('settings.weight_history')) ?></h2><p class="muted small"><?= e(t('settings.weight_history_hint')) ?></p></div><span class="badge"><?= count($settingsWeightSeries) ?></span></div>
+                <div class="settings-weight-history-head">
+                    <div><h2><?= e(t('settings.weight_history')) ?></h2><p class="muted small"><?= e(t('settings.weight_history_hint')) ?></p></div>
+                    <div class="settings-weight-history-actions"><span class="badge"><?= count($settingsWeightSeries) ?></span><button class="btn btn-primary small" type="button" data-app-modal-open="settings-weight-entry-modal"><span aria-hidden="true"><?= activity_icon_svg('plus') ?></span><?= e(t('settings.weight_log_action')) ?></button></div>
+                </div>
                 <?php if ($settingsWeightTrendPoints !== ''): ?>
                     <div class="settings-weight-trend" aria-hidden="true">
                         <svg viewBox="0 0 240 70" preserveAspectRatio="none"><path d="M6 62H234"/><polyline points="<?= e($settingsWeightTrendPoints) ?>"/></svg>
                     </div>
                 <?php endif; ?>
                 <?php if ($settingsRecentWeights === []): ?>
-                    <div class="settings-weight-empty"><span aria-hidden="true"><?= activity_icon_svg('target') ?></span><p><?= e(t('settings.weight_empty')) ?></p><a class="btn btn-ghost small" href="/?page=entries&amp;mode=data#entry-weight"><?= e(t('settings.weight_log_action')) ?></a></div>
+                    <div class="settings-weight-empty"><span aria-hidden="true"><?= activity_icon_svg('target') ?></span><p><?= e(t('settings.weight_empty')) ?></p><button class="btn btn-ghost small" type="button" data-app-modal-open="settings-weight-entry-modal"><?= e(t('settings.weight_log_action')) ?></button></div>
                 <?php else: ?>
                     <div class="settings-weight-list">
                         <?php foreach ($settingsRecentWeights as $index => $weightRow): ?>
@@ -242,6 +245,24 @@ if ($settingsView === 'avatar') {
                 <?php endif; ?>
             </section>
         </article>
+
+        <div class="app-modal settings-weight-entry-modal" id="settings-weight-entry-modal" hidden role="dialog" aria-modal="true" aria-labelledby="settings-weight-entry-title">
+            <div class="app-modal-card">
+                <div class="app-modal-head">
+                    <div><p class="eyebrow"><?= e(t('settings.body_title')) ?></p><h2 id="settings-weight-entry-title"><?= e(t('settings.weight_entry_title')) ?></h2><small><?= e(t('settings.weight_entry_hint')) ?></small></div>
+                    <button class="app-modal-close" type="button" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button>
+                </div>
+                <form method="post" action="/?page=settings&amp;view=body" class="stack settings-weight-entry-form">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="save_weight_entry">
+                    <div class="grid-inline two">
+                        <label><span><?= e(t('common.date')) ?></span><input type="date" name="weight_date" value="<?= e(to_date(null)) ?>" required></label>
+                        <label><span><?= e(t('metric.weight')) ?></span><span class="settings-weight-goal-input"><input type="number" name="weight" min="25" max="400" step="0.1" inputmode="decimal" value="<?= $settingsLatestWeight !== null ? e(number_format($settingsLatestWeight, 1, '.', '')) : '' ?>" required autofocus><span aria-hidden="true">kg</span></span></label>
+                    </div>
+                    <div class="settings-weight-entry-actions"><button class="btn btn-ghost" type="button" data-app-modal-close><?= e(t('common.cancel')) ?></button><button class="btn btn-primary" type="submit"><?= e(t('common.save')) ?></button></div>
+                </form>
+            </div>
+        </div>
     <?php endif; ?>
 
     <?php if ($settingsView === 'account'): ?>

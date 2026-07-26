@@ -813,6 +813,10 @@ if ($entryMode === 'calendar') {
             <label>Color<input type="color" name="color" value="#18a999"></label>
         </div>
         <p class="form-error" data-custom-metric-error hidden></p>
-        <button class="btn btn-primary btn-block" type="submit">Crear y añadir</button>
+        <p class="form-success" data-custom-metric-success role="status" aria-live="polite" hidden></p>
+        <div class="custom-metric-dialog-actions">
+            <button class="btn btn-ghost" type="submit" name="create_mode" value="another">Crear y añadir otra</button>
+            <button class="btn btn-primary" type="submit" name="create_mode" value="done">Crear y terminar</button>
+        </div>
     </form>
 </dialog>

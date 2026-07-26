@@ -10582,6 +10582,11 @@ function resolve_notification_destination(PDO $pdo, array $notification): string
     if ($kind === 'weekly_report') {
         return '/?page=weekly_report&start=' . rawurlencode((string) ($payload['report_start'] ?? ''));
     }
+    if ($kind === 'workout_share') {
+        $senderUserId = (int) ($payload['sender_user_id'] ?? 0);
+
+        return $senderUserId > 0 ? '/?page=profile&user_id=' . $senderUserId : '/?page=social';
+    }
 
     if (in_array($kind, ['strike_review_request', 'strike_review_resolved'], true)) {
         $targetUserId = (int) ($payload['target_user_id'] ?? 0);

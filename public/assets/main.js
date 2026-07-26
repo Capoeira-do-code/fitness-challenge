@@ -7427,7 +7427,7 @@ document.addEventListener('click', (event) => {
         }
     };
 
-    const closeOverlay = (overlay) => {
+    const closeOverlay = (overlay, immediate = false) => {
         if (!overlay || overlay.hidden) return;
         overlay.classList.remove('is-open');
         const anyOpen = () => document.querySelector('.app-modal.is-open, .app-drawer.is-open');
@@ -7436,6 +7436,10 @@ document.addEventListener('click', (event) => {
             restoreOverlay(overlay);
             if (!anyOpen()) document.body.classList.remove('app-scroll-locked');
         };
+        if (immediate) {
+            finish();
+            return;
+        }
         let done = false;
         const onEnd = () => { if (done) return; done = true; finish(); };
         overlay.addEventListener('transitionend', onEnd, { once: true });
@@ -7452,9 +7456,19 @@ document.addEventListener('click', (event) => {
             const overlay = id ? document.getElementById(id) : null;
             if (overlay) {
                 event.preventDefault();
+                const currentOverlay = opener.closest('.app-modal, .app-drawer');
+                if (currentOverlay && currentOverlay !== overlay) {
+                    closeOverlay(currentOverlay, true);
+                }
                 openOverlay(overlay);
                 return;
             }
+        }
+
+        const modalNavigation = target.closest('.app-modal a[href], .app-drawer a[href]');
+        if (modalNavigation) {
+            closeOverlay(modalNavigation.closest('.app-modal, .app-drawer'), true);
+            return;
         }
 
         const closer = target.closest('[data-app-modal-close]');
@@ -10867,10 +10881,22 @@ document.addEventListener('click', (event) => {
             metricForm.addEventListener('submit', async (event) => {
                 event.preventDefault();
                 const error = metricForm.querySelector('[data-custom-metric-error]');
-                const submit = metricForm.querySelector('button[type="submit"]');
-                if (submit instanceof HTMLButtonElement) submit.disabled = true;
+                const success = metricForm.querySelector('[data-custom-metric-success]');
+                const submitter = event.submitter instanceof HTMLButtonElement ? event.submitter : null;
+                const createAnother = submitter?.value === 'another';
+                const submitButtons = metricForm.querySelectorAll('button[type="submit"]');
+                submitButtons.forEach((button) => { button.disabled = true; });
+                if (error instanceof HTMLElement) {
+                    error.hidden = true;
+                    error.textContent = '';
+                }
+                if (success instanceof HTMLElement) {
+                    success.hidden = true;
+                    success.textContent = '';
+                }
                 try {
                     const payload = Object.fromEntries(new FormData(metricForm).entries());
+                    delete payload.create_mode;
                     const response = await fetch('/?page=api_custom_metrics', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
@@ -10878,14 +10904,60 @@ document.addEventListener('click', (event) => {
                     });
                     const result = await response.json();
                     if (!response.ok || !result.ok) throw new Error(result.message || 'No se pudo crear la métrica.');
-                    window.location.reload();
+                    const metric = result.metric || {};
+                    const metricId = Number(metric.id || 0);
+                    const metricList = document.querySelector('[data-custom-metric-list]');
+                    if (metricId > 0 && metricList instanceof HTMLElement && !metricList.querySelector(`[name="custom_metric[${metricId}]"]`)) {
+                        const field = document.createElement('label');
+                        field.className = 'entry-custom-metric-field';
+                        field.style.setProperty('--custom-metric-color', String(metric.color || '#18a999'));
+
+                        const copy = document.createElement('span');
+                        const name = document.createElement('strong');
+                        const unit = document.createElement('small');
+                        name.textContent = String(metric.name || '');
+                        unit.textContent = String(metric.unit || '');
+                        copy.append(name, unit);
+
+                        const input = document.createElement('input');
+                        input.type = 'number';
+                        input.step = 'any';
+                        input.inputMode = 'decimal';
+                        input.name = `custom_metric[${metricId}]`;
+                        field.append(copy, input);
+                        metricList.append(field);
+
+                        const count = metricList.closest('.entry-custom-metrics')?.querySelector('.entry-habits-count');
+                        if (count instanceof HTMLElement) {
+                            count.textContent = String(metricList.querySelectorAll('.entry-custom-metric-field').length);
+                        }
+                    }
+
+                    metricForm.reset();
+                    if (success instanceof HTMLElement) {
+                        success.hidden = false;
+                        success.textContent = createAnother
+                            ? 'Métrica añadida. Puedes crear otra.'
+                            : 'Métrica añadida al registro.';
+                    }
+                    if (createAnother) {
+                        const nameInput = metricForm.querySelector('input[name="name"]');
+                        if (nameInput instanceof HTMLInputElement) nameInput.focus();
+                    } else {
+                        const dialog = metricForm.closest('dialog');
+                        if (dialog instanceof HTMLDialogElement) dialog.close();
+                        const newInput = metricId > 0
+                            ? document.querySelector(`[name="custom_metric[${metricId}]"]`)
+                            : null;
+                        if (newInput instanceof HTMLInputElement) newInput.focus({preventScroll: false});
+                    }
                 } catch (reason) {
                     if (error instanceof HTMLElement) {
                         error.hidden = false;
                         error.textContent = reason instanceof Error ? reason.message : String(reason);
                     }
                 } finally {
-                    if (submit instanceof HTMLButtonElement) submit.disabled = false;
+                    submitButtons.forEach((button) => { button.disabled = false; });
                 }
             });
         }

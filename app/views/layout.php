@@ -462,7 +462,6 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                                 <a class="mobile-quick-action" data-tone="blue" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><strong><?= e(t('entries.quick_data')) ?></strong><small><?= e(t('quick_actions.daily_hint')) ?></small></span></a>
                                 <a class="mobile-quick-action" data-tone="orange" href="/?page=nutrition"><span class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><strong><?= e(t('entries.quick_meal')) ?></strong><small><?= e(t('quick_actions.meal_hint')) ?></small></span></a>
                                 <a class="mobile-quick-action" data-tone="green" href="/?page=workouts"><span class="quick-entry-icon"><?= $renderQuickActionIcon('workout') ?></span><span><strong><?= e(t('quick_actions.workout')) ?></strong><small><?= e(t('quick_actions.workout_hint')) ?></small></span></a>
-                                <a class="mobile-quick-action" data-tone="violet" href="/?page=entries&mode=data&metric_new=1"><span class="quick-entry-icon"><?= $renderQuickActionIcon('goal') ?></span><span><strong>Metric</strong><small>Registra o crea una métrica personal</small></span></a>
                             </div>
                         </div>
                     </details>

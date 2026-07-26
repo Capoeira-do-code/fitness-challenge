@@ -4983,6 +4983,77 @@ body[data-page="nutrition"] .nutrition-dialog header small {
     margin-top: 0.3rem;
 }
 
+/* Entries uses the same native-dialog pattern. Avoid legacy token aliases
+   making the custom-metric surface transparent in either theme. */
+body[data-page="entries"] .custom-metric-dialog {
+    isolation: isolate;
+    width: min(680px, calc(100% - 1.25rem));
+    max-height: calc(100dvh - 1.25rem);
+    padding: 1.25rem;
+    overflow: auto;
+    border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--line));
+    border-radius: 24px;
+    color: var(--ink);
+    background-color: var(--surface);
+    background-image: linear-gradient(
+        145deg,
+        color-mix(in srgb, var(--primary) 5%, var(--surface)),
+        var(--surface) 42%
+    );
+    box-shadow: 0 28px 90px rgba(3, 12, 20, 0.36);
+    opacity: 1;
+}
+
+body[data-page="entries"] .custom-metric-dialog::backdrop {
+    background: rgba(3, 12, 20, 0.72);
+    backdrop-filter: blur(7px);
+}
+
+body[data-page="entries"] .custom-metric-dialog > form {
+    position: relative;
+    z-index: 1;
+}
+
+body[data-page="entries"] .custom-metric-dialog header {
+    padding-bottom: 0.8rem;
+    border-bottom: 1px solid var(--line);
+}
+
+body[data-page="entries"] .custom-metric-dialog header :is(.eyebrow, h2) {
+    margin: 0;
+}
+
+body[data-page="entries"] .custom-metric-dialog header h2 {
+    margin-top: 0.12rem;
+}
+
+body[data-page="entries"] .custom-metric-dialog .dialog-close {
+    flex: 0 0 auto;
+    color: var(--ink);
+    background: var(--surface-2);
+}
+
+body[data-page="entries"] .custom-metric-dialog :is(input, select) {
+    background-color: var(--surface);
+}
+
+body[data-page="entries"] .custom-metric-dialog-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.65rem;
+}
+
+body[data-page="entries"] .custom-metric-dialog-actions .btn {
+    min-height: 48px;
+}
+
+body[data-page="entries"] .custom-metric-dialog .form-success {
+    margin: 0;
+    color: var(--success, #15803d);
+    font-size: 0.82rem;
+    font-weight: 750;
+}
+
 body[data-page="nutrition"] .nutrition-calorie-field {
     gap: 0.45rem;
     padding: 0.85rem;
@@ -5063,6 +5134,25 @@ body[data-page="nutrition"] .nutrition-advanced-fields > .grid-inline {
 }
 
 @media (max-width: 600px) {
+    body[data-page="entries"] .custom-metric-dialog {
+        width: calc(100% - 1rem);
+        max-height: calc(100dvh - 1rem);
+        padding: 1rem;
+        border-radius: 20px;
+    }
+
+    body[data-page="entries"] .custom-metric-dialog > form {
+        gap: 0.75rem;
+    }
+
+    body[data-page="entries"] .custom-metric-dialog .grid-inline.two {
+        grid-template-columns: 1fr;
+    }
+
+    body[data-page="entries"] .custom-metric-dialog-actions {
+        grid-template-columns: 1fr;
+    }
+
     body[data-page="nutrition"] .nutrition-dialog {
         width: calc(100% - 1rem);
         max-height: calc(100dvh - 1rem);
@@ -6521,7 +6611,7 @@ body[data-theme="dark"] .training-sheet-table thead th {
     .week-check[data-help]::before {
         content: '';
         position: absolute;
-        left: 12px;
+        right: 12px;
         top: calc(100% + 2px);
         border: 6px solid transparent;
         border-bottom-color: rgba(15, 24, 20, 0.95);
@@ -6529,28 +6619,37 @@ body[data-theme="dark"] .training-sheet-table thead th {
         transform: translateY(4px);
         pointer-events: none;
         transition: opacity 0.15s ease, transform 0.15s ease;
-        z-index: 22;
+        /* Must clear the mobile bottom nav (120) and PWA install nudge (11020),
+           the two fixed-position layers this tooltip most often ends up under
+           near the bottom of the viewport. */
+        z-index: 11500;
     }
 
     .week-help-wrap[data-help]::after,
     .week-check[data-help]::after {
         content: attr(data-help);
         position: absolute;
-        left: 0;
+        right: 0;
         top: calc(100% + 13px);
         width: min(280px, calc(100vw - 2rem));
+        max-width: calc(100vw - 2rem);
         border-radius: 10px;
         background: rgba(15, 24, 20, 0.95);
         color: #f9fcfb;
         padding: 0.55rem 0.62rem;
         font-size: 0.74rem;
         line-height: 1.35;
+        /* .week-check sets white-space: nowrap on itself (keeps its own "Sí"
+           label from wrapping); that is inherited by this pseudo-element too,
+           which let the tooltip text run off its own box and get painted over
+           by the next table cell's background instead of wrapping. */
+        white-space: normal;
         box-shadow: 0 14px 28px rgba(15, 24, 20, 0.28);
         opacity: 0;
         transform: translateY(6px);
         pointer-events: none;
         transition: opacity 0.15s ease, transform 0.15s ease;
-        z-index: 22;
+        z-index: 11500;
     }
 
     .week-help-wrap[data-help]:hover::before,
@@ -10226,6 +10325,13 @@ body.theme-active-dark :is(.season-ranking-hero, .season-ranking-summary, .seaso
         margin-bottom: -0.2rem;
     }
 
+    /* The habits cell's own data-label ("Hábitos") duplicates its group
+       label ::after immediately above it once sections are grouped - drop
+       the redundant one and let the group label carry the heading. */
+    .training-sheet-table .week-day-card > .sheet-habits-cell::before {
+        content: none;
+    }
+
     .training-sheet-table tbody td > .sheet-field,
     .training-sheet-table tbody td > .week-help-wrap,
     .training-sheet-table tbody td.sheet-workout-cell > .week-help-wrap,
@@ -10246,10 +10352,49 @@ body.theme-active-dark :is(.season-ranking-hero, .season-ranking-summary, .seaso
     .training-sheet-table .sheet-field select,
     .training-sheet-table .week-field.sheet-field input,
     .training-sheet-table .week-field.sheet-field select {
-        min-height: 38px;
+        min-height: 44px;
         border: 1px solid var(--line);
         border-radius: 8px;
-        background: color-mix(in srgb, var(--surface) 95%, var(--line));
+        background: var(--surface-2);
+    }
+
+    /* Group the flat field list into scannable clusters (registro / entreno /
+       cuerpo / habitos / notas), each opening with a small uppercase label -
+       same visual language as .eyebrow elsewhere in the app - instead of one
+       long undifferentiated list of label/value rows. Pure CSS: no HTML
+       restructuring, so every data-*/class the inline <script> queries is
+       untouched. */
+    .training-sheet-table .week-day-card > :is(.sheet-time-cell, .sheet-cell-workout-done, .sheet-cell-weight, .sheet-habits-cell, .sheet-notes-cell) {
+        position: relative;
+        margin-top: 0.5rem;
+        border-top: 1px solid var(--line);
+    }
+
+    .training-sheet-table .week-day-card > .sheet-time-cell {
+        margin-top: 0;
+    }
+
+    .training-sheet-table .week-day-card > :is(.sheet-time-cell, .sheet-cell-workout-done, .sheet-cell-weight, .sheet-habits-cell, .sheet-notes-cell)::after {
+        content: attr(data-group-label);
+        grid-column: 1 / -1;
+        order: -1;
+        margin-top: 0.5rem;
+        color: var(--primary-dark);
+        font-size: 0.68rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .training-sheet-table .week-day-card > .sheet-time-cell::after {
+        margin-top: 0;
+    }
+
+    /* Same "brighten the accent on dark surfaces" treatment as .eyebrow -
+       --primary-dark reads too dim against the near-black card background. */
+    body[data-theme="dark"] .training-sheet-table .week-day-card > :is(.sheet-time-cell, .sheet-cell-workout-done, .sheet-cell-weight, .sheet-habits-cell, .sheet-notes-cell)::after,
+    body.theme-active-dark .training-sheet-table .week-day-card > :is(.sheet-time-cell, .sheet-cell-workout-done, .sheet-cell-weight, .sheet-habits-cell, .sheet-notes-cell)::after {
+        color: #4fd6bd;
     }
 
     .training-sheet-head {
@@ -10277,10 +10422,20 @@ body.theme-active-dark :is(.season-ranking-hero, .season-ranking-summary, .seaso
         position: sticky;
         bottom: calc(var(--mobile-bottom-nav-height, 64px) + 8px);
         z-index: 12;
+        flex-direction: column;
+        align-items: stretch;
         justify-content: center;
         padding: 0.65rem;
         background: color-mix(in srgb, var(--surface) 93%, transparent);
         backdrop-filter: blur(12px);
+    }
+
+    /* Match the app's standard full-width mobile primary button (.btn-block):
+       without an explicit width the flex item shrank to fit its own content,
+       wrapping "Guardar semana completa" onto two lines inside a squashed pill. */
+    .week-save-all-row .btn {
+        width: 100%;
+        white-space: normal;
     }
 
     .workouts-today-picker {
@@ -10437,6 +10592,10 @@ body.theme-active-dark :is(.season-ranking-hero, .season-ranking-summary, .seaso
 @media (prefers-color-scheme: dark) {
     body[data-theme="auto"] :is(.season-ranking-hero, .season-ranking-summary, .season-ranking-row, .profile-team-row, .workouts-week-agenda, .workouts-today-routine-chips span) {
         background-color: var(--dark-ui-surface, #121b24);
+    }
+
+    body[data-theme="auto"] .training-sheet-table .week-day-card > :is(.sheet-time-cell, .sheet-cell-workout-done, .sheet-cell-weight, .sheet-habits-cell, .sheet-notes-cell)::after {
+        color: #4fd6bd;
     }
 }
 
@@ -15821,92 +15980,12 @@ body.theme-active-dark .achievement-delete-btn {
     border-left: 1px solid var(--line);
 }
 
-.training-sheet-table tbody td.sheet-time-cell,
-.training-sheet-table tbody td.sheet-number-cell,
-.training-sheet-table tbody td.sheet-workout-cell,
-.training-sheet-table tbody td.sheet-notes-cell {
-    position: relative;
-    padding: 0 !important;
-}
-
-.training-sheet-table tbody td.sheet-time-cell > .sheet-field,
-.training-sheet-table tbody td.sheet-number-cell > .sheet-field,
-.training-sheet-table tbody td.sheet-workout-cell > .week-help-wrap,
-.training-sheet-table tbody td.sheet-notes-cell > .sheet-field {
-    position: absolute;
-    inset: 0;
-}
-
-.training-sheet-table tbody td.sheet-workout-cell > .week-help-wrap > .sheet-field {
-    height: 100%;
-}
-
-.training-sheet-table .sheet-day-cell {
-    padding: 0.62rem 0.7rem;
-}
-
-.training-sheet-table .sheet-field,
-.training-sheet-table .week-field.sheet-field {
-    display: block;
-    width: 100%;
-    height: 100%;
-}
-
-.training-sheet-table .sheet-time-cell .sheet-field,
-.training-sheet-table .sheet-number-cell .sheet-field,
-.training-sheet-table .sheet-notes-cell .sheet-field,
-.training-sheet-table .sheet-workout-cell .sheet-field {
-    min-height: 42px;
-}
-
-.training-sheet-table .sheet-field input,
-.training-sheet-table .sheet-field select,
-.training-sheet-table .week-field.sheet-field input,
-.training-sheet-table .week-field.sheet-field select {
-    box-sizing: border-box;
-    width: 100%;
-    height: 100%;
-    min-height: 42px;
-    padding: 0.52rem 0.58rem;
-    border: 0;
-    border-radius: 0;
-    outline: 0;
-    background: transparent;
-    box-shadow: none;
-}
-
-.training-sheet-table .sheet-field input:focus,
-.training-sheet-table .sheet-field select:focus,
-.training-sheet-table .week-field.sheet-field input:focus,
-.training-sheet-table .week-field.sheet-field select:focus {
-    box-shadow: inset 0 0 0 2px rgba(20, 163, 139, 0.72);
-}
-
-.training-sheet-table .sheet-check-cell,
-.training-sheet-table .sheet-extra-cell,
-.training-sheet-table .sheet-habits-cell,
-.training-sheet-table .sheet-review-cell,
-.training-sheet-table .sheet-actions-cell {
-    padding: 0.44rem;
-}
-
-.training-sheet-table .sheet-checkbox,
-.training-sheet-table .sheet-habits-list .check {
-    margin: 0;
-}
-
-.training-sheet-table .workout-type-control,
-.training-sheet-table .workout-type-custom {
-    height: 100%;
-}
-
-.training-sheet-table .workout-type-custom input {
-    min-width: 0;
-}
-
-.training-sheet-table .workout-type-custom .btn {
-    border-radius: 0;
-}
+/* NOTE: cell/field layout rules for .training-sheet-table (position, padding,
+   .sheet-field input border/background, etc.) used to be duplicated here and
+   again below under "UI pass: compact training rows" — same selectors, same
+   specificity, so whichever block came later in the file silently won and the
+   other went stale. Consolidated into the single "UI pass" block below; do not
+   re-add a second copy here. */
 
 .dashboard-analytics-compact {
     grid-column: 1 / -1;
@@ -16052,20 +16131,45 @@ body.theme-active-dark .training-sheet-table .week-field.sheet-field select {
     height: auto;
 }
 
-.training-sheet-table .sheet-time-cell .sheet-field,
-.training-sheet-table .sheet-number-cell .sheet-field,
-.training-sheet-table .sheet-notes-cell .sheet-field,
-.training-sheet-table .sheet-workout-cell .sheet-field {
-    min-height: 34px;
-}
-
 .training-sheet-table .sheet-field input,
 .training-sheet-table .sheet-field select,
 .training-sheet-table .week-field.sheet-field input,
 .training-sheet-table .week-field.sheet-field select {
-    height: 34px;
-    min-height: 34px;
+    box-sizing: border-box;
     padding: 0.36rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    outline: 0;
+    background: var(--surface-2);
+    box-shadow: none;
+}
+
+.training-sheet-table .sheet-field input:focus,
+.training-sheet-table .sheet-field select:focus,
+.training-sheet-table .week-field.sheet-field input:focus,
+.training-sheet-table .week-field.sheet-field select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(20, 163, 139, 0.16);
+}
+
+/* Desktop/tablet table view is dense (many columns visible at once), so the
+   fields stay compact here. Below 700px the sheet becomes a one-column
+   accordion (see JS weekDayMedia) with room for a full 44px tap target. */
+@media (min-width: 701px) {
+    .training-sheet-table .sheet-time-cell .sheet-field,
+    .training-sheet-table .sheet-number-cell .sheet-field,
+    .training-sheet-table .sheet-notes-cell .sheet-field,
+    .training-sheet-table .sheet-workout-cell .sheet-field {
+        min-height: 34px;
+    }
+
+    .training-sheet-table .sheet-field input,
+    .training-sheet-table .sheet-field select,
+    .training-sheet-table .week-field.sheet-field input,
+    .training-sheet-table .week-field.sheet-field select {
+        height: 34px;
+        min-height: 34px;
+    }
 }
 
 .training-sheet-table .sheet-check-cell,
@@ -20351,6 +20455,14 @@ body.layout-edit-active .dashboard-layout > [data-dashboard-widget][hidden] {
     min-height: 56px;
 }
 
+.avatar-menu-option:is(button) {
+    width: 100%;
+    background: transparent;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+
 .avatar-menu-option:hover {
     background: var(--surface-2, rgba(127, 127, 127, 0.08));
 }
@@ -23087,6 +23199,132 @@ fieldset.settings-preference-group { min-inline-size: 0; }
 .settings-weight-history-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.7rem; }
 .settings-weight-history-head h2,
 .settings-weight-history-head p { margin: 0; }
+.settings-weight-history-actions { display: flex; align-items: center; gap: 0.55rem; }
+.settings-weight-history-actions .btn { white-space: nowrap; }
+.settings-weight-entry-form { margin-top: 0.25rem; }
+.settings-weight-entry-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
+
+.workouts-session-detail-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.8rem;
+}
+.workouts-session-share-button svg { width: 17px; height: 17px; }
+.workouts-share-preview {
+    display: grid;
+    gap: 0.2rem;
+    padding: 0.85rem;
+    border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--line));
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--primary) 6%, var(--surface));
+}
+.workouts-share-preview span { color: var(--muted); font-size: 0.76rem; }
+.workouts-share-friends {
+    display: grid;
+    max-height: min(360px, 48dvh);
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+}
+.workouts-share-friends label {
+    display: grid;
+    grid-template-columns: auto 42px minmax(0, 1fr);
+    align-items: center;
+    gap: 0.65rem;
+    min-height: 62px;
+    padding: 0.55rem 0.75rem;
+    cursor: pointer;
+}
+.workouts-share-friends label + label { border-top: 1px solid var(--line); }
+.workouts-share-friends label:has(input:checked) { background: color-mix(in srgb, var(--primary) 8%, transparent); }
+.workouts-share-friends input { width: auto; accent-color: var(--primary); }
+.workouts-share-friends .member-avatar { width: 40px; height: 40px; }
+.workouts-share-friends label > span:last-child { display: grid; min-width: 0; }
+.workouts-share-friends small { color: var(--muted); }
+.workouts-share-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
+.workouts-share-empty { display: grid; justify-items: center; gap: 0.75rem; padding: 1rem; text-align: center; }
+.workouts-share-empty p { margin: 0; color: var(--muted); }
+
+.workouts-recent-history-link {
+    color: var(--ink);
+    text-decoration: none;
+    border-radius: 12px;
+}
+.workouts-recent-history-link > span {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--primary);
+}
+.workouts-recent-history-link > span small { font-weight: 800; }
+.workouts-recent-history-link > span b { font-size: 1.2rem; transition: transform 0.18s ease; }
+.workouts-recent-history-link:hover,
+.workouts-recent-history-link:focus-visible {
+    background: color-mix(in srgb, var(--primary) 6%, transparent);
+    outline: none;
+}
+.workouts-recent-history-link:hover > span b,
+.workouts-recent-history-link:focus-visible > span b { transform: translateX(2px); }
+.workouts-session-list > li { padding: 0; }
+.workouts-session-list > li > a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    min-height: 46px;
+    padding: 0.5rem;
+    border-radius: 11px;
+    color: var(--ink);
+    text-decoration: none;
+}
+.workouts-session-list > li > a > span { display: grid; min-width: 0; }
+.workouts-session-list > li > a small { color: var(--muted); }
+.workouts-session-list > li > a > b { color: var(--muted); font-size: 1.15rem; }
+.workouts-session-list > li > a:hover,
+.workouts-session-list > li > a:focus-visible {
+    background: color-mix(in srgb, var(--primary) 7%, transparent);
+    outline: none;
+}
+.workouts-pr-list > li { padding: 0; }
+.workouts-pr-list > li > a {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 0.65rem;
+    min-height: 44px;
+    padding: 0.45rem 0.5rem;
+    border-radius: 11px;
+    color: var(--ink);
+    text-decoration: none;
+}
+.workouts-pr-list > li > a > span {
+    overflow: hidden;
+    font-weight: 750;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.workouts-pr-list > li > a > strong { white-space: nowrap; }
+.workouts-pr-list > li > a > b { color: var(--muted); font-size: 1.15rem; }
+.workouts-pr-list > li > a:hover,
+.workouts-pr-list > li > a:focus-visible {
+    background: color-mix(in srgb, var(--primary) 7%, transparent);
+    outline: none;
+}
+.workouts-pr-list > li > a:hover > b,
+.workouts-pr-list > li > a:focus-visible > b { color: var(--primary); }
+
+@media (max-width: 600px) {
+    .workouts-session-detail-head {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+    .workouts-session-share-button {
+        grid-column: 1 / -1;
+        width: 100%;
+    }
+    .workouts-share-actions > * { flex: 1; }
+}
+
 .settings-weight-list { display: grid; overflow: hidden; margin-inline: -0.85rem; margin-bottom: -0.85rem; border-top: 1px solid var(--line); }
 .settings-weight-list > a { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; min-height: 58px; padding: 0.55rem 0.85rem; color: var(--ink); text-decoration: none; }
 .settings-weight-list > a + a { border-top: 1px solid var(--line); }
@@ -23364,6 +23602,13 @@ fieldset.settings-preference-group { min-inline-size: 0; }
     .settings-weight-summary small { font-size: 0.59rem; }
     .settings-weight-summary strong { font-size: 0.94rem; }
     .settings-weight-list { margin-inline: -0.72rem; margin-bottom: -0.72rem; }
+    .settings-weight-history-head { align-items: center; }
+    .settings-weight-history-head > div:first-child { min-width: 0; }
+    .settings-weight-history-actions .badge { display: none; }
+    .settings-weight-history-actions .btn { width: 42px; min-width: 42px; padding-inline: 0; overflow: hidden; font-size: 0; }
+    .settings-weight-history-actions .btn svg { width: 18px; height: 18px; }
+    .settings-weight-entry-form .grid-inline.two { grid-template-columns: 1fr; }
+    .settings-weight-entry-actions > * { flex: 1; }
     .settings-avatar-card-focused { padding: 0.85rem; }
     .settings-avatar-card-focused .panel-head { margin-bottom: 0.35rem; }
     .settings-avatar-preview-stage { align-items: flex-start; padding: 0.72rem; }
@@ -25499,14 +25744,40 @@ details.admin-training-block[open] > summary { border-bottom: 1px solid var(--li
     display: grid;
     gap: 0.3rem;
 }
-.profile-training-recent > span {
+.profile-training-recent > span,
+.profile-training-recent > a {
     display: grid;
-    grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+    grid-template-columns: minmax(72px, auto) minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.55rem;
     min-height: 38px;
     padding-top: 0.3rem;
     border-top: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+}
+.profile-training-recent > span {
+    grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+}
+.profile-training-recent > a {
+    margin-inline: -0.35rem;
+    padding-inline: 0.35rem;
+    border-radius: 9px;
+    color: var(--ink);
+    text-decoration: none;
+}
+.profile-training-recent > a:hover,
+.profile-training-recent > a:focus-visible {
+    background: color-mix(in srgb, var(--primary) 7%, transparent);
+    outline: none;
+}
+.profile-training-recent > a > b {
+    color: var(--muted);
+    font-size: 1.15rem;
+    transition: transform 0.18s ease;
+}
+.profile-training-recent > a:hover > b,
+.profile-training-recent > a:focus-visible > b {
+    color: var(--primary);
+    transform: translateX(2px);
 }
 .profile-training-recent strong {
     overflow: hidden;

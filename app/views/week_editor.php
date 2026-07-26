@@ -267,25 +267,25 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                                 <span class="week-day-summary-chevron" aria-hidden="true">&rsaquo;</span>
                             </button>
                         </th>
-                        <td class="sheet-time-cell" data-label="<?= e(t('entries.log_time')) ?>">
+                        <td class="sheet-time-cell" data-label="<?= e(t('entries.log_time')) ?>" data-group-label="<?= e(t('table.log_section')) ?>">
                             <label class="sheet-field">
                                 <span class="sr-only"><?= e(t('entries.log_time')) ?></span>
                                 <input type="time" name="log_time" value="<?= e($logTimeValue) ?>">
                             </label>
                         </td>
-                        <td class="sheet-number-cell" data-label="<?= e(t('metric.steps')) ?>">
+                        <td class="sheet-number-cell sheet-cell-steps" data-label="<?= e(t('metric.steps')) ?>">
                             <label class="sheet-field">
                                 <span class="sr-only"><?= e(t('metric.steps')) ?></span>
                                 <input type="number" min="0" name="steps" value="<?= e((string) ($log['steps'] ?? '')) ?>" data-steps-input>
                             </label>
                         </td>
-                        <td class="sheet-number-cell" data-label="<?= e(t('metric.distance_km')) ?>">
+                        <td class="sheet-number-cell sheet-cell-distance" data-label="<?= e(t('metric.distance_km')) ?>">
                             <label class="sheet-field">
                                 <span class="sr-only"><?= e(t('metric.distance_km')) ?></span>
                                 <input type="number" min="0" step="0.01" name="distance_km" value="<?= e((string) ($log['distance_km'] ?? '')) ?>">
                             </label>
                         </td>
-                        <td class="sheet-check-cell" data-label="<?= e(t('table.completed_workout')) ?>">
+                        <td class="sheet-check-cell sheet-cell-workout-done" data-label="<?= e(t('table.completed_workout')) ?>" data-group-label="<?= e(t('table.workout_section')) ?>">
                             <label class="check week-check sheet-checkbox" data-help="<?= e(t('table.week_help_workout_excuse')) ?>">
                                 <input type="checkbox" name="workout_done" value="1" data-workout-done <?= $completedWorkout ? 'checked' : '' ?>>
                                 <?= e(t('common.yes')) ?>
@@ -369,7 +369,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                                 </div>
                             </template>
                         </td>
-                        <td class="sheet-number-cell" data-label="<?= e(t('entries.training_calories_burned')) ?>">
+                        <td class="sheet-number-cell sheet-cell-calories" data-label="<?= e(t('entries.training_calories_burned')) ?>">
                             <div class="week-help-wrap" data-help="<?= e(t('table.week_help_training_calories')) ?>">
                                 <label class="sheet-field">
                                     <span class="sr-only"><?= e(t('entries.training_calories_burned')) ?></span>
@@ -377,19 +377,19 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                                 </label>
                             </div>
                         </td>
-                        <td class="sheet-number-cell" data-label="<?= e(t('metric.weight')) ?>">
+                        <td class="sheet-number-cell sheet-cell-weight" data-label="<?= e(t('metric.weight')) ?>" data-group-label="<?= e(t('table.food_nutrition_section')) ?>">
                             <label class="sheet-field">
                                 <span class="sr-only"><?= e(t('metric.weight')) ?></span>
                                 <input type="number" step="0.1" name="weight" value="<?= e((string) ($log['weight'] ?? '')) ?>">
                             </label>
                         </td>
-                        <td class="sheet-check-cell" data-label="<?= e(t('table.junk')) ?>">
+                        <td class="sheet-check-cell sheet-cell-junk" data-label="<?= e(t('table.junk')) ?>">
                             <label class="check sheet-checkbox">
                                 <input type="checkbox" name="junk_food" value="1" <?= !empty($log) && (int) ($log['junk_food'] ?? 0) === 1 ? 'checked' : '' ?>>
                                 <?= e(t('common.yes')) ?>
                             </label>
                         </td>
-                        <td class="sheet-habits-cell" data-label="<?= e(t('table.habits_section')) ?>">
+                        <td class="sheet-habits-cell" data-label="<?= e(t('table.habits_section')) ?>" data-group-label="<?= e(t('table.habits_section')) ?>">
                             <div class="week-help-wrap" data-help="<?= e(t('table.week_help_habits')) ?>">
                                 <button type="button" class="btn btn-ghost small sheet-custom-habit-toggle" data-custom-habit-toggle><?= e(t('table.custom_habit')) ?></button>
                             </div>
@@ -482,7 +482,7 @@ $resolveWorkoutSelection = static function (?int $workoutTypeId, string $workout
                             </details>
                         </td>
                         <?php endif; ?>
-                        <td class="sheet-notes-cell" data-label="<?= e(t('common.notes')) ?>">
+                        <td class="sheet-notes-cell" data-label="<?= e(t('common.notes')) ?>" data-group-label="<?= e(t('table.notes_section')) ?>">
                             <label class="sheet-field">
                                 <span class="sr-only"><?= e(t('common.notes')) ?></span>
                                 <input type="text" name="notes" value="<?= e((string) ($log['notes'] ?? '')) ?>">

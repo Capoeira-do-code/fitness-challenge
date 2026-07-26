@@ -250,13 +250,9 @@ function metric_preferences_backfill(PDO $pdo): void
         if ($existing > 0) {
             continue;
         }
-        $enabled = [];
-        foreach (metric_preference_base_keys() as $key) {
-            $target = metric_target_for_user($user, $key);
-            if ($key !== 'discipline' && $target !== null && $target > 0) {
-                $enabled[] = $key;
-            }
-        }
+        // Fresh and legacy profiles start with the complete tracking catalogue
+        // enabled. Users can still disable individual metrics afterwards.
+        $enabled = metric_preference_base_keys();
         $habitRows = db_fetch_all(
             $pdo,
             'SELECT DISTINCT hd.code
@@ -268,16 +264,6 @@ function metric_preferences_backfill(PDO $pdo): void
         );
         foreach ($habitRows as $habitRow) {
             $enabled[] = 'habit:' . (string) $habitRow['code'];
-        }
-        $disciplineHistory = db_fetch_one(
-            $pdo,
-            'SELECT
-                (SELECT COUNT(*) FROM strike_review_requests WHERE target_user_id = :user_id) +
-                (SELECT COUNT(*) FROM approval_requests WHERE user_id = :user_id) AS c',
-            [':user_id' => $userId]
-        );
-        if ((int) ($disciplineHistory['c'] ?? 0) > 0) {
-            $enabled[] = 'discipline';
         }
         save_user_metric_preferences($pdo, $user, $enabled, $enabledFrom);
     }

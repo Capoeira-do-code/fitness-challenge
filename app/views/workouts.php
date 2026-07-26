@@ -538,27 +538,41 @@ $libraryClearUrl = $libraryUrl([
         <div class="workouts-overview-disclosure-body">
     <div class="grid-two">
         <article class="panel">
-            <div class="panel-head"><div><p class="eyebrow"><?= e(t('workouts.est_1rm')) ?></p><h2><?= e(t('workouts.personal_records')) ?></h2></div></div>
+            <a class="panel-head workouts-recent-history-link" href="/?page=workouts&amp;view=stats" aria-label="<?= e(t('workouts.open_records')) ?>">
+                <div><p class="eyebrow"><?= e(t('workouts.est_1rm')) ?></p><h2><?= e(t('workouts.personal_records')) ?></h2></div>
+                <span><small><?= e(t('common.view_all')) ?></small><b aria-hidden="true">&rsaquo;</b></span>
+            </a>
             <?php if (($wkPersonalRecords ?? []) === []): ?>
                 <p class="muted"><?= e(t('workouts.no_records')) ?></p>
             <?php else: ?>
                 <ul class="workouts-pr-list">
                     <?php foreach ((array) $wkPersonalRecords as $pr): ?>
-                        <li><span><?= e((string) $pr['exercise_name']) ?></span><strong><?= e(number_format((float) $pr['value'], 1, '.', '')) ?> kg</strong></li>
+                        <li>
+                            <a href="/?page=workouts&amp;view=stats&amp;exercise_stats=<?= (int) ($pr['exercise_def_id'] ?? 0) ?>" aria-label="<?= e(t('workouts.exercise_summary')) ?>: <?= e((string) $pr['exercise_name']) ?>">
+                                <span><?= e((string) $pr['exercise_name']) ?></span>
+                                <strong><?= e(number_format((float) $pr['value'], 1, ',', '.')) ?> Kg</strong>
+                                <b aria-hidden="true">&rsaquo;</b>
+                            </a>
+                        </li>
                     <?php endforeach; ?>
                 </ul>
             <?php endif; ?>
         </article>
         <article class="panel">
-            <div class="panel-head"><div><p class="eyebrow"><?= count((array) ($wkRecentSessions ?? [])) ?></p><h2><?= e(t('workouts.recent_sessions')) ?></h2></div></div>
+            <a class="panel-head workouts-recent-history-link" href="/?page=workouts&amp;view=stats" aria-label="<?= e(t('workouts.open_history')) ?>">
+                <div><p class="eyebrow"><?= count((array) ($wkRecentSessions ?? [])) ?></p><h2><?= e(t('workouts.recent_sessions')) ?></h2></div>
+                <span><small><?= e(t('common.view_all')) ?></small><b aria-hidden="true">&rsaquo;</b></span>
+            </a>
             <?php if (($wkRecentSessions ?? []) === []): ?>
                 <p class="muted"><?= e(t('workouts.no_sessions')) ?></p>
             <?php else: ?>
                 <ul class="workouts-session-list">
                     <?php foreach ((array) $wkRecentSessions as $sess): ?>
                         <li>
-                            <strong><?= e((string) ($sess['title'] ?? '') !== '' ? (string) $sess['title'] : t('workouts.session')) ?></strong>
-                            <span class="muted small"><?= e(human_time_ago((string) ($sess['started_at'] ?? ''))) ?></span>
+                            <a href="/?page=workouts&amp;view=stats&amp;detail_session=<?= (int) ($sess['id'] ?? 0) ?>">
+                                <span><strong><?= e((string) ($sess['title'] ?? '') !== '' ? (string) $sess['title'] : t('workouts.session')) ?></strong><small><?= e(human_time_ago((string) ($sess['started_at'] ?? ''))) ?></small></span>
+                                <b aria-hidden="true">&rsaquo;</b>
+                            </a>
                         </li>
                     <?php endforeach; ?>
                 </ul>
@@ -2030,14 +2044,10 @@ $libraryClearUrl = $libraryUrl([
     $periodSessions = array_sum(array_map(static fn(array $week): int => (int) ($week['sessions'] ?? 0), $weekly));
     $periodVolume = array_sum(array_map(static fn(array $week): float => (float) ($week['volume'] ?? 0), $weekly));
     $compactStatNumber = static function (float $value, string $suffix = ''): string {
-        if ($value >= 1000000) {
-            return rtrim(rtrim(number_format($value / 1000000, 1, '.', ''), '0'), '.') . 'M' . $suffix;
-        }
-        if ($value >= 1000) {
-            return rtrim(rtrim(number_format($value / 1000, 1, '.', ''), '0'), '.') . 'k' . $suffix;
-        }
+        $decimals = abs($value - round($value)) < 0.001 ? 0 : 1;
+        $normalizedSuffix = strtolower(trim($suffix)) === 'kg' ? ' Kg' : $suffix;
 
-        return number_format($value, $value === floor($value) ? 0 : 1, '.', '') . $suffix;
+        return number_format($value, $decimals, ',', '.') . $normalizedSuffix;
     };
     $muscles = (array) ($stats['muscles'] ?? []);
     $muscleTotal = array_sum(array_map(static fn($m) => (int) $m['sets'], $muscles));
@@ -2073,6 +2083,7 @@ $libraryClearUrl = $libraryUrl([
                     <h2><?= e((string) ($detailSession['title'] ?? '') !== '' ? (string) $detailSession['title'] : t('workouts.session')) ?></h2>
                     <p class="muted small"><?= e(format_date_eu((string) ($detailSession['started_at'] ?? ''))) ?></p>
                 </div>
+                <button class="btn btn-primary small workouts-session-share-button" type="button" data-app-modal-open="workouts-session-share-modal"><?= activity_icon_svg('share') ?><span><?= e(t('workouts.share_friends')) ?></span></button>
             </div>
             <div class="workouts-session-detail-metrics">
                 <span><small><?= e(t('workouts.stat_volume')) ?></small><strong><?= e($compactStatNumber($detailTotalVolume, ' kg')) ?></strong></span>
@@ -2081,6 +2092,38 @@ $libraryClearUrl = $libraryUrl([
                 <span><small><?= e(t('workouts.best_1rm')) ?></small><strong><?= e($compactStatNumber($detailBest1rm, ' kg')) ?></strong></span>
             </div>
         </article>
+        <div class="app-modal workouts-session-share-modal" id="workouts-session-share-modal" hidden role="dialog" aria-modal="true" aria-labelledby="workouts-session-share-title">
+            <div class="app-modal-card">
+                <div class="app-modal-head">
+                    <div><p class="eyebrow"><?= e(t('nav.friends')) ?></p><h2 id="workouts-session-share-title"><?= e(t('workouts.share_title')) ?></h2><small><?= e(t('workouts.share_hint')) ?></small></div>
+                    <button class="app-modal-close" type="button" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button>
+                </div>
+                <div class="workouts-share-preview">
+                    <strong><?= e((string) ($detailSession['title'] ?? '') !== '' ? (string) $detailSession['title'] : t('workouts.session')) ?></strong>
+                    <span><?= e($compactStatNumber($detailTotalVolume, ' kg')) ?> · <?= $detailTotalSets ?> <?= e(t('workouts.stat_sets')) ?> · <?= count($detailExercises) ?> <?= e(t('workouts.exercises')) ?></span>
+                </div>
+                <?php $shareFriends = array_values((array) ($wkShareFriends ?? [])); ?>
+                <?php if ($shareFriends === []): ?>
+                    <div class="workouts-share-empty"><p><?= e(t('workouts.share_no_friends')) ?></p><a class="btn btn-primary" href="/?page=friends"><?= e(t('social_hub.quick_friend')) ?></a></div>
+                <?php else: ?>
+                    <form method="post" action="/?page=workouts&amp;view=stats&amp;detail_session=<?= (int) ($detailSession['id'] ?? 0) ?>" class="stack workouts-share-form">
+                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                        <input type="hidden" name="action" value="session_share">
+                        <input type="hidden" name="session_id" value="<?= (int) ($detailSession['id'] ?? 0) ?>">
+                        <div class="workouts-share-friends">
+                            <?php foreach ($shareFriends as $shareFriend): ?>
+                                <label>
+                                    <input type="checkbox" name="friend_ids[]" value="<?= (int) ($shareFriend['id'] ?? 0) ?>">
+                                    <span class="member-avatar"><?= e(initials_for((string) ($shareFriend['display_name'] ?? $shareFriend['username'] ?? '?'))) ?></span>
+                                    <span><strong><?= e((string) ($shareFriend['display_name'] ?? '')) ?></strong><small>@<?= e((string) ($shareFriend['username'] ?? '')) ?></small></span>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+                        <div class="workouts-share-actions"><button class="btn btn-ghost" type="button" data-app-modal-close><?= e(t('common.cancel')) ?></button><button class="btn btn-primary" type="submit"><?= e(t('workouts.share_send')) ?></button></div>
+                    </form>
+                <?php endif; ?>
+            </div>
+        </div>
         <?php if ($detailExercises === []): ?>
             <div class="workouts-analytics-empty"><span aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span><p><?= e(t('workouts.no_data')) ?></p></div>
         <?php else: ?>
@@ -2173,7 +2216,7 @@ $libraryClearUrl = $libraryUrl([
                     <?php foreach ($exHist as $h): ?>
                         <?php $hh = $exMaxChart > 0 ? max(3, (int) round(((float) $h['best_1rm'] / $exMaxChart) * 100)) : 3; ?>
                         <div class="workouts-bar-col">
-                            <div class="workouts-bar" style="height: <?= $hh ?>%" title="<?= e(number_format((float) $h['best_1rm'], 1, '.', '')) ?> kg"></div>
+                            <div class="workouts-bar" style="height: <?= $hh ?>%" title="<?= e($compactStatNumber((float) $h['best_1rm'], ' kg')) ?>"></div>
                             <span class="workouts-bar-label"><?= e(format_date_eu((string) $h['date'])) ?></span>
                             <span class="workouts-bar-sub"><?= e($compactStatNumber((float) $h['best_1rm'])) ?></span>
                         </div>
@@ -2245,7 +2288,7 @@ $libraryClearUrl = $libraryUrl([
                     $h = max(3, (int) round(max($volumeRatio, $sessionRatio) * 100));
                     ?>
                     <div class="workouts-bar-col<?= (string) ($w['week'] ?? '') === (string) ($currentWeek['week'] ?? '') ? ' is-current' : '' ?>">
-                        <div class="workouts-bar" style="height: <?= $h ?>%" title="<?= e(number_format((float) $w['volume'], 0, '.', ' ')) ?> kg · <?= (int) $w['sessions'] ?>"></div>
+                        <div class="workouts-bar" style="height: <?= $h ?>%" title="<?= e($compactStatNumber((float) $w['volume'], ' kg')) ?> · <?= (int) $w['sessions'] ?>"></div>
                         <span class="workouts-bar-label"><?= e((string) $w['label']) ?></span>
                         <span class="workouts-bar-sub"><?= (int) $w['sessions'] ?><small><?= e(t('workouts.sessions_short')) ?></small></span>
                     </div>
