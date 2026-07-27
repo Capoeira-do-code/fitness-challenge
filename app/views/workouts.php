@@ -2083,7 +2083,15 @@ $libraryClearUrl = $libraryUrl([
                     <h2><?= e((string) ($detailSession['title'] ?? '') !== '' ? (string) $detailSession['title'] : t('workouts.session')) ?></h2>
                     <p class="muted small"><?= e(format_date_eu((string) ($detailSession['started_at'] ?? ''))) ?></p>
                 </div>
-                <button class="btn btn-primary small workouts-session-share-button" type="button" data-app-modal-open="workouts-session-share-modal"><?= activity_icon_svg('share') ?><span><?= e(t('workouts.share_friends')) ?></span></button>
+                <div class="workouts-session-detail-actions">
+                    <button class="btn btn-primary small workouts-session-share-button" type="button" data-app-modal-open="workouts-session-share-modal"><?= activity_icon_svg('share') ?><span><?= e(t('workouts.share_friends')) ?></span></button>
+                    <form method="post" action="/?page=workouts&amp;view=stats&amp;detail_session=<?= (int) ($detailSession['id'] ?? 0) ?>">
+                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                        <input type="hidden" name="action" value="session_delete">
+                        <input type="hidden" name="session_id" value="<?= (int) ($detailSession['id'] ?? 0) ?>">
+                        <button class="btn btn-danger-ghost small" type="submit" data-confirm-action="<?= e(t('workouts.delete_session_confirm')) ?>"><?= activity_icon_svg('trash') ?><span><?= e(t('workouts.delete_session')) ?></span></button>
+                    </form>
+                </div>
             </div>
             <div class="workouts-session-detail-metrics">
                 <span><small><?= e(t('workouts.stat_volume')) ?></small><strong><?= e($compactStatNumber($detailTotalVolume, ' kg')) ?></strong></span>

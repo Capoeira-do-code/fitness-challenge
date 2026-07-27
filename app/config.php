@@ -33,6 +33,17 @@ return [
     'app_cache_enabled' => env_value('APP_CACHE_ENABLED', '1'),
     'app_profile_enabled' => env_value('APP_PROFILE', '0'),
     'db_slow_query_ms' => (float) env_value('DB_SLOW_QUERY_MS', '50'),
+    // Forwarded headers are honored only when the immediate peer is trusted.
+    // Docker adds its private proxy range explicitly in docker-compose.yml.
+    'security_trusted_proxies' => env_value('SECURITY_TRUSTED_PROXIES', '127.0.0.1,::1'),
+    // A comma-separated allowlist enables strict Host-header enforcement.
+    // It can also be managed from Admin > Security when this env value is empty.
+    'security_allowed_hosts' => env_value('APP_ALLOWED_HOSTS', ''),
+    'security_auto_block' => env_value('SECURITY_AUTO_BLOCK', null),
+    'security_log_retention_days' => (int) env_value('SECURITY_LOG_RETENTION_DAYS', '0'),
+    'security_rate_limit_per_minute' => (int) env_value('SECURITY_RATE_LIMIT_PER_MINUTE', '240'),
+    'security_scan_threshold' => (int) env_value('SECURITY_SCAN_THRESHOLD', '5'),
+    'security_block_minutes' => (int) env_value('SECURITY_BLOCK_MINUTES', '60'),
     'challenge_start' => env_value('CHALLENGE_START', '2026-04-13'),
     'challenge_end' => env_value('CHALLENGE_END', '2026-06-07'),
     // Seed accounts are opt-in. Existing databases are unaffected.

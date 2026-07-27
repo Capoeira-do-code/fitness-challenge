@@ -8,6 +8,7 @@ RUN { \
       echo 'upload_max_filesize=20M'; \
       echo 'post_max_size=20M'; \
       echo 'max_file_uploads=50'; \
+      echo 'expose_php=Off'; \
     } > /usr/local/etc/php/conf.d/uploads.ini
 
 RUN { \

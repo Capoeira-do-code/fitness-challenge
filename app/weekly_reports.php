@@ -188,7 +188,7 @@ function weekly_reports_run_due(PDO $pdo, array $config, array $telegramSettings
             ]);
         } catch (Throwable $error) {
             db_execute($pdo, 'UPDATE weekly_report_runs SET status = "failed", error_message = :error, updated_at = :now WHERE user_id = :user AND period_start = :start AND period_end = :end', [
-                ':error' => mb_substr($error->getMessage(), 0, 500), ':now' => now_iso(), ':user' => (int) $user['id'], ':start' => $start, ':end' => $end,
+                ':error' => app_text_substr($error->getMessage(), 0, 500), ':now' => now_iso(), ':user' => (int) $user['id'], ':start' => $start, ':end' => $end,
             ]);
         }
     }

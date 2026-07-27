@@ -3533,7 +3533,7 @@ function create_motivational_quote(PDO $pdo, string $quoteText, int $actorUserId
     if ($quoteText === '') {
         throw new InvalidArgumentException(t('admin.quote_required'));
     }
-    if (mb_strlen($quoteText) > 280) {
+    if (app_text_length($quoteText) > 280) {
         throw new InvalidArgumentException(t('admin.quote_too_long'));
     }
     ensure_motivational_quote_schema($pdo);
@@ -3565,7 +3565,7 @@ function update_motivational_quote(PDO $pdo, int $quoteId, string $quoteText, st
     if ($quoteId <= 0 || $quoteText === '') {
         throw new InvalidArgumentException(t('admin.quote_required'));
     }
-    if (mb_strlen($quoteText) > 280) {
+    if (app_text_length($quoteText) > 280) {
         throw new InvalidArgumentException(t('admin.quote_too_long'));
     }
     ensure_motivational_quote_schema($pdo);
@@ -5992,7 +5992,7 @@ function normalize_workout_type_translations_input(mixed $rawTranslations, strin
         if ($locale === 'en' && $name === '') {
             $name = trim($fallbackName);
         }
-        if (mb_strlen($name) > 120) {
+        if (app_text_length($name) > 120) {
             throw new InvalidArgumentException(t('admin.workout_type_name_too_long'));
         }
         $translations[$locale] = ['name' => $name];
@@ -6014,7 +6014,7 @@ function normalize_workout_field_translations_input(mixed $rawTranslations, stri
         if ($locale === 'en' && $label === '') {
             $label = trim($fallbackLabel);
         }
-        if (mb_strlen($label) > 100) {
+        if (app_text_length($label) > 100) {
             throw new InvalidArgumentException(t('admin.workout_field_label_too_long'));
         }
         $translations[$locale] = ['label' => $label];
@@ -10331,6 +10331,115 @@ function user_unread_notifications_count(PDO $pdo, int $userId): int
     );
 
     return max(0, (int) ($row['total'] ?? 0));
+}
+
+/**
+ * Send one administrator-authored notification to every active account or to
+ * one selected active account. The shared campaign key makes each batch
+ * traceable without exposing its contents in URLs or form state.
+ *
+ * @return array{recipient_count:int,campaign_key:string,target:string,kind:string}
+ */
+function send_admin_notification(
+    PDO $pdo,
+    int $actorUserId,
+    string $target,
+    string $kind,
+    string $title,
+    string $message
+): array {
+    $target = trim($target);
+    $kind = strtolower(trim($kind));
+    $title = trim($title);
+    $message = trim($message);
+    $allowedKinds = ['admin_update', 'admin_announcement', 'admin_maintenance'];
+
+    if ($actorUserId <= 0 || !in_array($kind, $allowedKinds, true)) {
+        throw new InvalidArgumentException(t('admin.notifications_invalid'));
+    }
+    if ($title === '' || $message === '') {
+        throw new InvalidArgumentException(t('admin.notifications_required'));
+    }
+    if (app_text_length($title) > 120 || app_text_length($message) > 1200) {
+        throw new InvalidArgumentException(t('admin.notifications_too_long'));
+    }
+
+    if ($target === 'all') {
+        $recipients = db_fetch_all(
+            $pdo,
+            'SELECT id FROM users WHERE active = 1 ORDER BY id ASC'
+        );
+    } elseif (preg_match('/^user:(\d+)$/', $target, $matches) === 1) {
+        $recipient = db_fetch_one(
+            $pdo,
+            'SELECT id FROM users WHERE id = :id AND active = 1',
+            [':id' => (int) $matches[1]]
+        );
+        $recipients = $recipient !== null ? [$recipient] : [];
+    } else {
+        throw new InvalidArgumentException(t('admin.notifications_invalid_target'));
+    }
+
+    if ($recipients === []) {
+        throw new InvalidArgumentException(t('admin.notifications_no_recipients'));
+    }
+
+    $campaignKey = 'admin_notification:' . bin2hex(random_bytes(12));
+    $recipientCount = 0;
+    $startedTransaction = !$pdo->inTransaction();
+    if ($startedTransaction) {
+        $pdo->beginTransaction();
+    }
+
+    try {
+        foreach ($recipients as $recipient) {
+            $recipientId = (int) ($recipient['id'] ?? 0);
+            if ($recipientId <= 0 || !create_user_notification(
+                $pdo,
+                $recipientId,
+                $kind,
+                $title,
+                $message,
+                $campaignKey,
+                ['campaign_key' => $campaignKey]
+            )) {
+                throw new RuntimeException(t('flash.save_failed'));
+            }
+            $recipientCount++;
+        }
+
+        audit_log(
+            $pdo,
+            $actorUserId,
+            'admin_notification_sent',
+            'user_notification',
+            $campaignKey,
+            'Administrator notification sent.',
+            null,
+            [
+                'target' => $target,
+                'kind' => $kind,
+                'title' => $title,
+                'recipient_count' => $recipientCount,
+            ]
+        );
+
+        if ($startedTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $exception) {
+        if ($startedTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $exception;
+    }
+
+    return [
+        'recipient_count' => $recipientCount,
+        'campaign_key' => $campaignKey,
+        'target' => $target,
+        'kind' => $kind,
+    ];
 }
 
 function create_user_notification(

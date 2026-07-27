@@ -53,6 +53,10 @@ En `docker-compose.yml`:
 - `SEED_PASSWORD`
 - `APP_TIMEZONE`
 - `APP_DEFAULT_LOCALE`
+- `APP_ALLOWED_HOSTS`
+- `SECURITY_TRUSTED_PROXIES`
+- `SECURITY_AUTO_BLOCK`
+- `SECURITY_LOG_RETENTION_DAYS`
 - `MEDIA_SEARCH_GOOGLE_API_KEY`
 - `MEDIA_SEARCH_GOOGLE_CX`
 - `MEDIA_SEARCH_YOUTUBE_API_KEY`
@@ -60,6 +64,25 @@ En `docker-compose.yml`:
 `DB_PATH` permite usar una base alterna (por ejemplo, para E2E local).
 `APP_DEFAULT_LOCALE` acepta `en`, `es` o `it` (por defecto `en`).
 `HTTP_PORT` y `HTTPS_PORT` controlan los puertos publicados por Docker.
+
+## Seguridad de acceso
+
+La aplicación registra los accesos dinámicos en SQLite y Nginx conserva un
+registro JSON adicional en `storage/logs/nginx/`. Ambos omiten query strings,
+cuerpos POST, cookies, contraseñas y tokens. Desde **Admin → Seguridad** se
+pueden revisar IP, rutas, respuestas, sondeos sospechosos y bloqueos temporales.
+
+Para un dominio estable, define una lista estricta antes de publicar:
+
+```bash
+APP_ALLOWED_HOSTS=fitness.example.com,www.fitness.example.com
+```
+
+También puede configurarse desde **Admin → Seguridad** si la variable de
+entorno está vacía. No actives una lista que no incluya el dominio con el que
+estás conectado. `SECURITY_TRUSTED_PROXIES` debe contener exclusivamente las
+IP o redes CIDR de proxies controlados; las cabeceras `Forwarded` y
+`X-Forwarded-*` se ignoran para cualquier otro origen.
 
 `HTTP_PORT`/`HTTPS_PORT` también se pueden consultar y editar desde
 **Admin → Backups → Puertos publicados**. El panel solo escribe el archivo

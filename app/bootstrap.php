@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 $config = require __DIR__ . '/config.php';
+require_once __DIR__ . '/security.php';
 
 if (!is_dir((string) $config['upload_dir'])) {
     mkdir((string) $config['upload_dir'], 0775, true);
@@ -22,9 +23,7 @@ $rememberCookieValue = strtolower(trim((string) ($_COOKIE[$rememberCookieName] ?
 $rememberMeEnabled = in_array($rememberCookieValue, ['1', 'true', 'yes', 'on'], true);
 $rememberLifetime = max(1, (int) ($config['remember_me_lifetime'] ?? (60 * 60 * 24 * 30)));
 $sessionLifetime = $rememberMeEnabled ? $rememberLifetime : 0;
-$forwardedProto = strtolower(trim((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));
-$cookieSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-    || ($forwardedProto !== '' && trim(explode(',', $forwardedProto)[0]) === 'https');
+$cookieSecure = security_request_is_https($config);
 
 session_name((string) $config['session_name']);
 session_set_cookie_params([
@@ -81,6 +80,7 @@ if (PHP_SAPI !== 'cli') {
 }
 
 $pdo = db_connect($config);
+security_boot_request($pdo, $config);
 metric_preferences_backfill($pdo);
 privacy_ensure_schema($pdo);
 profile_custom_widgets_ensure_schema($pdo);

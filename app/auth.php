@@ -4,12 +4,11 @@ declare(strict_types=1);
 
 function auth_cookie_secure_flag(): bool
 {
-    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
-        return true;
-    }
+    $config = is_array($GLOBALS['config'] ?? null) ? (array) $GLOBALS['config'] : [];
 
-    $forwardedProto = strtolower(trim((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));
-    return $forwardedProto !== '' && trim(explode(',', $forwardedProto)[0]) === 'https';
+    return function_exists('security_request_is_https')
+        ? security_request_is_https($config)
+        : (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
 }
 
 function remember_me_cookie_name(array $config): string
@@ -112,7 +111,13 @@ function login_user(PDO $pdo, string $username, string $password): bool
 
 function request_ip_address(): string
 {
+    $config = is_array($GLOBALS['config'] ?? null) ? (array) $GLOBALS['config'] : [];
+    if (function_exists('security_client_ip_address')) {
+        return security_client_ip_address($config);
+    }
+
     $remote = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+
     return $remote !== '' ? $remote : 'unknown';
 }
 

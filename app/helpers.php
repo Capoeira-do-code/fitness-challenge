@@ -7,6 +7,44 @@ function e(?string $value): string
     return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
 }
 
+/**
+ * UTF-8-aware string length with no hard dependency on the mbstring extension.
+ */
+function app_text_length(string $value): int
+{
+    if (function_exists('mb_strlen')) {
+        return mb_strlen($value, 'UTF-8');
+    }
+
+    if (function_exists('iconv_strlen')) {
+        $length = iconv_strlen($value, 'UTF-8');
+        if ($length !== false) {
+            return $length;
+        }
+    }
+
+    return strlen($value);
+}
+
+/**
+ * UTF-8-aware substring with no hard dependency on the mbstring extension.
+ */
+function app_text_substr(string $value, int $offset, ?int $length = null): string
+{
+    if (function_exists('mb_substr')) {
+        return mb_substr($value, $offset, $length, 'UTF-8');
+    }
+
+    if (function_exists('iconv_substr')) {
+        $substring = iconv_substr($value, $offset, $length, 'UTF-8');
+        if ($substring !== false) {
+            return $substring;
+        }
+    }
+
+    return (string) substr($value, $offset, $length);
+}
+
 function profile_tagline_max_length(): int
 {
     return 100;
@@ -27,9 +65,7 @@ function normalize_profile_tagline(?string $value): string
 
     $limit = profile_tagline_max_length();
 
-    return function_exists('mb_substr')
-        ? mb_substr($tagline, 0, $limit)
-        : substr($tagline, 0, $limit);
+    return app_text_substr($tagline, 0, $limit);
 }
 
 function redirect(string $url): never
@@ -103,11 +139,14 @@ function request_app_base_url(): string
         return trim(explode(',', $value, 2)[0], " \t\n\r\0\x0B\"");
     };
 
-    $forwardedHost = $firstHeaderValue((string) ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? ''));
-    $forwardedProto = strtolower($firstHeaderValue((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));
-    $forwardedPort = $firstHeaderValue((string) ($_SERVER['HTTP_X_FORWARDED_PORT'] ?? ''));
+    $config = is_array($GLOBALS['config'] ?? null) ? (array) $GLOBALS['config'] : [];
+    $trustForwarded = function_exists('security_request_from_trusted_proxy')
+        && security_request_from_trusted_proxy($config);
+    $forwardedHost = $trustForwarded ? $firstHeaderValue((string) ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? '')) : '';
+    $forwardedProto = $trustForwarded ? strtolower($firstHeaderValue((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))) : '';
+    $forwardedPort = $trustForwarded ? $firstHeaderValue((string) ($_SERVER['HTTP_X_FORWARDED_PORT'] ?? '')) : '';
 
-    $forwarded = $firstHeaderValue((string) ($_SERVER['HTTP_FORWARDED'] ?? ''));
+    $forwarded = $trustForwarded ? $firstHeaderValue((string) ($_SERVER['HTTP_FORWARDED'] ?? '')) : '';
     if ($forwarded !== '') {
         if ($forwardedHost === '' && preg_match('/(?:^|;)\s*host=(?:"([^"]+)"|([^;]+))/i', $forwarded, $matches) === 1) {
             $forwardedHost = trim((string) (($matches[1] ?? '') !== '' ? $matches[1] : ($matches[2] ?? '')));
@@ -1244,6 +1283,8 @@ function notification_icon(string $kind): string
         'comp_invite', 'comp_accepted', 'comp_finished', 'squad_added' => 'trophy',
         'team_goal_completed' => 'target',
         'strike_review_request', 'strike_review_resolved' => 'check',
+        'admin_announcement' => 'bell',
+        'admin_maintenance' => 'sliders',
         default => 'spark',
     };
 }

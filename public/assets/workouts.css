@@ -4081,7 +4081,7 @@ body[data-page="workouts"] .workouts-session-detail-card {
 }
 body[data-page="workouts"] .workouts-session-detail-head {
     display: grid;
-    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-columns: 44px minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.6rem;
 }
@@ -4097,6 +4097,10 @@ body[data-page="workouts"] .workouts-session-detail-icon {
 body[data-page="workouts"] .workouts-session-detail-icon svg { width: 22px; height: 22px; }
 body[data-page="workouts"] .workouts-session-detail-head h2 { margin: 0; font-size: 1rem; }
 body[data-page="workouts"] .workouts-session-detail-head p { margin: 0.1rem 0 0; }
+body[data-page="workouts"] .workouts-session-detail-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.4rem; }
+body[data-page="workouts"] .workouts-session-detail-actions form { margin: 0; }
+body[data-page="workouts"] .workouts-session-detail-actions .btn { min-height: 40px; white-space: nowrap; }
+body[data-page="workouts"] .workouts-session-detail-actions .btn svg { width: 17px; height: 17px; }
 body[data-page="workouts"] .workouts-session-detail-metrics {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4133,6 +4137,16 @@ body[data-page="workouts"] .workouts-session-detail-exercise-head {
 }
 body[data-page="workouts"] .workouts-session-detail-exercise-head a { min-width: 0; overflow: hidden; color: var(--ink); text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
 body[data-page="workouts"] .workouts-session-detail-exercise-head strong { font-size: 0.84rem; }
+
+@media (max-width: 600px) {
+    body[data-page="workouts"] .workouts-session-detail-head { grid-template-columns: 44px minmax(0, 1fr); }
+    body[data-page="workouts"] .workouts-session-detail-actions {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr);
+    }
+    body[data-page="workouts"] .workouts-session-detail-actions :is(form, .btn) { width: 100%; }
+}
 body[data-page="workouts"] .workouts-session-detail-exercise-head span { flex: 0 0 auto; }
 body[data-page="workouts"] .workouts-session-detail-sets {
     display: grid;

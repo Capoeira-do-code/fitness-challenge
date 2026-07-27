@@ -40,7 +40,7 @@ function custom_metric_create(PDO $pdo, int $userId, array $input): array
     $target = ($input['target_value'] ?? '') !== '' ? (float) $input['target_value'] : null;
     $color = preg_match('/^#[0-9a-f]{6}$/i', (string) ($input['color'] ?? '')) === 1
         ? strtolower((string) $input['color']) : '#18a999';
-    if ($name === '' || mb_strlen($name) > 60 || mb_strlen($unit) > 20) {
+    if ($name === '' || app_text_length($name) > 60 || app_text_length($unit) > 20) {
         throw new InvalidArgumentException(t('metric.invalid'));
     }
     db_execute(

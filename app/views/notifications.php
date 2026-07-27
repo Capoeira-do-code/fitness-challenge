@@ -30,6 +30,8 @@ $notifications = array_values(array_filter($allNotifications, static function (a
 }));
 $trashIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>';
 $checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>';
+$notificationsBackUrl = '/?page=dashboard&section=alerts';
+$notificationsBackDestination = t('dashboard.mobile_alerts');
 ?>
 <section class="screen notifications-page" data-notifications-page>
     <article class="panel notifications-panel">
@@ -45,35 +47,45 @@ $checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 
             </div>
         </div>
 
-        <nav class="notifications-filter-tabs" aria-label="<?= e(t('notifications.title')) ?>">
-            <a href="/?page=notifications"<?= $notificationFilter === 'all' ? ' aria-current="page"' : '' ?>><span><?= e(t('notifications.filter_all')) ?></span><strong><?= $totalCount ?></strong></a>
-            <a href="/?page=notifications&amp;filter=unread"<?= $notificationFilter === 'unread' ? ' aria-current="page"' : '' ?>><span><?= e(t('notifications.filter_unread')) ?></span><strong><?= $unreadCount ?></strong></a>
-            <a href="/?page=notifications&amp;filter=action"<?= $notificationFilter === 'action' ? ' aria-current="page"' : '' ?>><span><?= e(t('notifications.filter_action')) ?></span><strong><?= $actionCount ?></strong></a>
-        </nav>
+        <div class="notifications-commandbar">
+            <a class="notifications-mobile-back" href="<?= e($notificationsBackUrl) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e($notificationsBackDestination) ?>">
+                <span aria-hidden="true">&larr;</span>
+            </a>
 
-        <details class="notifications-tools">
-            <summary><?= e(t('notifications.manage')) ?> <span aria-hidden="true">&rsaquo;</span></summary>
-            <div class="notifications-toolbar">
-            <form method="post" action="/?page=notifications" data-notification-form>
-                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="mark_all_notifications_read">
-                <input type="hidden" name="notification_filter" value="<?= e($notificationFilter) ?>">
-                <button class="btn btn-ghost small" type="submit"<?= $unreadCount <= 0 ? ' disabled' : '' ?>><?= e(t('notifications.mark_all_read')) ?></button>
-            </form>
-            <form method="post" action="/?page=notifications" data-notification-form>
-                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="delete_read_notifications">
-                <input type="hidden" name="notification_filter" value="<?= e($notificationFilter) ?>">
-                <button class="btn btn-ghost small" type="submit"<?= $readCount <= 0 ? ' disabled' : '' ?>><?= e(t('notifications.delete_read')) ?></button>
-            </form>
-            <form method="post" action="/?page=notifications" data-notification-form data-confirm="<?= e(t('notifications.delete_all_confirm')) ?>">
-                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="delete_all_notifications">
-                <input type="hidden" name="notification_filter" value="<?= e($notificationFilter) ?>">
-                <button class="btn btn-ghost small notification-delete-all-btn" type="submit"<?= $totalCount <= 0 ? ' disabled' : '' ?>><?= e(t('notifications.delete_all')) ?></button>
-            </form>
-            </div>
-        </details>
+            <nav class="notifications-filter-tabs" aria-label="<?= e(t('notifications.title')) ?>">
+                <a href="/?page=notifications"<?= $notificationFilter === 'all' ? ' aria-current="page"' : '' ?>><span><?= e(t('notifications.filter_all')) ?></span><strong><?= $totalCount ?></strong></a>
+                <a href="/?page=notifications&amp;filter=unread"<?= $notificationFilter === 'unread' ? ' aria-current="page"' : '' ?>><span><?= e(t('notifications.filter_unread')) ?></span><strong><?= $unreadCount ?></strong></a>
+                <a href="/?page=notifications&amp;filter=action" aria-label="<?= e(t('notifications.filter_action')) ?>: <?= $actionCount ?>"<?= $notificationFilter === 'action' ? ' aria-current="page"' : '' ?>><span class="notifications-filter-label"><?= e(t('notifications.filter_action')) ?></span><span class="notifications-filter-short" aria-hidden="true"><?= e(t('notifications.filter_action_short')) ?></span><strong><?= $actionCount ?></strong></a>
+            </nav>
+
+            <details class="notifications-tools">
+                <summary aria-label="<?= e(t('notifications.manage')) ?>">
+                    <?= activity_icon_svg('sliders') ?>
+                    <span class="notifications-tools-label"><?= e(t('notifications.manage')) ?></span>
+                    <span class="notifications-tools-chevron" aria-hidden="true">&rsaquo;</span>
+                </summary>
+                <div class="notifications-toolbar">
+                    <form method="post" action="/?page=notifications" data-notification-form>
+                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                        <input type="hidden" name="action" value="mark_all_notifications_read">
+                        <input type="hidden" name="notification_filter" value="<?= e($notificationFilter) ?>">
+                        <button class="btn btn-ghost small" type="submit"<?= $unreadCount <= 0 ? ' disabled' : '' ?>><?= e(t('notifications.mark_all_read')) ?></button>
+                    </form>
+                    <form method="post" action="/?page=notifications" data-notification-form>
+                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                        <input type="hidden" name="action" value="delete_read_notifications">
+                        <input type="hidden" name="notification_filter" value="<?= e($notificationFilter) ?>">
+                        <button class="btn btn-ghost small" type="submit"<?= $readCount <= 0 ? ' disabled' : '' ?>><?= e(t('notifications.delete_read')) ?></button>
+                    </form>
+                    <form method="post" action="/?page=notifications" data-notification-form data-confirm="<?= e(t('notifications.delete_all_confirm')) ?>">
+                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                        <input type="hidden" name="action" value="delete_all_notifications">
+                        <input type="hidden" name="notification_filter" value="<?= e($notificationFilter) ?>">
+                        <button class="btn btn-ghost small notification-delete-all-btn" type="submit"<?= $totalCount <= 0 ? ' disabled' : '' ?>><?= e(t('notifications.delete_all')) ?></button>
+                    </form>
+                </div>
+            </details>
+        </div>
 
         <?php if ($notifications === []): ?>
             <div class="notifications-empty-state">
@@ -94,8 +106,8 @@ $checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 
                     $createdAt = trim((string) ($notification['created_at'] ?? ''));
                     $createdDate = $createdAt !== '' ? substr($createdAt, 0, 10) : '';
                     $nextNotificationGroup = $createdDate === to_date(null)
-                        ? 'Hoy'
-                        : ($createdDate === (new DateTimeImmutable('yesterday'))->format('Y-m-d') ? 'Ayer' : format_date_eu($createdDate));
+                        ? t('notifications.today')
+                        : ($createdDate === (new DateTimeImmutable('yesterday'))->format('Y-m-d') ? t('notifications.yesterday') : format_date_eu($createdDate));
                     $kind = (string) ($notification['kind'] ?? 'info');
                     $kindToken = strtolower((string) (preg_split('/[_:.\-]+/', $kind)[0] ?? 'info'));
                     $categoryLabel = match ($kindToken) {
@@ -105,6 +117,7 @@ $checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 
                         'friend', 'social' => t('nav.friends'),
                         'achievement' => t('achievements.title'),
                         'workout', 'training' => t('nav.workouts'),
+                        'admin' => t('notifications.category_app'),
                         default => t('nav.notifications'),
                     };
                     // Only a few kinds carry a pending decision. The rest are news, and news
@@ -115,7 +128,7 @@ $checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 
                     <?php if ($nextNotificationGroup !== $notificationGroup): $notificationGroup = $nextNotificationGroup; ?>
                         <h2 class="notification-date-heading"><?= e($notificationGroup) ?></h2>
                     <?php endif; ?>
-                    <article class="notification-card kind-<?= e($kind) ?><?= $isRead ? ' is-read' : ' is-unread' ?><?= $pendingCta !== null ? ' needs-action' : '' ?>" data-notification-swipe>
+                    <article class="notification-card kind-<?= e($kind) ?><?= $isRead ? ' is-read' : ' is-unread' ?><?= $pendingCta !== null ? ' needs-action' : '' ?>">
                         <span class="notification-icon" aria-hidden="true"><?= activity_icon_svg(notification_icon($kind)) ?></span>
                         <a class="notification-main" href="/?page=notifications&amp;open_notification_id=<?= (int) ($notification['id'] ?? 0) ?>">
                             <span class="notification-meta-row"><em><?= e($categoryLabel) ?></em><em class="notification-state"><?= e(t($isRead ? 'notifications.state_read' : 'notifications.state_unread')) ?></em></span>

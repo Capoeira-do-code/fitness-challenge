@@ -784,6 +784,7 @@ def build_php_server_command(php_bin: str, host: str, port: int) -> tuple[list[s
         f"{host}:{port}",
         "-t",
         "public",
+        "public/router.php",
     ]
     print(
         "[deps] PHP upload limits: "

@@ -6,9 +6,9 @@ $days = [];
 for ($i = 0; $i < 7; $i++) {
     $days[$i] = t('weekday.' . $i);
 }
-$entityTypes = ['daily_log', 'approval_request', 'user', 'team_membership', 'goal', 'achievement', 'workout_type', 'exercise_definition', 'workout_rank_tier', 'season', 'photo_entry', 'app_setting', 'system_backup', 'motivational_quote', 'deploy_port_settings'];
+$entityTypes = ['daily_log', 'approval_request', 'user', 'user_notification', 'team_membership', 'goal', 'achievement', 'workout_type', 'workout_session', 'exercise_definition', 'workout_rank_tier', 'season', 'photo_entry', 'app_setting', 'system_backup', 'motivational_quote', 'deploy_port_settings', 'security_ip'];
 $activeSection = (string) ($_GET['section'] ?? '');
-$allowedSections = ['users', 'registration_links', 'challenge', 'app', 'appearance', 'notion', 'telegram', 'backups', 'habits', 'workout_types', 'training', 'achievements', 'motivational_quotes', 'xp', 'audit'];
+$allowedSections = ['users', 'registration_links', 'notifications', 'challenge', 'app', 'appearance', 'notion', 'telegram', 'backups', 'habits', 'workout_types', 'training', 'achievements', 'motivational_quotes', 'xp', 'audit', 'security'];
 if (!in_array($activeSection, $allowedSections, true)) {
     $activeSection = '';
 }
@@ -38,10 +38,10 @@ foreach ($allowedSections as $sectionKey) {
     $sectionRows[$sectionKey] = t('admin.section_' . $sectionKey);
 }
 $adminGroups = [
-    'people' => ['title' => t('admin.group_people'), 'hint' => t('admin.group_people_hint'), 'icon' => 'users', 'tone' => 'blue', 'sections' => ['users', 'audit']],
+    'people' => ['title' => t('admin.group_people'), 'hint' => t('admin.group_people_hint'), 'icon' => 'users', 'tone' => 'blue', 'sections' => ['users', 'notifications', 'audit']],
     'experience' => ['title' => t('admin.group_experience'), 'hint' => t('admin.group_experience_hint'), 'icon' => 'spark', 'tone' => 'violet', 'sections' => ['app', 'appearance', 'notion', 'telegram', 'motivational_quotes']],
     'training' => ['title' => t('admin.group_training'), 'hint' => t('admin.group_training_hint'), 'icon' => 'dumbbell', 'tone' => 'green', 'sections' => ['habits', 'workout_types', 'training', 'achievements']],
-    'system' => ['title' => t('admin.group_system'), 'hint' => t('admin.group_system_hint'), 'icon' => 'shield', 'tone' => 'orange', 'sections' => ['challenge', 'xp', 'backups']],
+    'system' => ['title' => t('admin.group_system'), 'hint' => t('admin.group_system_hint'), 'icon' => 'shield', 'tone' => 'orange', 'sections' => ['security', 'challenge', 'xp', 'backups']],
 ];
 $adminGroup = trim((string) ($_GET['group'] ?? ''));
 if (!array_key_exists($adminGroup, $adminGroups)) {
@@ -65,7 +65,9 @@ $adminHeaderTitle = $activeSection !== ''
 $adminHeaderHint = match (true) {
     $activeSection === 'registration_links' => t('admin.registration_links_hint'),
     $activeSection === 'users' => t('admin.group_people_hint'),
+    $activeSection === 'notifications' => t('admin.notifications_page_hint'),
     $activeSection === 'audit' => t('audit.subtitle'),
+    $activeSection === 'security' => t('security.subtitle'),
     $activeSection === 'app' => t('admin.app_help'),
     $activeSection === 'notion' => t('admin.notion_page_hint'),
     $activeSection === 'telegram' => t('admin.telegram_page_hint'),
@@ -435,6 +437,9 @@ try {
     </article>
 
     <?php endif; ?>
+    <?php if ($activeSection === 'notifications'): ?>
+        <?php require __DIR__ . '/partials/admin_notifications.php'; ?>
+    <?php endif; ?>
     <?php if ($activeSection === 'challenge'): ?>
         <?php require __DIR__ . '/partials/admin_challenge.php'; ?>
     <?php endif; ?>
@@ -659,7 +664,7 @@ try {
                     <form method="post" action="/?page=admin&amp;section=notion" class="admin-notion-automation-form">
                         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="update_notion_settings"><input type="hidden" name="notion_enabled_present" value="1">
                         <label class="admin-notion-enable-row"><span><strong><?= e(t('admin.notion_enabled')) ?></strong><small><?= e(t('admin.notion_automation_enable_hint')) ?></small></span><span class="admin-app-switch"><input type="checkbox" name="notion_enabled" value="1" <?= !empty($notion['enabled']) ? 'checked' : '' ?>><i aria-hidden="true"></i></span></label>
-                        <div class="integration-runtime-status is-<?= e($notionWorkerState) ?>"><span aria-hidden="true"></span><div><strong><?= e(t('admin.integration_worker_managed')) ?></strong><small><?= e($integrationStateLabel($notionWorkerState)) ?><?php if (trim((string) ($notionWorker['last_error'] ?? '')) !== ''): ?> · <?= e(mb_substr(trim((string) $notionWorker['last_error']), 0, 180)) ?><?php endif; ?></small></div></div>
+                        <div class="integration-runtime-status is-<?= e($notionWorkerState) ?>"><span aria-hidden="true"></span><div><strong><?= e(t('admin.integration_worker_managed')) ?></strong><small><?= e($integrationStateLabel($notionWorkerState)) ?><?php if (trim((string) ($notionWorker['last_error'] ?? '')) !== ''): ?> · <?= e(app_text_substr(trim((string) $notionWorker['last_error']), 0, 180)) ?><?php endif; ?></small></div></div>
                         <div class="admin-notion-automation-grid">
                             <label><span><?= e(t('admin.notion_direction')) ?></span><select name="notion_sync_direction"><option value="push_only" <?= ($notion['direction'] ?? 'push_only') === 'push_only' ? 'selected' : '' ?>><?= e(t('admin.notion_dir_push')) ?></option><option value="two_way" <?= ($notion['direction'] ?? 'push_only') === 'two_way' ? 'selected' : '' ?>><?= e(t('admin.notion_dir_two_way')) ?></option></select><small><?= e(t('admin.notion_direction_hint')) ?></small></label>
                             <label><span><?= e(t('admin.notion_frequency')) ?></span><select name="notion_sync_frequency"><option value="off" <?= ($notion['frequency'] ?? 'off') === 'off' ? 'selected' : '' ?>><?= e(t('admin.notion_freq_off')) ?></option><option value="daily" <?= ($notion['frequency'] ?? 'off') === 'daily' ? 'selected' : '' ?>><?= e(t('admin.notion_freq_daily')) ?></option></select></label>
@@ -701,7 +706,7 @@ try {
         }
         $telegramWorker = (array) ($integrationStatuses['telegram'] ?? []);
         $telegramWorkerState = $integrationState($telegramWorker);
-        $telegramWorkerError = mb_substr(trim((string) ($telegramWorker['last_error'] ?? '')), 0, 180);
+        $telegramWorkerError = app_text_substr(trim((string) ($telegramWorker['last_error'] ?? '')), 0, 180);
         $telegramLinkedUsers = is_array($telegramLinkedUsers ?? null) ? (array) $telegramLinkedUsers : [];
         $telegramBotName = trim((string) ($telegram['username'] ?? ''));
         ?>
@@ -1079,6 +1084,7 @@ try {
     $currentAdminSeason = is_array($seasonScheduleState['current'] ?? null) ? (array) $seasonScheduleState['current'] : null;
     $nextAdminSeason = is_array($seasonScheduleState['next'] ?? null) ? (array) $seasonScheduleState['next'] : null;
     $adminSeasonRows = array_values((array) ($adminSeasons ?? []));
+    $adminWorkoutSessionRows = array_values((array) ($adminWorkoutSessions ?? []));
     ?>
     <article class="panel settings-panel active admin-training-page" data-spa-section="training">
         <div class="panel-head admin-section-list" data-spa-show-when-no-param="exercise_id" <?= $selectedTrainingExerciseId !== '' ? 'hidden' : '' ?>>
@@ -1094,12 +1100,57 @@ try {
             <section class="admin-training-overview">
                 <div class="admin-training-overview-head"><span aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span><div><p class="eyebrow"><?= e(t('admin.section_training')) ?></p><h2><?= e(t('admin.training_control_title')) ?></h2><p><?= e(t('admin.training_control_hint')) ?></p></div></div>
                 <nav class="admin-training-shortcuts" aria-label="<?= e(t('admin.training_shortcuts')) ?>">
+                    <a href="#session-management"><span aria-hidden="true"><?= activity_icon_svg('list') ?></span><strong><?= e(t('admin.training_sessions')) ?></strong><small><?= count($adminWorkoutSessionRows) ?></small></a>
                     <a href="#season-planner"><span aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><strong><?= e(t('admin.seasons')) ?></strong><small><?= count($adminSeasonRows) ?></small></a>
                     <a href="#media-providers"><span aria-hidden="true"><?= activity_icon_svg('image') ?></span><strong><?= e(t('admin.media_search_providers')) ?></strong><small><?= ($mediaSearchGoogleReady ? 1 : 0) + ($mediaSearchYoutubeReady ? 1 : 0) ?>/2</small></a>
                     <a href="#rank-settings"><span aria-hidden="true"><?= activity_icon_svg('bolt') ?></span><strong><?= e(t('admin.rank_tiers')) ?></strong><small><?= count((array) ($adminRankTiers ?? [])) ?></small></a>
                     <a href="#exercise-library"><span aria-hidden="true"><?= activity_icon_svg('grid') ?></span><strong><?= e(t('admin.exercise_library')) ?></strong><small><?= count((array) ($adminTrainingExercises ?? [])) ?></small></a>
                 </nav>
             </section>
+
+            <details class="admin-training-block admin-training-sessions" id="session-management" open>
+                <summary>
+                    <span><strong><?= e(t('admin.training_sessions')) ?></strong><small><?= e(t('admin.training_sessions_hint')) ?></small></span>
+                    <span class="badge"><?= count($adminWorkoutSessionRows) ?></span>
+                </summary>
+                <?php if ($adminWorkoutSessionRows === []): ?>
+                    <p class="admin-training-sessions-empty"><?= e(t('admin.training_sessions_empty')) ?></p>
+                <?php else: ?>
+                    <div class="admin-training-session-list">
+                        <?php foreach ($adminWorkoutSessionRows as $adminWorkoutSession): ?>
+                            <?php
+                            $adminWorkoutSessionStatus = (string) ($adminWorkoutSession['status'] ?? 'completed');
+                            if (!in_array($adminWorkoutSessionStatus, ['active', 'completed', 'cancelled'], true)) {
+                                $adminWorkoutSessionStatus = 'completed';
+                            }
+                            $adminWorkoutSessionTitle = trim((string) ($adminWorkoutSession['title'] ?? ''));
+                            if ($adminWorkoutSessionTitle === '') {
+                                $adminWorkoutSessionTitle = t('workouts.session');
+                            }
+                            ?>
+                            <article class="admin-training-session-row is-<?= e($adminWorkoutSessionStatus) ?>">
+                                <span class="admin-training-session-avatar" aria-hidden="true"><?= e(initials_for((string) ($adminWorkoutSession['display_name'] ?? '?'))) ?></span>
+                                <span class="admin-training-session-copy">
+                                    <strong><?= e($adminWorkoutSessionTitle) ?></strong>
+                                    <small><?= e((string) ($adminWorkoutSession['display_name'] ?? '')) ?> · @<?= e((string) ($adminWorkoutSession['username'] ?? '')) ?> · <?= e(format_date_eu((string) ($adminWorkoutSession['started_at'] ?? ''))) ?></small>
+                                </span>
+                                <span class="admin-training-session-metrics">
+                                    <i><?= (int) ($adminWorkoutSession['exercise_count'] ?? 0) ?> <?= e(t('workouts.exercises')) ?></i>
+                                    <i><?= (int) ($adminWorkoutSession['completed_sets'] ?? 0) ?> <?= e(t('workouts.stat_sets')) ?></i>
+                                    <i><?= e(number_format((float) ($adminWorkoutSession['total_volume'] ?? 0), 0, ',', '.')) ?> kg</i>
+                                </span>
+                                <b><?= e(t('admin.training_session_status_' . $adminWorkoutSessionStatus)) ?></b>
+                                <form method="post" action="/?page=admin&amp;section=training#session-management">
+                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                    <input type="hidden" name="action" value="admin_delete_workout_session">
+                                    <input type="hidden" name="session_id" value="<?= (int) ($adminWorkoutSession['id'] ?? 0) ?>">
+                                    <button class="btn btn-danger-ghost small" type="submit" data-confirm-action="<?= e(t('admin.training_session_delete_confirm', ['name' => $adminWorkoutSessionTitle])) ?>"><?= e(t('common.delete')) ?></button>
+                                </form>
+                            </article>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </details>
 
             <details class="admin-training-block admin-training-feature admin-media-config" id="media-providers" <?= (!$mediaSearchGoogleReady || !$mediaSearchYoutubeReady) ? 'open' : '' ?>>
                 <summary><span><strong id="admin-media-search-title"><?= e(t('admin.media_search_title')) ?></strong><small><?= e(t('admin.media_search_hint')) ?></small></span><span class="badge"><?= ($mediaSearchGoogleReady ? 1 : 0) + ($mediaSearchYoutubeReady ? 1 : 0) ?>/2</span></summary>
@@ -1466,5 +1517,9 @@ try {
             <?php endif; ?>
         </div>
     </article>
+    <?php endif; ?>
+
+    <?php if ($activeSection === 'security'): ?>
+        <?php require __DIR__ . '/partials/admin_security.php'; ?>
     <?php endif; ?>
 </section>

@@ -4,19 +4,23 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/app/bootstrap.php';
 
-header('X-Content-Type-Options: nosniff');
-header('X-Frame-Options: SAMEORIGIN');
-header('Referrer-Policy: strict-origin-when-cross-origin');
-header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+security_apply_response_headers($config);
 
 $page = $_GET['page'] ?? null;
 if ($page === null) {
-    $pathPage = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/');
+    $pathPage = trim(security_request_path(), '/');
+    if ($pathPage === 'index.php') {
+        $pathPage = '';
+    }
     if (in_array($pathPage, ['dashboard', 'dashboard_panel_state', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'workouts', 'social', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'quests', 'season', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'competitions', 'login', 'register', 'onboarding', 'login_background'], true)) {
         $page = $pathPage;
+    } elseif ($pathPage !== '') {
+        security_mark_current_request($pdo, 'not_found', 10);
+        security_reject_request(404, 'Not Found');
     }
 }
 $currentUser = current_user($pdo);
+security_apply_response_headers($config, $currentUser !== null);
 header('X-Fitness-User-Id: ' . (string) ((int) ($currentUser['id'] ?? 0)));
 set_current_locale(resolve_locale($config, $currentUser));
 $setupRequired = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === 0;
@@ -3424,6 +3428,19 @@ if ($page === 'workouts') {
         };
 
         switch ($wkAction) {
+            case 'session_delete':
+                $deleteSessionId = max(0, (int) ($_POST['session_id'] ?? 0));
+                try {
+                    $sessionDeleted = wk_session_delete($pdo, $deleteSessionId, $meId, false);
+                    flash_set(
+                        $sessionDeleted ? 'success' : 'error',
+                        $sessionDeleted ? t('workouts.session_deleted') : t('workouts.session_delete_failed')
+                    );
+                } catch (Throwable $exception) {
+                    flash_set('error', t('workouts.session_delete_failed'));
+                }
+                redirect('/?page=workouts&view=stats');
+
             case 'session_share':
                 $shareSessionId = max(0, (int) ($_POST['session_id'] ?? 0));
                 $shareSession = $shareSessionId > 0 ? wk_session_get($pdo, $shareSessionId, $meId) : null;
@@ -6749,6 +6766,77 @@ if ($page === 'admin') {
 
         $action = (string) ($_POST['action'] ?? '');
 
+        if ($action === 'send_admin_notification') {
+            try {
+                $notificationResult = send_admin_notification(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    (string) ($_POST['notification_target'] ?? ''),
+                    (string) ($_POST['notification_kind'] ?? ''),
+                    (string) ($_POST['notification_title'] ?? ''),
+                    (string) ($_POST['notification_message'] ?? '')
+                );
+                flash_set(
+                    'success',
+                    t('flash.admin_notification_sent', [
+                        'count' => (int) $notificationResult['recipient_count'],
+                    ])
+                );
+            } catch (Throwable $exception) {
+                flash_set(
+                    'error',
+                    $exception->getMessage() !== '' ? $exception->getMessage() : t('flash.save_failed')
+                );
+            }
+            redirect('/?page=admin&section=notifications');
+        }
+
+        if ($action === 'update_security_settings') {
+            try {
+                $runtimeSecurity = security_runtime_settings($pdo, $config);
+                if ($runtimeSecurity['allowed_hosts_source'] === 'environment') {
+                    $allowedHosts = array_values((array) ($runtimeSecurity['allowed_hosts'] ?? []));
+                } else {
+                    $allowedHosts = security_parse_allowed_hosts((string) ($_POST['allowed_hosts'] ?? ''), true);
+                    $requestHost = security_request_host($config);
+                    if ($allowedHosts !== []
+                        && ($requestHost === null || !security_host_matches_allowed($requestHost['host'], $allowedHosts))
+                    ) {
+                        throw new InvalidArgumentException(t('security.hosts_must_include_current'));
+                    }
+                    set_app_setting($pdo, 'security_allowed_hosts', implode("\n", $allowedHosts), (int) $currentUser['id']);
+                }
+                $retentionDays = max(7, min(365, (int) ($_POST['retention_days'] ?? 90)));
+                set_app_setting($pdo, 'security_auto_block', bool_from_form('auto_block') === 1 ? '1' : '0', (int) $currentUser['id']);
+                set_app_setting($pdo, 'security_log_retention_days', (string) $retentionDays, (int) $currentUser['id']);
+                flash_set('success', t('security.settings_saved'));
+            } catch (Throwable $exception) {
+                flash_set('error', $exception->getMessage() !== '' ? $exception->getMessage() : t('flash.save_failed'));
+            }
+            redirect('/?page=admin&section=security');
+        }
+
+        if ($action === 'security_unblock_ip') {
+            $blockedIp = trim((string) ($_POST['ip_address'] ?? ''));
+            $beforeBlock = db_fetch_one($pdo, 'SELECT * FROM security_ip_blocks WHERE ip_address = :ip', [':ip' => $blockedIp]);
+            if ($beforeBlock !== null && security_unblock_ip($pdo, $blockedIp)) {
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    'security_ip_unblocked',
+                    'security_ip',
+                    $blockedIp,
+                    'Security IP block removed.',
+                    audit_snapshot($beforeBlock),
+                    null
+                );
+                flash_set('success', t('security.ip_unblocked', ['ip' => $blockedIp]));
+            } else {
+                flash_set('error', t('security.ip_unblock_failed'));
+            }
+            redirect('/?page=admin&section=security');
+        }
+
         if ($action === 'save_media_search_settings') {
             media_search_set_enabled(
                 $pdo,
@@ -6994,6 +7082,19 @@ if ($page === 'admin') {
                 flash_set('error', $e->getMessage());
             }
             redirect('/?page=admin&section=training');
+        }
+
+        if ($action === 'admin_delete_workout_session') {
+            try {
+                $deleteSessionId = max(0, (int) ($_POST['session_id'] ?? 0));
+                if (!wk_session_delete($pdo, $deleteSessionId, (int) $currentUser['id'], true)) {
+                    throw new InvalidArgumentException(t('workouts.session_delete_failed'));
+                }
+                flash_set('success', t('workouts.session_deleted'));
+            } catch (Throwable $exception) {
+                flash_set('error', t('workouts.session_delete_failed'));
+            }
+            redirect('/?page=admin&section=training#session-management');
         }
 
         if ($action === 'update_app_name') {
@@ -7998,7 +8099,7 @@ if ($page === 'admin') {
     }
 
     $adminRequestedSection = trim((string) ($_GET['section'] ?? ''));
-    $adminRenderableSections = ['users', 'registration_links', 'challenge', 'app', 'appearance', 'notion', 'telegram', 'backups', 'habits', 'workout_types', 'training', 'achievements', 'motivational_quotes', 'xp', 'audit'];
+    $adminRenderableSections = ['users', 'registration_links', 'notifications', 'challenge', 'app', 'appearance', 'notion', 'telegram', 'backups', 'habits', 'workout_types', 'training', 'achievements', 'motivational_quotes', 'xp', 'audit', 'security'];
     if (!in_array($adminRequestedSection, $adminRenderableSections, true)) {
         render_view('admin', [
             'title' => t('admin.title'),
@@ -8052,6 +8153,7 @@ if ($page === 'admin') {
     $adminAchievements = list_achievements_for_admin($pdo);
     $adminTrainingExercises = wk_admin_exercises($pdo);
     $adminTrainingExerciseMedia = wk_exercise_media_map($pdo, $adminTrainingExercises);
+    $adminWorkoutSessions = wk_admin_sessions($pdo, 100);
     $adminRankTiers = db_fetch_all($pdo, 'SELECT * FROM workout_rank_tiers ORDER BY sort_order ASC, threshold ASC');
     $adminSeasonAutomation = seasons_automation_settings($pdo);
     if (!empty($adminSeasonAutomation['enabled'])) {
@@ -8130,6 +8232,14 @@ if ($page === 'admin') {
     ];
     $adminHabits = list_habit_definitions($pdo, false);
     $adminHabitTranslations = fetch_habit_translations($pdo, array_column($adminHabits, 'id'));
+    $securityIpFilter = trim((string) ($_GET['security_ip'] ?? ''));
+    if ($securityIpFilter !== '' && filter_var($securityIpFilter, FILTER_VALIDATE_IP) === false) {
+        $securityIpFilter = '';
+    }
+    $adminSecuritySettings = security_runtime_settings($pdo, $config);
+    $adminSecuritySummary = security_access_summary($pdo);
+    $adminSecurityLogs = security_recent_access_logs($pdo, 200, $securityIpFilter);
+    $adminSecurityBlocks = security_active_ip_blocks($pdo);
 
     render_view('admin', [
         'title' => t('admin.title'),
@@ -8152,6 +8262,7 @@ if ($page === 'admin') {
         'adminAchievements' => $adminAchievements,
         'adminTrainingExercises' => $adminTrainingExercises,
         'adminTrainingExerciseMedia' => $adminTrainingExerciseMedia,
+        'adminWorkoutSessions' => $adminWorkoutSessions,
         'adminRankTiers' => $adminRankTiers,
         'adminSeasons' => $adminSeasons,
         'mediaSearchEnabled' => media_search_enabled($pdo),
@@ -8193,6 +8304,11 @@ if ($page === 'admin') {
         'challengeCurrentSummary' => $challengeCurrentSummary,
         'auditLogs' => fetch_audit_logs($pdo, $auditFilters, 100),
         'auditFilters' => $auditFilters,
+        'securitySettings' => $adminSecuritySettings,
+        'securitySummary' => $adminSecuritySummary,
+        'securityLogs' => $adminSecurityLogs,
+        'securityBlocks' => $adminSecurityBlocks,
+        'securityIpFilter' => $securityIpFilter,
         'config' => $config,
     ]);
 }

@@ -11211,24 +11211,6 @@ document.addEventListener('click', (event) => {
             refresh();
         });
     };
-    const bindNotificationSwipe = () => {
-        document.querySelectorAll('[data-notification-swipe]').forEach((card) => {
-            if (card.dataset.swipeBound === '1') return;
-            card.dataset.swipeBound = '1';
-            let startX = null;
-            card.addEventListener('touchstart', (event) => {
-                startX = event.touches[0]?.clientX ?? null;
-            }, {passive: true});
-            card.addEventListener('touchend', (event) => {
-                if (startX === null) return;
-                const endX = event.changedTouches[0]?.clientX ?? startX;
-                const distance = endX - startX;
-                if (distance < -45) card.classList.add('is-swiped');
-                if (distance > 45) card.classList.remove('is-swiped');
-                startX = null;
-            }, {passive: true});
-        });
-    };
     const bindChallengeResetDialog = () => {
         const form = document.querySelector('[data-new-challenge-form]');
         const modal = document.querySelector('[data-challenge-reset-modal]');
@@ -11283,17 +11265,14 @@ document.addEventListener('click', (event) => {
     document.addEventListener('DOMContentLoaded', bindProductDialogs);
     document.addEventListener('DOMContentLoaded', renderSyncConflicts);
     document.addEventListener('DOMContentLoaded', bindEntryTable);
-    document.addEventListener('DOMContentLoaded', bindNotificationSwipe);
     document.addEventListener('DOMContentLoaded', bindChallengeResetDialog);
     document.addEventListener('DOMContentLoaded', bindTeamPanels);
     document.addEventListener('fitness:navigation-complete', bindProductDialogs);
     document.addEventListener('fitness:navigation-complete', bindEntryTable);
-    document.addEventListener('fitness:navigation-complete', bindNotificationSwipe);
     document.addEventListener('fitness:navigation-complete', bindChallengeResetDialog);
     document.addEventListener('fitness:navigation-complete', bindTeamPanels);
     if (document.readyState !== 'loading') bindProductDialogs();
     if (document.readyState !== 'loading') bindEntryTable();
-    if (document.readyState !== 'loading') bindNotificationSwipe();
     if (document.readyState !== 'loading') bindChallengeResetDialog();
     if (document.readyState !== 'loading') bindTeamPanels();
 })();

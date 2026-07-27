@@ -837,6 +837,39 @@ function initialize_database(PDO $pdo, array $config): void
         )'
     );
 
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS security_access_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id TEXT NOT NULL UNIQUE,
+            ip_address TEXT NOT NULL,
+            network_ip TEXT NOT NULL,
+            user_id INTEGER,
+            method TEXT NOT NULL,
+            host TEXT NOT NULL DEFAULT "",
+            path TEXT NOT NULL,
+            route TEXT NOT NULL DEFAULT "",
+            status_code INTEGER NOT NULL DEFAULT 0,
+            event_type TEXT NOT NULL DEFAULT "request",
+            risk_score INTEGER NOT NULL DEFAULT 0,
+            user_agent TEXT NOT NULL DEFAULT "",
+            duration_ms REAL NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS security_ip_blocks (
+            ip_address TEXT PRIMARY KEY,
+            reason TEXT NOT NULL,
+            blocked_until TEXT NOT NULL,
+            hit_count INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )'
+    );
+
     ensure_schema_columns($pdo, $config);
     $pdo->exec('UPDATE photo_entries SET has_photo = CASE WHEN TRIM(COALESCE(file_path, "")) = "" THEN 0 ELSE 1 END');
     backfill_team_membership_periods($pdo);
@@ -1221,6 +1254,11 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_workout_field_values_workout ON daily_log_workout_field_values(workout_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_achievement_rules_achievement ON achievement_rules(achievement_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_login_attempts_user_ip ON login_attempts(username, ip_address, attempted_at)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_security_access_created ON security_access_logs(created_at DESC)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_security_access_ip_created ON security_access_logs(ip_address, created_at DESC)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_security_access_risk_created ON security_access_logs(risk_score, created_at DESC)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_security_access_status_created ON security_access_logs(status_code, created_at DESC)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_security_blocks_until ON security_ip_blocks(blocked_until)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_motivational_quotes_active ON motivational_quotes(active, created_at DESC)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON user_notifications(user_id, created_at)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON user_notifications(user_id, is_read)');

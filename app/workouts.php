@@ -2949,6 +2949,162 @@ function wk_session_cancel(PDO $pdo, int $sessionId, int $userId): bool
     );
 }
 
+/**
+ * Permanently delete a session when the actor owns it or is an administrator.
+ * Related sets/exercises cascade; derived records and challenge linkage are
+ * repaired explicitly because they are not foreign-key children of a session.
+ */
+function wk_session_delete(PDO $pdo, int $sessionId, int $actorUserId, bool $actorIsAdmin = false): bool
+{
+    if ($sessionId <= 0 || $actorUserId <= 0) {
+        return false;
+    }
+
+    $session = db_fetch_one(
+        $pdo,
+        'SELECT ws.*, u.username, u.display_name
+         FROM workout_sessions ws
+         JOIN users u ON u.id = ws.user_id
+         WHERE ws.id = :id',
+        [':id' => $sessionId]
+    );
+    if ($session === null) {
+        return false;
+    }
+
+    $ownerUserId = (int) ($session['user_id'] ?? 0);
+    if ($ownerUserId <= 0 || (!$actorIsAdmin && $ownerUserId !== $actorUserId)) {
+        return false;
+    }
+
+    $dailyLogId = (int) ($session['daily_log_id'] ?? 0);
+    $startedTransaction = !$pdo->inTransaction();
+    if ($startedTransaction) {
+        $pdo->beginTransaction();
+    }
+
+    try {
+        db_execute(
+            $pdo,
+            'DELETE FROM user_notifications
+             WHERE kind = :kind AND unique_key LIKE :unique_key',
+            [
+                ':kind' => 'workout_share',
+                ':unique_key' => 'workout-share:' . $sessionId . ':%',
+            ]
+        );
+        db_execute(
+            $pdo,
+            'DELETE FROM workout_sessions WHERE id = :id AND user_id = :user',
+            [':id' => $sessionId, ':user' => $ownerUserId]
+        );
+
+        wk_rebuild_personal_records_for_user($pdo, $ownerUserId);
+
+        // Today's snapshot is derived from live sessions. Remove the now-stale
+        // point; the next normal capture will write the corrected value.
+        db_execute(
+            $pdo,
+            'DELETE FROM workout_rank_snapshots
+             WHERE user_id = :user AND captured_on = :today',
+            [':user' => $ownerUserId, ':today' => (new DateTimeImmutable('today'))->format('Y-m-d')]
+        );
+
+        if ($dailyLogId > 0) {
+            $remainingLinked = db_fetch_one(
+                $pdo,
+                'SELECT COUNT(*) AS total
+                 FROM workout_sessions
+                 WHERE daily_log_id = :log AND user_id = :user AND status = "completed"',
+                [':log' => $dailyLogId, ':user' => $ownerUserId]
+            );
+            $structuredWorkouts = db_fetch_one(
+                $pdo,
+                'SELECT COUNT(*) AS total FROM daily_log_workouts WHERE log_id = :log',
+                [':log' => $dailyLogId]
+            );
+            if ((int) ($remainingLinked['total'] ?? 0) === 0 && (int) ($structuredWorkouts['total'] ?? 0) === 0) {
+                db_execute(
+                    $pdo,
+                    'UPDATE daily_logs
+                     SET workout_done = 0, workout_type = "", updated_at = :now
+                     WHERE id = :log AND user_id = :user',
+                    [':now' => now_iso(), ':log' => $dailyLogId, ':user' => $ownerUserId]
+                );
+            }
+        }
+
+        audit_log(
+            $pdo,
+            $actorUserId,
+            'workout_session_deleted',
+            'workout_session',
+            (string) $sessionId,
+            $actorIsAdmin ? 'Workout session deleted by administrator.' : 'Workout session deleted by owner.',
+            audit_snapshot($session),
+            null
+        );
+
+        if ($startedTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $exception) {
+        if ($startedTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $exception;
+    }
+
+    return true;
+}
+
+/**
+ * Recalculate all personal records after destructive session history changes.
+ */
+function wk_rebuild_personal_records_for_user(PDO $pdo, int $userId): void
+{
+    db_execute($pdo, 'DELETE FROM personal_records WHERE user_id = :user', [':user' => $userId]);
+    $sessions = db_fetch_all(
+        $pdo,
+        'SELECT id, COALESCE(ended_at, started_at) AS achieved_at
+         FROM workout_sessions
+         WHERE user_id = :user AND status = "completed"
+         ORDER BY started_at ASC, id ASC',
+        [':user' => $userId]
+    );
+    foreach ($sessions as $session) {
+        wk_refresh_personal_records(
+            $pdo,
+            $userId,
+            (int) ($session['id'] ?? 0),
+            (string) ($session['achieved_at'] ?? '')
+        );
+    }
+}
+
+/** @return array<int,array<string,mixed>> */
+function wk_admin_sessions(PDO $pdo, int $limit = 100): array
+{
+    $limit = max(1, min(300, $limit));
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT ws.*, u.username, u.display_name,
+                COUNT(DISTINCT se.id) AS exercise_count,
+                SUM(CASE WHEN sets.completed = 1 THEN 1 ELSE 0 END) AS completed_sets,
+                SUM(CASE WHEN sets.completed = 1
+                         THEN COALESCE(sets.weight, 0) * COALESCE(sets.reps, 0)
+                         ELSE 0 END) AS total_volume
+         FROM workout_sessions ws
+         JOIN users u ON u.id = ws.user_id
+         LEFT JOIN session_exercises se ON se.session_id = ws.id
+         LEFT JOIN workout_sets sets ON sets.session_exercise_id = se.id
+         GROUP BY ws.id, u.id
+         ORDER BY ws.started_at DESC, ws.id DESC
+         LIMIT ' . $limit
+    );
+}
+
 /** @return array<int,array<string,mixed>> */
 function wk_sessions_for_user(PDO $pdo, int $userId, int $limit = 50): array
 {
@@ -2963,7 +3119,7 @@ function wk_sessions_for_user(PDO $pdo, int $userId, int $limit = 50): array
  * Recompute personal records touched by a session (best weight, best est. 1RM,
  * best reps per exercise). Uses Epley: 1RM = weight * (1 + reps/30).
  */
-function wk_refresh_personal_records(PDO $pdo, int $userId, int $sessionId): void
+function wk_refresh_personal_records(PDO $pdo, int $userId, int $sessionId, ?string $achievedAt = null): void
 {
     $rows = db_fetch_all(
         $pdo,
@@ -2973,7 +3129,7 @@ function wk_refresh_personal_records(PDO $pdo, int $userId, int $sessionId): voi
          WHERE se.session_id = :s AND ws.completed = 1',
         [':s' => $sessionId]
     );
-    $now = now_iso();
+    $now = trim((string) $achievedAt) !== '' ? (string) $achievedAt : now_iso();
     foreach ($rows as $row) {
         $exId = (int) $row['exercise_def_id'];
         $weight = $row['weight'] !== null ? (float) $row['weight'] : null;
