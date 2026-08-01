@@ -1882,11 +1882,12 @@ body[data-page="quests"]:is([data-theme="dark"], .theme-active-dark) .quest-cata
 .home-feed-author strong { font-size: .96rem; }
 .home-feed-author time { color: var(--muted); font-size: .76rem; }
 .home-feed-workout h3, .home-feed-photo-copy h3 { margin: 0 0 16px; font-size: clamp(1.3rem, 4vw, 1.65rem); letter-spacing: -.035em; }
-.home-feed-workout-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: inherit; text-decoration: none; }
-.home-feed-workout-title > span { min-width: 0; }
-.home-feed-workout-title > b { color: #168447; font-size: 1.55rem; font-weight: 500; transition: transform .18s ease; }
-.home-feed-workout-title:hover > b { transform: translateX(3px); }
-.home-feed-workout-title:focus-visible { border-radius: 8px; outline: 3px solid color-mix(in srgb,#168447 28%,transparent); outline-offset: 4px; }
+:is(.home-feed-workout-title,.home-feed-post-title) { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: inherit; text-decoration: none; }
+:is(.home-feed-workout-title,.home-feed-post-title) > span { min-width: 0; }
+:is(.home-feed-workout-title,.home-feed-post-title) > b { color: #168447; font-size: 1.55rem; font-weight: 500; transition: transform .18s ease; }
+:is(.home-feed-workout-title,.home-feed-post-title):hover > b { transform: translateX(3px); }
+:is(.home-feed-workout-title,.home-feed-post-title):focus-visible { border-radius: 8px; outline: 3px solid color-mix(in srgb,#168447 28%,transparent); outline-offset: 4px; }
+.home-feed-meal .home-feed-post-title { width: 100%; }
 .home-feed-workout-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .home-feed-workout-stats span { display: grid; gap: 5px; }
 .home-feed-workout-stats small { color: var(--muted); font-size: .72rem; }
