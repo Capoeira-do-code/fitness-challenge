@@ -41,8 +41,10 @@ if ($page === null || $page === '') {
 if ($currentUser !== null && is_post() && (string) ($_SERVER['HTTP_X_OFFLINE_REPLAY'] ?? '') === '1') {
     $offlineKey = trim((string) ($_SERVER['HTTP_X_IDEMPOTENCY_KEY'] ?? ''));
     $offlineCsrf = (string) ($_POST['csrf_token'] ?? '');
-    if ($offlineKey !== '' && strlen($offlineKey) <= 160 && $offlineCsrf !== ''
-        && hash_equals((string) ($_SESSION['csrf_token'] ?? ''), $offlineCsrf)) {
+    if (
+        $offlineKey !== '' && strlen($offlineKey) <= 160 && $offlineCsrf !== ''
+        && hash_equals((string) ($_SESSION['csrf_token'] ?? ''), $offlineCsrf)
+    ) {
         $inserted = db_execute($pdo, 'INSERT OR IGNORE INTO sync_mutations
             (user_id, idempotency_key, resource_type, resource_key, response_json, created_at)
             VALUES (:user,:key,"form_replay",:resource,:response,:now)', [
@@ -139,7 +141,8 @@ if ($page === 'app_icon_default') {
     exit;
 }
 
-if ($currentUser !== null
+if (
+    $currentUser !== null
     && !empty($config['request_schedulers_enabled'])
     && !in_array($page, ['manifest', 'app_icon', 'app_icon_default', 'login_background', 'media', 'media_thumb', 'shared_workout_media', 'dashboard_panel_state', 'api_meal_calendar', 'api_gallery_recent', 'api_workout_media_search', 'api_workout_media_import'], true)
 ) {
@@ -380,97 +383,106 @@ if ($page === 'setup') {
             $setupError = t('setup.error_date_order');
         } else {
             try {
-                $pdo->exec('BEGIN IMMEDIATE');
-                if ((int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() !== 0) {
-                    throw new RuntimeException(t('setup.error_already_configured'));
-                }
+                db_immediate_transaction($pdo, static function () use ($pdo, $setupValues, $password): void {
+                    if ((int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() !== 0) {
+                        throw new RuntimeException(t('setup.error_already_configured'));
+                    }
 
-                $now = now_iso();
-                db_execute(
-                    $pdo,
-                    'INSERT INTO users (
-                        username, password_hash, display_name, role, locale,
-                        onboarding_status, onboarding_completed_at, active, created_at, updated_at
-                     ) VALUES (
-                        :username, :password_hash, :display_name, "admin", :locale,
-                        "complete", :completed_at, 1, :created_at, :updated_at
-                     )',
-                    [
-                        ':username' => $setupValues['username'],
-                        ':password_hash' => password_hash($password, PASSWORD_DEFAULT),
-                        ':display_name' => $setupValues['display_name'],
-                        ':locale' => $setupValues['locale'],
-                        ':completed_at' => $now,
-                        ':created_at' => $now,
-                        ':updated_at' => $now,
-                    ]
-                );
-                $adminId = (int) $pdo->lastInsertId();
-
-                db_execute(
-                    $pdo,
-                    'INSERT INTO app_settings (setting_key, setting_value, updated_by, updated_at)
-                     VALUES ("app_name", :value, :updated_by, :updated_at)
-                     ON CONFLICT(setting_key) DO UPDATE SET
-                        setting_value = excluded.setting_value,
-                        updated_by = excluded.updated_by,
-                        updated_at = excluded.updated_at',
-                    [
-                        ':value' => $setupValues['app_name'],
-                        ':updated_by' => $adminId,
-                        ':updated_at' => $now,
-                    ]
-                );
-                db_execute(
-                    $pdo,
-                    'UPDATE challenge_settings
-                     SET challenge_name = :name, challenge_start = :start, challenge_end = :end, updated_at = :updated_at
-                     WHERE id = 1',
-                    [
-                        ':name' => $setupValues['challenge_name'],
-                        ':start' => $setupValues['challenge_start'],
-                        ':end' => $setupValues['challenge_end'],
-                        ':updated_at' => $now,
-                    ]
-                );
-
-                $team = db_fetch_one($pdo, 'SELECT id FROM teams WHERE slug = "main"');
-                if ($team === null) {
+                    $now = now_iso();
                     db_execute(
                         $pdo,
-                        'INSERT INTO teams (name, description, slug, active, created_at, updated_at)
-                         VALUES (:name, "", "main", 1, :created_at, :updated_at)',
-                        [':name' => $setupValues['team_name'], ':created_at' => $now, ':updated_at' => $now]
+                        'INSERT INTO users (
+                            username, password_hash, display_name, role, locale,
+                            onboarding_status, onboarding_completed_at, active, created_at, updated_at
+                         ) VALUES (
+                            :username, :password_hash, :display_name, "admin", :locale,
+                            "complete", :completed_at, 1, :created_at, :updated_at
+                         )',
+                        [
+                            ':username' => $setupValues['username'],
+                            ':password_hash' => password_hash($password, PASSWORD_DEFAULT),
+                            ':display_name' => $setupValues['display_name'],
+                            ':locale' => $setupValues['locale'],
+                            ':completed_at' => $now,
+                            ':created_at' => $now,
+                            ':updated_at' => $now,
+                        ]
                     );
-                    $teamId = (int) $pdo->lastInsertId();
-                } else {
-                    $teamId = (int) $team['id'];
-                    db_execute($pdo, 'UPDATE teams SET name = :name, updated_at = :updated_at WHERE id = :id', [
-                        ':name' => $setupValues['team_name'], ':updated_at' => $now, ':id' => $teamId,
+                    $adminId = (int) $pdo->lastInsertId();
+
+                    db_execute(
+                        $pdo,
+                        'INSERT INTO app_settings (setting_key, setting_value, updated_by, updated_at)
+                         VALUES ("app_name", :value, :updated_by, :updated_at)
+                         ON CONFLICT(setting_key) DO UPDATE SET
+                            setting_value = excluded.setting_value,
+                            updated_by = excluded.updated_by,
+                            updated_at = excluded.updated_at',
+                        [
+                            ':value' => $setupValues['app_name'],
+                            ':updated_by' => $adminId,
+                            ':updated_at' => $now,
+                        ]
+                    );
+                    db_execute(
+                        $pdo,
+                        'UPDATE challenge_settings
+                         SET challenge_name = :name, challenge_start = :start, challenge_end = :end, updated_at = :updated_at
+                         WHERE id = 1',
+                        [
+                            ':name' => $setupValues['challenge_name'],
+                            ':start' => $setupValues['challenge_start'],
+                            ':end' => $setupValues['challenge_end'],
+                            ':updated_at' => $now,
+                        ]
+                    );
+
+                    $team = db_fetch_one($pdo, 'SELECT id FROM teams WHERE slug = "main"');
+                    if ($team === null) {
+                        db_execute(
+                            $pdo,
+                            'INSERT INTO teams (name, description, slug, active, created_at, updated_at)
+                             VALUES (:name, "", "main", 1, :created_at, :updated_at)',
+                            [':name' => $setupValues['team_name'], ':created_at' => $now, ':updated_at' => $now]
+                        );
+                        $teamId = (int) $pdo->lastInsertId();
+                    } else {
+                        $teamId = (int) $team['id'];
+                        db_execute($pdo, 'UPDATE teams SET name = :name, updated_at = :updated_at WHERE id = :id', [
+                            ':name' => $setupValues['team_name'],
+                            ':updated_at' => $now,
+                            ':id' => $teamId,
+                        ]);
+                    }
+                    db_execute(
+                        $pdo,
+                        'INSERT INTO team_memberships (team_id, user_id, role, active, joined_at, created_at, updated_at)
+                         VALUES (:team_id, :user_id, "owner", 1, :joined_at, :created_at, :updated_at)',
+                        [
+                            ':team_id' => $teamId,
+                            ':user_id' => $adminId,
+                            ':joined_at' => $now,
+                            ':created_at' => $now,
+                            ':updated_at' => $now,
+                        ]
+                    );
+                    db_execute(
+                        $pdo,
+                        'INSERT INTO team_membership_periods (team_id, user_id, joined_at, created_at, updated_at)
+                         VALUES (:team_id, :user_id, :joined_at, :created_at, :updated_at)',
+                        [
+                            ':team_id' => $teamId,
+                            ':user_id' => $adminId,
+                            ':joined_at' => $now,
+                            ':created_at' => $now,
+                            ':updated_at' => $now,
+                        ]
+                    );
+                    db_execute($pdo, 'UPDATE users SET active_team_id = :team_id WHERE id = :id', [
+                        ':team_id' => $teamId,
+                        ':id' => $adminId,
                     ]);
-                }
-                db_execute(
-                    $pdo,
-                    'INSERT INTO team_memberships (team_id, user_id, role, active, joined_at, created_at, updated_at)
-                     VALUES (:team_id, :user_id, "owner", 1, :joined_at, :created_at, :updated_at)',
-                    [
-                        ':team_id' => $teamId, ':user_id' => $adminId, ':joined_at' => $now,
-                        ':created_at' => $now, ':updated_at' => $now,
-                    ]
-                );
-                db_execute(
-                    $pdo,
-                    'INSERT INTO team_membership_periods (team_id, user_id, joined_at, created_at, updated_at)
-                     VALUES (:team_id, :user_id, :joined_at, :created_at, :updated_at)',
-                    [
-                        ':team_id' => $teamId, ':user_id' => $adminId, ':joined_at' => $now,
-                        ':created_at' => $now, ':updated_at' => $now,
-                    ]
-                );
-                db_execute($pdo, 'UPDATE users SET active_team_id = :team_id WHERE id = :id', [
-                    ':team_id' => $teamId, ':id' => $adminId,
-                ]);
-                $pdo->commit();
+                });
 
                 persist_session_locale($setupValues['locale']);
                 set_current_locale($setupValues['locale']);
@@ -480,9 +492,6 @@ if ($page === 'setup') {
                 flash_set('success', t('setup.success'));
                 redirect('/?page=dashboard');
             } catch (Throwable $e) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
                 $setupError = $e->getMessage() !== '' ? $e->getMessage() : t('setup.error_generic');
             }
         }
@@ -521,7 +530,8 @@ if ($page === 'weekly_report') {
     $reportUser = require_login($pdo);
     $start = to_date((string) ($_GET['start'] ?? ''), '');
     $report = $start !== '' ? db_fetch_one($pdo, 'SELECT * FROM weekly_report_runs WHERE user_id = :user AND period_start = :start AND file_path IS NOT NULL', [
-        ':user' => (int) $reportUser['id'], ':start' => $start,
+        ':user' => (int) $reportUser['id'],
+        ':start' => $start,
     ]) : null;
     $path = $report !== null ? resolve_media_storage_path($config, (string) $report['file_path']) : null;
     if ($path === null || !is_file($path)) {
@@ -1268,9 +1278,11 @@ if ($page === 'onboarding') {
                 $calorieBurnRaw = trim((string) ($_POST['calorie_burn_goal'] ?? ''));
                 $calorieConsumedRaw = trim((string) ($_POST['calorie_consumed_max'] ?? ''));
                 $idealWeightRaw = trim((string) ($_POST['ideal_weight'] ?? ''));
-                if (($calorieBurnRaw !== '' && (!is_numeric($calorieBurnRaw) || (float) $calorieBurnRaw <= 0))
+                if (
+                    ($calorieBurnRaw !== '' && (!is_numeric($calorieBurnRaw) || (float) $calorieBurnRaw <= 0))
                     || ($calorieConsumedRaw !== '' && (!is_numeric($calorieConsumedRaw) || (float) $calorieConsumedRaw <= 0))
-                    || ($idealWeightRaw !== '' && (!is_numeric($idealWeightRaw) || (float) $idealWeightRaw < 25 || (float) $idealWeightRaw > 400))) {
+                    || ($idealWeightRaw !== '' && (!is_numeric($idealWeightRaw) || (float) $idealWeightRaw < 25 || (float) $idealWeightRaw > 400))
+                ) {
                     throw new InvalidArgumentException(t('metric.invalid'));
                 }
                 $dailyGoals = [];
@@ -1400,7 +1412,8 @@ if ($page === 'onboarding') {
                     (array) ($_POST['data_visibility'] ?? [])
                 );
             } elseif ($onboardingStep === 'telegram') {
-                if (telegram_is_enabled(telegram_settings($pdo))
+                if (
+                    telegram_is_enabled(telegram_settings($pdo))
                     && trim((string) ($currentUser['telegram_chat_id'] ?? '')) !== ''
                 ) {
                     telegram_update_user_prefs($pdo, (int) $currentUser['id'], $_POST);
@@ -1596,7 +1609,9 @@ if ($page === 'api_custom_metrics') {
                 json_response(['ok' => false, 'message' => t('flash.not_found')], 404);
             }
             db_execute($pdo, 'UPDATE custom_metric_definitions SET active = 0, updated_at = :now WHERE id = :id AND owner_user_id = :user', [
-                ':now' => now_iso(), ':id' => (int) $metric['id'], ':user' => $userId,
+                ':now' => now_iso(),
+                ':id' => (int) $metric['id'],
+                ':user' => $userId,
             ]);
             json_response(['ok' => true]);
         }
@@ -1631,7 +1646,8 @@ if ($page === 'api_sync') {
         }
         $key = trim((string) ($mutation['idempotency_key'] ?? ''));
         $existing = $key !== '' ? db_fetch_one($pdo, 'SELECT response_json FROM sync_mutations WHERE user_id = :user AND idempotency_key = :key', [
-            ':user' => (int) $currentUser['id'], ':key' => $key,
+            ':user' => (int) $currentUser['id'],
+            ':key' => $key,
         ]) : null;
         if ($existing !== null) {
             $results[] = json_decode((string) $existing['response_json'], true) ?: ['ok' => true, 'duplicate' => true];
@@ -1650,7 +1666,8 @@ if ($page === 'api_sync') {
                     $entry = nutrition_create_entry($pdo, (int) $currentUser['id'], $payload);
                 } else {
                     $existingEntry = db_fetch_one($pdo, 'SELECT * FROM nutrition_entries WHERE id = :id AND user_id = :user', [
-                        ':id' => $entryId, ':user' => (int) $currentUser['id'],
+                        ':id' => $entryId,
+                        ':user' => (int) $currentUser['id'],
                     ]);
                     if ($existingEntry === null) {
                         throw new InvalidArgumentException('Nutrition entry not found.');
@@ -1666,10 +1683,15 @@ if ($page === 'api_sync') {
                         ':type' => in_array(($payload['meal_type'] ?? ''), ['breakfast', 'lunch', 'dinner', 'snack', 'other'], true) ? $payload['meal_type'] : $existingEntry['meal_type'],
                         ':notes' => trim((string) ($payload['notes'] ?? $existingEntry['notes'] ?? '')),
                         ':calories' => max(0, (float) ($payload['calories'] ?? $existingEntry['calories'] ?? 0)),
-                        ':protein' => $payload['protein_g'] ?? $existingEntry['protein_g'], ':carbs' => $payload['carbs_g'] ?? $existingEntry['carbs_g'],
-                        ':fat' => $payload['fat_g'] ?? $existingEntry['fat_g'], ':fiber' => $payload['fiber_g'] ?? $existingEntry['fiber_g'],
-                        ':sugar' => $payload['sugar_g'] ?? $existingEntry['sugar_g'], ':sodium' => $payload['sodium_mg'] ?? $existingEntry['sodium_mg'],
-                        ':now' => now_iso(), ':id' => $entryId, ':user' => (int) $currentUser['id'],
+                        ':protein' => $payload['protein_g'] ?? $existingEntry['protein_g'],
+                        ':carbs' => $payload['carbs_g'] ?? $existingEntry['carbs_g'],
+                        ':fat' => $payload['fat_g'] ?? $existingEntry['fat_g'],
+                        ':fiber' => $payload['fiber_g'] ?? $existingEntry['fiber_g'],
+                        ':sugar' => $payload['sugar_g'] ?? $existingEntry['sugar_g'],
+                        ':sodium' => $payload['sodium_mg'] ?? $existingEntry['sodium_mg'],
+                        ':now' => now_iso(),
+                        ':id' => $entryId,
+                        ':user' => (int) $currentUser['id'],
                     ]);
                     $entry = db_fetch_one($pdo, 'SELECT * FROM nutrition_entries WHERE id=:id AND user_id=:user', [':id' => $entryId, ':user' => (int) $currentUser['id']]) ?? [];
                 }
@@ -1678,28 +1700,47 @@ if ($page === 'api_sync') {
                 $payload = (array) ($mutation['payload'] ?? []);
                 $date = to_date((string) ($payload['log_date'] ?? ''));
                 $existingLog = db_fetch_one($pdo, 'SELECT * FROM daily_logs WHERE user_id=:user AND log_date=:date', [
-                    ':user' => (int) $currentUser['id'], ':date' => $date,
+                    ':user' => (int) $currentUser['id'],
+                    ':date' => $date,
                 ]);
                 if ($existingLog !== null && isset($payload['version']) && (int) $payload['version'] !== (int) ($existingLog['version'] ?? 1)) {
                     throw new RuntimeException('sync_conflict');
                 }
                 $logPayload = array_merge([
-                    'user_id' => (int) $currentUser['id'], 'log_date' => $date, 'log_time' => '00:00',
-                    'steps' => 0, 'workout_done' => 0, 'workout_type_id' => null, 'workout_type' => '',
-                    'junk_food' => 0, 'extra_workout' => 0, 'distance_km' => null, 'training_calories_burned' => null,
-                    'weight' => null, 'notes' => '', 'step_exception_reason' => '', 'distance_exception_reason' => '',
-                    'workout_exception_reason' => '', 'morning_walk' => 0, 'journaling' => 0, 'evening_chores' => 0,
-                    'reading' => 0, 'workouts' => [], 'habits' => [],
+                    'user_id' => (int) $currentUser['id'],
+                    'log_date' => $date,
+                    'log_time' => '00:00',
+                    'steps' => 0,
+                    'workout_done' => 0,
+                    'workout_type_id' => null,
+                    'workout_type' => '',
+                    'junk_food' => 0,
+                    'extra_workout' => 0,
+                    'distance_km' => null,
+                    'training_calories_burned' => null,
+                    'weight' => null,
+                    'notes' => '',
+                    'step_exception_reason' => '',
+                    'distance_exception_reason' => '',
+                    'workout_exception_reason' => '',
+                    'morning_walk' => 0,
+                    'journaling' => 0,
+                    'evening_chores' => 0,
+                    'reading' => 0,
+                    'workouts' => [],
+                    'habits' => [],
                 ], $payload, ['user_id' => (int) $currentUser['id'], 'log_date' => $date]);
                 unset($logPayload['version']);
                 upsert_daily_log_and_sync_approvals($pdo, $logPayload, (int) $currentUser['id']);
                 if ($existingLog !== null) {
                     db_execute($pdo, 'UPDATE daily_logs SET version=version+1 WHERE user_id=:user AND log_date=:date', [
-                        ':user' => (int) $currentUser['id'], ':date' => $date,
+                        ':user' => (int) $currentUser['id'],
+                        ':date' => $date,
                     ]);
                 }
                 $entry = db_fetch_one($pdo, 'SELECT * FROM daily_logs WHERE user_id=:user AND log_date=:date', [
-                    ':user' => (int) $currentUser['id'], ':date' => $date,
+                    ':user' => (int) $currentUser['id'],
+                    ':date' => $date,
                 ]) ?? [];
                 $result = ['ok' => true, 'idempotency_key' => $key, 'entry' => $entry];
             } elseif (($mutation['resource_type'] ?? '') === 'custom_habit_definition') {
@@ -1724,15 +1765,19 @@ if ($page === 'api_sync') {
                 $payload = (array) ($mutation['payload'] ?? []);
                 if (($mutation['resource_type'] ?? '') === 'custom_metric_entry') {
                     $result['server'] = db_fetch_one($pdo, 'SELECT * FROM custom_metric_entries WHERE metric_id=:metric AND user_id=:user AND entry_date=:date', [
-                        ':metric' => (int) ($payload['metric_id'] ?? 0), ':user' => (int) $currentUser['id'], ':date' => to_date((string) ($payload['entry_date'] ?? '')),
+                        ':metric' => (int) ($payload['metric_id'] ?? 0),
+                        ':user' => (int) $currentUser['id'],
+                        ':date' => to_date((string) ($payload['entry_date'] ?? '')),
                     ]);
                 } elseif (($mutation['resource_type'] ?? '') === 'nutrition_entry') {
                     $result['server'] = db_fetch_one($pdo, 'SELECT * FROM nutrition_entries WHERE id=:id AND user_id=:user', [
-                        ':id' => (int) ($payload['id'] ?? 0), ':user' => (int) $currentUser['id'],
+                        ':id' => (int) ($payload['id'] ?? 0),
+                        ':user' => (int) $currentUser['id'],
                     ]);
                 } elseif (($mutation['resource_type'] ?? '') === 'daily_log') {
                     $result['server'] = db_fetch_one($pdo, 'SELECT * FROM daily_logs WHERE user_id=:user AND log_date=:date', [
-                        ':user' => (int) $currentUser['id'], ':date' => to_date((string) ($payload['log_date'] ?? '')),
+                        ':user' => (int) $currentUser['id'],
+                        ':date' => to_date((string) ($payload['log_date'] ?? '')),
                     ]);
                 }
             }
@@ -1742,8 +1787,12 @@ if ($page === 'api_sync') {
         }
         if ($key !== '') {
             db_execute($pdo, 'INSERT OR IGNORE INTO sync_mutations (user_id, idempotency_key, resource_type, resource_key, response_json, created_at) VALUES (:user, :key, :type, :resource, :response, :now)', [
-                ':user' => (int) $currentUser['id'], ':key' => $key, ':type' => (string) ($mutation['resource_type'] ?? ''),
-                ':resource' => (string) ($mutation['resource_key'] ?? ''), ':response' => json_encode($result), ':now' => now_iso(),
+                ':user' => (int) $currentUser['id'],
+                ':key' => $key,
+                ':type' => (string) ($mutation['resource_type'] ?? ''),
+                ':resource' => (string) ($mutation['resource_key'] ?? ''),
+                ':response' => json_encode($result),
+                ':now' => now_iso(),
             ]);
         }
         $results[] = $result;
@@ -2056,9 +2105,11 @@ if ($page === 'api_meal_calendar') {
             $periodPhotos[] = $photoPayload($photo);
         }
         foreach (array_values((array) ($selectedDayData['photos'] ?? [])) as $photo) {
-            if (!is_array($photo)
+            if (
+                !is_array($photo)
                 || (int) ($photo['has_photo'] ?? 0) !== 1
-                || trim((string) ($photo['file_path'] ?? '')) === '') {
+                || trim((string) ($photo['file_path'] ?? '')) === ''
+            ) {
                 continue;
             }
             $selectedPhotos[] = $photoPayload($photo);
@@ -2108,11 +2159,13 @@ if ($page === 'nutrition') {
                 $activity = in_array(($_POST['activity_level'] ?? ''), ['sedentary', 'light', 'moderate', 'active', 'very_active'], true)
                     ? (string) $_POST['activity_level'] : 'moderate';
                 db_execute($pdo, 'UPDATE users SET birth_date = :birth, tdee_sex = :sex, height_cm = :height, activity_level = :activity, tdee_override = :override, updated_at = :now WHERE id = :id', [
-                    ':birth' => $birthDate !== '' ? to_date($birthDate) : null, ':sex' => $sex,
+                    ':birth' => $birthDate !== '' ? to_date($birthDate) : null,
+                    ':sex' => $sex,
                     ':height' => ($_POST['height_cm'] ?? '') !== '' ? max(80, min(260, (float) $_POST['height_cm'])) : null,
                     ':activity' => $activity,
                     ':override' => ($_POST['tdee_override'] ?? '') !== '' ? max(500, min(10000, (float) $_POST['tdee_override'])) : null,
-                    ':now' => now_iso(), ':id' => (int) $currentUser['id'],
+                    ':now' => now_iso(),
+                    ':id' => (int) $currentUser['id'],
                 ]);
                 flash_set('success', t('flash.saved'));
             } elseif ($action === 'create_nutrition_entry') {
@@ -2133,12 +2186,19 @@ if ($page === 'nutrition') {
                     ];
                     db_execute($pdo, 'INSERT INTO photo_entries (user_id, log_date, category, caption, file_path, has_photo, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, created_at, updated_at)
                         VALUES (:user, :date, :category, :caption, :path, 1, :calories, :protein, :carbs, :fat, :fiber, :sugar, :sodium, :now, :now)', [
-                        ':user' => (int) $currentUser['id'], ':date' => (string) $entry['entry_date'],
-                        ':category' => (string) $entry['meal_type'], ':caption' => (string) $entry['notes'], ':path' => $photoPath,
-                        ':calories' => $nutrition['calories'] ?? null, ':protein' => $nutrition['protein_g'] ?? null,
-                        ':carbs' => $nutrition['carbs_g'] ?? null, ':fat' => $nutrition['fat_g'] ?? null,
-                        ':fiber' => $nutrition['fiber_g'] ?? null, ':sugar' => $nutrition['sugar_g'] ?? null,
-                        ':sodium' => $nutrition['sodium_mg'] ?? null, ':now' => now_iso(),
+                        ':user' => (int) $currentUser['id'],
+                        ':date' => (string) $entry['entry_date'],
+                        ':category' => (string) $entry['meal_type'],
+                        ':caption' => (string) $entry['notes'],
+                        ':path' => $photoPath,
+                        ':calories' => $nutrition['calories'] ?? null,
+                        ':protein' => $nutrition['protein_g'] ?? null,
+                        ':carbs' => $nutrition['carbs_g'] ?? null,
+                        ':fat' => $nutrition['fat_g'] ?? null,
+                        ':fiber' => $nutrition['fiber_g'] ?? null,
+                        ':sugar' => $nutrition['sugar_g'] ?? null,
+                        ':sodium' => $nutrition['sodium_mg'] ?? null,
+                        ':now' => now_iso(),
                     ]);
                     db_execute($pdo, 'UPDATE nutrition_entries SET photo_entry_id = :photo WHERE id = :entry AND user_id = :user', [
                         ':photo' => (int) $pdo->lastInsertId(),
@@ -2166,7 +2226,9 @@ if ($page === 'nutrition') {
         'currentUser' => $currentUser,
         'nutritionSeries' => nutrition_daily_summary($pdo, $currentUser, $rangeStart, $rangeEnd),
         'nutritionEntries' => db_fetch_all($pdo, 'SELECT * FROM nutrition_entries WHERE user_id = :user AND entry_date BETWEEN :from AND :to ORDER BY entry_date DESC, entry_time DESC, id DESC', [
-            ':user' => (int) $currentUser['id'], ':from' => $rangeStart, ':to' => $rangeEnd,
+            ':user' => (int) $currentUser['id'],
+            ':from' => $rangeStart,
+            ':to' => $rangeEnd,
         ]),
         'nutritionTdee' => nutrition_tdee($currentUser, $nutritionCalculationWeight),
         'nutritionCalculationWeight' => $nutritionCalculationWeight,
@@ -2228,8 +2290,10 @@ if ($page === 'entries') {
                 }
                 $hasWorkoutPayload = isset($_POST['workouts']) || isset($_POST['workout_type_id']) || isset($_POST['workout_type']);
                 $isNewWorkoutForm = (string) ($_POST['workout_form_mode'] ?? '') === '1';
-                if (isset($entryEnabledMetricSet['workouts'])
-                    && (bool_from_form('workout_enabled') === 1 || (!$isNewWorkoutForm && $hasWorkoutPayload))) {
+                if (
+                    isset($entryEnabledMetricSet['workouts'])
+                    && (bool_from_form('workout_enabled') === 1 || (!$isNewWorkoutForm && $hasWorkoutPayload))
+                ) {
                     if (isset($_POST['workouts']) && is_array($_POST['workouts'])) {
                         foreach (array_values((array) $_POST['workouts']) as $workoutRow) {
                             if (!is_array($workoutRow)) {
@@ -2572,7 +2636,8 @@ if ($page === 'entries') {
         'entryPrimaryGoals' => user_primary_goals($currentUser),
         'entryCustomMetrics' => custom_metrics_for_user($pdo, (int) $selectedUserId),
         'entryCustomMetricValues' => db_fetch_all($pdo, 'SELECT metric_id, value, version FROM custom_metric_entries WHERE user_id = :user AND entry_date = :date', [
-            ':user' => (int) $selectedUserId, ':date' => $selectedDate,
+            ':user' => (int) $selectedUserId,
+            ':date' => $selectedDate,
         ]),
         'entryRecentCustomMetricValues' => db_fetch_all($pdo, 'SELECT metric_id, entry_date, value FROM custom_metric_entries WHERE user_id = :user ORDER BY entry_date DESC LIMIT 1000', [
             ':user' => (int) $selectedUserId,
@@ -2610,7 +2675,8 @@ if ($page === 'photo') {
     $photoOwnerId = (int) ($photo['user_id'] ?? 0);
     $photoViewerId = (int) $currentUser['id'];
     $photoViewerIsAdmin = is_admin($currentUser);
-    if (!can_view_user_content($pdo, $photoViewerId, $photoOwnerId, $photoViewerIsAdmin, (string) ($photo['profile_visibility'] ?? 'public'))
+    if (
+        !can_view_user_content($pdo, $photoViewerId, $photoOwnerId, $photoViewerIsAdmin, (string) ($photo['profile_visibility'] ?? 'public'))
         || !can_view_user_data($pdo, $photoViewerId, $photoOwnerId, 'nutrition', $photoViewerIsAdmin, $photo)
     ) {
         flash_set('error', t('flash.no_permission'));
@@ -3100,7 +3166,7 @@ if ($page === 'table' || $page === 'week_editor') {
         // no creator). The panel lists these before offering to create another.
         'customHabits' => array_values(array_filter(
             list_habit_definitions($pdo, true),
-            static fn (array $habit): bool => (int) ($habit['created_by'] ?? 0) > 0
+            static fn(array $habit): bool => (int) ($habit['created_by'] ?? 0) > 0
         )),
         'penaltiesEnabled' => penalties_enabled($pdo),
         'canEditSheet' => $canEditSheet,
@@ -3292,7 +3358,8 @@ if ($page === 'friends') {
     // Optional side-by-side comparison with one friend.
     $compareId = (int) ($_GET['compare'] ?? 0);
     $friendCompare = null;
-    if ($compareId > 0
+    if (
+        $compareId > 0
         && friends_status($pdo, $meId, $compareId) === 'friends'
         && can_view_user_content($pdo, $meId, $compareId, is_admin($currentUser))
     ) {
@@ -3683,7 +3750,7 @@ if ($page === 'workouts') {
                     flash_set('error', $e->getMessage());
                     redirect('/?page=workouts');
                 }
-                // no break (redirect exits)
+            // no break (redirect exits)
             case 'routine_update':
                 $existingRoutine = wk_routine_get($pdo, $backRoutine, $meId);
                 if ($existingRoutine === null) {
@@ -3785,13 +3852,15 @@ if ($page === 'workouts') {
                         (int) ($personalizeRow['exercise_def_id'] ?? 0),
                         $meId
                     );
-                    if (!wk_routine_exercise_replace_definition(
-                        $pdo,
-                        $personalizeRoutineExerciseId,
-                        $backRoutine,
-                        $meId,
-                        $personalExerciseId
-                    )) {
+                    if (
+                        !wk_routine_exercise_replace_definition(
+                            $pdo,
+                            $personalizeRoutineExerciseId,
+                            $backRoutine,
+                            $meId,
+                            $personalExerciseId
+                        )
+                    ) {
                         throw new RuntimeException(t('workouts.exercise_personalize_failed'));
                     }
                     flash_set('success', t('workouts.exercise_personalized'));
@@ -4404,8 +4473,10 @@ if ($page === 'workouts') {
                 }
                 redirect('/?' . http_build_query($customMissingReturn));
             }
-            if ($wkTargetRoutineExercise !== null
-                && (int) ($wkTargetRoutineExercise['exercise_def_id'] ?? 0) !== (int) ($wkCustomExercise['id'] ?? 0)) {
+            if (
+                $wkTargetRoutineExercise !== null
+                && (int) ($wkTargetRoutineExercise['exercise_def_id'] ?? 0) !== (int) ($wkCustomExercise['id'] ?? 0)
+            ) {
                 $targetRoutineExerciseId = 0;
                 $wkTargetRoutineExercise = null;
             }
@@ -4714,7 +4785,8 @@ if ($page === 'settings') {
                 ':day' => max(1, min(7, (int) ($_POST['weekly_report_day'] ?? 1))),
                 ':time' => telegram_normalize_time((string) ($_POST['weekly_report_time'] ?? '09:00')),
                 ':tz' => telegram_normalize_tz((string) ($_POST['weekly_report_tz'] ?? '')),
-                ':now' => now_iso(), ':id' => (int) $currentUser['id'],
+                ':now' => now_iso(),
+                ':id' => (int) $currentUser['id'],
             ]);
             flash_set('success', t('flash.saved'));
             redirect($settingsRedirect('integrations'));
@@ -4791,8 +4863,10 @@ if ($page === 'settings') {
             $settingsDistanceGoal = $settingsDistanceRaw !== '' ? (float) $settingsDistanceRaw : 0.0;
             $settingsBurnRaw = trim((string) ($_POST['calorie_burn_goal'] ?? ''));
             $settingsConsumedRaw = trim((string) ($_POST['calorie_consumed_max'] ?? ''));
-            if (($settingsBurnRaw !== '' && (!is_numeric($settingsBurnRaw) || (float) $settingsBurnRaw <= 0))
-                || ($settingsConsumedRaw !== '' && (!is_numeric($settingsConsumedRaw) || (float) $settingsConsumedRaw <= 0))) {
+            if (
+                ($settingsBurnRaw !== '' && (!is_numeric($settingsBurnRaw) || (float) $settingsBurnRaw <= 0))
+                || ($settingsConsumedRaw !== '' && (!is_numeric($settingsConsumedRaw) || (float) $settingsConsumedRaw <= 0))
+            ) {
                 flash_set('error', t('metric.invalid'));
                 redirect($settingsRedirect($settingsView));
             }
@@ -5175,13 +5249,15 @@ if ($page === 'profile') {
 
     $isOwnProfile = (int) $profileUser['id'] === (int) $currentUser['id'];
     friends_ensure_schema($pdo);
-    if (!can_view_user_content(
-        $pdo,
-        (int) $currentUser['id'],
-        (int) $profileUser['id'],
-        is_admin($currentUser),
-        (string) ($profileUser['profile_visibility'] ?? 'public')
-    )) {
+    if (
+        !can_view_user_content(
+            $pdo,
+            (int) $currentUser['id'],
+            (int) $profileUser['id'],
+            is_admin($currentUser),
+            (string) ($profileUser['profile_visibility'] ?? 'public')
+        )
+    ) {
         flash_set('error', t('flash.no_permission'));
         redirect('/?page=profile');
     }
@@ -5237,7 +5313,8 @@ if ($page === 'profile') {
                 'team_id' => $requestedBackTeamId,
             ];
             $requestedBackView = trim((string) ($_GET['back_view'] ?? ''));
-            if (in_array($requestedBackView, ['current_week', 'total'], true)
+            if (
+                in_array($requestedBackView, ['current_week', 'total'], true)
                 || preg_match('/^\d{4}-\d{2}-\d{2}$/', $requestedBackView) === 1
             ) {
                 $profileBackParams['back_view'] = $requestedBackView;
@@ -5498,7 +5575,8 @@ if ($page === 'profile') {
                 flash_set('error', t('flash.not_found'));
                 redirect($profileUrl());
             }
-            if ($action === 'create_profile_widget'
+            if (
+                $action === 'create_profile_widget'
                 && count(profile_custom_widgets_for_user($pdo, (int) $currentUser['id'], true)) >= PROFILE_CUSTOM_WIDGET_LIMIT
             ) {
                 flash_set('error', t('profile.widget_limit_reached', ['count' => PROFILE_CUSTOM_WIDGET_LIMIT]));
@@ -5517,7 +5595,8 @@ if ($page === 'profile') {
             $widgetType = profile_custom_widget_type((string) ($_POST['widget_type'] ?? 'media'));
             $accent = profile_custom_widget_accent((string) ($_POST['accent_color'] ?? '#7c3aed'));
             $externalUrl = profile_custom_widget_url((string) ($_POST['external_url'] ?? ''));
-            if ($widgetType === 'media'
+            if (
+                $widgetType === 'media'
                 && $externalUrl !== ''
                 && preg_match('/\.(?:gif|png|jpe?g|webp)(?:[?#].*)?$/i', $externalUrl) !== 1
             ) {
@@ -5948,15 +6027,17 @@ if ($page === 'profile') {
 
     $settings = challenge_settings($pdo, $config);
     $profileChallengeArchives = list_challenge_archives($pdo);
-    $profileChallengeOptions = [[
-        'key' => 'current',
-        'id' => null,
-        'name' => (string) ($settings['challenge_name'] ?? 'Fitness Challenge'),
-        'start' => (string) ($settings['challenge_start'] ?? to_date(null)),
-        'end' => (string) ($settings['challenge_end'] ?? to_date(null)),
-        'is_archive' => false,
-        'archived_at' => '',
-    ]];
+    $profileChallengeOptions = [
+        [
+            'key' => 'current',
+            'id' => null,
+            'name' => (string) ($settings['challenge_name'] ?? 'Fitness Challenge'),
+            'start' => (string) ($settings['challenge_start'] ?? to_date(null)),
+            'end' => (string) ($settings['challenge_end'] ?? to_date(null)),
+            'is_archive' => false,
+            'archived_at' => '',
+        ]
+    ];
     foreach ($profileChallengeArchives as $archive) {
         $archiveId = (int) ($archive['id'] ?? 0);
         $archiveStart = trim((string) ($archive['challenge_start'] ?? ''));
@@ -6592,7 +6673,9 @@ if ($page === 'profile') {
         wk_muscle_ranks_for_user($pdo, $profileTrainingUserId),
         static fn(array $row): bool => (float) ($row['rank']['score'] ?? 0) > 0
     ));
-    usort($profileTrainingMuscles, static fn(array $left, array $right): int =>
+    usort(
+        $profileTrainingMuscles,
+        static fn(array $left, array $right): int =>
         (float) ($right['rank']['score'] ?? 0) <=> (float) ($left['rank']['score'] ?? 0)
     );
     $profileTrainingMuscles = array_slice($profileTrainingMuscles, 0, 4);
@@ -6937,7 +7020,8 @@ if ($page === 'admin') {
                 } else {
                     $allowedHosts = security_parse_allowed_hosts((string) ($_POST['allowed_hosts'] ?? ''), true);
                     $requestHost = security_request_host($config);
-                    if ($allowedHosts !== []
+                    if (
+                        $allowedHosts !== []
                         && ($requestHost === null || !security_host_matches_allowed($requestHost['host'], $allowedHosts))
                     ) {
                         throw new InvalidArgumentException(t('security.hosts_must_include_current'));
@@ -8801,8 +8885,8 @@ if ($page === 'team') {
                 $secondaryUnitLabel = $secondaryEnabled
                     ? (
                         $secondaryType === 'custom'
-                            ? ($secondaryCustomUnit !== '' ? substr($secondaryCustomUnit, 0, 24) : null)
-                            : goal_target_default_unit($secondaryType)
+                        ? ($secondaryCustomUnit !== '' ? substr($secondaryCustomUnit, 0, 24) : null)
+                        : goal_target_default_unit($secondaryType)
                     )
                     : null;
                 $startSchedule = resolve_goal_start_datetime(
@@ -8937,8 +9021,8 @@ if ($page === 'team') {
             $secondaryUnitLabel = $secondaryEnabled
                 ? (
                     $secondaryType === 'custom'
-                        ? ($secondaryCustomUnit !== '' ? substr($secondaryCustomUnit, 0, 24) : null)
-                        : goal_target_default_unit($secondaryType)
+                    ? ($secondaryCustomUnit !== '' ? substr($secondaryCustomUnit, 0, 24) : null)
+                    : goal_target_default_unit($secondaryType)
                 )
                 : null;
             try {
@@ -9612,48 +9696,53 @@ if ($page === 'team') {
     ob_start();
     ?>
     <?php if ($teamLayoutEditMode): ?>
-    <button class="btn btn-primary btn-topbar" type="submit" form="team-layout-edit-form"><?= e(t('common.save')) ?></button>
+        <button class="btn btn-primary btn-topbar" type="submit"
+            form="team-layout-edit-form"><?= e(t('common.save')) ?></button>
     <?php else: ?>
-    <details class="topbar-context">
-        <summary class="btn btn-ghost btn-topbar"><?= e(t('dashboard.view_mode')) ?></summary>
-        <div class="topbar-context-panel">
-            <form method="get" class="stack">
-                <input type="hidden" name="page" value="team">
-                <?php if (count($userTeams) > 1): ?>
+        <details class="topbar-context">
+            <summary class="btn btn-ghost btn-topbar"><?= e(t('dashboard.view_mode')) ?></summary>
+            <div class="topbar-context-panel">
+                <form method="get" class="stack">
+                    <input type="hidden" name="page" value="team">
+                    <?php if (count($userTeams) > 1): ?>
+                        <label>
+                            <?= e(t('team.your_teams')) ?>
+                            <select name="team_id" onchange="this.form.submit()">
+                                <?php foreach ($userTeams as $userTeamOption): ?>
+                                    <option value="<?= (int) ($userTeamOption['id'] ?? 0) ?>" <?= (int) ($userTeamOption['id'] ?? 0) === (int) ($team['id'] ?? 0) ? 'selected' : '' ?>>
+                                        <?= e((string) ($userTeamOption['name'] ?? '')) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                    <?php else: ?>
+                        <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
+                    <?php endif; ?>
+                    <?php if ($teamSection !== ''): ?><input type="hidden" name="section"
+                            value="<?= e($teamSection) ?>"><?php endif; ?>
+                    <?php if ($teamGoalDebugEnabled): ?>
+                        <input type="hidden" name="debug_goal" value="1">
+                    <?php endif; ?>
+                    <?php if ($teamMetricDetail !== null): ?>
+                        <input type="hidden" name="metric" value="<?= e((string) ($teamMetricDetail['key'] ?? '')) ?>">
+                    <?php endif; ?>
                     <label>
-                        <?= e(t('team.your_teams')) ?>
-                        <select name="team_id" onchange="this.form.submit()">
-                            <?php foreach ($userTeams as $userTeamOption): ?>
-                                <option value="<?= (int) ($userTeamOption['id'] ?? 0) ?>" <?= (int) ($userTeamOption['id'] ?? 0) === (int) ($team['id'] ?? 0) ? 'selected' : '' ?>><?= e((string) ($userTeamOption['name'] ?? '')) ?></option>
+                        <?= e(t('dashboard.view_mode')) ?>
+                        <select name="view" onchange="this.form.submit()">
+                            <option value="current_week" <?= $teamView === 'current_week' ? 'selected' : '' ?>>
+                                <?= e(t('dashboard.current_week')) ?></option>
+                            <option value="total" <?= $teamView === 'total' ? 'selected' : '' ?>><?= e(t('metric.total')) ?>
+                            </option>
+                            <?php foreach ($weekOptions as $weekStart): ?>
+                                <option value="<?= e((string) $weekStart) ?>" <?= $teamView === (string) $weekStart ? 'selected' : '' ?>><?= e(format_date_eu((string) $weekStart)) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </label>
-                <?php else: ?>
-                    <input type="hidden" name="team_id" value="<?= (int) ($team['id'] ?? 0) ?>">
+                </form>
+                <?php if ($teamSection === '' && $teamMetricDetail === null): ?>
+                    <a class="btn btn-primary btn-block" href="<?= e($teamEditLayoutUrl) ?>"><?= e(t('team.edit_layout')) ?></a>
                 <?php endif; ?>
-                <?php if ($teamSection !== ''): ?><input type="hidden" name="section" value="<?= e($teamSection) ?>"><?php endif; ?>
-                <?php if ($teamGoalDebugEnabled): ?>
-                    <input type="hidden" name="debug_goal" value="1">
-                <?php endif; ?>
-                <?php if ($teamMetricDetail !== null): ?>
-                    <input type="hidden" name="metric" value="<?= e((string) ($teamMetricDetail['key'] ?? '')) ?>">
-                <?php endif; ?>
-                <label>
-                    <?= e(t('dashboard.view_mode')) ?>
-                    <select name="view" onchange="this.form.submit()">
-                        <option value="current_week" <?= $teamView === 'current_week' ? 'selected' : '' ?>><?= e(t('dashboard.current_week')) ?></option>
-                        <option value="total" <?= $teamView === 'total' ? 'selected' : '' ?>><?= e(t('metric.total')) ?></option>
-                        <?php foreach ($weekOptions as $weekStart): ?>
-                            <option value="<?= e((string) $weekStart) ?>" <?= $teamView === (string) $weekStart ? 'selected' : '' ?>><?= e(format_date_eu((string) $weekStart)) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </label>
-            </form>
-            <?php if ($teamSection === '' && $teamMetricDetail === null): ?>
-                <a class="btn btn-primary btn-block" href="<?= e($teamEditLayoutUrl) ?>"><?= e(t('team.edit_layout')) ?></a>
-            <?php endif; ?>
-        </div>
-    </details>
+            </div>
+        </details>
     <?php endif; ?>
     <?php
     $teamTopbarControls = ob_get_clean();
@@ -9674,7 +9763,7 @@ if ($page === 'team') {
         'teamView' => $teamView,
         // Competitions render inside the team page now, so the team route has to carry
         // them. Same shape the competitions page builds, trimmed to what the panel shows.
-        'teamCompetitions' => (static function () use ($pdo, $config, $currentUser): array {
+        'teamCompetitions' => (static function () use ($pdo, $config, $currentUser): array{
             $rows = [];
             foreach (comp_for_user($pdo, (int) $currentUser['id']) as $comp) {
                 $status = (string) ($comp['status'] ?? '');
@@ -9998,8 +10087,8 @@ if ($page === 'metric') {
             $calorieRangeStart,
             $calorieRangeEnd,
             ($selectedMetric['user']['maintenance_calories'] ?? null) !== null
-                ? (float) $selectedMetric['user']['maintenance_calories']
-                : null
+            ? (float) $selectedMetric['user']['maintenance_calories']
+            : null
         );
         $calorieSeriesKey = $metricKey === 'calories_consumed' ? 'consumed' : 'burned';
         $seriesLabels = array_map(
@@ -10752,8 +10841,8 @@ if ($page === 'analytics') {
             $workouts += max(
                 max(0, (int) ($row['workouts'] ?? 0)),
                 array_key_exists('workout_success_week', $row)
-                    ? max(0, (int) ($row['workout_success_week'] ?? 0))
-                    : max(0, (int) ($row['workout_target_week'] ?? 0) - (int) ($row['workout_failures'] ?? 0))
+                ? max(0, (int) ($row['workout_success_week'] ?? 0))
+                : max(0, (int) ($row['workout_target_week'] ?? 0) - (int) ($row['workout_failures'] ?? 0))
             );
             $weekStepRequired = max(
                 0,
@@ -11468,6 +11557,15 @@ if ($page === 'dashboard') {
         'dashboardFeedItems' => $dashboardFeedItems,
         'dashboardFeedFocused' => $dashboardFeedFocused,
         'motivationQuote' => random_motivation_quote_from_db($pdo, (string) ($currentUser['locale'] ?? 'en')),
+        'config' => $config,
+    ]);
+}
+
+if ($page === 'ranks') {
+    render_view('ranks', [
+        'title' => 'Ranks',
+        'currentPage' => 'ranks',
+        'currentUser' => $currentUser,
         'config' => $config,
     ]);
 }
