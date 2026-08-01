@@ -12,7 +12,7 @@ if ($page === null) {
     if ($pathPage === 'index.php') {
         $pathPage = '';
     }
-    if (in_array($pathPage, ['dashboard', 'dashboard_panel_state', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'workouts', 'social', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'quests', 'season', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'competitions', 'login', 'register', 'onboarding', 'login_background'], true)) {
+    if (in_array($pathPage, ['dashboard', 'dashboard_panel_state', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'workouts', 'ranks', 'social', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'quests', 'season', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'competitions', 'login', 'register', 'onboarding', 'login_background'], true)) {
         $page = $pathPage;
     } elseif ($pathPage !== '') {
         security_mark_current_request($pdo, 'not_found', 10);
@@ -63,6 +63,16 @@ if ($currentUser !== null && is_post() && (string) ($_SERVER['HTTP_X_OFFLINE_REP
 
 if ($page === 'users') {
     $page = 'admin';
+}
+
+// The original ranked-training branch exposed `page=ranks`. The completed
+// implementation now lives inside the Workouts hub, so keep the merged route
+// as a canonical alias instead of letting old navigation and bookmarks 404.
+if ($page === 'ranks') {
+    $ranksQuery = $_GET;
+    $ranksQuery['page'] = 'workouts';
+    $ranksQuery['view'] = 'ranks';
+    redirect('/?' . http_build_query($ranksQuery));
 }
 
 if ($page === 'manifest') {

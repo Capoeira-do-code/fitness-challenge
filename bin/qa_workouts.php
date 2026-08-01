@@ -548,8 +548,10 @@ foreach (wk_exercise_ranks_for_user($pdo, $me) as $rankedExercise) {
 }
 $check(
     ($pullUpRank['calculation']['method'] ?? '') === 'bodyweight_reps'
-        && abs((float) ($pullUpRank['score'] ?? 0) - 50.0) < 0.1,
-    'calistenia usa repeticiones, peso real y factor del ejercicio'
+        && empty($pullUpRank['requires_weight'])
+        && abs((float) ($pullUpRank['score'] ?? 0) - wk_rank_score_from_reps(10.0)) < 0.1,
+    'calistenia usa la curva de repeticiones sin exigir pesaje',
+    (string) ($pullUpRank['score'] ?? 0)
 );
 db_execute(
     $pdo,

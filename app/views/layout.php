@@ -167,9 +167,6 @@ $isNavActive = static function (string $pageKey) use ($currentPage): bool {
         return $currentPage === 'nutrition' || ($currentPage === 'entries' && (string) ($_GET['mode'] ?? '') === 'nutrition');
     }
     return $currentPage === $pageKey;
-    if ($pageKey === 'ranks') {
-        return $currentPage === 'ranks';
-    }
 };
 $isMobileNavActive = static function (string $pageKey) use ($currentPage): bool {
     return match ($pageKey) {
