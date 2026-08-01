@@ -1018,6 +1018,36 @@ $libraryClearUrl = $libraryUrl([
         </nav>
 
         <?php if ($rankSection === 'overview'): ?>
+            <?php
+            // Full tier progression (Rookie -> Elite) with the member's current tier
+            // marked - the familiar ranked-ladder read from competitive games, so it
+            // is obvious where you sit and what the next tier costs.
+            $ladderTiers = wk_rank_tiers();
+            uasort($ladderTiers, static fn(array $a, array $b): int => ((int) ($a['sort_order'] ?? 0)) <=> ((int) ($b['sort_order'] ?? 0)));
+            $ladderTiers = array_filter($ladderTiers, static fn(string $k): bool => $k !== 'unranked', ARRAY_FILTER_USE_KEY);
+            $ladderKeys = array_keys($ladderTiers);
+            $ladderCount = max(1, count($ladderKeys));
+            $overallScore = (float) $overallProgress['score'];
+            $ladderCurrentIndex = array_search($overallKey, $ladderKeys, true);
+            $ladderFill = $ladderCurrentIndex === false ? 0.0 : (($ladderCurrentIndex + 0.5) / $ladderCount) * 100;
+            $rankTierIcon = static fn(string $k): string => match ($k) {
+                'rookie' => 'shield',
+                'bronze', 'silver' => 'medal',
+                'gold' => 'trophy',
+                'platinum', 'diamond' => 'star',
+                'elite' => 'bolt',
+                default => 'medal',
+            };
+            // Team ladder standing, surfaced as a headline stat on the crest banner.
+            $rankTeamSize = count((array) ($wkRankLeaderboard ?? []));
+            $rankTeamPosition = null;
+            foreach ((array) ($wkRankLeaderboard ?? []) as $rankLeaderRow) {
+                if ((int) ($rankLeaderRow['id'] ?? 0) === (int) ($currentUser['id'] ?? 0)) {
+                    $rankTeamPosition = (int) ($rankLeaderRow['position'] ?? 0);
+                    break;
+                }
+            }
+            ?>
             <article class="workouts-rank-hero" data-rank="<?= e($overallKey) ?>">
                 <div class="workouts-rank-emblem"><span><?= e($rankLabel($overallKey)) ?></span><strong><?= e(number_format((float) $overallProgress['score'], 1, '.', '')) ?></strong><small><?= e(t('workouts.points_abbr')) ?></small></div>
                 <div class="workouts-rank-hero-copy">
@@ -1032,8 +1062,37 @@ $libraryClearUrl = $libraryUrl([
                         <div class="workouts-rank-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= (int) $overallProgress['progress'] ?>" aria-label="<?= e(t('workouts.rank_progress_percent', ['percent' => (int) $overallProgress['progress']])) ?>"><span style="width: <?= (int) $overallProgress['progress'] ?>%"></span></div>
                         <small><?= e(t('workouts.rank_progress_percent', ['percent' => (int) $overallProgress['progress']])) ?></small>
                     </div>
+                    <div class="workouts-rank-hero-meta">
+                        <?php if ($rankTeamPosition !== null): ?>
+                        <span class="workouts-rank-hero-chip"><span aria-hidden="true"><?= activity_icon_svg('users') ?></span><b>#<?= $rankTeamPosition ?></b><small><?= e(t('workouts.rank_menu_team')) ?> · <?= (int) $rankTeamSize ?></small></span>
+                        <?php endif; ?>
+                        <?php if ($strongestMuscleRank !== null && (float) $strongestMuscleRank['score'] > 0): ?>
+                        <span class="workouts-rank-hero-chip" data-rank="<?= e((string) $strongestMuscleRank['rank_key']) ?>"><span aria-hidden="true"><?= activity_icon_svg('star') ?></span><b><?= e($rankLabel((string) $strongestMuscleRank['rank_key'])) ?></b><small><?= e((string) $strongestMuscleRank['label']) ?></small></span>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </article>
+
+            <section class="workouts-rank-ladder" data-rank="<?= e($overallKey) ?>" style="--ladder-fill: <?= number_format($ladderFill, 2, '.', '') ?>%; --ladder-count: <?= (int) $ladderCount ?>;" aria-label="<?= e(t('workouts.rank_ladder_title')) ?>">
+                <div class="workouts-rank-ladder-head">
+                    <div><p class="eyebrow"><?= e(t('workouts.rank_ladder_eyebrow')) ?></p><h2><?= e(t('workouts.rank_ladder_title')) ?></h2></div>
+                    <span class="workouts-rank-ladder-status" data-rank="<?= e($overallKey) ?>"><?= e($overallProgress['next_key'] !== null ? t('workouts.rank_points_remaining', ['points' => number_format((float) $overallProgress['remaining'], 1, '.', ''), 'rank' => $overallNextLabel]) : t('workouts.rank_maximum')) ?></span>
+                </div>
+                <ol class="workouts-rank-ladder-track">
+                    <?php foreach ($ladderTiers as $ladderKey => $ladderTier): ?>
+                        <?php
+                        $ladderAchieved = $overallScore >= (float) ($ladderTier['threshold'] ?? 0);
+                        $ladderCurrent = ($ladderKey === $overallKey);
+                        $ladderState = $ladderCurrent ? 'is-current' : ($ladderAchieved ? 'is-achieved' : 'is-locked');
+                        ?>
+                        <li class="workouts-rank-ladder-node <?= $ladderState ?>" data-rank="<?= e($ladderKey) ?>"<?= $ladderCurrent ? ' aria-current="true"' : '' ?>>
+                            <span class="workouts-rank-ladder-medal" aria-hidden="true"><?= activity_icon_svg($rankTierIcon($ladderKey)) ?></span>
+                            <strong><?= e($rankLabel($ladderKey)) ?></strong>
+                            <small><?= e(number_format((float) ($ladderTier['threshold'] ?? 0), 0, '.', '')) ?> <?= e(t('workouts.points_abbr')) ?></small>
+                        </li>
+                    <?php endforeach; ?>
+                </ol>
+            </section>
             <details class="workouts-rank-calculation">
                 <summary>
                     <span class="workouts-rank-calculation-icon" aria-hidden="true"><?= activity_icon_svg('info') ?></span>

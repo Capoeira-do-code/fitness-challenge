@@ -4688,7 +4688,7 @@ if ($page === 'settings') {
             $layoutJson = (string) ($before['dashboard_layout_json'] ?? '[]');
             $hasWidgetPayload = array_key_exists('dashboard_widgets', $_POST) || array_key_exists('dashboard_order', $_POST);
             if ($hasWidgetPayload) {
-                $allowedWidgets = ['kpis', 'nutrition', 'training_rank', 'training_progress', 'distance_walked', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories', 'achievements', 'achievement_progress', 'duels', 'competitions', 'quests', 'season'];
+                $allowedWidgets = ['motivation', 'kpis', 'nutrition', 'training_rank', 'training_progress', 'distance_walked', 'approvals', 'steps', 'steps_cumulative', 'distance_cumulative', 'weight', 'comparison', 'ranking', 'meals', 'weekly', 'calories', 'achievements', 'achievement_progress', 'duels', 'competitions', 'quests', 'season'];
                 $selectedWidgets = array_values(array_intersect(array_map('strval', (array) ($_POST['dashboard_widgets'] ?? [])), $allowedWidgets));
                 $selectedWidgets = array_values(array_unique(array_map(
                     static fn(string $widget): string => $widget === 'money' ? 'distance_walked' : $widget,
@@ -10802,7 +10802,7 @@ if ($page === 'dashboard') {
         }
 
         if ($action === 'save_dashboard_layout' || $action === 'save_dashboard_prefs') {
-            $allowedWidgets = ['mobile_today', 'mobile_primary', 'mobile_progress', 'mobile_shortcuts', 'kpis', 'nutrition', 'training_rank', 'training_progress', 'active_challenge', 'approvals', 'ranking', 'weekly', 'achievements', 'achievement_progress', 'duels', 'competitions', 'quests', 'season'];
+            $allowedWidgets = ['mobile_today', 'mobile_primary', 'mobile_progress', 'mobile_shortcuts', 'motivation', 'kpis', 'nutrition', 'training_rank', 'training_progress', 'active_challenge', 'approvals', 'ranking', 'weekly', 'achievements', 'achievement_progress', 'duels', 'competitions', 'quests', 'season'];
             $resetLayout = bool_from_form('reset_dashboard_layout') === 1;
             $widgets = [];
             if (!$resetLayout) {
@@ -11168,8 +11168,8 @@ if ($page === 'dashboard') {
     // full set so a deliberately hidden widget is not resurrected later.
     $dashMobileSurfaces = ['mobile_today', 'mobile_primary', 'mobile_progress', 'mobile_shortcuts'];
     $dashDesktopWidgets = penalties_enabled($pdo)
-        ? ['kpis', 'nutrition', 'training_rank', 'training_progress', 'active_challenge', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
-        : ['kpis', 'nutrition', 'training_rank', 'training_progress', 'active_challenge', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'ranking', 'weekly'];
+        ? ['motivation', 'kpis', 'nutrition', 'training_rank', 'training_progress', 'active_challenge', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
+        : ['motivation', 'kpis', 'nutrition', 'training_rank', 'training_progress', 'active_challenge', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'ranking', 'weekly'];
     $dashAllWidgets = array_merge($dashMobileSurfaces, $dashDesktopWidgets);
     $savedDashLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
     $knownDashWidgets = json_decode((string) ($currentUser['dashboard_widgets_known'] ?? ''), true);
@@ -11187,6 +11187,13 @@ if ($page === 'dashboard') {
                 $kpiPosition = array_search('kpis', $mergedDashLayout, true);
                 $insertAt = $kpiPosition === false ? 0 : (int) $kpiPosition + 1;
                 array_splice($mergedDashLayout, $insertAt, 0, $newTrainingWidgets);
+            }
+            // The motivation quote leads the feed, so slot it in just above the
+            // KPI strip rather than letting it fall to the end with the rest.
+            if (in_array('motivation', $unknownDashWidgets, true) && !in_array('motivation', $mergedDashLayout, true)) {
+                $kpiPosition = array_search('kpis', $mergedDashLayout, true);
+                $insertAt = $kpiPosition === false ? 0 : (int) $kpiPosition;
+                array_splice($mergedDashLayout, $insertAt, 0, ['motivation']);
             }
             $remainingUnknownWidgets = array_values(array_diff($unknownDashWidgets, $newMobileSurfaces, $newTrainingWidgets, $mergedDashLayout));
             $mergedDashLayout = array_values(array_unique(array_merge($mergedDashLayout, $remainingUnknownWidgets)));

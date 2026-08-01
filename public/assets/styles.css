@@ -1532,15 +1532,38 @@ body.theme-active-dark .eyebrow {
     grid-column: 1 / -1;
 }
 
+/* Quick actions are a desktop-only strip (hidden in the mobile feed), and the
+   full-width pills read as oversized. Slim the panel padding + button height
+   and give each action an icon so it looks like a deliberate shortcut row. */
+.dashboard-quick-actions {
+    padding: 0.5rem;
+}
+
 .dashboard-quick-actions-grid {
     display: grid;
-    gap: 0.6rem;
+    gap: 0.5rem;
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .dashboard-quick-action {
-    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 42px;
+    padding-block: 0.4rem;
+    font-size: 0.86rem;
     text-align: center;
+}
+
+.dashboard-quick-action-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+.dashboard-quick-action-icon svg {
+    width: 17px;
+    height: 17px;
 }
 
 .dashboard-penalty-compact {
@@ -6874,6 +6897,118 @@ body[data-theme="dark"] .training-sheet-table thead th {
     .auth-shell {
         grid-template-columns: minmax(0, 1fr) 420px;
         align-items: center;
+    }
+}
+
+/* --- Desktop polish: dashboard KPI strip + motivation quote band --------
+   The generic `.metric-grid` desktop rule locks these KPIs into a rigid
+   4-column grid, so any card count that isn't a multiple of 4 orphans the
+   last row (e.g. 7 cards -> 4 + 3 + an empty cell). Switch just the
+   dashboard KPI widget to a wrap-and-center flex row: full rows still fill
+   edge-to-edge, while a short final row keeps card width and centers rather
+   than leaving a hole. Scoped via the data attribute so the penalties /
+   strikes / comparison pages that reuse `.dashboard-kpis` stay on the grid.
+   The cards are also dialled down here (shorter, smaller ring/number) so the
+   strip reads as a compact summary rather than dominating the dashboard. */
+@media (min-width: 680px) {
+    .dashboard-kpis[data-dashboard-widget="kpis"] {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: stretch;
+        gap: 0.6rem;
+    }
+
+    .dashboard-kpis[data-dashboard-widget="kpis"] > .metric-card {
+        flex: 1 1 250px;
+        max-width: 390px;
+        min-width: 0;
+        min-height: 82px;
+        gap: 0.6rem;
+        padding: 0.65rem 0.85rem;
+    }
+
+    .dashboard-kpis[data-dashboard-widget="kpis"] .progress-ring {
+        width: 50px;
+        height: 50px;
+    }
+
+    .dashboard-kpis[data-dashboard-widget="kpis"] .progress-ring span {
+        width: 38px;
+        font-size: 0.62rem;
+    }
+
+    .dashboard-kpis[data-dashboard-widget="kpis"] .metric-card-calorie-goal .progress-ring span {
+        width: 40px;
+        font-size: 0.58rem;
+    }
+
+    .dashboard-kpis[data-dashboard-widget="kpis"] > .metric-card > div:not(.progress-ring) span {
+        font-size: 0.66rem;
+    }
+
+    .dashboard-kpis[data-dashboard-widget="kpis"] > .metric-card strong {
+        margin-top: 0.12rem;
+        font-size: 1.12rem;
+    }
+
+    .dashboard-kpis[data-dashboard-widget="kpis"] > .metric-card p {
+        margin-top: 0.1rem;
+        font-size: 0.68rem;
+    }
+
+    /* The motivation quote read as a lopsided dark bar with the text hugging
+       the left edge and most of the band empty. Slim it into a light, centered
+       "quote of the day" strip with a faint watermark glyph behind it. It is
+       also an ephemeral greeting (see the auto-hide handler), so `max-height`
+       is set here to give the dismiss transition a concrete value to collapse
+       from. */
+    .motivation-band {
+        justify-items: center;
+        align-content: center;
+        gap: 0.25rem;
+        padding: 0.8rem 1.5rem;
+        max-height: 200px;
+        overflow: hidden;
+        text-align: center;
+        transition: max-height 0.5s ease, opacity 0.4s ease, transform 0.4s ease,
+            padding 0.5s ease;
+    }
+
+    .motivation-band span {
+        font-size: 0.64rem;
+        letter-spacing: 0.14em;
+    }
+
+    .motivation-band strong {
+        max-width: 72ch;
+        font-size: 1.02rem;
+        font-weight: 600;
+        font-style: italic;
+        line-height: 1.35;
+    }
+
+    .motivation-band::after {
+        content: "\201C";
+        position: absolute;
+        top: 44%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font: 700 4.25rem/1 Georgia, "Times New Roman", serif;
+        color: #9fe4d6;
+        opacity: 0.09;
+        pointer-events: none;
+    }
+
+    /* Ephemeral dismissal: the greeting fades and collapses a few seconds
+       after load; the handler sets `hidden` once the transition ends so no
+       grid gap is left behind. */
+    .motivation-band.is-dismissing {
+        max-height: 0;
+        padding-block: 0;
+        opacity: 0;
+        transform: translateY(-6px);
+        pointer-events: none;
     }
 }
 
@@ -25139,12 +25274,13 @@ body.theme-active-dark .dashboard-training-progress-grid > span {
     .mobile-widget-feed-head > a { display: grid; place-items: center; flex: 0 0 auto; min-height: 44px; padding: 0 12px; border-radius: 13px; color: var(--primary-dark); background: color-mix(in srgb, var(--primary) 9%, var(--surface)); font-size: 0.7rem; font-weight: 850; text-decoration: none; }
     body:not(.layout-edit-active) .dashboard-desktop-root,
     body:not(.layout-edit-active) .team-hierarchy-screen[data-team-section=""] > .team-desktop-root { display: block; }
-    body:not(.layout-edit-active) .dashboard-desktop-root > .motivation-band,
     .team-hierarchy-screen[data-team-section=""] > .team-desktop-root > .hero-panel { display: none !important; }
     body:not(.layout-edit-active) .dashboard-desktop-root .dashboard-layout,
     .team-hierarchy-screen[data-team-section=""] .team-layout-grid,
     .profile-hierarchy-screen[data-profile-section=""] > .profile-home-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
-    body:not(.layout-edit-active) .dashboard-desktop-root :where([data-dashboard-widget="kpis"], .dashboard-quick-actions) { display: none !important; }
+    /* The motivation quote is a desktop-only greeting; hide it in the mobile
+       feed alongside the KPI strip (both are covered by the mobile Today card). */
+    body:not(.layout-edit-active) .dashboard-desktop-root :where([data-dashboard-widget="kpis"], [data-dashboard-widget="motivation"], .dashboard-quick-actions) { display: none !important; }
     body:not(.layout-edit-active):has(.dashboard-mobile-home [data-dashboard-mobile-surface="mobile_today"][hidden]) .dashboard-desktop-root [data-dashboard-widget="kpis"] { display: grid !important; }
     :where(.dashboard-layout, .dashboard-layout > *, .team-layout-grid, .team-layout-grid > *, .profile-hierarchy-screen, .profile-hero, .profile-title, .profile-title .hero-copy, .profile-mobile-root, .profile-home-grid, .profile-home-card) {
         min-width: 0;

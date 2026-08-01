@@ -11,8 +11,8 @@ $penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
 $dashboardLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
 $dashboardMobileSurfaces = ['mobile_today', 'mobile_primary', 'mobile_progress', 'mobile_shortcuts'];
 $dashboardDesktopWidgets = $penaltiesEnabled
-    ? ['kpis', 'nutrition', 'training_rank', 'training_progress', 'active_challenge', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
-    : ['kpis', 'nutrition', 'training_rank', 'training_progress', 'active_challenge', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'ranking', 'weekly'];
+    ? ['motivation', 'kpis', 'nutrition', 'training_rank', 'training_progress', 'active_challenge', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'approvals', 'ranking', 'weekly']
+    : ['motivation', 'kpis', 'nutrition', 'training_rank', 'training_progress', 'active_challenge', 'quests', 'season', 'achievements', 'achievement_progress', 'duels', 'competitions', 'ranking', 'weekly'];
 $dashboardWidgets = array_merge($dashboardMobileSurfaces, $dashboardDesktopWidgets);
 $visibleWidgets = [];
 if (is_array($dashboardLayout) && $dashboardLayout !== []) {
@@ -528,11 +528,6 @@ $topbarControls = ob_get_clean();
     </div>
     <div class="dashboard-desktop-root">
     <header class="mobile-widget-feed-head"><div><p><?= e(t('dashboard.visible_widgets')) ?></p><h2><?= e(t('nav.dashboard')) ?></h2></div><a href="<?= e($dashboardEditLayoutUrl) ?>"><?= e(t('dashboard.edit_layout')) ?></a></header>
-    <div class="motivation-band">
-        <span><?= e(t('dashboard.motivation')) ?></span>
-        <strong>"<?= e((string) ($motivationQuote ?? t('dashboard.default_quote'))) ?>"</strong>
-    </div>
-
     <?php if ($dashboardLayoutEditMode): ?>
     <div class="dashboard-layout-editbar">
         <form id="dashboard-layout-edit-form" method="post" action="/?page=dashboard" class="dashboard-layout-editor dashboard-layout-editor-mobile" data-dashboard-layout-editor>
@@ -621,6 +616,12 @@ $topbarControls = ob_get_clean();
     <?php endif; ?>
 
     <div class="dashboard-layout" data-unsaved-message="<?= e(t('dashboard.unsaved_changes')) ?>">
+        <?php if ($showWidget('motivation')): ?>
+        <div class="motivation-band dashboard-span-full" data-dashboard-widget="motivation" style="order: <?= $contentWidgetOrder('motivation') ?>">
+            <span><?= e(t('dashboard.motivation')) ?></span>
+            <strong>"<?= e((string) ($motivationQuote ?? t('dashboard.default_quote'))) ?>"</strong>
+        </div>
+        <?php endif; ?>
         <?php if ($showWidget('kpis')): ?>
         <div class="metric-grid dashboard-span-full dashboard-kpis" data-dashboard-widget="kpis" style="order: <?= $contentWidgetOrder('kpis') ?>">
             <?php if ($dashboardHasScore): ?><a class="metric-card metric-card-link metric-card-score" href="/?<?= e(http_build_query($metricQueryBase + ['metric' => 'score'])) ?>" data-testid="metric-card-link-score">
@@ -687,10 +688,12 @@ $topbarControls = ob_get_clean();
         <article class="panel dashboard-panel dashboard-span-full dashboard-quick-actions" style="order: <?= $dashboardUtilityOrder ?>">
             <div class="dashboard-quick-actions-grid">
                 <a class="btn btn-primary dashboard-quick-action" href="/?page=entries&mode=data">
-                    <?= e(t('dashboard.quick_action_training')) ?>
+                    <span class="dashboard-quick-action-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
+                    <span><?= e(t('dashboard.quick_action_training')) ?></span>
                 </a>
                 <a class="btn btn-secondary dashboard-quick-action" href="/?page=nutrition">
-                    <?= e(t('dashboard.quick_action_meal')) ?>
+                    <span class="dashboard-quick-action-icon" aria-hidden="true"><?= activity_icon_svg('flame') ?></span>
+                    <span><?= e(t('dashboard.quick_action_meal')) ?></span>
                 </a>
             </div>
         </article>
@@ -759,9 +762,17 @@ $topbarControls = ob_get_clean();
                     </div>
                     <div class="dashboard-panel-head-actions"><a class="btn btn-ghost small dashboard-panel-action" href="/?page=workouts&amp;view=ranks"><?= e(t('common.view_all')) ?></a><?= $dashboardCollapseControl('dashboard.training-rank') ?></div>
                 </div>
+                <?php
+                $trainingRankIcon = match ($trainingRankKey) {
+                    'unranked' => 'shield',
+                    'platinum', 'diamond', 'elite' => 'star',
+                    'gold' => 'trophy',
+                    default => 'medal',
+                };
+                ?>
                 <div class="dashboard-training-rank-summary">
                     <div class="dashboard-training-rank-emblem">
-                        <span class="dashboard-training-rank-mark" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span>
+                        <span class="dashboard-training-rank-mark" aria-hidden="true"><?= activity_icon_svg($trainingRankIcon) ?></span>
                         <strong><?= e(t('workouts.rank_' . $trainingRankKey)) ?></strong>
                         <span class="dashboard-training-rank-score"><b><?= e(number_format($trainingRankScore, 1, '.', '')) ?></b><small><?= e(t('workouts.lift_points')) ?></small></span>
                     </div>

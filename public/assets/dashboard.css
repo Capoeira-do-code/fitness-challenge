@@ -342,30 +342,61 @@ body[data-page="dashboard"] .dashboard-training-rank-emblem {
     aspect-ratio: auto;
     align-content: center;
     justify-items: center;
-    gap: 4px;
-    padding: 8px 6px;
-    border-color: color-mix(in srgb, var(--rank-color) 30%, var(--line));
+    gap: 6px;
+    padding: 10px 6px;
+    border-color: color-mix(in srgb, var(--rank-color) 32%, var(--line));
     border-radius: 14px;
-    background: color-mix(in srgb, var(--rank-color) 9%, var(--surface));
+    background:
+        radial-gradient(120% 82% at 50% 0%, color-mix(in srgb, var(--rank-color) 20%, transparent), transparent 62%),
+        color-mix(in srgb, var(--rank-color) 6%, var(--surface));
     box-shadow: none;
 }
+/* Metallic tier medal: a coin-like disc built from the rank colour - a soft
+   top-left highlight, a mid-tone body and a darkened lower edge, with inset
+   rings for the struck-metal look. Reads as an earned rank rather than a flat
+   icon chip. */
 body[data-page="dashboard"] .dashboard-training-rank-mark {
+    position: relative;
     display: grid;
-    width: 32px;
-    height: 32px;
+    width: 52px;
+    height: 52px;
     place-items: center;
+    overflow: hidden;
     border-radius: 50%;
-    color: var(--rank-color);
-    background: color-mix(in srgb, var(--rank-color) 14%, var(--surface));
+    color: #fff;
+    background:
+        radial-gradient(120% 120% at 32% 22%, color-mix(in srgb, var(--rank-color) 45%, #fff), transparent 46%),
+        linear-gradient(158deg, color-mix(in srgb, var(--rank-color) 72%, #fff) 0%, var(--rank-color) 47%, color-mix(in srgb, var(--rank-color) 58%, #000) 100%);
+    box-shadow:
+        inset 0 1px 2px rgba(255, 255, 255, 0.55),
+        inset 0 -5px 9px color-mix(in srgb, var(--rank-color) 55%, #000),
+        inset 0 0 0 3px color-mix(in srgb, #fff 28%, transparent),
+        0 7px 16px color-mix(in srgb, var(--rank-color) 42%, transparent);
 }
-body[data-page="dashboard"] .dashboard-training-rank-mark svg { width: 18px; height: 18px; }
+body[data-page="dashboard"] .dashboard-training-rank-mark::before {
+    content: "";
+    position: absolute;
+    inset: 8% 14% 54%;
+    border-radius: 50%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.65), transparent);
+    pointer-events: none;
+}
+body[data-page="dashboard"] .dashboard-training-rank-mark svg {
+    position: relative;
+    width: 25px;
+    height: 25px;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+}
 body[data-page="dashboard"] .dashboard-training-rank-emblem > strong {
     max-width: 100%;
     overflow-wrap: anywhere;
-    color: var(--ink);
-    font-size: 0.78rem;
+    color: color-mix(in srgb, var(--rank-color) 78%, var(--ink));
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.01em;
     line-height: 1.15;
     text-align: center;
+    text-transform: uppercase;
 }
 body[data-page="dashboard"] .dashboard-training-rank-score { display: flex; align-items: baseline; justify-content: center; gap: 3px; color: var(--muted); }
 body[data-page="dashboard"] .dashboard-training-rank-score b { color: var(--rank-color); font-size: 1.12rem; line-height: 1; }
@@ -406,6 +437,19 @@ body[data-page="dashboard"] .dashboard-training-board-head span { display: grid;
 body[data-page="dashboard"] .dashboard-training-board { gap: 5px; }
 body[data-page="dashboard"] .dashboard-training-board-row { min-height: 44px; padding-block: 4px; border-color: color-mix(in srgb, var(--rank-color) 10%, var(--line)); background: color-mix(in srgb, var(--ink) 2%, transparent); }
 
+/* Leaderboard badges already carry their own tier colour app-wide via the
+   global `[data-rank]` rules, which override the panel's inherited rank colour.
+
+   Podium colours for the top three position numbers. The `.is-selected`
+   variants match the higher specificity of the "your row uses your rank colour"
+   rule further down, so the podium medal wins for the viewer's own top-3 spot. */
+body[data-page="dashboard"] .dashboard-training-board-row:nth-child(1) > strong,
+body[data-page="dashboard"] .dashboard-training-board-row.is-selected:nth-child(1) > strong { color: #d6a928; font-weight: 900; }
+body[data-page="dashboard"] .dashboard-training-board-row:nth-child(2) > strong,
+body[data-page="dashboard"] .dashboard-training-board-row.is-selected:nth-child(2) > strong { color: #a8b2bd; font-weight: 900; }
+body[data-page="dashboard"] .dashboard-training-board-row:nth-child(3) > strong,
+body[data-page="dashboard"] .dashboard-training-board-row.is-selected:nth-child(3) > strong { color: #c47a44; font-weight: 900; }
+
 body[data-page="dashboard"]:is([data-theme="dark"], .theme-active-dark) :is(
     .dashboard-training-rank-summary,
     .dashboard-training-rank-emblem,
@@ -418,7 +462,8 @@ body[data-page="dashboard"]:is([data-theme="dark"], .theme-active-dark) :is(
 @media (max-width: 420px) {
     body[data-page="dashboard"] .dashboard-training-rank-summary { grid-template-columns: 78px minmax(0, 1fr); gap: 7px; padding: 7px; }
     body[data-page="dashboard"] .dashboard-training-rank-emblem { width: auto; min-height: 94px; padding-inline: 4px; }
-    body[data-page="dashboard"] .dashboard-training-rank-mark { width: 29px; height: 29px; }
+    body[data-page="dashboard"] .dashboard-training-rank-mark { width: 44px; height: 44px; }
+    body[data-page="dashboard"] .dashboard-training-rank-mark svg { width: 22px; height: 22px; }
     body[data-page="dashboard"] .dashboard-training-rank-emblem > strong { font-size: 0.68rem; }
     body[data-page="dashboard"] .dashboard-training-rank-score { display: grid; justify-items: center; gap: 2px; }
     body[data-page="dashboard"] .dashboard-training-rank-scale { font-size: 0.51rem; }

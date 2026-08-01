@@ -332,9 +332,12 @@ body[data-page="workouts"] .workouts-rank-menu small {
     font-weight: 900;
 }
 body[data-page="workouts"] .workouts-rank-page > .workouts-rank-hero {
-    gap: 12px;
-    padding: 12px;
+    gap: 14px;
+    padding: 14px;
     border-radius: 18px;
+    background:
+        radial-gradient(135% 130% at 100% 0%, color-mix(in srgb, var(--rank-color, var(--primary)) 15%, transparent), transparent 52%),
+        var(--surface);
     box-shadow: none;
 }
 body[data-page="workouts"] .workouts-rank-page > .workouts-rank-hero .workouts-rank-emblem { width: 84px; }
@@ -590,6 +593,177 @@ body[data-page="workouts"] .workouts-rank-hero-progress strong { color: var(--in
 body[data-page="workouts"] .workouts-rank-hero-progress span { color: var(--rank-color, var(--primary)); font-size: 0.68rem; font-weight: 850; }
 body[data-page="workouts"] .workouts-rank-hero-progress .workouts-rank-progress { margin: 0; height: 9px; }
 body[data-page="workouts"] .workouts-rank-hero-progress > small { margin: 0; font-size: 0.62rem; white-space: nowrap; }
+
+/* Headline stats on the crest banner: team ladder standing and peak body-part
+   tier. The team chip stays on the brand green; the peak chip inherits its own
+   tier colour from the global [data-rank] palette. */
+body[data-page="workouts"] .workouts-rank-hero-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 0.6rem; }
+body[data-page="workouts"] .workouts-rank-hero-chip {
+    --chip-color: var(--primary);
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 11px 4px 4px;
+    border: 1px solid color-mix(in srgb, var(--chip-color) 26%, var(--line));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--chip-color) 8%, var(--surface));
+    line-height: 1.1;
+}
+body[data-page="workouts"] .workouts-rank-hero-chip[data-rank] { --chip-color: var(--rank-color); }
+body[data-page="workouts"] .workouts-rank-hero-chip > span {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    color: var(--chip-color);
+    background: color-mix(in srgb, var(--chip-color) 16%, var(--surface));
+}
+body[data-page="workouts"] .workouts-rank-hero-chip svg { width: 13px; height: 13px; }
+body[data-page="workouts"] .workouts-rank-hero-chip b { color: var(--ink); font-size: 0.8rem; font-weight: 900; }
+body[data-page="workouts"] .workouts-rank-hero-chip small { color: var(--muted); font-size: 0.62rem; font-weight: 750; }
+
+/* Tier ladder: the full ranked progression as an evenly-stepped track. A rail
+   runs behind the tier medals, filled up to the member's current tier; medals
+   are struck-metal for tiers already reached, and muted outlines for locked
+   ones. This is the competitive-ladder read the page was missing. */
+body[data-page="workouts"] .workouts-rank-ladder {
+    display: grid;
+    gap: 12px;
+    padding: 15px 15px 13px;
+    border: 1px solid color-mix(in srgb, var(--rank-color, var(--primary)) 16%, var(--line));
+    border-radius: 18px;
+    background:
+        radial-gradient(150% 120% at 0% 0%, color-mix(in srgb, var(--rank-color, var(--primary)) 7%, transparent), transparent 58%),
+        var(--surface);
+}
+body[data-page="workouts"] .workouts-rank-ladder-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+body[data-page="workouts"] .workouts-rank-ladder-head > div { display: grid; min-width: 0; gap: 1px; }
+body[data-page="workouts"] .workouts-rank-ladder-head .eyebrow { margin: 0; }
+body[data-page="workouts"] .workouts-rank-ladder-head h2 { margin: 0; font-size: 0.95rem; }
+body[data-page="workouts"] .workouts-rank-ladder-status {
+    flex: 0 0 auto;
+    padding: 4px 11px;
+    border-radius: 999px;
+    color: var(--rank-color, var(--primary));
+    background: color-mix(in srgb, var(--rank-color, var(--primary)) 13%, var(--surface));
+    font-size: 0.62rem;
+    font-weight: 900;
+    white-space: nowrap;
+}
+body[data-page="workouts"] .workouts-rank-ladder-track {
+    position: relative;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+body[data-page="workouts"] .workouts-rank-ladder-track::before,
+body[data-page="workouts"] .workouts-rank-ladder-track::after {
+    content: "";
+    position: absolute;
+    top: 29px;
+    height: 4px;
+    border-radius: 999px;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+body[data-page="workouts"] .workouts-rank-ladder-track::before {
+    left: calc(50% / var(--ladder-count, 7));
+    right: calc(50% / var(--ladder-count, 7));
+    background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+body[data-page="workouts"] .workouts-rank-ladder-track::after {
+    left: calc(50% / var(--ladder-count, 7));
+    width: max(0px, calc(var(--ladder-fill, 0%) - (50% / var(--ladder-count, 7))));
+    background: linear-gradient(90deg, color-mix(in srgb, var(--rank-color, var(--primary)) 55%, #fff), var(--rank-color, var(--primary)));
+}
+body[data-page="workouts"] .workouts-rank-ladder-node {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-rows: 58px auto auto;
+    justify-items: center;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+    padding: 0 2px;
+    text-align: center;
+}
+body[data-page="workouts"] .workouts-rank-ladder-medal {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border: 2px solid color-mix(in srgb, var(--rank-color, var(--primary)) 32%, var(--line));
+    border-radius: 50%;
+    color: var(--rank-color, var(--primary));
+    background: var(--surface);
+}
+body[data-page="workouts"] .workouts-rank-ladder-medal svg { width: 19px; height: 19px; }
+body[data-page="workouts"] .workouts-rank-ladder-node strong { color: var(--ink); font-size: 0.7rem; line-height: 1.05; }
+body[data-page="workouts"] .workouts-rank-ladder-node small { color: var(--muted); font-size: 0.56rem; font-weight: 800; }
+
+/* reached tiers - struck metal, tier coloured */
+body[data-page="workouts"] .workouts-rank-ladder-node.is-achieved .workouts-rank-ladder-medal,
+body[data-page="workouts"] .workouts-rank-ladder-node.is-current .workouts-rank-ladder-medal {
+    color: #fff;
+    border-color: transparent;
+    background:
+        radial-gradient(120% 120% at 32% 22%, color-mix(in srgb, var(--rank-color) 45%, #fff), transparent 46%),
+        linear-gradient(158deg, color-mix(in srgb, var(--rank-color) 72%, #fff) 0%, var(--rank-color) 47%, color-mix(in srgb, var(--rank-color) 56%, #000) 100%);
+    box-shadow:
+        inset 0 1px 1px rgba(255, 255, 255, 0.5),
+        inset 0 -4px 8px color-mix(in srgb, var(--rank-color) 55%, #000),
+        inset 0 0 0 3px color-mix(in srgb, #fff 24%, transparent),
+        0 5px 12px color-mix(in srgb, var(--rank-color) 30%, transparent);
+}
+body[data-page="workouts"] .workouts-rank-ladder-node.is-achieved .workouts-rank-ladder-medal svg,
+body[data-page="workouts"] .workouts-rank-ladder-node.is-current .workouts-rank-ladder-medal svg {
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.28));
+}
+
+/* current tier - larger crest, glow ring, emphasised label */
+body[data-page="workouts"] .workouts-rank-ladder-node.is-current .workouts-rank-ladder-medal {
+    width: 54px;
+    height: 54px;
+    box-shadow:
+        inset 0 1px 2px rgba(255, 255, 255, 0.55),
+        inset 0 -6px 11px color-mix(in srgb, var(--rank-color) 55%, #000),
+        inset 0 0 0 4px color-mix(in srgb, #fff 26%, transparent),
+        0 0 0 4px color-mix(in srgb, var(--rank-color) 22%, transparent),
+        0 8px 18px color-mix(in srgb, var(--rank-color) 42%, transparent);
+}
+body[data-page="workouts"] .workouts-rank-ladder-node.is-current .workouts-rank-ladder-medal svg { width: 24px; height: 24px; }
+body[data-page="workouts"] .workouts-rank-ladder-node.is-current strong { color: var(--rank-color); font-weight: 900; }
+body[data-page="workouts"] .workouts-rank-ladder-node.is-current small { color: var(--ink); }
+
+/* locked tiers - muted, awaiting */
+body[data-page="workouts"] .workouts-rank-ladder-node.is-locked .workouts-rank-ladder-medal {
+    color: color-mix(in srgb, var(--muted) 80%, var(--rank-color));
+    border-color: var(--line);
+    background: color-mix(in srgb, var(--ink) 3%, var(--surface));
+}
+body[data-page="workouts"] .workouts-rank-ladder-node.is-locked strong { color: var(--muted); }
+body[data-page="workouts"] .workouts-rank-ladder-node.is-locked small { color: color-mix(in srgb, var(--muted) 70%, transparent); }
+
+/* Phones: shrink the crests so all seven tier labels keep breathing room. */
+@media (max-width: 600px) {
+    body[data-page="workouts"] .workouts-rank-ladder { padding: 12px 9px 11px; }
+    body[data-page="workouts"] .workouts-rank-ladder-node { grid-template-rows: 46px auto auto; padding: 0 1px; }
+    body[data-page="workouts"] .workouts-rank-ladder-medal { width: 33px; height: 33px; }
+    body[data-page="workouts"] .workouts-rank-ladder-medal svg { width: 15px; height: 15px; }
+    body[data-page="workouts"] .workouts-rank-ladder-node.is-current .workouts-rank-ladder-medal { width: 43px; height: 43px; }
+    body[data-page="workouts"] .workouts-rank-ladder-node.is-current .workouts-rank-ladder-medal svg { width: 19px; height: 19px; }
+    body[data-page="workouts"] .workouts-rank-ladder-track::before,
+    body[data-page="workouts"] .workouts-rank-ladder-track::after { top: 23px; }
+    body[data-page="workouts"] .workouts-rank-ladder-node strong { font-size: 0.57rem; }
+    body[data-page="workouts"] .workouts-rank-ladder-node small { font-size: 0.49rem; }
+    body[data-page="workouts"] .workouts-rank-ladder-head h2 { font-size: 0.88rem; }
+}
+
 body[data-page="workouts"] .workouts-rank-mini-progress { display: block; width: 100%; height: 5px; margin-top: 0.18rem; overflow: hidden; border-radius: 99px; background: color-mix(in srgb, var(--line) 78%, transparent); }
 body[data-page="workouts"] .workouts-rank-mini-progress > i { display: block; height: 100%; border-radius: inherit; background: var(--rank-color, var(--primary)); }
 body[data-page="workouts"] .workouts-exercise-rank-card > em { color: var(--muted); font-size: 0.58rem; font-style: normal; font-weight: 750; }
@@ -1220,16 +1394,29 @@ body[data-page="workouts"] .workouts-rank-page > .workouts-rank-hero::before {
     background: linear-gradient(180deg, var(--rank-color, var(--primary)), color-mix(in srgb, var(--rank-color, var(--primary)) 55%, #fff));
 }
 
+/* Struck-metal tier medal, matched to the dashboard rank medal: a top-left
+   highlight, a mid-tone body and a darkened lower edge with a bright inner rim.
+   White text with a soft shadow keeps the label legible on the metal. */
 body[data-page="workouts"] .workouts-rank-page > .workouts-rank-hero .workouts-rank-emblem {
     position: relative;
     width: 96px;
-    border-color: color-mix(in srgb, var(--rank-color, var(--primary)) 42%, var(--line));
+    overflow: hidden;
+    border: none;
+    color: #fff;
     background:
-        radial-gradient(circle at 50% 28%, color-mix(in srgb, var(--rank-color, var(--primary)) 20%, transparent), transparent 54%),
-        color-mix(in srgb, var(--rank-color, var(--primary)) 8%, var(--surface));
+        radial-gradient(120% 120% at 32% 22%, color-mix(in srgb, var(--rank-color, var(--primary)) 45%, #fff), transparent 46%),
+        linear-gradient(158deg, color-mix(in srgb, var(--rank-color, var(--primary)) 72%, #fff) 0%, var(--rank-color, var(--primary)) 47%, color-mix(in srgb, var(--rank-color, var(--primary)) 56%, #000) 100%);
     box-shadow:
-        inset 0 1px 0 color-mix(in srgb, #fff 66%, transparent),
-        0 10px 24px color-mix(in srgb, var(--rank-color, var(--primary)) 16%, transparent);
+        inset 0 1px 2px rgba(255, 255, 255, 0.5),
+        inset 0 -7px 13px color-mix(in srgb, var(--rank-color, var(--primary)) 55%, #000),
+        inset 0 0 0 4px color-mix(in srgb, #fff 26%, transparent),
+        0 12px 26px color-mix(in srgb, var(--rank-color, var(--primary)) 40%, transparent);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+}
+
+body[data-page="workouts"] .workouts-rank-page > .workouts-rank-hero .workouts-rank-emblem span,
+body[data-page="workouts"] .workouts-rank-page > .workouts-rank-hero .workouts-rank-emblem > small {
+    color: #fff;
 }
 
 body[data-page="workouts"] .workouts-rank-page > .workouts-rank-hero .workouts-rank-emblem strong {
@@ -1237,6 +1424,7 @@ body[data-page="workouts"] .workouts-rank-page > .workouts-rank-hero .workouts-r
     font-size: 1.35rem;
     font-weight: 900;
     letter-spacing: -0.045em;
+    color: #fff;
 }
 
 body[data-page="workouts"] .workouts-rank-hero-copy h2 {

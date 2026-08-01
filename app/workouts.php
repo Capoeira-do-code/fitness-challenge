@@ -3338,6 +3338,196 @@ function wk_user_rank_profile(PDO $pdo, int $userId): array
     ];
 }
 
+/**
+ * Tier ratio anchors: 1RM / bodyweight a MALE lifter needs on the reference lift
+ * (bench press, scale 1.0) to hit each tier. Grounded in public strength-standard
+ * tables and set to the forgiving "motivational" calibration chosen for this app.
+ * Each row is [ratio, score]; a per-exercise scale and a gender coefficient move
+ * these ratios per lift.
+ *
+ * @return array<int,array{0:float,1:float}>
+ */
+function wk_rank_base_anchors(): array
+{
+    return [
+        [0.35, 25.0],   // bronze
+        [0.60, 45.0],   // silver
+        [0.85, 70.0],   // gold
+        [1.10, 100.0],  // platinum
+        [1.35, 140.0],  // diamond
+        [1.60, 180.0],  // elite
+    ];
+}
+
+/**
+ * How hard a lift is relative to the bench press (1.0). Multiplies the anchor
+ * ratios, so a heavy compound (deadlift ~1.7) needs far more load per kg of
+ * bodyweight than an isolation (lateral raise ~0.30) to reach the same tier.
+ * Big lifts are matched by name; everything else falls back to a muscle-group +
+ * compound/isolation estimate. This replaces the ad-hoc seed rank_factor, which
+ * under-rated accessories so badly that a single set could reach Elite.
+ */
+function wk_exercise_strength_scale(array $exercise): float
+{
+    $name = strtolower(trim((string) ($exercise['name'] ?? '') . ' ' . (string) ($exercise['slug'] ?? '')));
+    $muscle = (string) ($exercise['muscle_group'] ?? '');
+    $equipment = (string) ($exercise['equipment'] ?? '');
+    $has = static function (string ...$needles) use ($name): bool {
+        foreach ($needles as $needle) {
+            if ($needle !== '' && str_contains($name, $needle)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Named compound lifts (highest priority).
+    if ($has('deadlift')) {
+        return $has('romanian', 'rdl', 'stiff', 'stiff-leg', 'stiff leg') ? 1.35 : 1.7;
+    }
+    if ($has('hip thrust')) { return 1.8; }
+    if ($has('glute bridge')) { return 1.4; }
+    if ($has('leg press')) { return 2.6; }
+    if ($has('hack squat')) { return 1.6; }
+    if ($has('front squat')) { return 1.05; }
+    if ($has('goblet')) { return 0.8; }
+    if ($has('split squat', 'bulgarian', 'lunge', 'step-up', 'step up')) { return 0.7; }
+    if ($has('squat')) { return 1.35; }
+    if ($has('good morning')) { return 0.9; }
+    if ($has('calf')) { return $has('seated') ? 1.1 : 1.5; }
+    if ($has('shrug')) { return 1.3; }
+
+    // Presses.
+    if ($has('bench')) {
+        if ($has('incline')) { return 0.85; }
+        if ($has('decline')) { return 1.0; }
+        if ($has('close-grip', 'close grip')) { return 0.9; }
+        return 1.0;
+    }
+    if ($has('push press')) { return 0.75; }
+    if ($has('arnold')) { return 0.55; }
+    if ($has('overhead press', 'shoulder press', 'military', 'ohp')) { return 0.62; }
+    if ($has('chest press')) { return 0.9; }
+    if ($has('dip')) { return 1.15; }
+
+    // Pulls / rows. Bodyweight pulls score against total (bodyweight + added)
+    // load, so their scale is higher: an unweighted pull-up should sit mid-tier,
+    // with real added load needed to climb.
+    if ($has('pull-up', 'pull up', 'pullup', 'chin-up', 'chin up', 'chinup', 'muscle-up', 'muscle up')) { return 1.3; }
+    if ($has('pulldown', 'lat pull')) { return 0.9; }
+    if ($has('t-bar', 't bar')) { return 1.0; }
+    if ($has('pendlay', 'barbell row', 'bent-over row', 'bent over row')) { return 0.95; }
+    if ($has('row')) { return 0.85; }
+
+    // Isolations.
+    if ($has('lateral raise', 'side raise', 'lateral fly')) { return 0.30; }
+    if ($has('front raise')) { return 0.28; }
+    if ($has('rear delt', 'rear-delt', 'reverse fly', 'reverse flye', 'face pull')) { return 0.32; }
+    if ($has('fly', 'flye', 'pec deck')) { return 0.65; }
+    if ($has('leg curl', 'hamstring curl', 'lying curl', 'seated curl')) { return 0.65; }
+    if ($has('leg extension', 'knee extension')) { return 0.9; }
+    if ($has('curl')) { return 0.45; }
+    if ($has('pushdown', 'tricep', 'triceps', 'skull', 'overhead extension', 'french press', 'kickback')) { return 0.5; }
+    if ($has('abduction', 'adduction')) { return 0.5; }
+    if ($has('crunch', 'sit-up', 'sit up', 'leg raise', 'ab wheel', 'rollout', 'russian twist')) { return 0.55; }
+
+    // Fallback: muscle group + compound/isolation heuristic.
+    $compound = $equipment === 'barbell'
+        || $has('press', 'row', 'squat', 'deadlift', 'pull', 'dip', 'lunge', 'thrust', 'clean', 'snatch', 'carry');
+    $fallback = [
+        'chest' => $compound ? 1.0 : 0.65,
+        'back' => $compound ? 0.95 : 0.6,
+        'shoulders' => $compound ? 0.62 : 0.3,
+        'quads' => $compound ? 1.35 : 0.9,
+        'hamstrings' => $compound ? 1.35 : 0.65,
+        'glutes' => $compound ? 1.6 : 0.5,
+        'biceps' => 0.45,
+        'triceps' => $compound ? 0.6 : 0.5,
+        'calves' => 1.4,
+        'core' => 0.55,
+    ];
+
+    return $fallback[$muscle] ?? 0.7;
+}
+
+/**
+ * Female lifters are scored against lower absolute standards (~0.72x male for
+ * upper body, ~0.80x lower body), so the same lift ranks fairly. Unset sex
+ * defaults to the male standard.
+ */
+function wk_rank_gender_coefficient(?string $sex, string $muscle): float
+{
+    if (strtolower(trim((string) $sex)) !== 'female') {
+        return 1.0;
+    }
+
+    return in_array($muscle, ['quads', 'hamstrings', 'glutes', 'calves'], true) ? 0.8 : 0.72;
+}
+
+/**
+ * Map a bodyweight-relative strength ratio to a 0-210 rank score by piecewise
+ * interpolation across the (scaled) tier anchors, with a little headroom above
+ * Elite. `ratio` is effective load / bodyweight (allometrically adjusted).
+ */
+function wk_rank_score_from_ratio(float $ratio, float $scale, float $genderCoefficient): float
+{
+    $effectiveScale = max(0.05, $scale * max(0.4, $genderCoefficient));
+    if ($ratio <= 0.0 || $effectiveScale <= 0.0) {
+        return 0.0;
+    }
+
+    $points = [[0.0, 0.0]];
+    foreach (wk_rank_base_anchors() as [$anchorRatio, $anchorScore]) {
+        $points[] = [$anchorRatio * $effectiveScale, $anchorScore];
+    }
+    $last = count($points) - 1;
+    $eliteRatio = $points[$last][0];
+    if ($ratio >= $eliteRatio) {
+        $span = max(0.01, $points[$last][0] - $points[$last - 1][0]);
+        return min(210.0, 180.0 + (($ratio - $eliteRatio) / $span) * 40.0);
+    }
+    for ($i = 1; $i <= $last; $i++) {
+        if ($ratio <= $points[$i][0]) {
+            [$r0, $s0] = $points[$i - 1];
+            [$r1, $s1] = $points[$i];
+            $t = ($ratio - $r0) / max(0.0001, $r1 - $r0);
+
+            return $s0 + $t * ($s1 - $s0);
+        }
+    }
+
+    return 0.0;
+}
+
+/**
+ * Rep-based standard for bodyweight / isometric moves without an external load
+ * (push-ups, plank seconds, etc.). A general max-reps curve, interpolated like
+ * the load curve.
+ */
+function wk_rank_score_from_reps(float $reps): float
+{
+    if ($reps <= 0.0) {
+        return 0.0;
+    }
+    $points = [[0.0, 0.0], [8.0, 25.0], [15.0, 45.0], [25.0, 70.0], [40.0, 100.0], [60.0, 140.0], [85.0, 180.0]];
+    $last = count($points) - 1;
+    if ($reps >= $points[$last][0]) {
+        $span = max(0.01, $points[$last][0] - $points[$last - 1][0]);
+        return min(205.0, 180.0 + (($reps - $points[$last][0]) / $span) * 25.0);
+    }
+    for ($i = 1; $i <= $last; $i++) {
+        if ($reps <= $points[$i][0]) {
+            [$r0, $s0] = $points[$i - 1];
+            [$r1, $s1] = $points[$i];
+            $t = ($reps - $r0) / max(0.0001, $r1 - $r0);
+
+            return $s0 + $t * ($s1 - $s0);
+        }
+    }
+
+    return 0.0;
+}
+
 /** @return array<int,array<string,mixed>> */
 function wk_exercise_ranks_for_user(PDO $pdo, int $userId): array
 {
@@ -3354,13 +3544,23 @@ function wk_exercise_ranks_for_user(PDO $pdo, int $userId): array
     }
     $weightRecord = wk_user_bodyweight_record($pdo, $userId);
     $bodyweight = $weightRecord !== null && $weightRecord['recent'] ? (float) $weightRecord['weight'] : null;
+    $sexRow = db_fetch_one($pdo, 'SELECT tdee_sex FROM users WHERE id = :u', [':u' => $userId]);
+    $userSex = strtolower(trim((string) ($sexRow['tdee_sex'] ?? '')));
     $result = [];
     foreach (wk_exercises_for_user($pdo, $userId) as $exercise) {
         $id = (int) $exercise['id'];
         $exerciseRecords = (array) ($byExercise[$id] ?? []);
         $estOneRm = (float) ($exerciseRecords['est_1rm'] ?? 0.0);
         $maxReps = (float) ($exerciseRecords['max_reps'] ?? 0.0);
-        $factor = max(0.01, (float) ($exercise['rank_factor'] ?? 1.0));
+        $muscleGroup = (string) ($exercise['muscle_group'] ?? '');
+        $scale = wk_exercise_strength_scale($exercise);
+        // Dumbbell/kettlebell compound presses, rows and squats are logged per
+        // implement (one hand), well below a barbell total, so soften their
+        // barbell-calibrated scale. Isolations (already per-hand) keep theirs.
+        if ($scale >= 0.8 && in_array((string) ($exercise['equipment'] ?? ''), ['dumbbell', 'kettlebell'], true)) {
+            $scale *= 0.62;
+        }
+        $genderCoefficient = wk_rank_gender_coefficient($userSex, $muscleGroup);
         $rankable = (int) ($exercise['rankable'] ?? 1) === 1;
         $score = 0.0;
         $metric = '';
@@ -3371,7 +3571,7 @@ function wk_exercise_ranks_for_user(PDO $pdo, int $userId): array
             'bodyweight' => $bodyweight,
             'bodyweight_date' => $weightRecord['log_date'] ?? null,
             'reference_weight' => 75.0,
-            'factor' => $factor,
+            'factor' => round($scale * $genderCoefficient, 2),
             'adjustment' => null,
             'effective_load' => null,
             'base_score' => null,
@@ -3381,15 +3581,19 @@ function wk_exercise_ranks_for_user(PDO $pdo, int $userId): array
             $value = $estOneRm;
             if ($bodyweight !== null && $bodyweight > 0) {
                 $isBodyweight = (string) ($exercise['exercise_type'] ?? '') === 'bodyweight';
+                // Added-load moves count the extra load only; a body-driven move
+                // (pull-up, dip) counts bodyweight plus any added plate.
                 $effectiveLoad = $isBodyweight ? $bodyweight + $estOneRm : $estOneRm;
+                // Allometric nudge: heavier lifters lift more absolute weight but
+                // proportionally less per kg, so bump their effective ratio a touch.
                 $adjustment = pow($bodyweight / 75.0, 1.0 / 3.0);
-                $baseScore = ($effectiveLoad / ($bodyweight * $factor)) * 100.0;
-                $score = min(220.0, $baseScore * $adjustment);
+                $ratio = ($effectiveLoad / $bodyweight) * $adjustment;
+                $score = wk_rank_score_from_ratio($ratio, $scale, $genderCoefficient);
                 $calculation = array_merge($calculation, [
                     'method' => $isBodyweight ? 'bodyweight_load' : 'allometric_1rm',
                     'adjustment' => $adjustment,
                     'effective_load' => $effectiveLoad,
-                    'base_score' => $baseScore,
+                    'base_score' => $ratio,
                 ]);
             } else {
                 $requiresWeight = true;
@@ -3397,18 +3601,12 @@ function wk_exercise_ranks_for_user(PDO $pdo, int $userId): array
         } elseif ($rankable && $maxReps > 0 && in_array((string) ($exercise['exercise_type'] ?? ''), ['bodyweight', 'isometric'], true)) {
             $metric = 'max_reps';
             $value = $maxReps;
-            if ($bodyweight !== null && $bodyweight > 0) {
-                $adjustment = pow($bodyweight / 75.0, 1.0 / 3.0);
-                $baseScore = ($maxReps * 5.0) / $factor;
-                $score = min(220.0, $baseScore * $adjustment);
-                $calculation = array_merge($calculation, [
-                    'method' => 'bodyweight_reps',
-                    'adjustment' => $adjustment,
-                    'base_score' => $baseScore,
-                ]);
-            } else {
-                $requiresWeight = true;
-            }
+            $score = wk_rank_score_from_reps($maxReps);
+            $calculation = array_merge($calculation, [
+                'method' => 'bodyweight_reps',
+                'adjustment' => 1.0,
+                'base_score' => $maxReps,
+            ]);
         }
         $exercise['rank'] = array_merge(wk_rank_from_score($score), [
             'metric' => $metric,
@@ -3455,7 +3653,12 @@ function wk_muscle_ranks_for_user(PDO $pdo, int $userId): array
     }
     $result = [];
     foreach ($groups as $group) {
-        $score = (int) $group['ranked_count'] > 0 ? (float) $group['score_sum'] / (int) $group['ranked_count'] : 0.0;
+        $rankedCount = (int) $group['ranked_count'];
+        $score = $rankedCount > 0 ? (float) $group['score_sum'] / $rankedCount : 0.0;
+        // Coverage confidence: a single lift shouldn't crown a whole muscle group.
+        // Thin coverage is nudged down; three or more ranked lifts score in full.
+        $confidence = 0.8 + 0.2 * min(1.0, $rankedCount / 3.0);
+        $score *= $confidence;
         unset($group['score_sum']);
         $group['rank'] = wk_rank_from_score($score);
         $result[] = $group;

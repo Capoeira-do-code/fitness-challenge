@@ -8288,6 +8288,51 @@ document.addEventListener('click', (event) => {
     document.addEventListener('fc:afterPageSwap', initAll);
 })();
 
+/* Ephemeral motivation greeting (desktop).
+
+   The daily quote is a widget you can drag/hide like any other, but outside of
+   layout-edit mode it behaves as a greeting: it shows on load, then fades and
+   collapses after a few seconds so it never permanently occupies the feed. In
+   edit mode it stays put so it can be positioned or removed. Desktop only -
+   on mobile the band is not rendered in the feed at all. */
+(() => {
+    const VISIBLE_MS = 6000;
+
+    const initGreeting = () => {
+        if (document.body.dataset.page !== 'dashboard') return;
+        if (document.body.classList.contains('layout-edit-active')) return;
+        if (!window.matchMedia('(min-width: 900px)').matches) return;
+
+        const band = document.querySelector('.dashboard-layout [data-dashboard-widget="motivation"]');
+        if (!(band instanceof HTMLElement) || band.dataset.motivationGreeting === '1') return;
+        band.dataset.motivationGreeting = '1';
+
+        let done = false;
+        const dismiss = () => {
+            if (done) return;
+            done = true;
+            window.clearTimeout(timer);
+            band.classList.add('is-dismissing');
+            const finish = () => { band.hidden = true; };
+            band.addEventListener('transitionend', finish, { once: true });
+            window.setTimeout(finish, 800); // fallback if transitionend never fires
+        };
+
+        const timer = window.setTimeout(dismiss, VISIBLE_MS);
+        band.addEventListener('click', (event) => {
+            event.preventDefault();
+            dismiss();
+        });
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initGreeting);
+    } else {
+        initGreeting();
+    }
+    document.addEventListener('fc:afterPageSwap', initGreeting);
+})();
+
 /* Structured exercise-guide builder. It keeps the existing newline payload for
    compatibility, while giving mobile users real items they can add, reorder and
    remove without editing three large text blobs. */
