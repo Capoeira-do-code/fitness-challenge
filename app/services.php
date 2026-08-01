@@ -2139,6 +2139,10 @@ function create_photo_comment(PDO $pdo, int $photoId, int $userId, string $comme
         throw new RuntimeException(t('flash.save_failed'));
     }
 
+    if (function_exists('social_feed_notify_interaction')) {
+        social_feed_notify_interaction($pdo, $userId, 'photo', $photoId, 'comment', $text);
+    }
+
     return $created;
 }
 
@@ -2983,7 +2987,7 @@ function generate_media_thumbnail(array $config, string $mediaPath, int $width =
     $sourceMtime = @filemtime($sourcePath) ?: time();
     $targetMime = $writeWebp ? 'image/webp' : 'image/jpeg';
     $targetExtension = $writeWebp ? 'webp' : 'jpg';
-    $cacheKey = sha1((string) ($normalized['normalized'] ?? '') . '|' . (string) $sourceMtime . '|' . (string) $width . '|' . $targetExtension);
+    $cacheKey = sha1('oriented-v2|' . (string) ($normalized['normalized'] ?? '') . '|' . (string) $sourceMtime . '|' . (string) $width . '|' . $targetExtension);
     $cachePath = media_thumbnail_cache_dir($config) . '/' . $cacheKey . '.' . $targetExtension;
     if (is_file($cachePath)) {
         return ['path' => $cachePath, 'mime' => $targetMime];
@@ -3004,6 +3008,29 @@ function generate_media_thumbnail(array $config, string $mediaPath, int $width =
     if (!$sourceImage instanceof GdImage) {
         return null;
     }
+
+    // Phone JPEGs commonly store their camera orientation in EXIF while the
+    // raw pixels remain landscape. Normalize the pixels before resizing so
+    // cached feed thumbnails render upright in every browser.
+    if ($mime === 'image/jpeg' && function_exists('exif_read_data')) {
+        $exif = @exif_read_data($sourcePath, 'IFD0', true, false);
+        $orientation = (int) ($exif['IFD0']['Orientation'] ?? $exif['Orientation'] ?? 1);
+        if (in_array($orientation, [2, 4, 5, 7], true) && function_exists('imageflip')) {
+            imageflip($sourceImage, in_array($orientation, [2, 5, 7], true) ? IMG_FLIP_HORIZONTAL : IMG_FLIP_VERTICAL);
+        }
+        $angle = match ($orientation) { 3, 4 => 180, 5, 6 => -90, 7, 8 => 90, default => 0 };
+        if ($angle !== 0 && function_exists('imagerotate')) {
+            $rotatedImage = imagerotate($sourceImage, $angle, 0);
+            if ($rotatedImage instanceof GdImage) {
+                if (PHP_VERSION_ID < 80500) imagedestroy($sourceImage);
+                $sourceImage = $rotatedImage;
+            }
+        }
+    }
+    $sourceWidth = imagesx($sourceImage);
+    $sourceHeight = imagesy($sourceImage);
+    $targetWidth = min($width, $sourceWidth);
+    $targetHeight = max(1, (int) round(($sourceHeight / max(1, $sourceWidth)) * $targetWidth));
 
     $targetImage = imagecreatetruecolor($targetWidth, $targetHeight);
     if (!$targetImage instanceof GdImage) {
@@ -4453,7 +4480,7 @@ function create_goal(PDO $pdo, array $payload, int $actorUserId): int
 
 function save_goal_metric_targets(PDO $pdo, int $goalId, array $targets): void
 {
-    $goal = db_fetch_one($pdo, 'SELECT scope, owner_id FROM goals WHERE id = :id', [':id' => $goalId]);
+    $goal = db_fetch_one($pdo, 'SELECT scope, user_id FROM goals WHERE id = :id', [':id' => $goalId]);
     if ($goal === null) {
         throw new InvalidArgumentException('Challenge not found.');
     }
@@ -4471,7 +4498,7 @@ function save_goal_metric_targets(PDO $pdo, int $goalId, array $targets): void
         if (str_starts_with($key, 'custom:')) {
             $customId = (int) substr($key, 7);
             $owned = (string) ($goal['scope'] ?? '') === 'user'
-                ? custom_metric_get($pdo, $customId, (int) ($goal['owner_id'] ?? 0))
+                ? custom_metric_get($pdo, $customId, (int) ($goal['user_id'] ?? 0))
                 : null;
             if ($owned === null) {
                 throw new InvalidArgumentException('Invalid private challenge metric.');
@@ -4481,7 +4508,7 @@ function save_goal_metric_targets(PDO $pdo, int $goalId, array $targets): void
             $habitCode = substr($key, 6);
             $habit = db_fetch_one($pdo, 'SELECT owner_user_id, is_personal FROM habit_definitions WHERE code = :code AND active = 1', [':code' => $habitCode]);
             if ($habit === null || ((int) ($habit['is_personal'] ?? 0) === 1
-                && ((string) ($goal['scope'] ?? '') !== 'user' || (int) ($habit['owner_user_id'] ?? 0) !== (int) ($goal['owner_id'] ?? 0)))) {
+                && ((string) ($goal['scope'] ?? '') !== 'user' || (int) ($habit['owner_user_id'] ?? 0) !== (int) ($goal['user_id'] ?? 0)))) {
                 throw new InvalidArgumentException('Invalid private challenge habit.');
             }
         }
@@ -10461,25 +10488,24 @@ function create_user_notification(
         $jsonPayload = null;
     }
 
-    db_execute(
-        $pdo,
+    $statement = $pdo->prepare(
         'INSERT OR IGNORE INTO user_notifications (
             user_id, kind, title, message, payload_json, unique_key, is_read, created_at, read_at
         ) VALUES (
             :user_id, :kind, :title, :message, :payload_json, :unique_key, 0, :created_at, NULL
-        )',
-        [
-            ':user_id' => $userId,
-            ':kind' => trim($kind) !== '' ? trim($kind) : 'info',
-            ':title' => trim($title),
-            ':message' => trim($message),
-            ':payload_json' => $jsonPayload,
-            ':unique_key' => $uniqueKey,
-            ':created_at' => $now,
-        ]
+        )'
     );
+    $statement->execute([
+        ':user_id' => $userId,
+        ':kind' => trim($kind) !== '' ? trim($kind) : 'info',
+        ':title' => trim($title),
+        ':message' => trim($message),
+        ':payload_json' => $jsonPayload,
+        ':unique_key' => $uniqueKey,
+        ':created_at' => $now,
+    ]);
 
-    return $pdo->lastInsertId() !== '0';
+    return $statement->rowCount() > 0;
 }
 
 function upsert_user_notification(
@@ -10695,6 +10721,28 @@ function resolve_notification_destination(PDO $pdo, array $notification): string
         $senderUserId = (int) ($payload['sender_user_id'] ?? 0);
 
         return $senderUserId > 0 ? '/?page=profile&user_id=' . $senderUserId : '/?page=social';
+    }
+
+    if (in_array($kind, ['social_like', 'social_comment'], true)) {
+        $entityType = social_feed_entity_type((string) ($payload['entity_type'] ?? ''));
+        $entityId = (int) ($payload['entity_id'] ?? 0);
+        if ($entityType === 'photo' && $entityId > 0) {
+            return '/?page=photo&photo_id=' . $entityId;
+        }
+        if ($entityType === 'workout' && $entityId > 0) {
+            return '/?page=workouts&view=stats&detail_session=' . $entityId;
+        }
+        if ($entityType === 'meal' && $entityId > 0) {
+            $query = [
+                'page' => 'dashboard',
+                'home' => 'feed',
+                'feed' => 'friends',
+                'post_type' => 'meal',
+                'post_id' => $entityId,
+            ];
+            if ($kind === 'social_comment') $query['comments'] = 'meal-' . $entityId;
+            return '/?' . http_build_query($query) . '#feed-meal-' . $entityId;
+        }
     }
 
     if (in_array($kind, ['strike_review_request', 'strike_review_resolved'], true)) {

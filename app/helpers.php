@@ -706,7 +706,7 @@ function media_thumbnail_url(?string $path, int $width = 360): string
         return media_url((string) ($normalized['normalized'] ?? ''), $version);
     }
 
-    $url = '/?page=media_thumb&path=' . rawurlencode((string) ($normalized['normalized'] ?? '')) . '&w=' . max(80, min(1200, $width));
+    $url = '/?page=media_thumb&path=' . rawurlencode((string) ($normalized['normalized'] ?? '')) . '&w=' . max(80, min(1200, $width)) . '&tv=2';
 
     return with_cache_buster($url, $version);
 }
@@ -1251,6 +1251,12 @@ function activity_icon_svg(string $name): string
         'link' => '<path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.2 1.2"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.2-1.2"/>',
         'download' => '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/>',
         'bell' => '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>',
+        'heart' => '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z"/>',
+        'share' => '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/>',
+        'chart' => '<path d="M4 19V9M10 19V5M16 19v-7M22 19V3"/><path d="M2 21h20"/>',
+        'message' => '<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/>',
+        'send' => '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+        'grid' => '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
         'spark' => '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/>',
     ];
     $p = $paths[$name] ?? $paths['spark'];
@@ -1278,6 +1284,8 @@ function notification_pending_action(string $kind): ?string
 function notification_icon(string $kind): string
 {
     return match ($kind) {
+        'social_like' => 'heart',
+        'social_comment' => 'message',
         'friend_request', 'friend_accepted' => 'users',
         'duel_challenge', 'duel_accepted', 'duel_finished' => 'sword',
         'comp_invite', 'comp_accepted', 'comp_finished', 'squad_added' => 'trophy',

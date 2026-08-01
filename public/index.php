@@ -141,7 +141,7 @@ if ($page === 'app_icon_default') {
 
 if ($currentUser !== null
     && !empty($config['request_schedulers_enabled'])
-    && !in_array($page, ['manifest', 'app_icon', 'app_icon_default', 'login_background', 'media', 'media_thumb', 'dashboard_panel_state', 'api_meal_calendar', 'api_gallery_recent', 'api_workout_media_search', 'api_workout_media_import'], true)
+    && !in_array($page, ['manifest', 'app_icon', 'app_icon_default', 'login_background', 'media', 'media_thumb', 'shared_workout_media', 'dashboard_panel_state', 'api_meal_calendar', 'api_gallery_recent', 'api_workout_media_search', 'api_workout_media_import'], true)
 ) {
     run_system_backup_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
     notion_run_scheduler($pdo, $config, (int) ($currentUser['id'] ?? 0));
@@ -918,17 +918,113 @@ if ($page === 'shared_workout') {
     if ($sharedSession === null) {
         http_response_code(404);
     }
+    $sharedReturnUrl = '/?page=shared_workout&token=' . rawurlencode($sharedToken);
+    if (is_post() && $sharedSession !== null) {
+        if ($currentUser === null) {
+            flash_set('error', t('auth.login_required'));
+            redirect('/?page=login');
+        }
+        if (!csrf_verify()) {
+            flash_set('error', t('flash.csrf'));
+            redirect($sharedReturnUrl);
+        }
+        if ((string) ($_POST['action'] ?? '') === 'shared_workout_add_exercise') {
+            $viewerId = (int) ($currentUser['id'] ?? 0);
+            $routineId = max(0, (int) ($_POST['routine_id'] ?? 0));
+            $exerciseId = max(0, (int) ($_POST['exercise_def_id'] ?? 0));
+            $routine = wk_routine_get($pdo, $routineId, $viewerId);
+            $sharedExercise = db_fetch_one(
+                $pdo,
+                'SELECT ed.*
+                 FROM session_exercises se
+                 JOIN exercise_definitions ed ON ed.id=se.exercise_def_id
+                 WHERE se.session_id=:session AND se.exercise_def_id=:exercise
+                   AND EXISTS (
+                       SELECT 1 FROM workout_sets wset
+                       WHERE wset.session_exercise_id=se.id AND wset.completed=1
+                   )
+                 LIMIT 1',
+                [':session' => (int) $sharedSession['id'], ':exercise' => $exerciseId]
+            );
+            if ((int) ($sharedSession['user_id'] ?? 0) !== $viewerId
+                && is_array($routine)
+                && (int) ($routine['is_archived'] ?? 0) !== 1
+                && is_array($sharedExercise)
+                && (int) ($sharedExercise['active'] ?? 1) === 1) {
+                $ownsTransaction = !$pdo->inTransaction();
+                if ($ownsTransaction) $pdo->beginTransaction();
+                try {
+                    $targetExerciseId = ((int) ($sharedExercise['is_system'] ?? 0) === 1
+                        || (int) ($sharedExercise['user_id'] ?? 0) === $viewerId)
+                        ? $exerciseId
+                        : wk_user_clone_exercise($pdo, $exerciseId, $viewerId, true, false);
+                    $addedExerciseId = wk_routine_add_exercise($pdo, $routineId, $targetExerciseId);
+                    if ($addedExerciseId <= 0) throw new RuntimeException(t('flash.save_failed'));
+                    if ($ownsTransaction) $pdo->commit();
+                    flash_set('success', t('workouts.exercise_added'));
+                } catch (Throwable $e) {
+                    if ($ownsTransaction && $pdo->inTransaction()) $pdo->rollBack();
+                    error_log('Shared workout exercise import failed: ' . $e->getMessage());
+                    flash_set('error', $e instanceof InvalidArgumentException ? $e->getMessage() : t('flash.save_failed'));
+                }
+            } else {
+                flash_set('error', t('flash.save_failed'));
+            }
+            redirect($sharedReturnUrl);
+        }
+        redirect($sharedReturnUrl);
+    }
     $sharedExercises = $sharedSession !== null ? wk_session_exercises($pdo, (int) $sharedSession['id']) : [];
+    $sharedExerciseMedia = $sharedExercises !== [] ? wk_exercise_media_map($pdo, array_map(
+        static fn(array $exercise): array => array_merge($exercise, ['id' => (int) ($exercise['exercise_def_id'] ?? 0)]),
+        $sharedExercises
+    )) : [];
     render_view('shared_workout', [
         'title' => $sharedSession !== null ? (wk_session_display_title($sharedSession) ?: t('workouts.session')) : t('flash.not_found'),
         'currentPage' => 'shared_workout',
         'currentUser' => $currentUser,
         'sharedSession' => $sharedSession,
         'sharedExercises' => $sharedExercises,
+        'sharedExerciseMedia' => $sharedExerciseMedia,
+        'sharedUserRoutines' => $currentUser !== null && (int) ($sharedSession['user_id'] ?? 0) !== (int) ($currentUser['id'] ?? 0)
+            ? wk_routines_for_user($pdo, (int) $currentUser['id'], false)
+            : [],
         'metaTitle' => $sharedSession !== null ? (wk_session_display_title($sharedSession) ?: t('workouts.session')) : null,
         'metaDescription' => $sharedSession !== null ? t('workouts.shared_meta_description') : null,
         'config' => $config,
     ]);
+}
+
+if ($page === 'shared_workout_media') {
+    workouts_ensure_schema($pdo);
+    $sharedMediaToken = strtolower(trim((string) ($_GET['token'] ?? '')));
+    $sharedMediaPath = trim((string) ($_GET['path'] ?? ''));
+    $sharedMediaSession = wk_public_session_get($pdo, $sharedMediaToken);
+    $allowedMedia = $sharedMediaSession !== null ? db_fetch_one(
+        $pdo,
+        'SELECT 1
+         FROM session_exercises se
+         JOIN exercise_definitions ed ON ed.id=se.exercise_def_id
+         LEFT JOIN exercise_media em ON em.exercise_def_id=ed.id
+         WHERE se.session_id=:session
+           AND (ed.image_path=:cover_path OR em.file_path=:gallery_path)
+         LIMIT 1',
+        [
+            ':session' => (int) $sharedMediaSession['id'],
+            ':cover_path' => $sharedMediaPath,
+            ':gallery_path' => $sharedMediaPath,
+        ]
+    ) : null;
+    $sharedThumb = null;
+    if ($allowedMedia !== null) {
+        try { $sharedThumb = generate_media_thumbnail($config, $sharedMediaPath, max(80, min(1200, (int) ($_GET['w'] ?? 360)))); } catch (Throwable) { $sharedThumb = null; }
+    }
+    if (!is_array($sharedThumb) || !is_file((string) ($sharedThumb['path'] ?? ''))) { http_response_code(404); exit; }
+    header('Content-Type: ' . (string) ($sharedThumb['mime'] ?? 'image/webp'));
+    header('Cache-Control: public, max-age=86400');
+    header('X-Content-Type-Options: nosniff');
+    readfile((string) $sharedThumb['path']);
+    exit;
 }
 
 if ($page === 'media') {
@@ -4394,10 +4490,15 @@ if ($page === 'workouts') {
         $statsDetailSessionId = max(0, (int) ($_GET['detail_session'] ?? 0));
         $wkStatsSession = null;
         $wkStatsSessionExercises = [];
+        $wkStatsSessionExerciseMedia = [];
         if ($statsDetailSessionId > 0) {
             $wkStatsSession = wk_session_get($pdo, $statsDetailSessionId, $meId);
             if ($wkStatsSession !== null) {
                 $wkStatsSessionExercises = wk_session_exercises($pdo, $statsDetailSessionId);
+                $wkStatsSessionExerciseMedia = wk_exercise_media_map($pdo, array_map(
+                    static fn(array $exercise): array => array_merge($exercise, ['id' => (int) ($exercise['exercise_def_id'] ?? 0)]),
+                    $wkStatsSessionExercises
+                ));
                 $wkStatsSessionShareToken = wk_session_share_token($pdo, $statsDetailSessionId, $meId);
                 $wkStatsSessionShareUrl = rtrim(request_app_base_url(), '/') . '/?page=shared_workout&token=' . urlencode($wkStatsSessionShareToken);
             }
@@ -4517,6 +4618,8 @@ if ($page === 'workouts') {
         'wkStats' => $wkStats,
         'wkStatsSession' => $wkStatsSession ?? null,
         'wkStatsSessionExercises' => $wkStatsSessionExercises ?? [],
+        'wkStatsSessionExerciseMedia' => $wkStatsSessionExerciseMedia ?? [],
+        'wkStatsSessionShareUrl' => $wkStatsSessionShareUrl ?? '',
         'wkShareFriends' => friends_list($pdo, $meId),
         'wkStatsExercise' => $wkStatsExercise ?? null,
         'wkStatsExerciseHistory' => $wkStatsExerciseHistory ?? [],
@@ -10776,11 +10879,57 @@ if ($page === 'dashboard') {
     }
     if (is_post()) {
         if (!csrf_verify()) {
+            if ((string) ($_POST['feed_ajax'] ?? '') === '1' || strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'feed-fetch') {
+                http_response_code(403);
+                header('Content-Type: application/json; charset=UTF-8');
+                echo json_encode(['ok' => false, 'message' => t('flash.csrf')], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
             flash_set('error', t('flash.csrf'));
             redirect('/?page=dashboard');
         }
 
         $action = (string) ($_POST['action'] ?? '');
+        if ($action === 'social_feed_like' || $action === 'social_feed_comment') {
+            $feedType = (string) ($_POST['entity_type'] ?? '');
+            $feedId = max(0, (int) ($_POST['entity_id'] ?? 0));
+            $feedScope = (string) ($_POST['feed_scope'] ?? 'friends') === 'global' ? 'global' : 'friends';
+            $saved = $action === 'social_feed_like'
+                ? social_feed_toggle_like($pdo, (int) $currentUser['id'], $feedType, $feedId)
+                : social_feed_add_comment($pdo, (int) $currentUser['id'], $feedType, $feedId, (string) ($_POST['comment'] ?? ''));
+            $isFeedFetch = (string) ($_POST['feed_ajax'] ?? '') === '1'
+                || strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'feed-fetch';
+            if ($isFeedFetch) {
+                $validType = social_feed_entity_type($feedType);
+                $visible = $validType !== '' && social_feed_entity_visible($pdo, (int) $currentUser['id'], $validType, $feedId);
+                $liked = $visible && db_fetch_one($pdo, 'SELECT 1 FROM social_feed_likes WHERE user_id=:user AND entity_type=:type AND entity_id=:id', [':user' => (int) $currentUser['id'], ':type' => $validType, ':id' => $feedId]) !== null;
+                $likeCount = $visible ? (int) (db_fetch_one($pdo, 'SELECT COUNT(*) AS n FROM social_feed_likes WHERE entity_type=:type AND entity_id=:id', [':type' => $validType, ':id' => $feedId])['n'] ?? 0) : 0;
+                $commentCount = 0;
+                if ($visible) {
+                    $commentCount = $validType === 'photo'
+                        ? (int) (db_fetch_one($pdo, 'SELECT COUNT(*) AS n FROM photo_comments WHERE photo_id=:id', [':id' => $feedId])['n'] ?? 0)
+                        : (int) (db_fetch_one($pdo, 'SELECT COUNT(*) AS n FROM social_feed_comments WHERE entity_type=:type AND entity_id=:id', [':type' => $validType, ':id' => $feedId])['n'] ?? 0);
+                }
+                $ok = $visible && ($action === 'social_feed_like' || $saved);
+                if (!$ok) http_response_code(422);
+                header('Content-Type: application/json; charset=UTF-8');
+                echo json_encode([
+                    'ok' => $ok,
+                    'liked' => $liked,
+                    'like_count' => $likeCount,
+                    'comment_count' => $commentCount,
+                    'comment' => $action === 'social_feed_comment' && $saved ? trim((string) ($_POST['comment'] ?? '')) : '',
+                    'author' => (string) ($currentUser['display_name'] ?? $currentUser['username'] ?? ''),
+                    'message' => $ok ? '' : t('feed.comment_error'),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+            }
+            if ($action === 'social_feed_comment' && !$saved) {
+                flash_set('error', t('feed.comment_error'));
+            }
+            $commentQuery = $action === 'social_feed_comment' ? '&comments=' . rawurlencode($feedType . '-' . $feedId) : '';
+            redirect('/?page=dashboard&home=feed&feed=' . $feedScope . $commentQuery . '#feed-' . rawurlencode($feedType) . '-' . $feedId);
+        }
         if ($action === 'restart_onboarding') {
             restart_user_onboarding($pdo, (int) $currentUser['id']);
             flash_set('success', t('onboarding.restarted'));
@@ -11253,6 +11402,22 @@ if ($page === 'dashboard') {
     }
     unset($dashboardCustomMetric);
 
+    $dashboardFeedScope = (string) ($_GET['feed'] ?? 'friends') === 'global' ? 'global' : 'friends';
+    $dashboardFeedFocusType = social_feed_entity_type((string) ($_GET['post_type'] ?? ''));
+    $dashboardFeedFocusId = max(0, (int) ($_GET['post_id'] ?? 0));
+    $dashboardFeedFocused = $dashboardFeedFocusType !== '' && $dashboardFeedFocusId > 0;
+    $dashboardFeedItems = social_feed_items(
+        $pdo,
+        (int) $currentUser['id'],
+        $dashboardFeedScope,
+        $dashboardFeedFocused ? 1 : 18,
+        $dashboardFeedFocusType,
+        $dashboardFeedFocusId
+    );
+    if ($dashboardFeedFocused && $dashboardFeedItems === []) {
+        http_response_code(404);
+    }
+
     render_view('dashboard', [
         'title' => t('nav.dashboard'),
         'currentPage' => 'dashboard',
@@ -11299,6 +11464,9 @@ if ($page === 'dashboard') {
         'dashboardTodayLog' => $dashboardTodayLog,
         'dashboardTodayCalorieStats' => $dashboardTodayCalorieStats,
         'dashboardAchievements' => $dashboardAchievements,
+        'dashboardFeedScope' => $dashboardFeedScope,
+        'dashboardFeedItems' => $dashboardFeedItems,
+        'dashboardFeedFocused' => $dashboardFeedFocused,
         'motivationQuote' => random_motivation_quote_from_db($pdo, (string) ($currentUser['locale'] ?? 'en')),
         'config' => $config,
     ]);
