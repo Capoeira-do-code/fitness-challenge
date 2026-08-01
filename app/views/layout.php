@@ -213,14 +213,14 @@ $renderQuickActionIcon = static function (string $mode): string {
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="<?= e($appName) ?>">
     <meta name="theme-color" content="#18a999">
-    <meta name="description" content="Track fitness, nutrition, habits, personal metrics and weekly challenges in one clear view.">
+    <meta name="description" content="<?= e((string) ($metaDescription ?? 'Track fitness, nutrition, habits, personal metrics and weekly challenges in one clear view.')) ?>">
     <meta property="og:type" content="website">
-    <meta property="og:title" content="<?= e($appName) ?>">
-    <meta property="og:description" content="Your progress. One clear view.">
+    <meta property="og:title" content="<?= e((string) ($metaTitle ?? $appName)) ?>">
+    <meta property="og:description" content="<?= e((string) ($metaDescription ?? 'Your progress. One clear view.')) ?>">
     <meta property="og:image" content="<?= e(rtrim(request_app_base_url(), '/') . '/assets/og-fitness-challenge.png') ?>">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="<?= e($appName) ?>">
-    <meta name="twitter:description" content="Your progress. One clear view.">
+    <meta name="twitter:title" content="<?= e((string) ($metaTitle ?? $appName)) ?>">
+    <meta name="twitter:description" content="<?= e((string) ($metaDescription ?? 'Your progress. One clear view.')) ?>">
     <meta name="twitter:image" content="<?= e(rtrim(request_app_base_url(), '/') . '/assets/og-fitness-challenge.png') ?>">
     <link rel="manifest" href="/?page=manifest">
     <?php if ($appIconWebUrl !== ''): ?>

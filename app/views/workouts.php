@@ -574,7 +574,7 @@ $libraryClearUrl = $libraryUrl([
                     <?php foreach ((array) $wkRecentSessions as $sess): ?>
                         <li>
                             <a href="/?page=workouts&amp;view=stats&amp;detail_session=<?= (int) ($sess['id'] ?? 0) ?>">
-                                <span><strong><?= e((string) ($sess['title'] ?? '') !== '' ? (string) $sess['title'] : t('workouts.session')) ?></strong><small><?= e(human_time_ago((string) ($sess['started_at'] ?? ''))) ?></small></span>
+                                <span><strong><?= e(wk_session_display_title((array) $sess) ?: t('workouts.session')) ?></strong><small><?= e(human_time_ago((string) ($sess['started_at'] ?? ''))) ?></small></span>
                                 <b aria-hidden="true">&rsaquo;</b>
                             </a>
                         </li>
@@ -2133,21 +2133,21 @@ $libraryClearUrl = $libraryUrl([
             }
         }
         ?>
-        <a class="workouts-stats-back" href="/?page=workouts&amp;view=stats"><span aria-hidden="true">&larr;</span><?= e(t('workouts.stats_back')) ?></a>
+        <a class="workouts-stats-back workouts-stats-local-back" href="/?page=workouts&amp;view=stats"><span aria-hidden="true">&larr;</span><?= e(t('workouts.stats_back')) ?></a>
         <article class="panel workouts-session-detail-card">
             <div class="workouts-session-detail-head">
                 <span class="workouts-session-detail-icon" aria-hidden="true"><?= activity_icon_svg(wk_normalize_routine_icon((string) ($detailSession['routine_icon'] ?? 'dumbbell'))) ?></span>
                 <div>
-                    <h2><?= e((string) ($detailSession['title'] ?? '') !== '' ? (string) $detailSession['title'] : t('workouts.session')) ?></h2>
+                    <h2><?= e(wk_session_display_title($detailSession) ?: t('workouts.session')) ?></h2>
                     <p class="muted small"><?= e(format_date_eu((string) ($detailSession['started_at'] ?? ''))) ?></p>
                 </div>
                 <div class="workouts-session-detail-actions">
-                    <button class="btn btn-primary small workouts-session-share-button" type="button" data-app-modal-open="workouts-session-share-modal"><?= activity_icon_svg('share') ?><span><?= e(t('workouts.share_friends')) ?></span></button>
+                    <button class="btn btn-primary small workouts-session-share-button" type="button" aria-label="<?= e(t('workouts.share_friends')) ?>" title="<?= e(t('workouts.share_friends')) ?>" data-workout-native-share data-share-url="<?= e((string) ($wkStatsSessionShareUrl ?? '')) ?>" data-share-title="<?= e(wk_session_display_title($detailSession) ?: t('workouts.session')) ?>" data-share-text="<?= e(t('workouts.share_native_text', ['title' => wk_session_display_title($detailSession) ?: t('workouts.session'), 'volume' => $compactStatNumber($detailTotalVolume, ' kg')])) ?>"><?php /* Lucide share-2, ISC license. */ ?><svg class="lucide lucide-share-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.59 13.51 6.83 3.98M15.41 6.51l-6.82 3.98"/></svg><span><?= e(t('workouts.share_friends')) ?></span></button>
                     <form method="post" action="/?page=workouts&amp;view=stats&amp;detail_session=<?= (int) ($detailSession['id'] ?? 0) ?>">
                         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                         <input type="hidden" name="action" value="session_delete">
                         <input type="hidden" name="session_id" value="<?= (int) ($detailSession['id'] ?? 0) ?>">
-                        <button class="btn btn-danger-ghost small" type="submit" data-confirm-action="<?= e(t('workouts.delete_session_confirm')) ?>"><?= activity_icon_svg('trash') ?><span><?= e(t('workouts.delete_session')) ?></span></button>
+                        <button class="btn btn-danger-ghost small" type="submit" aria-label="<?= e(t('workouts.delete_session')) ?>" title="<?= e(t('workouts.delete_session')) ?>" data-confirm-action="<?= e(t('workouts.delete_session_confirm')) ?>"><?= activity_icon_svg('trash') ?><span><?= e(t('workouts.delete_session')) ?></span></button>
                     </form>
                 </div>
             </div>
@@ -2165,7 +2165,7 @@ $libraryClearUrl = $libraryUrl([
                     <button class="app-modal-close" type="button" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button>
                 </div>
                 <div class="workouts-share-preview">
-                    <strong><?= e((string) ($detailSession['title'] ?? '') !== '' ? (string) $detailSession['title'] : t('workouts.session')) ?></strong>
+                    <strong><?= e(wk_session_display_title($detailSession) ?: t('workouts.session')) ?></strong>
                     <span><?= e($compactStatNumber($detailTotalVolume, ' kg')) ?> · <?= $detailTotalSets ?> <?= e(t('workouts.stat_sets')) ?> · <?= count($detailExercises) ?> <?= e(t('workouts.exercises')) ?></span>
                 </div>
                 <?php $shareFriends = array_values((array) ($wkShareFriends ?? [])); ?>
@@ -2190,6 +2190,7 @@ $libraryClearUrl = $libraryUrl([
                 <?php endif; ?>
             </div>
         </div>
+
         <?php if ($detailExercises === []): ?>
             <div class="workouts-analytics-empty"><span aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span><p><?= e(t('workouts.no_data')) ?></p></div>
         <?php else: ?>
@@ -2252,7 +2253,7 @@ $libraryClearUrl = $libraryUrl([
         $exLast1rm = $exHist !== [] ? (float) $exHist[count($exHist) - 1]['best_1rm'] : 0.0;
         $exDelta = $exLast1rm - $exFirst1rm;
         ?>
-        <a class="workouts-stats-back" href="/?page=workouts&amp;view=stats"><span aria-hidden="true">&larr;</span><?= e(t('workouts.stats_back')) ?></a>
+        <a class="workouts-stats-back workouts-stats-local-back" href="/?page=workouts&amp;view=stats"><span aria-hidden="true">&larr;</span><?= e(t('workouts.stats_back')) ?></a>
         <article class="panel workouts-session-detail-card">
             <div class="workouts-session-detail-head">
                 <span class="workouts-session-detail-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
@@ -2323,6 +2324,19 @@ $libraryClearUrl = $libraryUrl([
                 <span><small><?= e(t('workouts.stat_sessions')) ?> · <?= e(t('workouts.all_time')) ?></small><strong><?= (int) ($summaryAllStats['sessions'] ?? 0) ?></strong></span>
             </article>
         </div>
+
+        <?php
+        $allTimeVolume = max(0.0, (float) ($summaryAllStats['volume'] ?? 0));
+        $equivalenceKg = $allTimeVolume >= 41000 ? 41000.0 : 1500.0;
+        $equivalenceKey = $allTimeVolume >= 41000 ? 'workouts.equivalence_plane' : 'workouts.equivalence_car';
+        $equivalenceCount = $equivalenceKg > 0 ? $allTimeVolume / $equivalenceKg : 0;
+        $equivalenceProgress = min(100, (int) round(($allTimeVolume / $equivalenceKg) * 100));
+        ?>
+        <article class="workouts-weight-equivalence">
+            <span class="workouts-weight-equivalence-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span>
+            <div><p class="eyebrow"><?= e(t('workouts.total_lifted')) ?></p><h2><?= e(t($equivalenceKey, ['count' => number_format($equivalenceCount, $equivalenceCount < 10 ? 1 : 0, ',', '.')])) ?></h2><p><?= e(t('workouts.equivalence_hint', ['weight' => $compactStatNumber($allTimeVolume, ' kg')])) ?></p></div>
+            <span class="workouts-weight-equivalence-progress" aria-hidden="true"><i style="width: <?= $equivalenceProgress ?>%"></i></span>
+        </article>
 
         <?php if (($stats['messages'] ?? []) !== []): ?>
             <section class="workouts-analytics-insights" aria-label="<?= e(t('workouts.insights')) ?>">
@@ -2430,7 +2444,7 @@ $libraryClearUrl = $libraryUrl([
                         <li>
                             <a href="/?page=workouts&amp;view=stats&amp;detail_session=<?= (int) ($sess['id'] ?? 0) ?>">
                                 <span class="workouts-stats-session-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
-                                <span class="workouts-stats-session-copy"><strong><?= e((string) ($sess['title'] ?? '') !== '' ? (string) $sess['title'] : t('workouts.session')) ?></strong><small><?= e(human_time_ago((string) ($sess['started_at'] ?? ''))) ?></small></span>
+                                <span class="workouts-stats-session-copy"><strong><?= e(wk_session_display_title((array) $sess) ?: t('workouts.session')) ?></strong><small><?= e(human_time_ago((string) ($sess['started_at'] ?? ''))) ?></small></span>
                                 <span class="workouts-stats-session-arrow" aria-hidden="true">&rsaquo;</span>
                             </a>
                         </li>

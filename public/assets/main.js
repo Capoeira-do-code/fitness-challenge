@@ -6392,6 +6392,38 @@ document.addEventListener('click', (event) => {
     }
 })();
 
+/* Native workout sharing (iOS/Android), with a clipboard fallback on desktop. */
+(function () {
+    'use strict';
+    function initWorkoutShare(root) {
+        (root || document).querySelectorAll('[data-workout-native-share]').forEach(function (button) {
+            if (button.dataset.nativeShareReady === '1') return;
+            button.dataset.nativeShareReady = '1';
+            button.addEventListener('click', async function () {
+                var url = button.dataset.shareUrl || window.location.href;
+                var payload = { title: button.dataset.shareTitle || document.title, text: button.dataset.shareText || '', url: url };
+                try {
+                    if (navigator.share) {
+                        await navigator.share(payload);
+                    } else if (navigator.clipboard && window.isSecureContext) {
+                        await navigator.clipboard.writeText([payload.text, url].filter(Boolean).join('\n'));
+                        button.classList.add('is-copied');
+                        window.setTimeout(function () { button.classList.remove('is-copied'); }, 1600);
+                    } else {
+                        window.prompt('Copy this workout link', url);
+                    }
+                } catch (error) {
+                    if (error && error.name === 'AbortError') return;
+                }
+            });
+        });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { initWorkoutShare(document); });
+    else initWorkoutShare(document);
+    document.addEventListener('pjax:loaded', function () { initWorkoutShare(document); });
+    document.addEventListener('fc:afterPageSwap', function () { initWorkoutShare(document); });
+})();
+
 /* Compact character counters for constrained profile fields. */
 (function () {
     function initCharacterCounters(root) {

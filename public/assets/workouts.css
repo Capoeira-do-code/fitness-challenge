@@ -4262,10 +4262,16 @@ body[data-page="workouts"] .workouts-stats-back {
 }
 body[data-page="workouts"] .workouts-stats-back span { font-size: 1rem; line-height: 1; }
 body[data-page="workouts"] .workouts-session-detail-card {
+    position: relative;
+    overflow: hidden;
     display: grid;
-    gap: 0.7rem;
-    padding: 0.85rem;
-    border-radius: 16px;
+    gap: 0.9rem;
+    padding: 1rem;
+    border-color: color-mix(in srgb, var(--primary) 20%, var(--line));
+    border-radius: 20px;
+    background:
+        radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 42%),
+        var(--surface);
 }
 body[data-page="workouts"] .workouts-session-detail-head {
     display: grid;
@@ -4283,11 +4289,11 @@ body[data-page="workouts"] .workouts-session-detail-icon {
     background: color-mix(in srgb, var(--primary) 12%, var(--surface));
 }
 body[data-page="workouts"] .workouts-session-detail-icon svg { width: 22px; height: 22px; }
-body[data-page="workouts"] .workouts-session-detail-head h2 { margin: 0; font-size: 1rem; }
+body[data-page="workouts"] .workouts-session-detail-head h2 { overflow: hidden; margin: 0; font-size: clamp(1rem, 2.5vw, 1.25rem); text-overflow: ellipsis; white-space: nowrap; }
 body[data-page="workouts"] .workouts-session-detail-head p { margin: 0.1rem 0 0; }
 body[data-page="workouts"] .workouts-session-detail-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.4rem; }
 body[data-page="workouts"] .workouts-session-detail-actions form { margin: 0; }
-body[data-page="workouts"] .workouts-session-detail-actions .btn { min-height: 40px; white-space: nowrap; }
+body[data-page="workouts"] .workouts-session-detail-actions .btn { min-height: 42px; border-radius: 13px; white-space: nowrap; }
 body[data-page="workouts"] .workouts-session-detail-actions .btn svg { width: 17px; height: 17px; }
 body[data-page="workouts"] .workouts-session-detail-metrics {
     display: grid;
@@ -4297,13 +4303,18 @@ body[data-page="workouts"] .workouts-session-detail-metrics {
 body[data-page="workouts"] .workouts-session-detail-metrics span {
     display: grid;
     gap: 0.12rem;
-    padding: 0.5rem;
+    min-height: 68px;
+    padding: 0.65rem;
     border: 1px solid var(--ui-soft-border, var(--line));
     border-radius: 12px;
     background: color-mix(in srgb, var(--surface-2, var(--surface)) 55%, var(--surface));
 }
 body[data-page="workouts"] .workouts-session-detail-metrics small { color: var(--muted); font-size: 0.56rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; }
 body[data-page="workouts"] .workouts-session-detail-metrics strong { font-size: 0.9rem; }
+@media (max-width: 899px) {
+    /* The mobile hierarchy header already owns navigation back to Workouts. */
+    body[data-page="workouts"] .workouts-stats-local-back { display: none; }
+}
 body[data-page="workouts"] .workouts-session-detail-exercises {
     display: grid;
     gap: 0.6rem;
@@ -4327,13 +4338,41 @@ body[data-page="workouts"] .workouts-session-detail-exercise-head a { min-width:
 body[data-page="workouts"] .workouts-session-detail-exercise-head strong { font-size: 0.84rem; }
 
 @media (max-width: 600px) {
-    body[data-page="workouts"] .workouts-session-detail-head { grid-template-columns: 44px minmax(0, 1fr); }
+    body[data-page="workouts"] .workouts-session-detail-card { gap: 0.8rem; padding: 0.85rem; border-radius: 18px; }
+    body[data-page="workouts"] .workouts-session-detail-head { grid-template-columns: 44px minmax(0, 1fr) auto; gap: 0.55rem; }
     body[data-page="workouts"] .workouts-session-detail-actions {
-        grid-column: 1 / -1;
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr);
+        grid-column: 3;
+        display: flex;
+        gap: 0.35rem;
     }
-    body[data-page="workouts"] .workouts-session-detail-actions :is(form, .btn) { width: 100%; }
+    body[data-page="workouts"] .workouts-session-detail-actions :is(form, .btn) { width: auto; }
+    body[data-page="workouts"] .workouts-session-detail-actions .btn {
+        display: grid;
+        width: 42px;
+        min-width: 42px;
+        height: 42px;
+        min-height: 42px;
+        padding: 0;
+        place-items: center;
+        border-radius: 13px;
+    }
+    body[data-page="workouts"] .workouts-session-detail-actions .btn > span {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+    body[data-page="workouts"] .workouts-session-detail-actions .workouts-session-share-button {
+        width: 42px;
+        box-shadow: 0 7px 16px color-mix(in srgb, var(--primary) 23%, transparent);
+    }
+    body[data-page="workouts"] .workouts-session-detail-actions .btn-danger-ghost {
+        border-color: color-mix(in srgb, #dc2626 20%, var(--line));
+        background: color-mix(in srgb, #dc2626 6%, var(--surface));
+    }
 }
 body[data-page="workouts"] .workouts-session-detail-exercise-head span { flex: 0 0 auto; }
 body[data-page="workouts"] .workouts-session-detail-sets {

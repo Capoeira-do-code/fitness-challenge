@@ -911,6 +911,26 @@ if ($page === 'login') {
     ]);
 }
 
+if ($page === 'shared_workout') {
+    workouts_ensure_schema($pdo);
+    $sharedToken = strtolower(trim((string) ($_GET['token'] ?? '')));
+    $sharedSession = wk_public_session_get($pdo, $sharedToken);
+    if ($sharedSession === null) {
+        http_response_code(404);
+    }
+    $sharedExercises = $sharedSession !== null ? wk_session_exercises($pdo, (int) $sharedSession['id']) : [];
+    render_view('shared_workout', [
+        'title' => $sharedSession !== null ? (wk_session_display_title($sharedSession) ?: t('workouts.session')) : t('flash.not_found'),
+        'currentPage' => 'shared_workout',
+        'currentUser' => $currentUser,
+        'sharedSession' => $sharedSession,
+        'sharedExercises' => $sharedExercises,
+        'metaTitle' => $sharedSession !== null ? (wk_session_display_title($sharedSession) ?: t('workouts.session')) : null,
+        'metaDescription' => $sharedSession !== null ? t('workouts.shared_meta_description') : null,
+        'config' => $config,
+    ]);
+}
+
 if ($page === 'media') {
     $mediaPath = trim((string) ($_GET['path'] ?? ''));
     $mediaUser = current_user($pdo);
@@ -4378,6 +4398,8 @@ if ($page === 'workouts') {
             $wkStatsSession = wk_session_get($pdo, $statsDetailSessionId, $meId);
             if ($wkStatsSession !== null) {
                 $wkStatsSessionExercises = wk_session_exercises($pdo, $statsDetailSessionId);
+                $wkStatsSessionShareToken = wk_session_share_token($pdo, $statsDetailSessionId, $meId);
+                $wkStatsSessionShareUrl = rtrim(request_app_base_url(), '/') . '/?page=shared_workout&token=' . urlencode($wkStatsSessionShareToken);
             }
         }
         // Per-exercise stats sub-page (volume / est. 1RM over time).

@@ -244,11 +244,13 @@ function workouts_ensure_schema(PDO $pdo): void
     ensure_column($pdo, 'workout_routines', 'video_url', 'TEXT');
     ensure_column($pdo, 'workout_routines', 'cover_mode', 'TEXT NOT NULL DEFAULT "auto"');
     ensure_column($pdo, 'workout_routines', 'image_position', 'TEXT NOT NULL DEFAULT "center"');
+    ensure_column($pdo, 'workout_sessions', 'share_token', 'TEXT');
     ensure_column($pdo, 'session_exercises', 'rest_seconds', 'INTEGER');
 
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_rank_snapshots ON workout_rank_snapshots(user_id, scope, scope_key, captured_on)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_routines_user ON workout_routines(user_id, is_archived, sort_order)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_sessions_user ON workout_sessions(user_id, status, started_at DESC)');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_wk_sessions_share_token ON workout_sessions(share_token) WHERE share_token IS NOT NULL AND share_token != ""');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_pr_user ON personal_records(user_id, exercise_def_id)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_wk_exercise_slug ON exercise_definitions(slug) WHERE slug IS NOT NULL AND slug != ""');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_exercise_muscle ON exercise_definitions(muscle_group, is_system, sort_order)');
@@ -2350,6 +2352,7 @@ function wk_session_get(PDO $pdo, int $id, int $userId): ?array
         $pdo,
         'SELECT ws.*,
                 wr.icon AS routine_icon,
+                wr.name AS routine_name,
                 wr.accent_color AS routine_accent_color,
                 wr.image_path AS routine_image_path,
                 wr.video_url AS routine_video_url,
@@ -2359,6 +2362,46 @@ function wk_session_get(PDO $pdo, int $id, int $userId): ?array
          LEFT JOIN workout_routines wr ON wr.id = ws.routine_id AND wr.user_id = ws.user_id
          WHERE ws.id = :id AND ws.user_id = :u',
         [':id' => $id, ':u' => $userId]
+    );
+}
+
+/** Return the current routine name when available, falling back to the session snapshot. */
+function wk_session_display_title(array $session): string
+{
+    $routineName = trim((string) ($session['routine_name'] ?? ''));
+    return $routineName !== '' ? $routineName : trim((string) ($session['title'] ?? ''));
+}
+
+/** Create (once) the unguessable token used by the public, read-only workout URL. */
+function wk_session_share_token(PDO $pdo, int $sessionId, int $userId): string
+{
+    $session = wk_session_get($pdo, $sessionId, $userId);
+    if ($session === null || (string) ($session['status'] ?? '') !== 'completed') {
+        return '';
+    }
+    $token = trim((string) ($session['share_token'] ?? ''));
+    if ($token !== '') {
+        return $token;
+    }
+    $token = bin2hex(random_bytes(24));
+    db_execute($pdo, 'UPDATE workout_sessions SET share_token = :token WHERE id = :id AND user_id = :user', [
+        ':token' => $token, ':id' => $sessionId, ':user' => $userId,
+    ]);
+    return $token;
+}
+
+function wk_public_session_get(PDO $pdo, string $token): ?array
+{
+    if (preg_match('/^[a-f0-9]{48}$/', $token) !== 1) {
+        return null;
+    }
+    return db_fetch_one($pdo,
+        'SELECT ws.*, wr.name AS routine_name, wr.icon AS routine_icon, u.display_name, u.username
+         FROM workout_sessions ws
+         JOIN users u ON u.id = ws.user_id
+         LEFT JOIN workout_routines wr ON wr.id = ws.routine_id AND wr.user_id = ws.user_id
+         WHERE ws.share_token = :token AND ws.status = \'completed\' LIMIT 1',
+        [':token' => $token]
     );
 }
 
@@ -3110,7 +3153,10 @@ function wk_sessions_for_user(PDO $pdo, int $userId, int $limit = 50): array
 {
     return db_fetch_all(
         $pdo,
-        'SELECT * FROM workout_sessions WHERE user_id = :u AND status = \'completed\' ORDER BY started_at DESC LIMIT ' . max(1, min(200, $limit)),
+        'SELECT ws.*, wr.name AS routine_name, wr.icon AS routine_icon
+         FROM workout_sessions ws
+         LEFT JOIN workout_routines wr ON wr.id = ws.routine_id AND wr.user_id = ws.user_id
+         WHERE ws.user_id = :u AND ws.status = \'completed\' ORDER BY ws.started_at DESC LIMIT ' . max(1, min(200, $limit)),
         [':u' => $userId]
     );
 }
