@@ -380,97 +380,97 @@ if ($page === 'setup') {
             $setupError = t('setup.error_date_order');
         } else {
             try {
-                $pdo->exec('BEGIN IMMEDIATE');
-                if ((int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() !== 0) {
-                    throw new RuntimeException(t('setup.error_already_configured'));
-                }
+                db_immediate_transaction($pdo, static function () use ($pdo, $setupValues, $password): void {
+                    if ((int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() !== 0) {
+                        throw new RuntimeException(t('setup.error_already_configured'));
+                    }
 
-                $now = now_iso();
-                db_execute(
-                    $pdo,
-                    'INSERT INTO users (
-                        username, password_hash, display_name, role, locale,
-                        onboarding_status, onboarding_completed_at, active, created_at, updated_at
-                     ) VALUES (
-                        :username, :password_hash, :display_name, "admin", :locale,
-                        "complete", :completed_at, 1, :created_at, :updated_at
-                     )',
-                    [
-                        ':username' => $setupValues['username'],
-                        ':password_hash' => password_hash($password, PASSWORD_DEFAULT),
-                        ':display_name' => $setupValues['display_name'],
-                        ':locale' => $setupValues['locale'],
-                        ':completed_at' => $now,
-                        ':created_at' => $now,
-                        ':updated_at' => $now,
-                    ]
-                );
-                $adminId = (int) $pdo->lastInsertId();
-
-                db_execute(
-                    $pdo,
-                    'INSERT INTO app_settings (setting_key, setting_value, updated_by, updated_at)
-                     VALUES ("app_name", :value, :updated_by, :updated_at)
-                     ON CONFLICT(setting_key) DO UPDATE SET
-                        setting_value = excluded.setting_value,
-                        updated_by = excluded.updated_by,
-                        updated_at = excluded.updated_at',
-                    [
-                        ':value' => $setupValues['app_name'],
-                        ':updated_by' => $adminId,
-                        ':updated_at' => $now,
-                    ]
-                );
-                db_execute(
-                    $pdo,
-                    'UPDATE challenge_settings
-                     SET challenge_name = :name, challenge_start = :start, challenge_end = :end, updated_at = :updated_at
-                     WHERE id = 1',
-                    [
-                        ':name' => $setupValues['challenge_name'],
-                        ':start' => $setupValues['challenge_start'],
-                        ':end' => $setupValues['challenge_end'],
-                        ':updated_at' => $now,
-                    ]
-                );
-
-                $team = db_fetch_one($pdo, 'SELECT id FROM teams WHERE slug = "main"');
-                if ($team === null) {
+                    $now = now_iso();
                     db_execute(
                         $pdo,
-                        'INSERT INTO teams (name, description, slug, active, created_at, updated_at)
-                         VALUES (:name, "", "main", 1, :created_at, :updated_at)',
-                        [':name' => $setupValues['team_name'], ':created_at' => $now, ':updated_at' => $now]
+                        'INSERT INTO users (
+                            username, password_hash, display_name, role, locale,
+                            onboarding_status, onboarding_completed_at, active, created_at, updated_at
+                         ) VALUES (
+                            :username, :password_hash, :display_name, "admin", :locale,
+                            "complete", :completed_at, 1, :created_at, :updated_at
+                         )',
+                        [
+                            ':username' => $setupValues['username'],
+                            ':password_hash' => password_hash($password, PASSWORD_DEFAULT),
+                            ':display_name' => $setupValues['display_name'],
+                            ':locale' => $setupValues['locale'],
+                            ':completed_at' => $now,
+                            ':created_at' => $now,
+                            ':updated_at' => $now,
+                        ]
                     );
-                    $teamId = (int) $pdo->lastInsertId();
-                } else {
-                    $teamId = (int) $team['id'];
-                    db_execute($pdo, 'UPDATE teams SET name = :name, updated_at = :updated_at WHERE id = :id', [
-                        ':name' => $setupValues['team_name'], ':updated_at' => $now, ':id' => $teamId,
+                    $adminId = (int) $pdo->lastInsertId();
+
+                    db_execute(
+                        $pdo,
+                        'INSERT INTO app_settings (setting_key, setting_value, updated_by, updated_at)
+                         VALUES ("app_name", :value, :updated_by, :updated_at)
+                         ON CONFLICT(setting_key) DO UPDATE SET
+                            setting_value = excluded.setting_value,
+                            updated_by = excluded.updated_by,
+                            updated_at = excluded.updated_at',
+                        [
+                            ':value' => $setupValues['app_name'],
+                            ':updated_by' => $adminId,
+                            ':updated_at' => $now,
+                        ]
+                    );
+                    db_execute(
+                        $pdo,
+                        'UPDATE challenge_settings
+                         SET challenge_name = :name, challenge_start = :start, challenge_end = :end, updated_at = :updated_at
+                         WHERE id = 1',
+                        [
+                            ':name' => $setupValues['challenge_name'],
+                            ':start' => $setupValues['challenge_start'],
+                            ':end' => $setupValues['challenge_end'],
+                            ':updated_at' => $now,
+                        ]
+                    );
+
+                    $team = db_fetch_one($pdo, 'SELECT id FROM teams WHERE slug = "main"');
+                    if ($team === null) {
+                        db_execute(
+                            $pdo,
+                            'INSERT INTO teams (name, description, slug, active, created_at, updated_at)
+                             VALUES (:name, "", "main", 1, :created_at, :updated_at)',
+                            [':name' => $setupValues['team_name'], ':created_at' => $now, ':updated_at' => $now]
+                        );
+                        $teamId = (int) $pdo->lastInsertId();
+                    } else {
+                        $teamId = (int) $team['id'];
+                        db_execute($pdo, 'UPDATE teams SET name = :name, updated_at = :updated_at WHERE id = :id', [
+                            ':name' => $setupValues['team_name'], ':updated_at' => $now, ':id' => $teamId,
+                        ]);
+                    }
+                    db_execute(
+                        $pdo,
+                        'INSERT INTO team_memberships (team_id, user_id, role, active, joined_at, created_at, updated_at)
+                         VALUES (:team_id, :user_id, "owner", 1, :joined_at, :created_at, :updated_at)',
+                        [
+                            ':team_id' => $teamId, ':user_id' => $adminId, ':joined_at' => $now,
+                            ':created_at' => $now, ':updated_at' => $now,
+                        ]
+                    );
+                    db_execute(
+                        $pdo,
+                        'INSERT INTO team_membership_periods (team_id, user_id, joined_at, created_at, updated_at)
+                         VALUES (:team_id, :user_id, :joined_at, :created_at, :updated_at)',
+                        [
+                            ':team_id' => $teamId, ':user_id' => $adminId, ':joined_at' => $now,
+                            ':created_at' => $now, ':updated_at' => $now,
+                        ]
+                    );
+                    db_execute($pdo, 'UPDATE users SET active_team_id = :team_id WHERE id = :id', [
+                        ':team_id' => $teamId, ':id' => $adminId,
                     ]);
-                }
-                db_execute(
-                    $pdo,
-                    'INSERT INTO team_memberships (team_id, user_id, role, active, joined_at, created_at, updated_at)
-                     VALUES (:team_id, :user_id, "owner", 1, :joined_at, :created_at, :updated_at)',
-                    [
-                        ':team_id' => $teamId, ':user_id' => $adminId, ':joined_at' => $now,
-                        ':created_at' => $now, ':updated_at' => $now,
-                    ]
-                );
-                db_execute(
-                    $pdo,
-                    'INSERT INTO team_membership_periods (team_id, user_id, joined_at, created_at, updated_at)
-                     VALUES (:team_id, :user_id, :joined_at, :created_at, :updated_at)',
-                    [
-                        ':team_id' => $teamId, ':user_id' => $adminId, ':joined_at' => $now,
-                        ':created_at' => $now, ':updated_at' => $now,
-                    ]
-                );
-                db_execute($pdo, 'UPDATE users SET active_team_id = :team_id WHERE id = :id', [
-                    ':team_id' => $teamId, ':id' => $adminId,
-                ]);
-                $pdo->commit();
+                });
 
                 persist_session_locale($setupValues['locale']);
                 set_current_locale($setupValues['locale']);
@@ -480,9 +480,6 @@ if ($page === 'setup') {
                 flash_set('success', t('setup.success'));
                 redirect('/?page=dashboard');
             } catch (Throwable $e) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
                 $setupError = $e->getMessage() !== '' ? $e->getMessage() : t('setup.error_generic');
             }
         }
