@@ -20,6 +20,30 @@ function db_retry(callable $operation, int $maxAttempts = 6): mixed
     }
 }
 
+function db_immediate_transaction(PDO $pdo, callable $operation): mixed
+{
+    $pdo->exec('BEGIN IMMEDIATE');
+    $transactionActive = true;
+
+    try {
+        $result = $operation();
+        $pdo->exec('COMMIT');
+        $transactionActive = false;
+
+        return $result;
+    } catch (Throwable $exception) {
+        if ($transactionActive) {
+            try {
+                $pdo->exec('ROLLBACK');
+            } catch (Throwable) {
+                // Preserve the original failure when SQLite already ended the transaction.
+            }
+        }
+
+        throw $exception;
+    }
+}
+
 function db_connect(array $config): PDO
 {
     $pdo = $GLOBALS['fitness_challenge_db_connection'] ?? null;

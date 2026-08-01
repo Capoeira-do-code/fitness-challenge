@@ -17,6 +17,29 @@ $check = static function (bool $condition, string $label) use (&$failures): void
     }
 };
 
+$transactionPdo = new PDO('sqlite::memory:');
+$transactionPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$transactionPdo->exec('CREATE TABLE setup_transaction_qa (value TEXT NOT NULL)');
+db_immediate_transaction($transactionPdo, static function () use ($transactionPdo): void {
+    $transactionPdo->exec('INSERT INTO setup_transaction_qa (value) VALUES ("committed")');
+});
+$check(
+    (int) $transactionPdo->query('SELECT COUNT(*) FROM setup_transaction_qa')->fetchColumn() === 1,
+    'the initial setup transaction commits writes started with BEGIN IMMEDIATE'
+);
+try {
+    db_immediate_transaction($transactionPdo, static function () use ($transactionPdo): void {
+        $transactionPdo->exec('INSERT INTO setup_transaction_qa (value) VALUES ("rolled back")');
+        throw new RuntimeException('QA rollback');
+    });
+} catch (RuntimeException) {
+    // Expected: the helper must roll the second write back and preserve the failure.
+}
+$check(
+    (int) $transactionPdo->query('SELECT COUNT(*) FROM setup_transaction_qa')->fetchColumn() === 1,
+    'the initial setup transaction rolls back failed writes'
+);
+
 $admin = db_fetch_one($pdo, 'SELECT * FROM users WHERE role = "admin" ORDER BY id LIMIT 1');
 $check($admin !== null, 'the QA database has an administrator');
 $adminId = (int) ($admin['id'] ?? 0);
