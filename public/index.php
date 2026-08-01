@@ -65,15 +65,6 @@ if ($page === 'users') {
     $page = 'admin';
 }
 
-// The original ranked-training branch exposed `page=ranks`. The completed
-// implementation now lives inside the Workouts hub, so keep the merged route
-// as a canonical alias instead of letting old navigation and bookmarks 404.
-if ($page === 'ranks') {
-    $ranksQuery = $_GET;
-    $ranksQuery['page'] = 'workouts';
-    $ranksQuery['view'] = 'ranks';
-    redirect('/?' . http_build_query($ranksQuery));
-}
 
 if ($page === 'manifest') {
     $manifestAppName = trim((string) (app_setting($pdo, 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge')) ?? 'Fitness Challenge'));
