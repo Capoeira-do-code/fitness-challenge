@@ -338,6 +338,27 @@ try {
     $assert(count($users) === 2, 'competition fixture has two users');
     $firstUserId = (int) $users[0]['id'];
     $secondUserId = (int) $users[1]['id'];
+    $onboardingChallengeId = create_goal($pdo, [
+        'scope' => 'user',
+        'team_id' => null,
+        'user_id' => $firstUserId,
+        'title' => 'QA onboarding challenge',
+        'target_type' => 'steps',
+        'target_value' => 12000,
+        'current_value' => 0,
+        'due_date' => null,
+        'metric_targets' => [
+            ['metric_key' => 'steps', 'target_value' => 12000, 'weight_percent' => 70],
+            ['metric_key' => 'workouts', 'target_value' => 3, 'weight_percent' => 30],
+        ],
+    ], $firstUserId);
+    $onboardingChallengeTargets = goal_metric_targets($pdo, $onboardingChallengeId);
+    $assert(
+        count($onboardingChallengeTargets) === 2
+            && (int) (db_fetch_one($pdo, 'SELECT user_id FROM goals WHERE id = :id', [':id' => $onboardingChallengeId])['user_id'] ?? 0) === $firstUserId,
+        'onboarding Step 5 creates a weighted challenge through goals.user_id'
+    );
+    delete_goal($pdo, $onboardingChallengeId, $firstUserId);
     $qaGoogleMediaKey = 'qa-google-media-key-123456';
     $qaYoutubeMediaKey = 'qa-youtube-media-key-654321';
     media_search_update_credentials($pdo, [

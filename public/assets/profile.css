@@ -2,6 +2,7 @@
 body[data-page="profile"] .profile-hero {
     --profile-hero-radius: var(--radius-lg, 24px);
     isolation: isolate;
+    min-width: 0;
 }
 body[data-page="profile"] .profile-cover-media {
     display: block;
@@ -14,7 +15,11 @@ body[data-page="profile"] .profile-cover-media {
     border: 0;
     border-radius: inherit;
     clip-path: none;
-    contain: paint;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    contain: strict;
     background: #0f172a;
     pointer-events: none;
 }
@@ -29,10 +34,55 @@ body[data-page="profile"] .profile-cover-media img {
     position: absolute;
     inset: 0;
     width: 100%;
-    max-width: none;
+    max-width: 100%;
+    max-height: 100%;
     height: 100%;
     object-fit: cover;
     object-position: center;
+}
+
+/* The global avatar size changed several times over the lifetime of the UI.
+   Keep the visible image and its button/flex footprint on the same square so
+   an external profile (Trektar is a real example) can never render an oval. */
+body[data-page="profile"] .profile-title > .profile-avatar,
+body[data-page="profile"] .profile-avatar-trigger,
+body[data-page="profile"] .profile-avatar-trigger > .profile-avatar {
+    width: 76px;
+    min-width: 76px;
+    height: 76px;
+    min-height: 76px;
+    aspect-ratio: 1 / 1;
+    flex: 0 0 76px;
+    object-fit: cover;
+    object-position: center;
+    border-radius: 50%;
+}
+
+body[data-page="profile"] .profile-avatar-trigger {
+    display: block;
+    overflow: visible;
+}
+
+@media (max-width: 600px) {
+    body[data-page="profile"] .profile-title > .profile-avatar,
+    body[data-page="profile"] .profile-avatar-trigger,
+    body[data-page="profile"] .profile-avatar-trigger > .profile-avatar {
+        width: 60px !important;
+        min-width: 60px !important;
+        height: 60px !important;
+        min-height: 60px !important;
+        flex: 0 0 60px !important;
+    }
+}
+
+@media (max-width: 600px) {
+    body[data-page="profile"] .profile-external-view .profile-title > .profile-avatar {
+        width: 64px !important;
+        min-width: 64px !important;
+        height: 64px !important;
+        min-height: 64px !important;
+        flex-basis: 64px !important;
+    }
 }
 body[data-page="profile"] .profile-external-view > .profile-hero { --profile-hero-radius: 22px; }
 body[data-page="profile"] .profile-hero.has-profile-cover {
@@ -2015,5 +2065,215 @@ body[data-page="profile"]:is([data-theme="dark"], .theme-active-dark) .profile-c
 @media (prefers-reduced-motion: reduce) {
     body[data-page="profile"] .profile-collection-achievement {
         transition: none;
+    }
+}
+
+/* Mobile profile identity card. Keep the uploaded cover recognisable and put
+   contrast only where copy needs it instead of fogging the whole photograph. */
+@media (max-width: 700px) {
+    body[data-page="profile"] .profile-hero.has-profile-cover {
+        display: block !important;
+        position: relative;
+        min-height: 184px;
+        padding: 15px !important;
+        overflow: visible !important;
+        border-radius: 22px !important;
+        background: #0d1b27 !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-cover-media {
+        border-radius: 22px;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-cover-media img {
+        filter: none;
+        transform: none;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-cover-media::after {
+        background:
+            linear-gradient(90deg, rgba(5, 14, 23, 0.58) 0%, rgba(5, 14, 23, 0.28) 62%, rgba(5, 14, 23, 0.10) 100%),
+            linear-gradient(0deg, rgba(5, 14, 23, 0.32) 0%, transparent 62%);
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover > .profile-title {
+        display: grid !important;
+        grid-template-columns: 68px minmax(0, 1fr);
+        width: 100%;
+        min-width: 0;
+        align-items: center !important;
+        gap: 12px;
+        padding: 4px 42px 2px 0;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-avatar-trigger,
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-avatar-trigger > .profile-avatar,
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-title > .profile-avatar {
+        width: 68px !important;
+        min-width: 68px !important;
+        height: 68px !important;
+        min-height: 68px !important;
+        flex: 0 0 68px !important;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-avatar {
+        border-width: 2px;
+        border-color: rgba(255, 255, 255, 0.88);
+        box-shadow: 0 8px 22px rgba(3, 10, 18, 0.30);
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-avatar-edit-hint {
+        right: -1px;
+        bottom: -1px;
+        width: 23px;
+        height: 23px;
+        border: 2px solid rgba(255, 255, 255, 0.88);
+        font-size: 0.64rem;
+        box-shadow: 0 4px 12px rgba(3, 10, 18, 0.28);
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .hero-copy {
+        display: grid;
+        min-width: 0;
+        gap: 2px;
+        overflow: visible;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .hero-copy :is(.eyebrow, h1, p) {
+        margin: 0;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .hero-copy .eyebrow {
+        color: rgba(255, 255, 255, 0.76);
+        font-size: 0.58rem;
+        letter-spacing: 0.10em;
+        text-shadow: 0 1px 8px rgba(3, 10, 18, 0.36);
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .hero-copy h1 {
+        overflow: hidden;
+        color: #fff;
+        font-size: clamp(1.35rem, 7vw, 1.72rem);
+        line-height: 1.08;
+        letter-spacing: -0.035em;
+        text-overflow: ellipsis;
+        text-shadow: 0 2px 12px rgba(3, 10, 18, 0.42);
+        white-space: nowrap;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-hero-meta,
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-hero-message {
+        overflow: hidden;
+        color: rgba(255, 255, 255, 0.86);
+        font-size: 0.69rem;
+        line-height: 1.3;
+        text-overflow: ellipsis;
+        text-shadow: 0 1px 8px rgba(3, 10, 18, 0.38);
+        white-space: nowrap;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover button.profile-level-trigger {
+        width: 100%;
+        min-height: 38px;
+        margin-top: 6px;
+        padding: 3px;
+        gap: 5px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 12px;
+        background: rgba(5, 14, 23, 0.38);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 6px 18px rgba(3, 10, 18, 0.16);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-level-badge,
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-xp {
+        height: 30px;
+        min-height: 30px;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-level-badge {
+        padding-inline: 8px;
+        border-radius: 9px;
+        font-size: 0.64rem;
+        box-shadow: none;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-xp-label {
+        color: rgba(255, 255, 255, 0.88);
+        font-size: 0.58rem;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-xp-bar {
+        background: rgba(255, 255, 255, 0.22);
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-hero-actions:has(> .profile-hero-menu):not(.has-friend-actions) {
+        position: absolute !important;
+        top: 11px;
+        right: 11px;
+        z-index: 45;
+        display: block !important;
+        width: 40px !important;
+        min-width: 40px !important;
+        height: 40px;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-hero-menu,
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-hero-menu > summary.kebab-menu-trigger {
+        width: 40px;
+        min-width: 40px !important;
+        height: 40px;
+        min-height: 40px !important;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-hero-menu > summary.kebab-menu-trigger {
+        padding: 0;
+        border: 1px solid rgba(255, 255, 255, 0.34);
+        border-radius: 50%;
+        color: #fff;
+        background: rgba(5, 14, 23, 0.42);
+        box-shadow: 0 7px 20px rgba(3, 10, 18, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-hero-menu > summary.kebab-menu-trigger:is(:hover, :focus-visible),
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-hero-menu[open] > summary.kebab-menu-trigger {
+        border-color: rgba(255, 255, 255, 0.62);
+        background: rgba(5, 14, 23, 0.68);
+        transform: scale(1.04);
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-hero-menu .kebab-menu-dots {
+        flex-direction: row;
+        gap: 3px;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-hero-menu .kebab-menu-dots span {
+        width: 4px;
+        height: 4px;
+        box-shadow: 0 1px 4px rgba(3, 10, 18, 0.30);
+    }
+}
+
+@media (max-width: 380px) {
+    body[data-page="profile"] .profile-hero.has-profile-cover > .profile-title {
+        grid-template-columns: 62px minmax(0, 1fr);
+        gap: 10px;
+        padding-right: 38px;
+    }
+
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-avatar-trigger,
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-avatar-trigger > .profile-avatar,
+    body[data-page="profile"] .profile-hero.has-profile-cover .profile-title > .profile-avatar {
+        width: 62px !important;
+        min-width: 62px !important;
+        height: 62px !important;
+        min-height: 62px !important;
+        flex-basis: 62px !important;
     }
 }

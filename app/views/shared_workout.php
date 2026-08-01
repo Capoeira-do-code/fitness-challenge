@@ -113,7 +113,15 @@ $mediaUrl = static fn(string $path, int $width = 900): string => '/?page=shared_
             </div>
         </div>
         <?php endif; ?>
-        <footer class="shared-workout-cta"><strong><?= e(t('workouts.shared_cta_title')) ?></strong><p><?= e(t('workouts.shared_cta_hint')) ?></p><a class="btn btn-primary" href="/?page=login"><?= e(t('workouts.shared_cta')) ?></a></footer>
+        <?php
+        // Open the app on the workout itself. The owner lands straight on this
+        // session; anyone else (or a logged-out visitor) goes to the workouts
+        // hub, which funnels through login when needed.
+        $sharedOpenUrl = (!$sharedIsOtherWorkout && $sharedViewerId > 0 && (int) ($session['id'] ?? 0) > 0)
+            ? '/?page=workouts&amp;session_id=' . (int) $session['id']
+            : '/?page=workouts';
+        ?>
+        <footer class="shared-workout-cta"><strong><?= e(t('workouts.shared_cta_title')) ?></strong><p><?= e(t('workouts.shared_cta_hint')) ?></p><a class="btn btn-primary" href="<?= $sharedOpenUrl ?>"><?= e(t('workouts.shared_cta')) ?></a></footer>
     </main>
 <?php endif; ?>
 </section>

@@ -5140,6 +5140,95 @@ document.addEventListener('click', (event) => {
         });
     };
 
+    const initNotificationPreviewActions = () => {
+        if (document.documentElement.dataset.notificationPreviewActionsReady === '1') {
+            return;
+        }
+        document.documentElement.dataset.notificationPreviewActionsReady = '1';
+
+        document.addEventListener('submit', async (event) => {
+            const form = event.target;
+            if (!(form instanceof HTMLFormElement) || !form.matches('[data-notif-preview-delete]')) {
+                return;
+            }
+
+            event.preventDefault();
+            const button = form.querySelector('button[type="submit"]');
+            const item = form.closest('[data-notification-preview-item]');
+            const menu = form.closest('details.notif-menu');
+            if (button instanceof HTMLButtonElement) {
+                button.disabled = true;
+                button.classList.add('is-busy');
+            }
+
+            try {
+                const response = await fetch(form.action || '/?page=notifications', {
+                    method: 'POST',
+                    body: new FormData(form),
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin',
+                });
+                if (!response.ok) {
+                    throw new Error(`Notification deletion failed: ${response.status}`);
+                }
+
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || data.ok !== true) {
+                    throw new Error(String(data.message || `Notification deletion failed: ${response.status}`));
+                }
+
+                const list = item instanceof HTMLElement ? item.closest('.notif-menu-list') : null;
+                if (item instanceof HTMLElement) {
+                    item.remove();
+                }
+                if (list instanceof HTMLElement && !list.querySelector('[data-notification-preview-item]')) {
+                    const empty = document.createElement('p');
+                    empty.className = 'muted small notif-menu-empty';
+                    empty.textContent = String(data.empty_label || '');
+                    list.replaceWith(empty);
+                }
+
+                const unreadCount = Math.max(0, Number(data.unread_count || 0));
+                document.querySelectorAll('.topbar-notif-btn').forEach((control) => {
+                    if (!(control instanceof HTMLElement)) return;
+                    control.setAttribute('aria-label', String(data.aria_label || ''));
+                    const badge = control.querySelector('[data-notification-badge]');
+                    if (unreadCount <= 0) {
+                        badge?.remove();
+                        return;
+                    }
+                    if (badge instanceof HTMLElement) {
+                        badge.textContent = String(Math.min(99, unreadCount));
+                        return;
+                    }
+                    const nextBadge = document.createElement('span');
+                    nextBadge.className = 'topbar-notif-badge';
+                    nextBadge.dataset.notificationBadge = '';
+                    nextBadge.textContent = String(Math.min(99, unreadCount));
+                    control.appendChild(nextBadge);
+                });
+
+                const unreadLabel = menu?.querySelector('.notif-menu-title small');
+                if (unreadLabel instanceof HTMLElement) {
+                    unreadLabel.textContent = String(data.unread_label || '');
+                }
+                if (menu instanceof HTMLDetailsElement) {
+                    menu.open = true;
+                }
+            } catch (error) {
+                console.error('Notification preview deletion failed:', error);
+                if (button instanceof HTMLButtonElement) {
+                    button.disabled = false;
+                    button.classList.remove('is-busy');
+                    button.classList.add('has-error');
+                }
+            }
+        });
+    };
+
     const initInPageNavigation = () => {
         if (document.documentElement.dataset.inPageNavigationReady === '1') {
             return;
@@ -6336,6 +6425,7 @@ document.addEventListener('click', (event) => {
         if (includeOneTime) {
             safeInit(initLiquidInteractions);
             safeInit(initInPageNavigation);
+            safeInit(initNotificationPreviewActions);
         }
         safeInit(initLoginLocale);
         safeInit(initFlashNotifications);
@@ -11271,6 +11361,9 @@ document.addEventListener('click', (event) => {
             dialog.addEventListener('click', (event) => {
                 if (event.target === dialog) dialog.close();
             });
+            if (dialog.dataset.autoOpen === '1' && !dialog.open) {
+                dialog.showModal();
+            }
         };
         bindDialog('[data-nutrition-open]', '[data-nutrition-dialog]');
         bindDialog('[data-tdee-open]', '[data-tdee-dialog]');

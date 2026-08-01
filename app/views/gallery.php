@@ -100,7 +100,7 @@ ob_start();
                 <div class="view-panel-section">
                     <span class="view-panel-label"><?= e(t('common.actions')) ?></span>
                     <div class="calendar-view-actions">
-                        <a class="btn btn-primary btn-block" href="/?page=entries&mode=nutrition&date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
+                        <a class="btn btn-primary btn-block" href="/?page=nutrition&amp;date=<?= e($selectedDate) ?>&amp;create=1&amp;return_to=gallery"><?= e(t('entries.create_entry')) ?></a>
                         <a class="btn btn-ghost btn-block" href="/?page=entries&mode=calendar&calendar_view=month&user_id=<?= $selectedUserId ?>"><?= e(t('entries.open_calendar')) ?></a>
                     </div>
                 </div>
@@ -114,7 +114,7 @@ $topbarControls = ob_get_clean();
 <section class="screen gallery-page gallery-page-clean">
     <header class="gallery-page-header">
         <div><p class="eyebrow"><?= e(t('gallery.eyebrow')) ?></p><h1><?= e(t('gallery.title')) ?></h1></div>
-        <a class="btn btn-primary small" href="/?page=entries&amp;mode=nutrition&amp;date=<?= e($selectedDate) ?>"><?= e(t('entries.create_entry')) ?></a>
+        <a class="btn btn-primary small" href="/?page=nutrition&amp;date=<?= e($selectedDate) ?>&amp;create=1&amp;return_to=gallery"><?= e(t('entries.create_entry')) ?></a>
     </header>
     <?php if ($galleryView === 'calendar'): ?>
         <article class="panel entries-calendar-panel gallery-calendar-panel" data-meal-calendar-root data-calendar-page="gallery" data-user-id="<?= $selectedUserId ?>" data-include-photos="0">

@@ -10835,6 +10835,14 @@ function resolve_notification_destination(PDO $pdo, array $notification): string
         return '/?page=table';
     }
 
+    // Informational notifications (including administrator announcements) do
+    // not have an external entity to open. Give them a stable reader URL so a
+    // click does more than mark the row as read and refresh the same list.
+    $notificationId = (int) ($notification['id'] ?? 0);
+    if ($notificationId > 0) {
+        return '/?page=notifications&notification_id=' . $notificationId;
+    }
+
     return '/?page=notifications';
 }
 

@@ -2095,10 +2095,14 @@ if ($page === 'api_meal_calendar') {
 
 if ($page === 'nutrition') {
     $currentUser = require_login($pdo);
+    $nutritionReturnContext = trim((string) ($_POST['return_to'] ?? ($_GET['return_to'] ?? '')));
+    $nutritionReturnUrl = $nutritionReturnContext === 'gallery'
+        ? '/?page=gallery&gallery_view=recent'
+        : '/?page=nutrition';
     if (is_post()) {
         if (!csrf_verify()) {
             flash_set('error', t('flash.csrf'));
-            redirect('/?page=nutrition');
+            redirect($nutritionReturnUrl);
         }
         $action = (string) ($_POST['action'] ?? '');
         try {
@@ -2152,7 +2156,7 @@ if ($page === 'nutrition') {
             error_log('Nutrition action failed: ' . $e->getMessage());
             flash_set('error', $e instanceof InvalidArgumentException ? $e->getMessage() : t('flash.save_failed'));
         }
-        redirect('/?page=nutrition');
+        redirect($nutritionReturnUrl);
     }
     $currentUser = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $currentUser['id']]) ?? $currentUser;
     $rangeEnd = to_date($_GET['date'] ?? null);
@@ -2173,6 +2177,8 @@ if ($page === 'nutrition') {
         'nutritionWeightIsLatest' => $nutritionLatestWeight !== null,
         'rangeStart' => $rangeStart,
         'rangeEnd' => $rangeEnd,
+        'nutritionReturnContext' => $nutritionReturnContext === 'gallery' ? 'gallery' : '',
+        'nutritionAutoOpen' => (string) ($_GET['create'] ?? '') === '1',
         'config' => $config,
     ]);
 }
@@ -3114,6 +3120,9 @@ if ($page === 'notifications') {
         $notificationFilter = 'all';
     }
     $notificationsRedirect = '/?page=notifications' . ($notificationFilter !== 'all' ? '&filter=' . rawurlencode($notificationFilter) : '');
+    $notificationPreviewAjax = is_post()
+        && (string) ($_POST['notification_preview_ajax'] ?? '') === '1'
+        && strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest';
     $openNotificationId = isset($_GET['open_notification_id']) ? (int) $_GET['open_notification_id'] : 0;
     if ($openNotificationId > 0) {
         $destination = open_user_notification($pdo, $openNotificationId, (int) $currentUser['id']);
@@ -3122,6 +3131,9 @@ if ($page === 'notifications') {
 
     if (is_post()) {
         if (!csrf_verify()) {
+            if ($notificationPreviewAjax) {
+                json_response(['ok' => false, 'message' => t('flash.csrf')], 403);
+            }
             flash_set('error', t('flash.csrf'));
             redirect($notificationsRedirect);
         }
@@ -3138,7 +3150,19 @@ if ($page === 'notifications') {
         }
         if ($action === 'delete_notification') {
             $notificationId = (int) ($_POST['notification_id'] ?? 0);
-            delete_user_notification($pdo, $notificationId, (int) $currentUser['id']);
+            $deleted = delete_user_notification($pdo, $notificationId, (int) $currentUser['id']);
+            if ($notificationPreviewAjax) {
+                $unreadCount = user_unread_notifications_count($pdo, (int) $currentUser['id']);
+                json_response([
+                    'ok' => true,
+                    'deleted' => $deleted > 0,
+                    'notification_id' => $notificationId,
+                    'unread_count' => $unreadCount,
+                    'unread_label' => t('notifications.unread_count', ['count' => (string) $unreadCount]),
+                    'aria_label' => t('nav.notifications') . ($unreadCount > 0 ? ' (' . $unreadCount . ')' : ''),
+                    'empty_label' => t('notifications.empty'),
+                ]);
+            }
             redirect($notificationsRedirect);
         }
         if ($action === 'delete_read_notifications') {
@@ -3151,6 +3175,20 @@ if ($page === 'notifications') {
         }
     }
 
+    $selectedNotification = null;
+    $selectedNotificationId = isset($_GET['notification_id']) ? (int) $_GET['notification_id'] : 0;
+    if ($selectedNotificationId > 0) {
+        $selectedNotification = fetch_user_notification($pdo, $selectedNotificationId, (int) $currentUser['id']);
+        if (!is_array($selectedNotification)) {
+            redirect($notificationsRedirect);
+        }
+        mark_user_notification_read($pdo, $selectedNotificationId, (int) $currentUser['id']);
+        $selectedNotification['is_read'] = 1;
+        $selectedNotification['read_at'] = (string) ($selectedNotification['read_at'] ?? '') !== ''
+            ? (string) $selectedNotification['read_at']
+            : now_iso();
+    }
+
     $notifications = user_notifications($pdo, (int) $currentUser['id'], 200, true);
 
     render_view('notifications', [
@@ -3159,6 +3197,7 @@ if ($page === 'notifications') {
         'currentUser' => $currentUser,
         'notifications' => $notifications,
         'notificationFilter' => $notificationFilter,
+        'selectedNotification' => $selectedNotification,
         'config' => $config,
     ]);
 }

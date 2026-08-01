@@ -64,13 +64,14 @@ $hasNutritionData = count(array_filter($series, static fn(array $row): bool => !
     </article>
 </section>
 
-<dialog class="app-dialog nutrition-dialog" data-nutrition-dialog>
+<dialog class="app-dialog nutrition-dialog" data-nutrition-dialog<?= !empty($nutritionAutoOpen) ? ' data-auto-open="1"' : '' ?>>
     <form method="post" enctype="multipart/form-data" class="stack">
         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
         <input type="hidden" name="action" value="create_nutrition_entry">
+        <?php if (($nutritionReturnContext ?? '') === 'gallery'): ?><input type="hidden" name="return_to" value="gallery"><?php endif; ?>
         <header><div><p class="eyebrow">Nueva comida</p><h2>Registrar comida</h2><small class="muted">Añade las kcal y completa los nutrientes que conozcas.</small></div><button type="button" class="dialog-close" data-dialog-close aria-label="<?= e(t('menu.close')) ?>">&times;</button></header>
         <div class="grid-inline two nutrition-meal-basics">
-            <label>Fecha<input type="date" name="entry_date" value="<?= e(to_date(null)) ?>" required></label>
+            <label>Fecha<input type="date" name="entry_date" value="<?= e((string) ($rangeEnd ?? to_date(null))) ?>" required></label>
             <label>Tipo<select name="meal_type"><option value="breakfast">Desayuno</option><option value="lunch">Comida</option><option value="dinner">Cena</option><option value="snack">Snack</option><option value="other">Otro</option></select></label>
             <label class="span-two nutrition-calorie-field"><span>Calorías</span><span class="nutrition-input-unit"><input type="number" name="calories" min="0" step="1" inputmode="numeric" placeholder="650" required><strong>kcal</strong></span></label>
         </div>

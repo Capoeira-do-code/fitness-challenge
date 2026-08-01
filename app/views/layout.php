@@ -342,12 +342,22 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                     <?php else: ?>
                         <ul class="notif-menu-list">
                             <?php foreach ($notifPreview as $notifItem): ?>
-                                <li class="notif-menu-item<?= empty($notifItem['read_at']) ? ' is-unread' : '' ?>">
+                                <li class="notif-menu-item<?= empty($notifItem['read_at']) ? ' is-unread' : '' ?>" data-notification-preview-item>
                                     <a href="/?page=notifications&open_notification_id=<?= (int) $notifItem['id'] ?>">
                                         <strong><?= e((string) ($notifItem['title'] ?? '')) ?></strong>
                                         <span><?= e((string) ($notifItem['message'] ?? '')) ?></span>
                                         <small class="muted"><?= e(human_time_ago((string) ($notifItem['created_at'] ?? ''))) ?></small>
                                     </a>
+                                    <form method="post" action="/?page=notifications" data-notif-preview-delete data-allow-multi-submit>
+                                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                        <input type="hidden" name="action" value="delete_notification">
+                                        <input type="hidden" name="notification_id" value="<?= (int) ($notifItem['id'] ?? 0) ?>">
+                                        <input type="hidden" name="notification_filter" value="all">
+                                        <input type="hidden" name="notification_preview_ajax" value="1">
+                                        <button class="notif-menu-delete" type="submit" aria-label="<?= e(t('common.delete')) ?>" title="<?= e(t('common.delete')) ?>">
+                                            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v5M14 11v5"></path></svg>
+                                        </button>
+                                    </form>
                                 </li>
                             <?php endforeach; ?>
                         </ul>
@@ -425,7 +435,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
         <div class="flash flash-<?= e((string) ($flash['type'] ?? 'info')) ?>"><?= e((string) ($flash['message'] ?? '')) ?></div>
     <?php endif; ?>
 
-    <?php if ($loggedIn && !$minimalAppShell && $contextualBackFallback !== ''): ?>
+    <?php if ($loggedIn && !$minimalAppShell && $contextualBackFallback !== '' && $currentPage !== 'notifications'): ?>
         <nav class="contextual-route-back" data-contextual-back-container aria-label="<?= e(t('common.back')) ?>">
             <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="<?= e($contextualBackFallback) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e($contextualBackDestination) ?>"><span aria-hidden="true">&larr;</span><strong><?= e($contextualBackDestination) ?></strong></button>
         </nav>

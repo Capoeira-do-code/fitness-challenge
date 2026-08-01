@@ -32,8 +32,24 @@ $trashIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><pa
 $checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>';
 $notificationsBackUrl = '/?page=dashboard&section=alerts';
 $notificationsBackDestination = t('dashboard.mobile_alerts');
+$selectedNotification = is_array($selectedNotification ?? null) ? $selectedNotification : null;
+$notificationsListUrl = '/?page=notifications' . ($notificationFilter !== 'all' ? '&filter=' . rawurlencode($notificationFilter) : '');
+$notificationCategoryLabel = static function (string $kind): string {
+    $kindToken = strtolower((string) (preg_split('/[_:.\-]+/', $kind)[0] ?? 'info'));
+
+    return match ($kindToken) {
+        'duel' => t('nav.duels'),
+        'competition' => t('nav.competitions'),
+        'team', 'squad' => t('nav.team'),
+        'friend', 'social' => t('nav.friends'),
+        'achievement' => t('achievements.title'),
+        'workout', 'training' => t('nav.workouts'),
+        'admin' => t('notifications.category_app'),
+        default => t('nav.notifications'),
+    };
+};
 ?>
-<section class="screen notifications-page" data-notifications-page>
+<section class="screen notifications-page<?= $selectedNotification !== null ? ' is-reading' : '' ?>" data-notifications-page>
     <article class="panel notifications-panel">
         <div class="notifications-header">
             <div>
@@ -47,7 +63,47 @@ $notificationsBackDestination = t('dashboard.mobile_alerts');
             </div>
         </div>
 
+        <?php if ($selectedNotification !== null): ?>
+            <?php
+            $readerKind = (string) ($selectedNotification['kind'] ?? 'info');
+            $readerCreatedAt = trim((string) ($selectedNotification['created_at'] ?? ''));
+            ?>
+            <article class="notification-reader" id="notification-detail" aria-labelledby="notification-reader-title">
+                <header class="notification-reader-head">
+                    <a class="notification-reader-back" href="<?= e($notificationsListUrl) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e(t('notifications.title')) ?>">
+                        <span aria-hidden="true">&larr;</span><strong><?= e(t('notifications.title')) ?></strong>
+                    </a>
+                    <?php if ($readerCreatedAt !== ''): ?>
+                        <time datetime="<?= e($readerCreatedAt) ?>"><?= e(human_time_ago($readerCreatedAt)) ?></time>
+                    <?php endif; ?>
+                </header>
+                <div class="notification-reader-title-row">
+                    <span class="notification-reader-icon" aria-hidden="true"><?= activity_icon_svg(notification_icon($readerKind)) ?></span>
+                    <div>
+                        <p class="eyebrow"><?= e($notificationCategoryLabel($readerKind)) ?></p>
+                        <h2 id="notification-reader-title" tabindex="-1"><?= e((string) ($selectedNotification['title'] ?? '')) ?></h2>
+                    </div>
+                </div>
+                <div class="notification-reader-message"><?= nl2br(e((string) ($selectedNotification['message'] ?? ''))) ?></div>
+                <footer class="notification-reader-footer">
+                    <form method="post" action="/?page=notifications" data-notification-form data-allow-multi-submit>
+                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                        <input type="hidden" name="action" value="delete_notification">
+                        <input type="hidden" name="notification_id" value="<?= (int) ($selectedNotification['id'] ?? 0) ?>">
+                        <input type="hidden" name="notification_filter" value="<?= e($notificationFilter) ?>">
+                        <button class="btn btn-danger-ghost small" type="submit"><?= $trashIcon ?><span><?= e(t('common.delete')) ?></span></button>
+                    </form>
+                </footer>
+            </article>
+        <?php endif; ?>
+
         <div class="notifications-commandbar">
+            <nav class="contextual-route-back notifications-inline-route-back" data-contextual-back-container aria-label="<?= e(t('common.back')) ?>">
+                <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="<?= e($notificationsBackUrl) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e($notificationsBackDestination) ?>">
+                    <span aria-hidden="true">&larr;</span><strong><?= e($notificationsBackDestination) ?></strong>
+                </button>
+            </nav>
+
             <a class="notifications-mobile-back" href="<?= e($notificationsBackUrl) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e($notificationsBackDestination) ?>">
                 <span aria-hidden="true">&larr;</span>
             </a>
@@ -109,17 +165,7 @@ $notificationsBackDestination = t('dashboard.mobile_alerts');
                         ? t('notifications.today')
                         : ($createdDate === (new DateTimeImmutable('yesterday'))->format('Y-m-d') ? t('notifications.yesterday') : format_date_eu($createdDate));
                     $kind = (string) ($notification['kind'] ?? 'info');
-                    $kindToken = strtolower((string) (preg_split('/[_:.\-]+/', $kind)[0] ?? 'info'));
-                    $categoryLabel = match ($kindToken) {
-                        'duel' => t('nav.duels'),
-                        'competition' => t('nav.competitions'),
-                        'team', 'squad' => t('nav.team'),
-                        'friend', 'social' => t('nav.friends'),
-                        'achievement' => t('achievements.title'),
-                        'workout', 'training' => t('nav.workouts'),
-                        'admin' => t('notifications.category_app'),
-                        default => t('nav.notifications'),
-                    };
+                    $categoryLabel = $notificationCategoryLabel($kind);
                     // Only a few kinds carry a pending decision. The rest are news, and news
                     // gets no call to action - nothing on the card can then be mistaken for a
                     // button that accepts something.

@@ -19982,6 +19982,343 @@ body.layout-has-unsaved .dashboard-layout-state > strong {
     }
 }
 
+/* Notification centre: compact desktop inbox, real message reader and
+   contextual deletion in the bell preview. */
+.notif-menu-item {
+    position: relative;
+    min-width: 0;
+}
+
+.notif-menu-item > a {
+    padding-right: 3rem;
+}
+
+.notif-menu-item > form {
+    position: absolute;
+    top: 50%;
+    right: 0.48rem;
+    z-index: 2;
+    margin: 0;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(4px, -50%);
+    transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.notif-menu-item:is(:hover, :focus-within) > form {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(0, -50%);
+}
+
+.notif-menu-delete {
+    display: grid;
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
+    padding: 0;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, #dc2626 18%, var(--line));
+    border-radius: 999px;
+    color: #b91c1c;
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    box-shadow: 0 5px 14px rgba(15, 23, 42, 0.10);
+}
+
+.notif-menu-delete:is(:hover, :focus-visible) {
+    color: #fff;
+    border-color: #dc2626;
+    background: #dc2626;
+}
+
+.notif-menu-delete svg {
+    width: 15px;
+    height: 15px;
+}
+
+.notification-reader {
+    display: grid;
+    gap: 1rem;
+    max-width: 820px;
+    margin-inline: auto;
+    padding: clamp(1rem, 2.5vw, 1.6rem);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: var(--surface);
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07);
+}
+
+.notification-reader-head,
+.notification-reader-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.notification-reader-head {
+    padding-bottom: 0.8rem;
+    border-bottom: 1px solid var(--line);
+}
+
+.notification-reader-head time {
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 700;
+}
+
+.notification-reader-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 38px;
+    padding: 0 0.7rem;
+    border-radius: 11px;
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.notification-reader-back:is(:hover, :focus-visible) {
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 9%, transparent);
+}
+
+.notification-reader-title-row {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-items: center;
+    gap: 0.8rem;
+}
+
+.notification-reader-title-row :is(p, h2) {
+    margin: 0;
+}
+
+.notification-reader-title-row h2 {
+    margin-top: 0.15rem;
+    font-size: clamp(1.25rem, 3vw, 1.8rem);
+    line-height: 1.16;
+    overflow-wrap: anywhere;
+}
+
+.notification-reader-icon {
+    display: grid;
+    width: 44px;
+    height: 44px;
+    place-items: center;
+    border-radius: 13px;
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+}
+
+.notification-reader-icon svg {
+    width: 21px;
+    height: 21px;
+}
+
+.notification-reader-message {
+    color: var(--ink);
+    font-size: 0.96rem;
+    line-height: 1.68;
+    overflow-wrap: anywhere;
+}
+
+.notification-reader-footer {
+    justify-content: flex-end;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--line);
+}
+
+.notification-reader-footer form {
+    margin: 0;
+}
+
+.notifications-page.is-reading .notifications-commandbar,
+.notifications-page.is-reading .notifications-empty-state,
+.notifications-page.is-reading .notifications-list {
+    display: none !important;
+}
+
+@media (hover: none), (pointer: coarse) {
+    .notif-menu-item > form {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translate(0, -50%);
+    }
+}
+
+@media (max-width: 700px) {
+    .notification-reader {
+        gap: 0.85rem;
+        padding: 0.9rem;
+        border-radius: 17px;
+        box-shadow: none;
+    }
+
+    .notification-reader-title-row {
+        grid-template-columns: 40px minmax(0, 1fr);
+        gap: 0.65rem;
+    }
+
+    .notification-reader-icon {
+        width: 40px;
+        height: 40px;
+    }
+
+    .notification-reader-message {
+        font-size: 0.9rem;
+        line-height: 1.58;
+    }
+}
+
+/* Notifications desktop: one compact command row and stable cards. Mobile has
+   its own sheet-like layout above, so this layer is deliberately desktop-only. */
+@media (min-width: 721px) {
+    body[data-page="notifications"] .notifications-page {
+        width: min(100%, 1040px);
+        margin-inline: auto;
+    }
+
+    body[data-page="notifications"] .notifications-panel {
+        width: 100%;
+        padding: clamp(18px, 2.2vw, 26px);
+        border-radius: 24px;
+    }
+
+    body[data-page="notifications"] .notifications-header {
+        align-items: center;
+        margin-bottom: 16px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--line);
+    }
+
+    body[data-page="notifications"] .notifications-header-actions {
+        flex: 0 0 auto;
+    }
+
+    body[data-page="notifications"] .notifications-commandbar {
+        position: relative;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+
+    body[data-page="notifications"] .notifications-filter-tabs {
+        width: min(100%, 570px);
+        margin: 0;
+    }
+
+    body[data-page="notifications"] .notifications-tools {
+        position: relative;
+        width: auto;
+        margin: 0;
+        overflow: visible;
+    }
+
+    body[data-page="notifications"] .notifications-tools > summary {
+        min-width: 132px;
+        gap: 8px;
+        border-radius: 13px;
+    }
+
+    body[data-page="notifications"] .notifications-tools .notifications-toolbar {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        z-index: 30;
+        width: 280px;
+        grid-template-columns: minmax(0, 1fr);
+        margin: 0;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        background: var(--surface);
+        box-shadow: 0 18px 44px rgba(15, 23, 42, 0.18);
+    }
+
+    body[data-page="notifications"] .notifications-list {
+        display: grid;
+        gap: 8px;
+        overflow: visible;
+        border: 0;
+        background: transparent;
+    }
+
+    body[data-page="notifications"] .notification-date-heading {
+        position: static;
+        margin: 12px 0 0;
+        padding: 0 4px 2px;
+        background: transparent;
+        backdrop-filter: none;
+    }
+
+    body[data-page="notifications"] .notification-card {
+        min-height: 82px;
+        padding: 13px 14px;
+        border: 1px solid var(--line);
+        border-radius: 17px;
+        background: var(--surface);
+        box-shadow: 0 7px 20px rgba(15, 23, 42, 0.045);
+        transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+    }
+
+    body[data-page="notifications"] .notification-card:is(:hover, :focus-within) {
+        border-color: color-mix(in srgb, var(--primary) 32%, var(--line));
+        box-shadow: 0 11px 26px rgba(15, 23, 42, 0.075);
+        transform: translateY(-1px);
+    }
+
+    body[data-page="notifications"] .notification-card.is-unread {
+        border-color: color-mix(in srgb, var(--primary) 24%, var(--line));
+        background: color-mix(in srgb, var(--primary) 6%, var(--surface));
+    }
+
+    body[data-page="notifications"] .notification-main {
+        min-width: 0;
+    }
+
+    body[data-page="notifications"] .notification-main p {
+        max-width: 68ch;
+        overflow-wrap: anywhere;
+    }
+
+    body[data-page="notifications"] .notification-actions {
+        align-self: center;
+        flex-wrap: nowrap;
+    }
+}
+
+/* Large uploads must stay inside the photo detail viewport instead of using
+   their natural pixel dimensions to dictate the page height. */
+body[data-page="photo"] .photo-post-media {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    place-items: center;
+    background: color-mix(in srgb, var(--ink) 4%, var(--surface));
+}
+
+body[data-page="photo"] .photo-post-media img {
+    display: block;
+    width: 100%;
+    height: clamp(320px, 68vh, 760px);
+    min-height: 0;
+    max-height: 760px;
+    object-fit: contain;
+    object-position: center;
+}
+
+@media (max-width: 700px) {
+    body[data-page="photo"] .photo-post-media img {
+        height: min(68dvh, 620px);
+        min-height: 280px;
+    }
+}
+
 /* A single team identity across Social, Profile, competitions and Team. */
 .social-team-list {
     display: grid;
@@ -32530,5 +32867,192 @@ body[data-page="team"] .team-access-requested:disabled {
 
     body[data-page="notifications"] .notifications-filter-tabs a[href*="filter=action"] .notifications-filter-short {
         display: inline;
+    }
+}
+
+/* Final notification desktop layer. This intentionally lives after the
+   historical responsive bundles so card density cannot be undone by an older
+   notification rule further down the cascade. */
+.notif-menu-item > a {
+    padding-right: 3rem;
+}
+
+@media (min-width: 721px) {
+    body[data-page="notifications"] .notifications-panel {
+        padding: 16px 18px;
+    }
+
+    body[data-page="notifications"] .notifications-header {
+        margin-bottom: 10px;
+        padding-bottom: 10px;
+    }
+
+    body[data-page="notifications"] .notifications-header .eyebrow,
+    body[data-page="notifications"] .notifications-header .muted {
+        margin-block: 0;
+    }
+
+    body[data-page="notifications"] .notifications-header h1 {
+        margin-block: 2px;
+    }
+
+    body[data-page="notifications"] .notifications-commandbar {
+        margin-bottom: 8px;
+    }
+
+    body[data-page="notifications"] .notifications-list {
+        gap: 6px;
+    }
+
+    body[data-page="notifications"] .notification-date-heading {
+        margin: 7px 0 0;
+        padding-bottom: 0;
+        font-size: 0.68rem;
+        line-height: 1.15;
+    }
+
+    body[data-page="notifications"] .notification-card {
+        grid-template-columns: 34px minmax(0, 1fr) auto;
+        min-height: 66px;
+        gap: 10px;
+        padding: 9px 11px;
+        border-radius: 14px;
+    }
+
+    body[data-page="notifications"] .notification-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+    }
+
+    body[data-page="notifications"] .notification-main {
+        gap: 1px;
+    }
+
+    body[data-page="notifications"] .notification-main strong {
+        font-size: 0.9rem;
+        line-height: 1.2;
+    }
+
+    body[data-page="notifications"] .notification-main p {
+        display: -webkit-box;
+        max-width: 82ch;
+        margin: 0;
+        overflow: hidden;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        font-size: 0.8rem;
+        line-height: 1.28;
+    }
+
+    body[data-page="notifications"] .notification-time {
+        font-size: 0.66rem;
+        line-height: 1.15;
+    }
+
+    body[data-page="notifications"] .notification-action-btn {
+        width: 34px;
+        min-width: 34px;
+        height: 34px;
+        min-height: 34px;
+    }
+
+    body[data-page="notifications"] .notifications-header > div:first-child {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+    }
+
+    body[data-page="notifications"] .notifications-header > div:first-child .eyebrow {
+        display: none;
+    }
+
+    body[data-page="notifications"] .notifications-header h1 {
+        font-size: 1.35rem;
+    }
+
+    body[data-page="notifications"] .notifications-header .muted {
+        font-size: 0.78rem;
+    }
+
+    body[data-page="notifications"] .notifications-commandbar {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 6px;
+        min-height: 48px;
+        padding: 4px;
+        border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+        border-radius: 15px;
+        background: color-mix(in srgb, var(--ink) 2.5%, var(--surface));
+    }
+
+    body[data-page="notifications"] .notifications-inline-route-back {
+        display: block;
+        width: auto;
+        margin: 0;
+        padding: 0;
+    }
+
+    body[data-page="notifications"] .notifications-inline-route-back .hierarchy-back.destination-back {
+        width: auto;
+        min-width: 0;
+        max-width: 138px;
+        height: 38px;
+        min-height: 38px;
+        padding-inline: 10px;
+        border: 0;
+        border-radius: 11px;
+        background: transparent;
+        box-shadow: none;
+    }
+
+    body[data-page="notifications"] .notifications-inline-route-back .hierarchy-back.destination-back:is(:hover, :focus-visible) {
+        background: color-mix(in srgb, var(--primary) 8%, transparent);
+    }
+
+    body[data-page="notifications"] .notifications-filter-tabs {
+        width: min(100%, 500px);
+        margin: 0;
+        padding: 3px;
+        gap: 3px;
+        border: 0;
+        border-radius: 11px;
+        background: color-mix(in srgb, var(--ink) 4%, transparent);
+    }
+
+    body[data-page="notifications"] .notifications-filter-tabs a {
+        min-height: 36px;
+        padding: 4px 8px;
+        border-radius: 9px;
+        font-size: 0.68rem;
+    }
+
+    body[data-page="notifications"] .notifications-filter-tabs a strong {
+        min-width: 19px;
+        height: 19px;
+        padding-inline: 4px;
+        font-size: 0.6rem;
+    }
+
+    body[data-page="notifications"] .notifications-tools {
+        margin: 0;
+        border: 0;
+        border-radius: 11px;
+        background: transparent;
+    }
+
+    body[data-page="notifications"] .notifications-tools > summary {
+        min-width: 116px;
+        min-height: 38px;
+        padding: 5px 9px;
+        border-radius: 11px;
+    }
+
+    body[data-page="notifications"] .notifications-tools[open] > summary {
+        border-bottom: 0;
+        color: var(--primary-dark);
+        background: color-mix(in srgb, var(--primary) 8%, transparent);
     }
 }

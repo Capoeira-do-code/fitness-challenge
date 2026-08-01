@@ -94,7 +94,10 @@ $check(user_unread_notifications_count($pdo, $firstUserId) >= 1, 'la campana con
 $notificationId = (int) ($firstGlobalNotification['id'] ?? 0);
 $destination = open_user_notification($pdo, $notificationId, $firstUserId);
 $openedNotification = fetch_user_notification($pdo, $notificationId, $firstUserId);
-$check($destination === '/?page=notifications', 'abrir un anuncio mantiene al usuario en Notificaciones');
+$check(
+    $destination === '/?page=notifications&notification_id=' . $notificationId,
+    'abrir un anuncio entra en su lector dentro de Notificaciones'
+);
 $check((int) ($openedNotification['is_read'] ?? 0) === 1, 'abrir el anuncio lo marca como leído');
 
 $singleResult = send_admin_notification(
