@@ -160,6 +160,9 @@ $isNavActive = static function (string $pageKey) use ($currentPage): bool {
     if ($pageKey === 'table') {
         return in_array($currentPage, ['table', 'week_editor', 'workouts'], true);
     }
+    if ($pageKey === 'ranks') {
+        return $currentPage === 'ranks';
+    }
     if ($pageKey === 'nutrition') {
         return $currentPage === 'nutrition' || ($currentPage === 'entries' && (string) ($_GET['mode'] ?? '') === 'nutrition');
     }
