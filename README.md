@@ -278,5 +278,3 @@ Perfiles disponibles:
 
 - Para exponer en internet, ponlo detrás de reverse proxy con HTTPS.
 - Límite upload en Nginx: `15M` por imagen.
-sussy baka
-fork it
