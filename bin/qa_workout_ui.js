@@ -73,7 +73,7 @@ const login = async (page) => {
         ensure(initialLibraryCount >= 12 && initialLibraryCount <= 24, 'biblioteca pagina la primera carga', `${initialLibraryCount} ejercicios`);
         ensure(await page.locator('.workouts-mobile-subheader [data-hierarchy-back]').count() === 1, 'biblioteca conserva retorno jerárquico');
         await page.goto(`${BASE}/?page=workouts`, { waitUntil: 'networkidle' });
-        ensure(await page.locator('.workouts-section-grid .hierarchy-nav-row').count() === 5, 'grid único del hub completo');
+        ensure(await page.locator('.workouts-section-grid .hierarchy-nav-row').count() === 4, 'submenu del hub reducido a cuatro destinos únicos');
         await page.goto(`${BASE}/?page=workouts&view=library`, { waitUntil: 'networkidle' });
         ensure(await page.locator('.workouts-library-pagination').count() === 1, 'biblioteca ofrece paginación');
         ensure(await page.locator('[data-library-layout-switch]:visible').count() === 1, 'selector de densidad disponible');

@@ -103,7 +103,7 @@ const open = async (page, route) => page.goto(`${BASE}${route}`, { waitUntil: 'n
         check((await activeMobileHref(page) || '').includes('page=dashboard'), 'subpantalla conserva Inicio activo');
 
         await open(page, '/?page=workouts');
-        ensure(await page.locator('.workouts-section-grid .hierarchy-nav-row').count() === 5, 'Entreno usa un único grid jerárquico');
+        ensure(await page.locator('.workouts-section-grid .hierarchy-nav-row').count() === 4, 'Entreno usa un submenu jerárquico simplificado');
         await noOverflow(page, 'Entreno sin overflow horizontal');
         await page.screenshot({ path: path.join(reportDir, 'ui-v2-training-mobile.png'), fullPage: true });
         await open(page, '/?page=workouts&view=library');

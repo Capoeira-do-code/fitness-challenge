@@ -295,7 +295,7 @@ $libraryClearUrl = $libraryUrl([
 
     <?php if (in_array($wkView, $hubViews, true)): ?>
         <?php if ($wkView === 'list'): ?>
-            <details class="workouts-overview-disclosure workouts-tools-disclosure" data-persist-disclosure="workouts.tools" open>
+            <details class="workouts-overview-disclosure workouts-tools-disclosure">
                 <summary>
                     <span class="workouts-overview-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('sliders') ?></span>
                     <span><strong><?= e(t('workouts.more_options')) ?></strong><small><?= e(t('workouts.more_options_hint')) ?></small></span>
@@ -304,7 +304,6 @@ $libraryClearUrl = $libraryUrl([
                 <div class="workouts-overview-disclosure-body">
             <nav class="workouts-section-grid hierarchy-nav-list" aria-label="<?= e(t('workouts.title')) ?>">
                 <a class="hierarchy-nav-row" data-tone="blue" href="/?page=workouts&view=plan"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('check') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('workouts.tab_plan')) ?></strong><small><?= e(t('workouts.plan_subtitle')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
-                <a class="hierarchy-nav-row" data-tone="green" href="/?page=workouts&view=library"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('workouts.tab_library')) ?></strong><small><?= e(t('workouts.library_subtitle')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
                 <a class="hierarchy-nav-row" data-tone="amber" href="/?page=workouts&view=ranks"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('workouts.tab_ranks')) ?></strong><small><?= e(t('workouts.rank_subtitle')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
                 <a class="hierarchy-nav-row" data-tone="violet" href="/?page=workouts&view=stats"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('run') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('workouts.stats')) ?></strong><small><?= e(t('workouts.stats_subtitle')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
                 <a class="hierarchy-nav-row" data-tone="orange" href="/?page=week_editor&range=week"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('workouts.challenge_log')) ?></strong><small><?= e(t('workouts.challenge_log_hint')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
@@ -409,21 +408,8 @@ $libraryClearUrl = $libraryUrl([
     </article>
 
 <?php elseif ($wkView === 'list'): ?>
-    <?php
-    $summaryMonth = (array) ($wkSummaryMonth ?? []);
-    $summaryAll = (array) ($wkSummaryAll ?? []);
-    ?>
-    <div class="workouts-overview-summary" aria-label="<?= e(t('workouts.stats')) ?>">
-        <article class="workouts-overview-kpi-strip compact-metrics-row glass-panel">
-            <span><small><?= e(t('workouts.stat_sessions')) ?> · <?= e(t('workouts.this_month')) ?></small><strong><?= (int) ($summaryMonth['sessions'] ?? 0) ?></strong></span>
-            <span><small><?= e(t('workouts.stat_volume')) ?> · <?= e(t('workouts.this_month')) ?></small><strong><?= e(number_format((float) ($summaryMonth['volume'] ?? 0), 0, '.', ' ')) ?></strong></span>
-            <span><small><?= e(t('workouts.stat_sessions')) ?> · <?= e(t('workouts.all_time')) ?></small><strong><?= (int) ($summaryAll['sessions'] ?? 0) ?></strong></span>
-            <span><small><?= e(t('workouts.stat_reps')) ?> · <?= e(t('workouts.all_time')) ?></small><strong><?= e(number_format((int) ($summaryAll['reps'] ?? 0), 0, '.', ' ')) ?></strong></span>
-        </article>
-    </div>
-
-    <?php // Two distinct things, spelled out: log a workout right now without a routine,
-          // or build a routine you can reuse. Starting from a routine lives on each card. ?>
+    <?php // Starting from a routine lives on each card; this submenu only keeps
+          // the one unique fallback action: logging an empty workout. ?>
     <div class="workouts-start-grid">
         <form method="post" action="/?page=workouts" class="workouts-start-card">
             <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
@@ -436,14 +422,6 @@ $libraryClearUrl = $libraryUrl([
             <button type="<?= !empty($wkActiveSession) ? 'button' : 'submit' ?>" class="btn btn-primary small"<?= !empty($wkActiveSession) ? ' data-app-modal-open="wk-start-confirm-modal" data-wk-confirm-start' : '' ?>><?= e(t('workouts.start_now')) ?></button>
         </form>
 
-        <div class="workouts-start-card">
-            <span class="workouts-start-icon" aria-hidden="true"><?= activity_icon_svg('check') ?></span>
-            <span class="workouts-start-copy">
-                <strong><?= e(t('workouts.new_routine')) ?></strong>
-                <small><?= e(t('workouts.new_routine_hint')) ?></small>
-            </span>
-            <button type="button" class="btn btn-ghost small" data-app-modal-open="wk-new-routine-modal"><?= e(t('common.create')) ?></button>
-        </div>
     </div>
                 </div>
             </details>
@@ -464,10 +442,9 @@ $libraryClearUrl = $libraryUrl([
                 <b aria-hidden="true">&rsaquo;</b>
             </summary>
             <div class="workouts-overview-disclosure-body workouts-routines-disclosure-body">
-                <div class="workouts-routines-head-actions" aria-label="<?= e(t('workouts.your_routines')) ?>">
-                    <button type="button" class="btn btn-primary small" data-app-modal-open="wk-new-routine-modal"><span aria-hidden="true">+</span> <?= e(t('workouts.new_routine')) ?></button>
-                    <?php if (count($activeRoutines) > 1): ?><a class="btn btn-ghost small workouts-organize-routines-link" href="/?page=workouts&view=organize"><?= e(t('menu.organize')) ?></a><?php endif; ?>
-                </div>
+                <?php if (count($activeRoutines) > 1): ?><div class="workouts-routines-head-actions" aria-label="<?= e(t('workouts.your_routines')) ?>">
+                    <a class="btn btn-ghost small workouts-organize-routines-link" href="/?page=workouts&view=organize"><?= e(t('menu.organize')) ?></a>
+                </div><?php endif; ?>
             <div class="workouts-routine-grid workouts-routine-preview-grid">
                 <?php foreach ($activeRoutines as $routine): ?>
                     <?php
@@ -485,11 +462,16 @@ $libraryClearUrl = $libraryUrl([
                     [$routineStateKey, $routineStateLabel] = $workoutRoutineState((array) $routine);
                     $routineMenu = render_kebab_menu([
                         ['label' => t('common.edit'), 'href' => '/?page=workouts&routine_id=' . $rid],
-                        ['label' => t('menu.organize'), 'href' => '/?page=workouts&routine_id=' . $rid . '&section=organize'],
                         ['label' => (int) ($routine['is_favorite'] ?? 0) === 1 ? t('workouts.favorite') . ' ✓' : t('workouts.favorite'), 'attrs' => ['data-wk-submit' => 'routine_favorite', 'data-wk-routine' => (string) $rid, 'data-wk-value' => (int) ($routine['is_favorite'] ?? 0) === 1 ? '0' : '1']],
-                        ['label' => t('workouts.duplicate'), 'attrs' => ['data-wk-submit' => 'routine_duplicate', 'data-wk-routine' => (string) $rid]],
-                        ['label' => t('workouts.archive'), 'attrs' => ['data-wk-submit' => 'routine_archive', 'data-wk-routine' => (string) $rid, 'data-wk-value' => '1']],
-                        ['label' => t('workouts.delete_routine'), 'danger' => true, 'attrs' => ['data-wk-submit' => 'routine_delete', 'data-wk-routine' => (string) $rid, 'data-wk-confirm' => t('common.confirm_delete')]],
+                        [
+                            'label' => t('workouts.manage_routine'),
+                            'children' => [
+                                ['label' => t('menu.organize'), 'href' => '/?page=workouts&routine_id=' . $rid . '&section=organize'],
+                                ['label' => t('workouts.duplicate'), 'attrs' => ['data-wk-submit' => 'routine_duplicate', 'data-wk-routine' => (string) $rid]],
+                                ['label' => t('workouts.archive'), 'attrs' => ['data-wk-submit' => 'routine_archive', 'data-wk-routine' => (string) $rid, 'data-wk-value' => '1']],
+                                ['label' => t('workouts.delete_routine'), 'danger' => true, 'attrs' => ['data-wk-submit' => 'routine_delete', 'data-wk-routine' => (string) $rid, 'data-wk-confirm' => t('common.confirm_delete')]],
+                            ],
+                        ],
                     ], ['align' => 'end', 'title' => (string) $routine['name']]);
                     ?>
                     <article class="workouts-routine-card compact-list-item is-<?= e($routineStateKey) ?><?= (int) ($routine['is_favorite'] ?? 0) === 1 ? ' is-favorite' : '' ?><?= $routineCover !== null ? ' has-cover' : '' ?>" style="--routine-accent: <?= e($routineAccent) ?>" data-state="<?= e($routineStateKey) ?>">

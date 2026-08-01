@@ -125,30 +125,20 @@ const noOverflow = (page) => page.evaluate(() =>
         await page.goto(`${BASE}/?page=workouts`, { waitUntil: 'networkidle' });
         const compactState = await page.evaluate(() => {
             const hero = document.querySelector('.workouts-hero');
-            const summary = document.querySelector('.workouts-overview-summary');
             const sectionGrid = document.querySelector('.workouts-section-grid');
-            const summaryRect = summary?.getBoundingClientRect();
-            const heroRect = hero?.getBoundingClientRect();
             const sectionRect = sectionGrid?.getBoundingClientRect();
             return {
                 heroVisible: Boolean(hero && getComputedStyle(hero).display !== 'none'),
+                commands: document.querySelectorAll('.workouts-training-commandbar > *').length,
+                routineCards: document.querySelectorAll('.workouts-routine-preview-grid .workouts-routine-card').length,
                 destinations: sectionGrid?.querySelectorAll('.hierarchy-nav-row').length || 0,
                 sectionHeight: Math.round(sectionRect?.height || 0),
-                strips: summary?.querySelectorAll('.workouts-overview-kpi-strip').length || 0,
-                metrics: summary?.querySelectorAll('.workouts-overview-kpi-strip > span').length || 0,
-                summaryHeight: Math.round(summaryRect?.height || 0),
-                topFootprint: Math.round((summaryRect?.bottom || 0) - (sectionRect?.top || (heroRect?.height ? heroRect.top : 0))),
-                summaryColumns: summary?.querySelector('.workouts-overview-kpi-strip')
-                    ? getComputedStyle(summary.querySelector('.workouts-overview-kpi-strip')).gridTemplateColumns.split(' ').length : 0,
             };
         });
-        check('Workout summary consolidates four values into one compact strip',
-            compactState.strips === 1 && compactState.metrics === 4 && compactState.summaryColumns === 4,
+        check('Workout root uses the routine-first mobile hub',
+            compactState.heroVisible && compactState.commands === 2
+                && compactState.routineCards > 0 && compactState.destinations === 4,
             JSON.stringify(compactState));
-        check('Workout root uses one compact hierarchical grid',
-            !compactState.heroVisible && compactState.destinations === 5 && compactState.sectionHeight <= 400
-                && compactState.summaryHeight <= 150 && compactState.topFootprint <= 620,
-            `${compactState.topFootprint}px total · grid ${compactState.sectionHeight}px · summary ${compactState.summaryHeight}px`);
         check('Workout overview mobile has no horizontal overflow', await noOverflow(page));
         await page.screenshot({ path: path.join(REPORT_DIR, 'ui-workout-overview-compact-mobile.png'), fullPage: true });
 
@@ -168,7 +158,7 @@ const noOverflow = (page) => page.evaluate(() =>
                         subheaderVisible: Boolean(subheader && getComputedStyle(subheader).display !== 'none'),
                     };
                 });
-                const hierarchyOk = view === 'overview' ? state.rootDestinations === 5 : state.subheaderVisible;
+                const hierarchyOk = view === 'overview' ? state.rootDestinations === 4 : state.subheaderVisible;
                 if (state.overflow || !hierarchyOk) {
                     responsiveProblems.push(`${view}@${width}:${JSON.stringify(state)}`);
                 }
@@ -203,8 +193,8 @@ const noOverflow = (page) => page.evaluate(() =>
                 columns: getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length,
             } : { fits: false, height: 0, columns: 0 };
         });
-        check('Workout navigation uses one five-column desktop grid',
-            desktopTabs.fits && desktopTabs.height <= 110 && desktopTabs.columns === 5,
+        check('Workout utility submenu uses four unique desktop destinations',
+            desktopTabs.fits && desktopTabs.height <= 110 && desktopTabs.columns === 4,
             `${desktopTabs.columns} columns · ${desktopTabs.height}px`);
 
         check('No uncaught JavaScript errors', runtimeErrors.length === 0, runtimeErrors.join(' | '));
