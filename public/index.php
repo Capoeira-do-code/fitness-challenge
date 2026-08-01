@@ -781,7 +781,11 @@ if ($page === 'register') {
 
     $registrationToken = trim((string) ($_POST['token'] ?? ($_GET['token'] ?? '')));
     $registrationInvite = registration_invite_from_token($pdo, $registrationToken);
+    $publicRegistrationEnabled = public_registration_enabled($pdo);
     $registrationInviteStatus = $registrationInvite !== null ? registration_invite_status($registrationInvite) : 'invalid';
+    $registrationMode = $registrationInviteStatus === 'active'
+        ? 'invite'
+        : ($publicRegistrationEnabled ? 'public' : ($registrationToken === '' ? 'closed' : 'invalid'));
     $registrationError = '';
     if (is_post()) {
         $requestedLocale = normalize_locale((string) ($_POST['locale'] ?? resolve_locale($config)), config_default_locale($config));
@@ -789,8 +793,8 @@ if ($page === 'register') {
         set_current_locale($requestedLocale);
         if (!csrf_verify()) {
             $registrationError = t('flash.csrf');
-        } elseif ($registrationInviteStatus !== 'active') {
-            $registrationError = t('register.invite_invalid');
+        } elseif (!in_array($registrationMode, ['invite', 'public'], true)) {
+            $registrationError = t($registrationMode === 'closed' ? 'register.registration_closed' : 'register.invite_invalid');
         } elseif ((string) ($_POST['password'] ?? '') !== (string) ($_POST['password_confirm'] ?? '')) {
             $registrationError = t('flash.password_mismatch');
         } else {
@@ -811,7 +815,11 @@ if ($page === 'register') {
                     ? $e->getMessage()
                     : t('register.failed');
                 $registrationInvite = registration_invite_from_token($pdo, $registrationToken);
+                $publicRegistrationEnabled = public_registration_enabled($pdo);
                 $registrationInviteStatus = $registrationInvite !== null ? registration_invite_status($registrationInvite) : 'invalid';
+                $registrationMode = $registrationInviteStatus === 'active'
+                    ? 'invite'
+                    : ($publicRegistrationEnabled ? 'public' : ($registrationToken === '' ? 'closed' : 'invalid'));
             }
         }
     }
@@ -823,6 +831,7 @@ if ($page === 'register') {
         'registrationToken' => $registrationToken,
         'registrationInvite' => $registrationInvite,
         'registrationInviteStatus' => $registrationInviteStatus,
+        'registrationMode' => $registrationMode,
         'registrationError' => $registrationError,
         'config' => $config,
     ]);
@@ -918,6 +927,7 @@ if ($page === 'login') {
         'loginBackgroundUrl' => $loginBackgroundUrl,
         'loginRememberDefault' => $loginRememberDefault,
         'loginStyle' => $loginStyle,
+        'publicRegistrationEnabled' => public_registration_enabled($pdo),
         'config' => $config,
     ]);
 }
@@ -3785,6 +3795,9 @@ if ($page === 'workouts') {
                         throw new RuntimeException(t('flash.error'));
                     }
                     flash_set('success', t('workouts.routine_media_saved'));
+                    if ((string) ($_POST['after_create'] ?? '') === 'add_exercise') {
+                        redirect('/?page=workouts&view=library&target_routine_id=' . $rid);
+                    }
                     redirect('/?page=workouts&routine_id=' . $rid);
                 } catch (Throwable $e) {
                     flash_set('error', $e->getMessage());
@@ -4721,6 +4734,11 @@ if ($page === 'workouts') {
             'next_exercise' => $activeNextExercise,
         ];
     }
+    $wkAllRoutines = wk_routines_for_user($pdo, $meId, true);
+    $wkRoutineExerciseNamePreviews = $wkView === 'list'
+        ? wk_routine_exercise_name_previews($pdo, array_column($wkAllRoutines, 'id'))
+        : [];
+
     render_view('workouts', [
         'title' => t('workouts.title'),
         'currentPage' => 'workouts',
@@ -4736,7 +4754,8 @@ if ($page === 'workouts') {
         'wkStatsExerciseHistory' => $wkStatsExerciseHistory ?? [],
         'wkFriendRoutines' => $wkFriendRoutines ?? [],
         'wkStatsCompare' => $wkStatsCompare ?? null,
-        'wkRoutines' => wk_routines_for_user($pdo, $meId, true),
+        'wkRoutines' => $wkAllRoutines,
+        'wkRoutineExerciseNamePreviews' => $wkRoutineExerciseNamePreviews,
         'wkRoutine' => $wkRoutine,
         'wkRoutineExercises' => $wkRoutineExercises,
         'wkRoutineExercise' => $wkRoutineExercise,
@@ -7616,6 +7635,17 @@ if ($page === 'admin') {
             redirect('/?page=admin&section=registration_links');
         }
 
+        if ($action === 'update_public_registration') {
+            set_app_setting(
+                $pdo,
+                'public_registration_enabled',
+                bool_from_form('public_registration_enabled') === 1 ? '1' : '0',
+                (int) $currentUser['id']
+            );
+            flash_set('success', t('flash.public_registration_updated'));
+            redirect('/?page=admin&section=users');
+        }
+
         if ($action === 'create_user') {
             $payload = [
                 'username' => trim((string) ($_POST['username'] ?? '')),
@@ -8510,6 +8540,7 @@ if ($page === 'admin') {
         'users' => $users,
         'registrationInvites' => $registrationInvites,
         'registrationInviteUrl' => $registrationInviteUrl,
+        'publicRegistrationEnabled' => public_registration_enabled($pdo),
         'team' => $team,
         'teamMembers' => list_team_members($pdo, (int) $team['id'], false),
         'joinRequests' => pending_team_join_requests($pdo, (int) $team['id']),

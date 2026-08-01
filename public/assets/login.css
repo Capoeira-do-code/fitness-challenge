@@ -218,6 +218,34 @@ body[data-page="login"] .flash {
 .loginx-submit-arrow { font-size: 1.15rem; transition: transform 0.18s ease; }
 .loginx-submit:hover .loginx-submit-arrow { transform: translateX(4px); }
 
+.loginx-register {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem 0.55rem;
+    margin: 1.05rem 0 0;
+    padding-top: 1rem;
+    border-top: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+.loginx-register a {
+    display: inline-flex;
+    min-height: 42px;
+    align-items: center;
+    gap: 0.35rem;
+    margin-block: -8px;
+    padding: 8px 5px;
+    color: var(--primary-dark);
+    font-weight: 850;
+    text-decoration: none;
+}
+.loginx-register a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.loginx-register a:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 7px; }
+.loginx-register a > span { transition: transform 0.18s ease; }
+.loginx-register a:hover > span { transform: translateX(3px); }
+
 /* ---- Responsive ---- */
 @media (max-width: 860px) {
     .loginx-shell { grid-template-columns: 1fr; gap: 1.6rem; width: min(430px, 100%); }

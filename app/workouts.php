@@ -1733,6 +1733,53 @@ function wk_routines_for_user(PDO $pdo, int $userId, bool $includeArchived = fal
     return db_fetch_all($pdo, $sql, [':u' => $userId]);
 }
 
+/**
+ * Return a short, localized exercise-name preview for each routine without
+ * issuing one query per card on the Training hub.
+ *
+ * @param array<int,int|string> $routineIds
+ * @return array<int,array<int,string>>
+ */
+function wk_routine_exercise_name_previews(PDO $pdo, array $routineIds, int $limit = 6): array
+{
+    $routineIds = array_values(array_unique(array_filter(array_map('intval', $routineIds), static fn(int $id): bool => $id > 0)));
+    if ($routineIds === []) {
+        return [];
+    }
+
+    $limit = max(1, min(12, $limit));
+    $params = [];
+    $placeholders = [];
+    foreach ($routineIds as $index => $routineId) {
+        $placeholder = ':routine_' . $index;
+        $placeholders[] = $placeholder;
+        $params[$placeholder] = $routineId;
+    }
+    $rows = db_fetch_all(
+        $pdo,
+        'SELECT re.routine_id, ed.*
+         FROM routine_exercises re
+         JOIN exercise_definitions ed ON ed.id = re.exercise_def_id
+         WHERE re.routine_id IN (' . implode(', ', $placeholders) . ')
+         ORDER BY re.routine_id ASC, re.sort_order ASC, re.id ASC',
+        $params
+    );
+    $previews = array_fill_keys($routineIds, []);
+    foreach ($rows as $row) {
+        $routineId = (int) ($row['routine_id'] ?? 0);
+        if ($routineId <= 0 || count($previews[$routineId] ?? []) >= $limit) {
+            continue;
+        }
+        $content = wk_exercise_content($row);
+        $name = trim((string) ($content['name'] ?? $row['name'] ?? ''));
+        if ($name !== '') {
+            $previews[$routineId][] = $name;
+        }
+    }
+
+    return $previews;
+}
+
 function wk_routine_get(PDO $pdo, int $id, int $userId): ?array
 {
     return db_fetch_one(

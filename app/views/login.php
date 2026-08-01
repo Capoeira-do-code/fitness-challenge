@@ -5,6 +5,7 @@ declare(strict_types=1);
 $loginIconUrl = trim((string) ($loginAppIconUrl ?? ''));
 $appName = (string) (app_setting($GLOBALS['pdo'], 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge Tracker')) ?? 'Fitness Challenge Tracker');
 $loginRememberDefault = !empty($loginRememberDefault);
+$publicRegistrationEnabled = !empty($publicRegistrationEnabled);
 $loginRetryUsername = trim((string) ($_GET['username'] ?? ''));
 // The visual variant is retained for compatibility; this screen ships one bold look.
 $loginStyle = login_style_normalize($loginStyle ?? 'split');
@@ -86,6 +87,12 @@ $loginStyle = login_style_normalize($loginStyle ?? 'split');
                         <span class="loginx-submit-arrow" aria-hidden="true">&rarr;</span>
                     </button>
                 </form>
+                <?php if ($publicRegistrationEnabled): ?>
+                    <p class="loginx-register">
+                        <span><?= e(t('login.new_account_hint')) ?></span>
+                        <a href="/?page=register"><?= e(t('login.create_account')) ?><span aria-hidden="true">&rarr;</span></a>
+                    </p>
+                <?php endif; ?>
             </div>
         </div>
     </div>

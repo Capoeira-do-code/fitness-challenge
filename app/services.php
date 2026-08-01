@@ -3351,9 +3351,15 @@ function register_user_with_invite(PDO $pdo, string $token, array $payload): arr
     $pdo->exec('BEGIN IMMEDIATE');
     $transactionActive = true;
     try {
-        $invite = registration_invite_from_token($pdo, $token);
-        if ($invite === null || registration_invite_status($invite) !== 'active') {
-            throw new InvalidArgumentException(t('register.invite_invalid'));
+        $publicRegistrationEnabled = public_registration_enabled($pdo);
+        $invite = $token !== '' ? registration_invite_from_token($pdo, $token) : null;
+        $inviteIsActive = $invite !== null && registration_invite_status($invite) === 'active';
+        if (!$inviteIsActive && !$publicRegistrationEnabled) {
+            $messageKey = $token === '' ? 'register.registration_closed' : 'register.invite_invalid';
+            throw new InvalidArgumentException(t($messageKey));
+        }
+        if (!$inviteIsActive) {
+            $invite = null;
         }
         $existing = db_fetch_one($pdo, 'SELECT id FROM users WHERE LOWER(username) = LOWER(:username)', [':username' => $username]);
         if ($existing !== null) {
@@ -3382,16 +3388,27 @@ function register_user_with_invite(PDO $pdo, string $token, array $payload): arr
         }
         $locale = normalize_locale((string) ($payload['locale'] ?? 'en'), 'en');
         db_execute($pdo, 'UPDATE users SET locale = :locale WHERE id = :id', [':locale' => $locale, ':id' => (int) $user['id']]);
-        db_execute(
-            $pdo,
-            'UPDATE registration_invites
-             SET used_count = used_count + 1, last_used_at = :last_used_at,
-                 active = CASE WHEN used_count + 1 >= max_uses THEN 0 ELSE active END
-             WHERE id = :id',
-            [':last_used_at' => now_iso(), ':id' => (int) $invite['id']]
-        );
+        if ($invite !== null) {
+            db_execute(
+                $pdo,
+                'UPDATE registration_invites
+                 SET used_count = used_count + 1, last_used_at = :last_used_at,
+                     active = CASE WHEN used_count + 1 >= max_uses THEN 0 ELSE active END
+                 WHERE id = :id',
+                [':last_used_at' => now_iso(), ':id' => (int) $invite['id']]
+            );
+        }
         $user = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $user['id']]) ?? $user;
-        audit_log($pdo, (int) $user['id'], 'user_registered', 'user', (string) $user['id'], 'User registered from invite.', null, audit_snapshot($user, ['password_hash']));
+        audit_log(
+            $pdo,
+            (int) $user['id'],
+            'user_registered',
+            'user',
+            (string) $user['id'],
+            $invite !== null ? 'User registered from invite.' : 'User registered publicly.',
+            null,
+            audit_snapshot($user, ['password_hash'])
+        );
         $pdo->exec('COMMIT');
         $transactionActive = false;
 
@@ -6433,6 +6450,13 @@ function set_app_setting(PDO $pdo, string $key, ?string $value, int $actorUserId
 function penalties_enabled(PDO $pdo): bool
 {
     $value = strtolower(trim((string) (app_setting($pdo, 'penalties_enabled', '0') ?? '0')));
+
+    return in_array($value, ['1', 'true', 'yes', 'on'], true);
+}
+
+function public_registration_enabled(PDO $pdo): bool
+{
+    $value = strtolower(trim((string) (app_setting($pdo, 'public_registration_enabled', '0') ?? '0')));
 
     return in_array($value, ['1', 'true', 'yes', 'on'], true);
 }

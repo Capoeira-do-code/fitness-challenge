@@ -28,6 +28,7 @@ foreach ((array) ($adminAchievements ?? []) as $adminAchievementCandidate) {
     }
 }
 $penaltiesEnabled = !empty($penaltiesEnabled);
+$publicRegistrationEnabled = !empty($publicRegistrationEnabled);
 $mediaSearchEnabled = !empty($mediaSearchEnabled);
 $mediaSearchGoogleReady = !empty($mediaSearchGoogleReady);
 $mediaSearchYoutubeReady = !empty($mediaSearchYoutubeReady);
@@ -295,6 +296,22 @@ try {
                 <span><strong><?= $adminUsersAdmins ?></strong><small><?= e(t('common.admin')) ?></small></span>
                 <span><strong><?= $adminUsersPending ?></strong><small><?= e(t('admin.users_pending_setup')) ?></small></span>
             </div>
+            <form method="post" action="/?page=admin&amp;section=users" class="admin-users-public-registration <?= $publicRegistrationEnabled ? 'is-enabled' : '' ?>">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="update_public_registration">
+                <span class="admin-users-registration-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span>
+                <span class="admin-users-public-copy">
+                    <strong><?= e(t('admin.public_registration_title')) ?></strong>
+                    <small><?= e(t('admin.public_registration_hint')) ?></small>
+                </span>
+                <span class="admin-users-public-state"><?= e(t($publicRegistrationEnabled ? 'admin.public_registration_open' : 'admin.public_registration_invite_only')) ?></span>
+                <label class="admin-users-public-toggle">
+                    <input type="checkbox" name="public_registration_enabled" value="1" <?= $publicRegistrationEnabled ? 'checked' : '' ?>>
+                    <span aria-hidden="true"></span>
+                    <span class="sr-only"><?= e(t('admin.public_registration_title')) ?></span>
+                </label>
+                <button class="btn btn-ghost small" type="submit"><?= e(t('common.save')) ?></button>
+            </form>
             <a class="admin-users-registration-link" href="/?page=admin&amp;section=registration_links" data-spa-link>
                 <span class="admin-users-registration-icon" aria-hidden="true"><?= activity_icon_svg('link') ?></span>
                 <span><strong><?= e(t('admin.registration_links_title')) ?></strong><small><?= e(t('admin.registration_links_short_hint')) ?></small></span>

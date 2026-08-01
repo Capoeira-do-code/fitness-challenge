@@ -6482,6 +6482,43 @@ document.addEventListener('click', (event) => {
     }
 })();
 
+// Routine builder: the prominent "Add exercise" action creates the routine
+// first and then continues directly into the contextual exercise picker.
+(() => {
+    const bindRoutineCreateFlow = () => {
+        document.querySelectorAll('[data-routine-create-form]').forEach((form) => {
+            if (!(form instanceof HTMLFormElement) || form.dataset.routineCreateReady === '1') return;
+            form.dataset.routineCreateReady = '1';
+            const continueButton = form.querySelector('[data-routine-create-add-exercise]');
+            const afterCreate = form.querySelector('[data-routine-create-after]');
+            const submitButton = form.querySelector('[data-routine-create-submit]');
+            const nameInput = form.querySelector('input[name="name"]');
+            const saveButton = form.closest('.workouts-routine-modal-card')?.querySelector('[data-routine-create-save]');
+            if (!(continueButton instanceof HTMLButtonElement)
+                || !(afterCreate instanceof HTMLInputElement)
+                || !(submitButton instanceof HTMLButtonElement)) return;
+
+            const syncSaveState = () => {
+                if (saveButton instanceof HTMLButtonElement) {
+                    saveButton.disabled = !(nameInput instanceof HTMLInputElement) || nameInput.value.trim() === '';
+                }
+            };
+            nameInput?.addEventListener('input', syncSaveState);
+            syncSaveState();
+
+            continueButton.addEventListener('click', () => {
+                if (!form.reportValidity()) return;
+                afterCreate.value = 'add_exercise';
+                form.requestSubmit(submitButton);
+            });
+        });
+    };
+
+    document.addEventListener('DOMContentLoaded', bindRoutineCreateFlow);
+    document.addEventListener('fitness:navigation-complete', bindRoutineCreateFlow);
+    if (document.readyState !== 'loading') bindRoutineCreateFlow();
+})();
+
 (function () {
     'use strict';
     function initFeedComments(root) {

@@ -44,6 +44,34 @@ $admin = db_fetch_one($pdo, 'SELECT * FROM users WHERE role = "admin" ORDER BY i
 $check($admin !== null, 'the QA database has an administrator');
 $adminId = (int) ($admin['id'] ?? 0);
 
+$check(!public_registration_enabled($pdo), 'public registration is closed by default');
+$closedRegistrationRejected = false;
+try {
+    register_user_with_invite($pdo, '', [
+        'username' => 'qa.closed.registration',
+        'display_name' => 'QA Closed Registration',
+        'password' => 'StrongPass123!',
+        'locale' => 'en',
+    ]);
+} catch (InvalidArgumentException $exception) {
+    $closedRegistrationRejected = $exception->getMessage() === t('register.registration_closed');
+}
+$check($closedRegistrationRejected, 'a direct registration request is rejected while public access is closed');
+
+set_app_setting_silent($pdo, 'public_registration_enabled', '1', $adminId);
+$check(public_registration_enabled($pdo), 'an administrator setting can open public registration');
+$publicUser = register_user_with_invite($pdo, '', [
+    'username' => 'qa.public.registration',
+    'display_name' => 'QA Public Registration',
+    'password' => 'StrongPass123!',
+    'locale' => 'it',
+]);
+$check((int) ($publicUser['id'] ?? 0) > 0, 'public registration creates an account without an invitation');
+$check(onboarding_is_pending($publicUser), 'publicly registered users enter the same onboarding flow');
+$check((string) ($publicUser['locale'] ?? '') === 'it', 'public registration persists the selected language');
+set_app_setting_silent($pdo, 'public_registration_enabled', '0', $adminId);
+$check(!public_registration_enabled($pdo), 'public registration can be closed again');
+
 $serverOriginSnapshot = [
     'HTTP_HOST' => $_SERVER['HTTP_HOST'] ?? null,
     'HTTP_X_FORWARDED_HOST' => $_SERVER['HTTP_X_FORWARDED_HOST'] ?? null,

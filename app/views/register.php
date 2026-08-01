@@ -2,27 +2,29 @@
 
 declare(strict_types=1);
 
-$inviteIsValid = (string) ($registrationInviteStatus ?? 'invalid') === 'active';
+$registrationMode = (string) ($registrationMode ?? 'invalid');
+$registrationIsPublic = $registrationMode === 'public';
+$registrationCanContinue = in_array($registrationMode, ['invite', 'public'], true);
 $inviteLabel = trim((string) (($registrationInvite['label'] ?? '')));
 ?>
 <section class="registration-shell" data-registration-page>
     <header class="registration-brand">
         <span class="registration-brand-mark" aria-hidden="true"><?= activity_icon_svg('users') ?></span>
-        <div><p class="eyebrow"><?= e(t('register.invited')) ?></p><h1><?= e(t('register.title')) ?></h1></div>
+        <div><p class="eyebrow"><?= e(t($registrationIsPublic ? 'register.public_eyebrow' : 'register.invited')) ?></p><h1><?= e(t('register.title')) ?></h1></div>
     </header>
 
     <article class="registration-card">
-        <?php if (!$inviteIsValid): ?>
+        <?php if (!$registrationCanContinue): ?>
             <div class="registration-invalid" role="alert">
                 <span aria-hidden="true"><?= activity_icon_svg('shield') ?></span>
-                <h2><?= e(t('register.invite_invalid_title')) ?></h2>
-                <p><?= e(t('register.invite_invalid')) ?></p>
+                <h2><?= e(t($registrationMode === 'closed' ? 'register.registration_closed_title' : 'register.invite_invalid_title')) ?></h2>
+                <p><?= e(t($registrationMode === 'closed' ? 'register.registration_closed' : 'register.invite_invalid')) ?></p>
                 <a class="btn btn-primary" href="/?page=login"><?= e(t('register.back_login')) ?></a>
             </div>
         <?php else: ?>
             <div class="registration-copy">
                 <h2><?= e(t('register.create_account')) ?></h2>
-                <p><?= e($inviteLabel !== '' ? t('register.invite_for', ['label' => $inviteLabel]) : t('register.subtitle')) ?></p>
+                <p><?= e($registrationIsPublic ? t('register.public_subtitle') : ($inviteLabel !== '' ? t('register.invite_for', ['label' => $inviteLabel]) : t('register.subtitle'))) ?></p>
             </div>
             <?php if ((string) ($registrationError ?? '') !== ''): ?>
                 <div class="registration-error" role="alert"><?= e((string) $registrationError) ?></div>

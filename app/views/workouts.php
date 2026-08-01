@@ -64,7 +64,7 @@ $workoutExerciseMark = static fn(array $exercise): string => wk_exercise_visual_
 $hubViews = ['list', 'plan', 'library', 'friends', 'ranks', 'analytics'];
 $tabView = $wkView === 'analytics' ? 'stats' : ($wkView === 'list' ? 'overview' : $wkView);
 $workoutHubLabels = [
-    'overview' => [t('workouts.tab_overview'), t('workouts.subtitle')],
+    'overview' => [t('workouts.title'), t('workouts.subtitle')],
     'plan' => [t('workouts.tab_plan'), t('workouts.plan_subtitle')],
     'library' => [t('workouts.tab_library'), t('workouts.library_subtitle')],
     'friends' => [t('workouts.friend_routines'), t('workouts.friend_routines_subtitle')],
@@ -74,6 +74,7 @@ $workoutHubLabels = [
 $workoutHeroTitle = (string) ($workoutHubLabels[$tabView][0] ?? t('workouts.title'));
 $workoutHeroHint = (string) ($workoutHubLabels[$tabView][1] ?? t('workouts.subtitle'));
 $activeRoutines = array_values(array_filter((array) ($wkRoutines ?? []), static fn($r) => (int) ($r['is_archived'] ?? 0) === 0));
+$routineExerciseNamePreviews = (array) ($wkRoutineExerciseNamePreviews ?? []);
 $addedRoutineId = max(0, (int) ($_GET['added_routine_id'] ?? 0));
 $addedRoutine = null;
 if ($addedRoutineId > 0) {
@@ -199,7 +200,7 @@ $libraryClearUrl = $libraryUrl([
     'library_page' => null,
 ]);
 ?>
-<section class="screen stack-lg workouts-screen workouts-view-<?= e($wkView) ?>">
+<section class="screen stack-lg workouts-screen workouts-view-<?= e($wkView) ?><?= $hasLibraryTarget ? ' has-library-target' : '' ?>">
     <?php if ($wkView !== 'custom_exercise'): ?>
     <div class="hero-panel workouts-hero<?= in_array($wkView, $hubViews, true) ? ' workouts-hero-hub' : '' ?>">
         <div class="hero-copy hero-copy-page-title">
@@ -230,6 +231,19 @@ $libraryClearUrl = $libraryUrl([
             <a class="hierarchy-back destination-back" href="<?= e($workoutBack) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e($workoutBackDestination) ?>"><span aria-hidden="true">&larr;</span><strong><?= e($workoutBackDestination) ?></strong></a>
         <?php endif; ?>
     </div>
+    <?php endif; ?>
+
+    <?php if ($wkView === 'list'): ?>
+        <nav class="workouts-training-commandbar" aria-label="<?= e(t('workouts.title')) ?>">
+            <button type="button" data-app-modal-open="wk-new-routine-modal">
+                <span aria-hidden="true"><?= activity_icon_svg('clipboard') ?></span>
+                <strong><?= e(t('workouts.new_routine')) ?></strong>
+            </button>
+            <a href="/?page=workouts&amp;view=library">
+                <span aria-hidden="true"><?= activity_icon_svg('search') ?></span>
+                <strong><?= e(t('workouts.explore_exercises')) ?></strong>
+            </a>
+        </nav>
     <?php endif; ?>
 
     <?php if ($wkView === 'list'): ?>
@@ -435,13 +449,15 @@ $libraryClearUrl = $libraryUrl([
             </details>
 
     <?php if ($activeRoutines === []): ?>
-        <button type="button" class="workouts-routines-empty-create" data-app-modal-open="wk-new-routine-modal">
-            <span class="workouts-overview-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
-            <strong><?= e(t('workouts.create_new_routine')) ?></strong>
-            <span aria-hidden="true">+</span>
-        </button>
+        <section class="workouts-routines-empty-block" aria-labelledby="workouts-empty-routines-title">
+            <header><span aria-hidden="true">⌄</span><h2 id="workouts-empty-routines-title"><?= e(t('workouts.your_routines')) ?></h2></header>
+            <button type="button" class="workouts-routines-empty-create" data-app-modal-open="wk-new-routine-modal">
+                <span aria-hidden="true">+</span>
+                <strong><?= e(t('workouts.create_new_routine')) ?></strong>
+            </button>
+        </section>
     <?php else: ?>
-        <details class="workouts-overview-disclosure workouts-routines-disclosure" data-persist-disclosure="workouts.routines">
+        <details class="workouts-overview-disclosure workouts-routines-disclosure" data-persist-disclosure="workouts.routines" open>
             <summary>
                 <span class="workouts-overview-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
                 <span><strong><?= e(t('workouts.your_routines')) ?></strong><small><?= e(t(count($activeRoutines) === 1 ? 'workouts.routine_count_one' : 'workouts.routine_count', ['count' => count($activeRoutines)])) ?></small></span>
@@ -450,15 +466,22 @@ $libraryClearUrl = $libraryUrl([
             <div class="workouts-overview-disclosure-body workouts-routines-disclosure-body">
                 <div class="workouts-routines-head-actions" aria-label="<?= e(t('workouts.your_routines')) ?>">
                     <button type="button" class="btn btn-primary small" data-app-modal-open="wk-new-routine-modal"><span aria-hidden="true">+</span> <?= e(t('workouts.new_routine')) ?></button>
-                    <?php if (count($activeRoutines) > 3): ?><a class="btn btn-ghost small workouts-organize-routines-link" href="/?page=workouts&view=organize"><?= e(t('common.view_all')) ?></a><?php endif; ?>
+                    <?php if (count($activeRoutines) > 1): ?><a class="btn btn-ghost small workouts-organize-routines-link" href="/?page=workouts&view=organize"><?= e(t('menu.organize')) ?></a><?php endif; ?>
                 </div>
             <div class="workouts-routine-grid workouts-routine-preview-grid">
-                <?php foreach (array_slice($activeRoutines, 0, 3) as $routine): ?>
+                <?php foreach ($activeRoutines as $routine): ?>
                     <?php
                     $rid = (int) $routine['id'];
                     $routineIcon = wk_normalize_routine_icon($routine['icon'] ?? 'dumbbell');
                     $routineAccent = wk_normalize_routine_color($routine['accent_color'] ?? '#14b8a6');
                     $routineCover = $workoutCoverAsset((array) $routine);
+                    $routineExerciseNames = array_values((array) ($routineExerciseNamePreviews[$rid] ?? []));
+                    $routineExercisePreview = $routineExerciseNames !== []
+                        ? implode(', ', $routineExerciseNames)
+                        : trim((string) ($routine['description'] ?? ''));
+                    if ($routineExercisePreview === '') {
+                        $routineExercisePreview = t('workouts.add_exercises_hint');
+                    }
                     [$routineStateKey, $routineStateLabel] = $workoutRoutineState((array) $routine);
                     $routineMenu = render_kebab_menu([
                         ['label' => t('common.edit'), 'href' => '/?page=workouts&routine_id=' . $rid],
@@ -480,6 +503,7 @@ $libraryClearUrl = $libraryUrl([
                         </a>
                         <a class="workouts-routine-preview-copy" href="/?page=workouts&amp;routine_id=<?= $rid ?>">
                             <span><strong><?= e((string) $routine['name']) ?></strong><?php if ((int) ($routine['is_favorite'] ?? 0) === 1): ?><span class="workouts-fav-star" aria-label="<?= e(t('workouts.favorite')) ?>">★</span><?php endif; ?></span>
+                            <p class="workouts-routine-exercise-preview"><?= e($routineExercisePreview) ?></p>
                             <small class="workouts-routine-preview-meta"><span class="state-<?= e($routineStateKey) ?>"><i aria-hidden="true"></i><?= e($routineStateLabel) ?></span><span aria-hidden="true">·</span><span class="workouts-routine-preview-count"><?php $rPreviewExCount = (int) ($routine['exercise_count'] ?? 0); ?><?= e(t($rPreviewExCount === 1 ? 'workouts.exercise_count_one' : 'workouts.exercise_count', ['count' => $rPreviewExCount])) ?></span></small>
                         </a>
                         <div class="workouts-routine-preview-actions">
@@ -487,16 +511,14 @@ $libraryClearUrl = $libraryUrl([
                                 <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
                                 <input type="hidden" name="action" value="session_start">
                                 <input type="hidden" name="routine_id" value="<?= $rid ?>">
-                                <button type="<?= !empty($wkActiveSession) ? 'button' : 'submit' ?>" class="btn btn-primary small workouts-routine-start-btn" aria-label="<?= e(t('workouts.start_routine')) ?>: <?= e((string) $routine['name']) ?>" title="<?= e(t('workouts.start_routine')) ?>"<?= !empty($wkActiveSession) ? ' data-app-modal-open="wk-start-confirm-modal" data-wk-confirm-start' : '' ?>><span aria-hidden="true">&#9654;</span><span class="sr-only"><?= e(t('workouts.start_routine')) ?></span></button>
+                                <button type="<?= !empty($wkActiveSession) ? 'button' : 'submit' ?>" class="btn btn-primary small workouts-routine-start-btn" aria-label="<?= e(t('workouts.start_routine')) ?>: <?= e((string) $routine['name']) ?>" title="<?= e(t('workouts.start_routine')) ?>"<?= !empty($wkActiveSession) ? ' data-app-modal-open="wk-start-confirm-modal" data-wk-confirm-start' : '' ?>><span aria-hidden="true">&#9654;</span><span class="workouts-routine-start-label"><?= e(t('workouts.start_routine')) ?></span></button>
                             </form>
                             <?= $routineMenu ?>
                         </div>
                     </article>
                 <?php endforeach; ?>
             </div>
-            <?php if (count($activeRoutines) > 3): ?>
-                <a class="workouts-routine-preview-more" href="/?page=workouts&amp;view=organize"><span><?= e(t('common.view_all')) ?></span><strong><?= count($activeRoutines) ?></strong><span aria-hidden="true">&rarr;</span></a>
-            <?php endif; ?>
+            <button type="button" class="workouts-routine-add-card" data-app-modal-open="wk-new-routine-modal"><span aria-hidden="true">+</span><strong><?= e(t('workouts.create_new_routine')) ?></strong></button>
             </div>
         </details>
     <?php endif; ?>
@@ -730,9 +752,11 @@ $libraryClearUrl = $libraryUrl([
 <?php elseif ($wkView === 'library'): ?>
     <?php if ($hasLibraryTarget): ?>
         <aside class="workouts-library-target" aria-label="<?= e(t('workouts.add_exercises')) ?>">
+            <a class="workouts-picker-cancel" href="<?= e($targetSessionId > 0 ? '/?page=workouts&session_id=' . $targetSessionId : '/?page=workouts&routine_id=' . $targetRoutineId) ?>"><?= e(t('common.cancel')) ?></a>
             <span class="workouts-library-target-icon"<?= $targetRoutineId > 0 ? ' style="--routine-accent: ' . e(wk_normalize_routine_color($targetRoutine['accent_color'] ?? '#14b8a6')) . '"' : '' ?>><?= activity_icon_svg($targetSessionId > 0 ? 'fire' : wk_normalize_routine_icon($targetRoutine['icon'] ?? 'dumbbell')) ?></span>
-            <div><small><?= e($targetSessionId > 0 ? t('workouts.adding_to_session') : t('workouts.add_exercises_to')) ?></small><strong><?= e($targetSessionId > 0 ? ((string) ($targetSession['title'] ?? '') !== '' ? (string) $targetSession['title'] : t('workouts.active_session')) : (string) ($targetRoutine['name'] ?? '')) ?></strong></div>
-            <a class="btn btn-primary small" href="<?= e($targetSessionId > 0 ? '/?page=workouts&session_id=' . $targetSessionId : '/?page=workouts&routine_id=' . $targetRoutineId) ?>"><?= e($targetSessionId > 0 ? t('workouts.back_to_session') : t('workouts.finish_adding')) ?></a>
+            <div><small><?= e($targetSessionId > 0 ? t('workouts.adding_to_session') : t('workouts.add_exercises_to')) ?></small><strong class="workouts-library-target-name"><?= e($targetSessionId > 0 ? ((string) ($targetSession['title'] ?? '') !== '' ? (string) $targetSession['title'] : t('workouts.active_session')) : (string) ($targetRoutine['name'] ?? '')) ?></strong><strong class="workouts-picker-title"><?= e(t('workouts.add_exercise')) ?></strong></div>
+            <a class="workouts-picker-create" href="<?= e($customExerciseUrl) ?>"><?= e(t('common.create')) ?></a>
+            <a class="btn btn-primary small workouts-library-target-done" href="<?= e($targetSessionId > 0 ? '/?page=workouts&session_id=' . $targetSessionId : '/?page=workouts&routine_id=' . $targetRoutineId) ?>"><?= e($targetSessionId > 0 ? t('workouts.back_to_session') : t('workouts.finish_adding')) ?></a>
         </aside>
     <?php endif; ?>
     <?php if ($libraryMode !== 'organize'): ?>
@@ -742,7 +766,7 @@ $libraryClearUrl = $libraryUrl([
             <a href="<?= e($libraryUrl(['scope' => 'favorites', 'library_page' => null])) ?>"<?= $libraryScope === 'favorites' ? ' aria-current="page"' : '' ?>><span class="workouts-library-scope-icon" aria-hidden="true"><?= activity_icon_svg('star') ?></span><span class="workouts-library-scope-label"><span class="workouts-library-scope-label-full"><?= e(t('workouts.favorites')) ?></span><span class="workouts-library-scope-label-short"><?= e(t('workouts.favorites')) ?></span></span><strong><?= $favoriteExerciseCount ?></strong></a>
             <a href="<?= e($libraryUrl(['scope' => 'mine', 'library_page' => null])) ?>"<?= $libraryScope === 'mine' ? ' aria-current="page"' : '' ?>><span class="workouts-library-scope-icon" aria-hidden="true"><?= activity_icon_svg('user') ?></span><span class="workouts-library-scope-label"><span class="workouts-library-scope-label-full"><?= e(t('workouts.my_exercises')) ?></span><span class="workouts-library-scope-label-short"><?= e(t('workouts.my_exercises_short')) ?></span></span><strong><?= $personalExerciseCount ?></strong></a>
         </nav>
-        <form method="get" action="/" id="workouts-library-search" class="workouts-library-mobile-search workouts-library-quick-search<?= $hasLibrarySearch ? ' is-open' : '' ?>" data-workout-search-panel aria-hidden="<?= $hasLibrarySearch ? 'false' : 'true' ?>">
+        <form method="get" action="/" id="workouts-library-search" class="workouts-library-mobile-search workouts-library-quick-search<?= ($hasLibrarySearch || $hasLibraryTarget) ? ' is-open' : '' ?>" data-workout-search-panel aria-hidden="<?= ($hasLibrarySearch || $hasLibraryTarget) ? 'false' : 'true' ?>">
             <input type="hidden" name="page" value="workouts"><input type="hidden" name="view" value="library">
             <?php if ($targetRoutineId > 0): ?><input type="hidden" name="target_routine_id" value="<?= $targetRoutineId ?>"><?php endif; ?>
             <?php if ($targetSessionId > 0): ?><input type="hidden" name="target_session_id" value="<?= $targetSessionId ?>"><?php endif; ?>
@@ -753,6 +777,12 @@ $libraryClearUrl = $libraryUrl([
             <label class="workouts-library-search-field"><span class="sr-only"><?= e(t('workouts.search_exercises')) ?></span><input type="search" name="q" value="<?= e((string) ($filters['q'] ?? '')) ?>" placeholder="<?= e(t('workouts.search_exercises')) ?>"><?php if ($hasAnyLibraryFilter): ?><a class="workouts-library-search-clear" href="<?= e($libraryClearUrl) ?>" aria-label="<?= e(t('common.clear')) ?>"><span aria-hidden="true">&times;</span></a><?php endif; ?></label>
             <button class="btn btn-primary btn-icon" type="submit" aria-label="<?= e(t('workouts.search_exercises')) ?>"><?= activity_icon_svg('search') ?></button>
         </form>
+        <?php if ($hasLibraryTarget): ?>
+            <div class="workouts-picker-filter-buttons" aria-label="<?= e(t('common.filter')) ?>">
+                <button type="button" data-workout-filter-open><?= e((string) ($filters['equipment'] ?? '') !== '' ? $equipmentLabel((string) $filters['equipment']) : t('workouts.all_equipment')) ?></button>
+                <button type="button" data-workout-filter-open><?= e($muscleSelectedList !== [] ? implode(', ', array_map($muscleLabel, $muscleSelectedList)) : t('workouts.all_body_parts')) ?></button>
+            </div>
+        <?php endif; ?>
         <div class="workouts-library-results<?= $hasAnyLibraryFilter ? ' is-filtered' : '' ?>" aria-live="polite">
             <strong><?= e(t('workouts.library_results', ['count' => $libraryResultTotal])) ?></strong>
             <?php if ($hasAnyLibraryFilter): ?>
@@ -834,6 +864,7 @@ $libraryClearUrl = $libraryUrl([
         $libraryPages = max(1, (int) ceil($libraryTotal / $libraryPerPage));
         $libraryLoadedCount = min($libraryTotal, $libraryPage * $libraryPerPage);
         ?>
+        <?php if ($hasLibraryTarget): ?><h2 class="workouts-picker-section-title"><?= e(t('workouts.all_exercises')) ?></h2><?php endif; ?>
         <div class="workouts-library-grid<?= $hasLibraryTarget ? ' is-contextual' : '' ?><?= $useCompactLibrary ? ' is-compact' : '' ?>"
              data-library-layout="<?= e($useCompactLibrary ? 'compact' : 'cards') ?>"
              data-library-infinite-grid
@@ -2588,62 +2619,74 @@ $libraryClearUrl = $libraryUrl([
 
 <div class="app-modal" id="wk-new-routine-modal" hidden role="dialog" aria-modal="true" aria-labelledby="wk-new-routine-title">
     <div class="app-modal-card workouts-routine-modal-card">
-        <div class="app-modal-head">
-            <div><p class="eyebrow"><?= e(t('workouts.tab_plan')) ?></p><h2 id="wk-new-routine-title"><?= e(t('workouts.new_routine')) ?></h2></div>
-            <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button>
+        <div class="app-modal-head workouts-routine-builder-head">
+            <button type="button" class="workouts-routine-modal-cancel" data-app-modal-close><?= e(t('common.cancel')) ?></button>
+            <h2 id="wk-new-routine-title"><?= e(t('workouts.create_new_routine')) ?></h2>
+            <button type="submit" class="workouts-routine-modal-save" form="wk-new-routine-form" data-routine-create-save disabled><?= e(t('common.save')) ?></button>
         </div>
-        <form method="post" action="/?page=workouts" enctype="multipart/form-data" class="stack" data-workout-media-editor>
+        <form method="post" action="/?page=workouts" enctype="multipart/form-data" id="wk-new-routine-form" class="stack workouts-routine-builder-form" data-workout-media-editor data-routine-create-form>
             <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
             <input type="hidden" name="action" value="routine_create">
-            <label><?= e(t('workouts.routine_name')) ?><input type="text" name="name" maxlength="80" required placeholder="Push / Pull / Legs…"></label>
-            <label><?= e(t('workouts.description')) ?><input type="text" name="description" maxlength="200"></label>
-            <fieldset class="workouts-routine-identity-picker" data-routine-identity-picker data-workout-color-picker data-workout-color-property="--routine-accent" style="--routine-accent: #14b8a6; --workout-accent: #14b8a6">
-                <legend><?= e(t('workouts.routine_identity')) ?></legend>
-                <p class="muted small"><?= e(t('workouts.routine_identity_hint')) ?></p>
-                <div class="workouts-routine-icon-options" aria-label="<?= e(t('workouts.routine_icon')) ?>">
-                    <?php foreach ($routineIconOptions as $iconKey => $iconLabelKey): ?><label title="<?= e(t($iconLabelKey)) ?>"><input type="radio" name="icon" value="<?= e($iconKey) ?>"<?= $iconKey === 'dumbbell' ? ' checked' : '' ?>><span><?= activity_icon_svg($iconKey) ?><small><?= e(t($iconLabelKey)) ?></small></span></label><?php endforeach; ?>
-                </div>
-                <div class="workouts-routine-color-options" aria-label="<?= e(t('workouts.routine_color')) ?>">
-                    <?php foreach ($routineColorOptions as $colorKey => $colorValue): ?><label title="<?= e(t('workouts.color_' . $colorKey)) ?>"><input type="radio" name="accent_color_preset" value="<?= e($colorValue) ?>" data-routine-color-preset data-workout-color-preset<?= $colorKey === 'teal' ? ' checked' : '' ?>><span style="--swatch: <?= e($colorValue) ?>"><span class="sr-only"><?= e(t('workouts.color_' . $colorKey)) ?></span></span></label><?php endforeach; ?>
-                </div>
-                <label class="workouts-routine-custom-color"><span><strong><?= e(t('workouts.custom_color')) ?></strong><small><?= e(t('workouts.custom_color_hint')) ?></small></span><span class="workouts-routine-custom-color-control"><input type="color" name="accent_color" value="#14b8a6" data-routine-color-input data-workout-color-input aria-label="<?= e(t('workouts.custom_color')) ?>"><output data-routine-color-output data-workout-color-output>#14B8A6</output></span></label>
-            </fieldset>
-            <details class="workouts-routine-create-media">
-                <summary><span><?= activity_icon_svg('image') ?></span><span><strong><?= e(t('workouts.routine_media')) ?></strong><small><?= e(t('workouts.routine_media_optional')) ?></small></span><b aria-hidden="true">+</b></summary>
-                <div class="workouts-routine-create-media-body">
-                    <fieldset class="workouts-custom-cover-picker" data-workout-cover-picker>
-                        <legend><?= e(t('workouts.routine_cover')) ?></legend>
-                        <p><?= e(t('workouts.routine_cover_hint')) ?></p>
-                        <div>
-                            <?php foreach (['auto' => ['spark', 'workouts.cover_auto'], 'photo' => ['image', 'workouts.cover_photo'], 'video' => ['play', 'workouts.cover_video'], 'simple' => ['simple', 'workouts.cover_simple']] as $coverMode => [$coverIcon, $coverLabelKey]): ?>
-                                <label><input type="radio" name="cover_mode" value="<?= e($coverMode) ?>"<?= $coverMode === 'auto' ? ' checked' : '' ?>><span><?php if ($coverIcon === 'play'): ?><b aria-hidden="true">&#9654;</b><?php elseif ($coverIcon === 'simple'): ?><b aria-hidden="true">AB</b><?php else: ?><?= activity_icon_svg($coverIcon) ?><?php endif; ?><strong><?= e(t($coverLabelKey)) ?></strong></span></label>
-                            <?php endforeach; ?>
-                        </div>
-                    </fieldset>
-                    <div class="workouts-custom-media-grid">
-                        <div class="workouts-custom-media-control"><label><?= e(t('workouts.routine_photo')) ?><input type="file" name="routine_image" accept="image/jpeg,image/png,image/webp" data-workout-image-input></label><small><?= e(t('workouts.routine_photo_hint')) ?></small></div>
-                        <div class="workouts-custom-media-control"><label><?= e(t('workouts.routine_video')) ?><input type="url" name="video_url" placeholder="https://www.youtube.com/watch?v=..." inputmode="url" data-workout-video-input></label><small><?= e(t('workouts.routine_video_hint')) ?></small><button class="btn btn-ghost small" type="button" data-workout-clear-video><?= e(t('common.clear')) ?></button></div>
+            <input type="hidden" name="after_create" value="" data-routine-create-after>
+            <label class="workouts-routine-title-field"><span><?= e(t('workouts.routine_name')) ?></span><input type="text" name="name" maxlength="80" required placeholder="Push / Pull / Legs…"></label>
+
+            <div class="workouts-routine-builder-empty">
+                <span class="workouts-routine-builder-empty-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
+                <p><?= e(t('workouts.routine_builder_empty')) ?></p>
+                <button type="button" class="btn btn-primary btn-block" data-routine-create-add-exercise><span aria-hidden="true">+</span> <?= e(t('workouts.add_exercise')) ?></button>
+            </div>
+
+            <div class="workouts-routine-builder-options">
+                <h3><?= e(t('workouts.routine_details')) ?></h3>
+                <label><?= e(t('workouts.description')) ?><input type="text" name="description" maxlength="200"></label>
+                <fieldset class="workouts-routine-identity-picker" data-routine-identity-picker data-workout-color-picker data-workout-color-property="--routine-accent" style="--routine-accent: #14b8a6; --workout-accent: #14b8a6">
+                    <legend><?= e(t('workouts.routine_identity')) ?></legend>
+                    <p class="muted small"><?= e(t('workouts.routine_identity_hint')) ?></p>
+                    <div class="workouts-routine-icon-options" aria-label="<?= e(t('workouts.routine_icon')) ?>">
+                        <?php foreach ($routineIconOptions as $iconKey => $iconLabelKey): ?><label title="<?= e(t($iconLabelKey)) ?>"><input type="radio" name="icon" value="<?= e($iconKey) ?>"<?= $iconKey === 'dumbbell' ? ' checked' : '' ?>><span><?= activity_icon_svg($iconKey) ?><small><?= e(t($iconLabelKey)) ?></small></span></label><?php endforeach; ?>
                     </div>
-                    <fieldset class="workouts-image-focus-picker" data-workout-image-position-picker>
-                        <legend><?= e(t('workouts.image_focus')) ?></legend>
-                        <p><?= e(t('workouts.image_focus_hint')) ?></p>
-                        <div class="workouts-image-focus-presets">
-                            <?php foreach (['top' => ['&#8593;', 'workouts.focus_top'], 'left' => ['&#8592;', 'workouts.focus_left'], 'center' => ['&#9679;', 'workouts.focus_center'], 'right' => ['&#8594;', 'workouts.focus_right'], 'bottom' => ['&#8595;', 'workouts.focus_bottom']] as $position => [$positionIcon, $positionLabelKey]): ?>
-                                <label><input type="radio" name="image_position" value="<?= e($position) ?>" data-workout-image-position-input<?= $position === 'center' ? ' checked' : '' ?>><span><b aria-hidden="true"><?= $positionIcon ?></b><strong><?= e(t($positionLabelKey)) ?></strong></span></label>
-                            <?php endforeach; ?>
-                        </div>
-                    </fieldset>
-                    <div class="workouts-custom-preview" aria-label="<?= e(t('workouts.media_preview')) ?>">
-                        <figure data-workout-image-preview-wrap hidden><img src="" alt="" data-workout-image-preview style="object-position: <?= e(wk_image_position_css('center')) ?>"></figure>
-                        <div class="workouts-custom-preview-empty" data-workout-image-empty><span aria-hidden="true">&#9638;</span><strong><?= e(t('workouts.photo_preview')) ?></strong></div>
-                        <div class="workouts-custom-video-preview" data-workout-video-preview data-empty-label="<?= e(t('workouts.video_preview')) ?>"></div>
+                    <div class="workouts-routine-color-options" aria-label="<?= e(t('workouts.routine_color')) ?>">
+                        <?php foreach ($routineColorOptions as $colorKey => $colorValue): ?><label title="<?= e(t('workouts.color_' . $colorKey)) ?>"><input type="radio" name="accent_color_preset" value="<?= e($colorValue) ?>" data-routine-color-preset data-workout-color-preset<?= $colorKey === 'teal' ? ' checked' : '' ?>><span style="--swatch: <?= e($colorValue) ?>"><span class="sr-only"><?= e(t('workouts.color_' . $colorKey)) ?></span></span></label><?php endforeach; ?>
                     </div>
-                </div>
-            </details>
-            <fieldset class="workouts-day-picker"><legend><?= e(t('workouts.select_days')) ?></legend><div>
-                <?php foreach (['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as $day): ?><label><input type="checkbox" name="days[]" value="<?= e($day) ?>"><span aria-label="<?= e($dayLabel($day)) ?>"><b class="workouts-day-label-full"><?= e($dayLabel($day)) ?></b><b class="workouts-day-label-short" aria-hidden="true"><?= e($dayShortLabel($day)) ?></b></span></label><?php endforeach; ?>
-            </div></fieldset>
-            <button type="submit" class="btn btn-primary btn-block"><?= e(t('common.create')) ?></button>
+                    <label class="workouts-routine-custom-color"><span><strong><?= e(t('workouts.custom_color')) ?></strong><small><?= e(t('workouts.custom_color_hint')) ?></small></span><span class="workouts-routine-custom-color-control"><input type="color" name="accent_color" value="#14b8a6" data-routine-color-input data-workout-color-input aria-label="<?= e(t('workouts.custom_color')) ?>"><output data-routine-color-output data-workout-color-output>#14B8A6</output></span></label>
+                </fieldset>
+                <details class="workouts-routine-create-media">
+                    <summary><span><?= activity_icon_svg('image') ?></span><span><strong><?= e(t('workouts.routine_media')) ?></strong><small><?= e(t('workouts.routine_media_optional')) ?></small></span><b aria-hidden="true">+</b></summary>
+                    <div class="workouts-routine-create-media-body">
+                        <fieldset class="workouts-custom-cover-picker" data-workout-cover-picker>
+                            <legend><?= e(t('workouts.routine_cover')) ?></legend>
+                            <p><?= e(t('workouts.routine_cover_hint')) ?></p>
+                            <div>
+                                <?php foreach (['auto' => ['spark', 'workouts.cover_auto'], 'photo' => ['image', 'workouts.cover_photo'], 'video' => ['play', 'workouts.cover_video'], 'simple' => ['simple', 'workouts.cover_simple']] as $coverMode => [$coverIcon, $coverLabelKey]): ?>
+                                    <label><input type="radio" name="cover_mode" value="<?= e($coverMode) ?>"<?= $coverMode === 'auto' ? ' checked' : '' ?>><span><?php if ($coverIcon === 'play'): ?><b aria-hidden="true">&#9654;</b><?php elseif ($coverIcon === 'simple'): ?><b aria-hidden="true">AB</b><?php else: ?><?= activity_icon_svg($coverIcon) ?><?php endif; ?><strong><?= e(t($coverLabelKey)) ?></strong></span></label>
+                                <?php endforeach; ?>
+                            </div>
+                        </fieldset>
+                        <div class="workouts-custom-media-grid">
+                            <div class="workouts-custom-media-control"><label><?= e(t('workouts.routine_photo')) ?><input type="file" name="routine_image" accept="image/jpeg,image/png,image/webp" data-workout-image-input></label><small><?= e(t('workouts.routine_photo_hint')) ?></small></div>
+                            <div class="workouts-custom-media-control"><label><?= e(t('workouts.routine_video')) ?><input type="url" name="video_url" placeholder="https://www.youtube.com/watch?v=..." inputmode="url" data-workout-video-input></label><small><?= e(t('workouts.routine_video_hint')) ?></small><button class="btn btn-ghost small" type="button" data-workout-clear-video><?= e(t('common.clear')) ?></button></div>
+                        </div>
+                        <fieldset class="workouts-image-focus-picker" data-workout-image-position-picker>
+                            <legend><?= e(t('workouts.image_focus')) ?></legend>
+                            <p><?= e(t('workouts.image_focus_hint')) ?></p>
+                            <div class="workouts-image-focus-presets">
+                                <?php foreach (['top' => ['&#8593;', 'workouts.focus_top'], 'left' => ['&#8592;', 'workouts.focus_left'], 'center' => ['&#9679;', 'workouts.focus_center'], 'right' => ['&#8594;', 'workouts.focus_right'], 'bottom' => ['&#8595;', 'workouts.focus_bottom']] as $position => [$positionIcon, $positionLabelKey]): ?>
+                                    <label><input type="radio" name="image_position" value="<?= e($position) ?>" data-workout-image-position-input<?= $position === 'center' ? ' checked' : '' ?>><span><b aria-hidden="true"><?= $positionIcon ?></b><strong><?= e(t($positionLabelKey)) ?></strong></span></label>
+                                <?php endforeach; ?>
+                            </div>
+                        </fieldset>
+                        <div class="workouts-custom-preview" aria-label="<?= e(t('workouts.media_preview')) ?>">
+                            <figure data-workout-image-preview-wrap hidden><img src="" alt="" data-workout-image-preview style="object-position: <?= e(wk_image_position_css('center')) ?>"></figure>
+                            <div class="workouts-custom-preview-empty" data-workout-image-empty><span aria-hidden="true">&#9638;</span><strong><?= e(t('workouts.photo_preview')) ?></strong></div>
+                            <div class="workouts-custom-video-preview" data-workout-video-preview data-empty-label="<?= e(t('workouts.video_preview')) ?>"></div>
+                        </div>
+                    </div>
+                </details>
+                <fieldset class="workouts-day-picker"><legend><?= e(t('workouts.select_days')) ?></legend><div>
+                    <?php foreach (['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as $day): ?><label><input type="checkbox" name="days[]" value="<?= e($day) ?>"><span aria-label="<?= e($dayLabel($day)) ?>"><b class="workouts-day-label-full"><?= e($dayLabel($day)) ?></b><b class="workouts-day-label-short" aria-hidden="true"><?= e($dayShortLabel($day)) ?></b></span></label><?php endforeach; ?>
+                </div></fieldset>
+                <button type="submit" class="btn btn-primary btn-block" data-routine-create-submit><?= e(t('common.create')) ?></button>
+            </div>
         </form>
     </div>
 </div>
