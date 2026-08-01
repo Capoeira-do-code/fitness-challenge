@@ -7,6 +7,7 @@ $dashboardSection = (string) ($dashboardSection ?? '');
 if (!in_array($dashboardSection, ['', 'progress', 'rewards', 'history', 'alerts'], true)) {
     $dashboardSection = '';
 }
+$dashboardHomeMode = (string) ($_GET['home'] ?? 'feed') === 'classic' ? 'classic' : 'feed';
 $penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
 $dashboardLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
 $dashboardMobileSurfaces = ['mobile_today', 'mobile_primary', 'mobile_progress', 'mobile_shortcuts'];
@@ -379,7 +380,7 @@ ob_start();
 ?>
 <?php if ($dashboardLayoutEditMode): ?>
 <button class="btn btn-primary btn-topbar" type="submit" form="dashboard-layout-edit-form"><?= e(t('common.save')) ?></button>
-<?php else: ?>
+<?php elseif ($dashboardHomeMode === 'classic' || $dashboardSection !== ''): ?>
 <details class="topbar-context dashboard-mobile-controls">
     <summary class="btn btn-ghost btn-topbar dashboard-controls-trigger"><?= e(t('dashboard.view_mode')) ?></summary>
     <div class="topbar-context-panel">
@@ -405,7 +406,11 @@ ob_start();
 <?php
 $topbarControls = ob_get_clean();
 ?>
-<section class="screen stack-lg dashboard-hierarchy-screen<?= $dashboardSection !== '' ? ' has-section' : '' ?>" data-dashboard-page data-dashboard-section="<?= e($dashboardSection) ?>" data-dashboard-panel-state-endpoint="/?page=dashboard_panel_state" data-dashboard-panel-csrf="<?= e(csrf_token()) ?>">
+<section class="screen stack-lg dashboard-hierarchy-screen<?= $dashboardSection !== '' ? ' has-section' : '' ?><?= $dashboardSection === '' ? ' is-' . e($dashboardHomeMode) . '-mode' : '' ?>" data-dashboard-page data-dashboard-section="<?= e($dashboardSection) ?>" data-dashboard-panel-state-endpoint="/?page=dashboard_panel_state" data-dashboard-panel-csrf="<?= e(csrf_token()) ?>">
+    <?php if ($dashboardSection === '' && !$dashboardLayoutEditMode): ?>
+        <?php if ($dashboardHomeMode === 'classic'): ?><nav class="home-mode-switch" aria-label="<?= e(t('feed.home_mode')) ?>"><a href="/?page=dashboard&amp;home=feed&amp;feed=<?= e((string) ($dashboardFeedScope ?? 'friends')) ?>"><?= activity_icon_svg('users') ?><span><?= e(t('feed.title')) ?></span></a><a href="/?page=dashboard&amp;home=classic" aria-current="page"><?= activity_icon_svg('grid') ?><span><?= e(t('feed.classic_home')) ?></span></a></nav><?php endif; ?>
+        <?php if ($dashboardHomeMode === 'feed'): require __DIR__ . '/partials/dashboard_social_feed.php'; endif; ?>
+    <?php endif; ?>
     <?php if ($dashboardSection !== ''): ?>
         <header class="hierarchy-page-header">
             <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="/?page=dashboard" aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.home')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.home')) ?></strong></button>

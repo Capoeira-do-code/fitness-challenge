@@ -330,6 +330,14 @@ $check(
     'rutina conectada a sesión real'
 );
 $check(count($sessionExercises[0]['content']['steps'] ?? []) === 3, 'guía disponible durante la sesión');
+$performedExercises = wk_session_completed_exercises([
+    ['id' => 901, 'sets' => [['completed' => 0], ['completed' => 0]]],
+    ['id' => 902, 'sets' => [['completed' => 1], ['completed' => 0]]],
+]);
+$check(
+    count($performedExercises) === 1 && (int) ($performedExercises[0]['id'] ?? 0) === 902,
+    'historial y workout compartido excluyen ejercicios sin series realizadas'
+);
 $setId = (int) ($sessionExercises[0]['sets'][0]['id'] ?? 0);
 $check(
     wk_set_update($pdo, $setId, ['reps' => 5, 'weight' => 80, 'completed' => 1], $me),

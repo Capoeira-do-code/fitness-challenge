@@ -1481,9 +1481,17 @@ function wk_exercise_favorites_reorder(PDO $pdo, int $userId, array $orderedIds)
     }
 }
 
-function wk_user_clone_exercise(PDO $pdo, int $sourceExerciseId, int $userId): int
+function wk_user_clone_exercise(
+    PDO $pdo,
+    int $sourceExerciseId,
+    int $userId,
+    bool $allowForeignSource = false,
+    bool $appendCopySuffix = true
+): int
 {
-    $source = wk_exercise_get_for_user($pdo, $sourceExerciseId, $userId);
+    $source = $allowForeignSource
+        ? wk_exercise_get($pdo, $sourceExerciseId)
+        : wk_exercise_get_for_user($pdo, $sourceExerciseId, $userId);
     if ($source === null || (int) ($source['active'] ?? 1) !== 1) {
         throw new InvalidArgumentException(t('workouts.custom_not_found'));
     }
@@ -1503,17 +1511,22 @@ function wk_user_clone_exercise(PDO $pdo, int $sourceExerciseId, int $userId): i
     $guide = is_array($guide) ? $guide : [];
     $guide['names'] = is_array($guide['names'] ?? null) ? $guide['names'] : [];
     $suffixes = ['en' => 'Copy', 'es' => 'Copia', 'it' => 'Copia'];
-    foreach ($suffixes as $locale => $suffix) {
-        $localized = trim((string) ($guide['names'][$locale] ?? ''));
-        if ($localized !== '') {
-            $guide['names'][$locale] = $localized . ' · ' . $suffix;
+    if ($appendCopySuffix) {
+        foreach ($suffixes as $locale => $suffix) {
+            $localized = trim((string) ($guide['names'][$locale] ?? ''));
+            if ($localized !== '') {
+                $guide['names'][$locale] = $localized . ' · ' . $suffix;
+            }
         }
     }
     $locale = normalize_locale(current_locale(), 'en');
     $sourceContent = wk_exercise_content($source, $locale);
     $copyName = trim((string) ($guide['names'][$locale] ?? ''));
     if ($copyName === '') {
-        $copyName = trim((string) ($sourceContent['name'] ?? $source['name'] ?? '')) . ' · ' . t('workouts.copy_name');
+        $copyName = trim((string) ($sourceContent['name'] ?? $source['name'] ?? ''));
+        if ($appendCopySuffix) {
+            $copyName .= ' · ' . t('workouts.copy_name');
+        }
         $guide['names'][$locale] = $copyName;
     }
     if (!isset($guide['names']['en'])) {
@@ -2491,6 +2504,26 @@ function wk_session_exercises(PDO $pdo, int $sessionId): array
     unset($ex);
 
     return $exercises;
+}
+
+/**
+ * Keep only exercises where the user completed at least one set.
+ *
+ * Session templates also contain untouched exercises, but those are planning
+ * data rather than performed work and must not affect history or shared stats.
+ *
+ * @param array<int,array<string,mixed>> $exercises
+ * @return array<int,array<string,mixed>>
+ */
+function wk_session_completed_exercises(array $exercises): array
+{
+    return array_values(array_filter(
+        $exercises,
+        static fn(array $exercise): bool => count(array_filter(
+            (array) ($exercise['sets'] ?? []),
+            static fn(array $set): bool => (int) ($set['completed'] ?? 0) === 1
+        )) > 0
+    ));
 }
 
 /**
