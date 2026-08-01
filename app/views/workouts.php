@@ -298,7 +298,7 @@ $libraryClearUrl = $libraryUrl([
         <?php else: ?>
             <header class="workouts-mobile-subheader hierarchy-page-header<?= $wkView === 'library' ? ' is-library' : '' ?>">
                 <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="/?page=workouts" aria-label="<?= e(t('common.back')) ?>: <?= e(t('workouts.title')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('workouts.title')) ?></strong></button>
-                <div><p class="eyebrow"><?= e(t('workouts.title')) ?></p><h1><?= e($tabView === 'stats' ? t('workouts.stats') : t('workouts.tab_' . $tabView)) ?></h1></div>
+                <div><p class="eyebrow"><?= e(t('workouts.title')) ?></p><h1><?= e($tabView === 'stats' ? (!empty($wkStatsSession) ? t('workouts.workout_detail') : t('workouts.stats')) : t('workouts.tab_' . $tabView)) ?></h1></div>
                 <?php if ($wkView === 'library'): ?>
                     <?php $libraryToolbarVariant = 'mobile'; require __DIR__ . '/partials/workout_library_toolbar.php'; ?>
                 <?php endif; ?>
@@ -574,7 +574,7 @@ $libraryClearUrl = $libraryUrl([
                     <?php foreach ((array) $wkRecentSessions as $sess): ?>
                         <li>
                             <a href="/?page=workouts&amp;view=stats&amp;detail_session=<?= (int) ($sess['id'] ?? 0) ?>">
-                                <span><strong><?= e((string) ($sess['title'] ?? '') !== '' ? (string) $sess['title'] : t('workouts.session')) ?></strong><small><?= e(human_time_ago((string) ($sess['started_at'] ?? ''))) ?></small></span>
+                                <span><strong><?= e(wk_session_display_title((array) $sess) ?: t('workouts.session')) ?></strong><small><?= e(human_time_ago((string) ($sess['started_at'] ?? ''))) ?></small></span>
                                 <b aria-hidden="true">&rsaquo;</b>
                             </a>
                         </li>
@@ -2115,7 +2115,8 @@ $libraryClearUrl = $libraryUrl([
     <?php if (!empty($wkStatsSession)): ?>
         <?php
         $detailSession = (array) $wkStatsSession;
-        $detailExercises = (array) $wkStatsSessionExercises;
+        $detailExercises = wk_session_completed_exercises((array) $wkStatsSessionExercises);
+        $detailExerciseMediaMap = (array) ($wkStatsSessionExerciseMedia ?? []);
         $detailEpley = static fn(float $w, int $reps): float => $reps > 0 ? $w * (1 + $reps / 30) : $w;
         $detailTotalVolume = 0.0;
         $detailTotalSets = 0;
@@ -2132,32 +2133,55 @@ $libraryClearUrl = $libraryUrl([
                 $detailBest1rm = max($detailBest1rm, $detailEpley($dw, $dr));
             }
         }
+        $detailStartedTs = strtotime((string) ($detailSession['started_at'] ?? '')) ?: 0;
+        $detailEndedTs = strtotime((string) ($detailSession['ended_at'] ?? '')) ?: $detailStartedTs;
+        $detailDurationMinutes = max(0, (int) round(($detailEndedTs - $detailStartedTs) / 60));
+        $detailDurationLabel = $detailDurationMinutes >= 60
+            ? intdiv($detailDurationMinutes, 60) . 'h ' . ($detailDurationMinutes % 60) . 'min'
+            : $detailDurationMinutes . 'min';
+        $detailMuscles = [];
+        foreach ($detailExercises as $dex) {
+            $muscle = trim((string) ($dex['muscle_group'] ?? ''));
+            if ($muscle === '') continue;
+            $muscleSets = count(array_filter((array) ($dex['sets'] ?? []), static fn(array $set): bool => (int) ($set['completed'] ?? 0) === 1));
+            $detailMuscles[$muscle] = ($detailMuscles[$muscle] ?? 0) + $muscleSets;
+        }
+        arsort($detailMuscles);
+        $detailAvatarUrl = avatar_url((array) ($currentUser ?? []));
+        $detailOwnerName = trim((string) (($currentUser['display_name'] ?? '') ?: ($currentUser['username'] ?? '')));
         ?>
-        <a class="workouts-stats-back" href="/?page=workouts&amp;view=stats"><span aria-hidden="true">&larr;</span><?= e(t('workouts.stats_back')) ?></a>
-        <article class="panel workouts-session-detail-card">
-            <div class="workouts-session-detail-head">
-                <span class="workouts-session-detail-icon" aria-hidden="true"><?= activity_icon_svg(wk_normalize_routine_icon((string) ($detailSession['routine_icon'] ?? 'dumbbell'))) ?></span>
-                <div>
-                    <h2><?= e((string) ($detailSession['title'] ?? '') !== '' ? (string) $detailSession['title'] : t('workouts.session')) ?></h2>
-                    <p class="muted small"><?= e(format_date_eu((string) ($detailSession['started_at'] ?? ''))) ?></p>
-                </div>
+        <a class="workouts-stats-back workouts-stats-local-back" href="/?page=workouts&amp;view=stats"><span aria-hidden="true">&larr;</span><?= e(t('workouts.stats_back')) ?></a>
+        <div class="workouts-session-detail-shell">
+        <article class="workouts-session-detail-card">
+            <header class="workouts-session-detail-author">
+                <span class="workouts-session-detail-avatar"><?php if ($detailAvatarUrl !== ''): ?><img src="<?= e($detailAvatarUrl) ?>" alt="<?= e($detailOwnerName) ?>"><?php else: ?><?= e(initials_for($detailOwnerName)) ?><?php endif; ?></span>
+                <div class="workouts-session-detail-author-copy"><strong><?= e($detailOwnerName) ?></strong><p><?= e(format_date_eu((string) ($detailSession['started_at'] ?? ''))) ?><?php if ($detailStartedTs > 0): ?> · <?= e(date('H:i', $detailStartedTs)) ?><?php endif; ?></p></div>
                 <div class="workouts-session-detail-actions">
-                    <button class="btn btn-primary small workouts-session-share-button" type="button" data-app-modal-open="workouts-session-share-modal"><?= activity_icon_svg('share') ?><span><?= e(t('workouts.share_friends')) ?></span></button>
+                    <button class="btn btn-primary small workouts-session-share-button" type="button" aria-label="<?= e(t('workouts.share_friends')) ?>" title="<?= e(t('workouts.share_friends')) ?>" data-workout-native-share data-share-url="<?= e((string) ($wkStatsSessionShareUrl ?? '')) ?>" data-share-title="<?= e(wk_session_display_title($detailSession) ?: t('workouts.session')) ?>" data-share-text="<?= e(t('workouts.share_native_text', ['title' => wk_session_display_title($detailSession) ?: t('workouts.session'), 'volume' => $compactStatNumber($detailTotalVolume, ' kg')])) ?>"><?php /* Lucide share-2, ISC license. */ ?><svg class="lucide lucide-share-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.59 13.51 6.83 3.98M15.41 6.51l-6.82 3.98"/></svg><span><?= e(t('workouts.share_friends')) ?></span></button>
                     <form method="post" action="/?page=workouts&amp;view=stats&amp;detail_session=<?= (int) ($detailSession['id'] ?? 0) ?>">
                         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                         <input type="hidden" name="action" value="session_delete">
                         <input type="hidden" name="session_id" value="<?= (int) ($detailSession['id'] ?? 0) ?>">
-                        <button class="btn btn-danger-ghost small" type="submit" data-confirm-action="<?= e(t('workouts.delete_session_confirm')) ?>"><?= activity_icon_svg('trash') ?><span><?= e(t('workouts.delete_session')) ?></span></button>
+                        <button class="btn btn-danger-ghost small" type="submit" aria-label="<?= e(t('workouts.delete_session')) ?>" title="<?= e(t('workouts.delete_session')) ?>" data-confirm-action="<?= e(t('workouts.delete_session_confirm')) ?>"><?= activity_icon_svg('trash') ?><span><?= e(t('workouts.delete_session')) ?></span></button>
                     </form>
                 </div>
-            </div>
+            </header>
+            <h2 class="workouts-session-detail-title"><?= e(wk_session_display_title($detailSession) ?: t('workouts.session')) ?></h2>
             <div class="workouts-session-detail-metrics">
+                <span><small><?= e(t('feed.time')) ?></small><strong><?= e($detailDurationLabel) ?></strong></span>
                 <span><small><?= e(t('workouts.stat_volume')) ?></small><strong><?= e($compactStatNumber($detailTotalVolume, ' kg')) ?></strong></span>
                 <span><small><?= e(t('workouts.stat_sets')) ?></small><strong><?= $detailTotalSets ?></strong></span>
                 <span><small><?= e(t('workouts.exercises')) ?></small><strong><?= count($detailExercises) ?></strong></span>
-                <span><small><?= e(t('workouts.best_1rm')) ?></small><strong><?= e($compactStatNumber($detailBest1rm, ' kg')) ?></strong></span>
             </div>
         </article>
+        <?php if ($detailMuscles !== []): ?>
+            <section class="workouts-session-muscle-split" aria-labelledby="workouts-muscle-split-title">
+                <h2 id="workouts-muscle-split-title"><?= e(t('workouts.muscle_split')) ?></h2>
+                <?php foreach ($detailMuscles as $muscle => $muscleSets): $musclePct = $detailTotalSets > 0 ? (int) round(($muscleSets / $detailTotalSets) * 100) : 0; ?>
+                    <div class="workouts-session-muscle-row"><strong><?= e($muscleLabel($muscle)) ?></strong><div><span style="width: <?= $musclePct ?>%"></span></div><em><?= $musclePct ?>%</em></div>
+                <?php endforeach; ?>
+            </section>
+        <?php endif; ?>
         <div class="app-modal workouts-session-share-modal" id="workouts-session-share-modal" hidden role="dialog" aria-modal="true" aria-labelledby="workouts-session-share-title">
             <div class="app-modal-card">
                 <div class="app-modal-head">
@@ -2165,7 +2189,7 @@ $libraryClearUrl = $libraryUrl([
                     <button class="app-modal-close" type="button" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button>
                 </div>
                 <div class="workouts-share-preview">
-                    <strong><?= e((string) ($detailSession['title'] ?? '') !== '' ? (string) $detailSession['title'] : t('workouts.session')) ?></strong>
+                    <strong><?= e(wk_session_display_title($detailSession) ?: t('workouts.session')) ?></strong>
                     <span><?= e($compactStatNumber($detailTotalVolume, ' kg')) ?> · <?= $detailTotalSets ?> <?= e(t('workouts.stat_sets')) ?> · <?= count($detailExercises) ?> <?= e(t('workouts.exercises')) ?></span>
                 </div>
                 <?php $shareFriends = array_values((array) ($wkShareFriends ?? [])); ?>
@@ -2190,6 +2214,7 @@ $libraryClearUrl = $libraryUrl([
                 <?php endif; ?>
             </div>
         </div>
+
         <?php if ($detailExercises === []): ?>
             <div class="workouts-analytics-empty"><span aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span><p><?= e(t('workouts.no_data')) ?></p></div>
         <?php else: ?>
@@ -2211,8 +2236,11 @@ $libraryClearUrl = $libraryUrl([
                     ?>
                     <article class="workouts-session-detail-exercise">
                         <div class="workouts-session-detail-exercise-head">
-                            <a href="/?page=workouts&amp;view=stats&amp;exercise_stats=<?= (int) ($dex['exercise_def_id'] ?? 0) ?>"><strong><?= e((string) ($dex['exercise_name'] ?? '')) ?></strong></a>
-                            <span class="muted small"><?= e($muscleLabel((string) ($dex['muscle_group'] ?? ''))) ?></span>
+                            <?php $detailExerciseImage = trim((string) ($dex['image_path'] ?? '')); ?>
+                            <button type="button" data-app-modal-open="workout-exercise-detail-<?= (int) ($dex['id'] ?? 0) ?>" data-workout-exercise-detail-open="workout-exercise-detail-<?= (int) ($dex['id'] ?? 0) ?>" aria-haspopup="dialog" aria-controls="workout-exercise-detail-<?= (int) ($dex['id'] ?? 0) ?>" aria-label="<?= e((string) ($dex['exercise_name'] ?? '')) ?>">
+                                <?php if ($detailExerciseImage !== ''): ?><img src="<?= e(media_thumbnail_url($detailExerciseImage, 120)) ?>" alt="" loading="lazy"><?php else: ?><span class="workouts-session-detail-exercise-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span><?php endif; ?>
+                                <span><strong><?= e((string) ($dex['exercise_name'] ?? '')) ?></strong><small><?= e($muscleLabel((string) ($dex['muscle_group'] ?? ''))) ?></small></span>
+                            </button>
                         </div>
                         <?php if ($dexSets === []): ?>
                             <p class="muted small workouts-session-detail-empty-sets"><?= e(t('workouts.no_data')) ?></p>
@@ -2230,9 +2258,34 @@ $libraryClearUrl = $libraryUrl([
                         <?php endif; ?>
                         <div class="workouts-session-detail-exercise-foot"><span><?= e(t('workouts.stat_volume')) ?>: <strong><?= e($compactStatNumber($dexVolume, ' kg')) ?></strong></span><span><?= e(t('workouts.best_1rm')) ?>: <strong><?= e($compactStatNumber($dexBest1rm, ' kg')) ?></strong></span></div>
                     </article>
+                    <?php
+                    $detailExerciseDefId = (int) ($dex['exercise_def_id'] ?? 0);
+                    $detailExerciseGallery = array_values((array) ($detailExerciseMediaMap[$detailExerciseDefId] ?? []));
+                    $detailExerciseContent = (array) ($dex['content'] ?? []);
+                    $detailExerciseVideo = $workoutVideoSource((string) ($dex['video_url'] ?? ''));
+                    $detailSecondaryDecoded = json_decode((string) ($dex['secondary_muscles'] ?? '[]'), true);
+                    $detailSecondaryMuscles = array_values(array_filter(array_map('strval', is_array($detailSecondaryDecoded) ? $detailSecondaryDecoded : [])));
+                    ?>
+                    <div class="app-modal workouts-exercise-detail-modal" id="workout-exercise-detail-<?= (int) ($dex['id'] ?? 0) ?>" hidden role="dialog" aria-modal="true" aria-labelledby="workout-exercise-detail-title-<?= (int) ($dex['id'] ?? 0) ?>">
+                        <div class="app-modal-card workouts-exercise-detail-sheet">
+                            <div class="workouts-exercise-detail-grabber" aria-hidden="true"></div>
+                            <div class="workouts-exercise-detail-head"><h2 id="workout-exercise-detail-title-<?= (int) ($dex['id'] ?? 0) ?>"><?= e((string) ($dex['exercise_name'] ?? '')) ?></h2><button type="button" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button></div>
+                            <?php if ($detailExerciseGallery !== []): ?>
+                                <div class="workouts-exercise-detail-gallery">
+                                    <?php foreach ($detailExerciseGallery as $galleryIndex => $galleryItem): ?><figure<?= $galleryIndex === 0 ? ' class="is-primary"' : '' ?>><img src="<?= e(media_thumbnail_url((string) ($galleryItem['path'] ?? ''), $galleryIndex === 0 ? 900 : 320)) ?>" alt="<?= e((string) ($galleryItem['caption'] ?? '')) ?>" loading="lazy"><?php if (trim((string) ($galleryItem['caption'] ?? '')) !== ''): ?><figcaption><?= e((string) $galleryItem['caption']) ?></figcaption><?php endif; ?></figure><?php endforeach; ?>
+                                </div>
+                            <?php elseif ($detailExerciseImage !== ''): ?><img class="workouts-exercise-detail-cover" src="<?= e(media_thumbnail_url($detailExerciseImage, 900)) ?>" alt="<?= e((string) ($dex['exercise_name'] ?? '')) ?>" loading="lazy"><?php endif; ?>
+                            <dl class="workouts-exercise-detail-meta"><div><dt><?= e(t('workouts.primary_muscle')) ?></dt><dd><?= e($muscleLabel((string) ($dex['muscle_group'] ?? ''))) ?></dd></div><?php if ($detailSecondaryMuscles !== []): ?><div><dt><?= e(t('workouts.secondary_muscles')) ?></dt><dd><?= e(implode(', ', array_map($muscleLabel, $detailSecondaryMuscles))) ?></dd></div><?php endif; ?><div><dt><?= e(t('workouts.equipment')) ?></dt><dd><?= e($equipmentLabel((string) ($dex['equipment'] ?? ''))) ?></dd></div></dl>
+                            <div class="workouts-exercise-detail-actions"><a class="btn btn-ghost" href="/?page=workouts&amp;view=stats&amp;exercise_stats=<?= $detailExerciseDefId ?>"><?= activity_icon_svg('chart') ?><span><?= e(t('workouts.see_your_stats')) ?></span></a><?php if ($activeRoutines !== []): ?><button class="btn btn-primary" type="button" data-app-modal-open="wk-add-exercise-modal" data-workout-routine-picker-open data-exercise-id="<?= $detailExerciseDefId ?>" data-exercise-name="<?= e((string) ($dex['exercise_name'] ?? '')) ?>"><?= activity_icon_svg('plus') ?><span><?= e(t('workouts.add_to_routine')) ?></span></button><?php endif; ?></div>
+                            <?php if ($detailExerciseVideo !== null): ?><div class="workouts-exercise-detail-video"><?php if (($detailExerciseVideo['type'] ?? '') === 'iframe'): ?><iframe src="<?= e((string) ($detailExerciseVideo['url'] ?? '')) ?>" title="<?= e((string) ($dex['exercise_name'] ?? '')) ?>" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe><?php elseif (($detailExerciseVideo['type'] ?? '') === 'video'): ?><video src="<?= e((string) ($detailExerciseVideo['url'] ?? '')) ?>" controls preload="metadata"></video><?php else: ?><a class="btn btn-ghost" href="<?= e((string) ($detailExerciseVideo['url'] ?? '')) ?>" target="_blank" rel="noopener noreferrer"><?= e(t('workouts.watch_video')) ?> &nearr;</a><?php endif; ?></div><?php endif; ?>
+                            <?php if ((array) ($detailExerciseContent['steps'] ?? []) !== []): ?><section class="workouts-exercise-detail-how"><h3><?= e(t('workouts.how_to')) ?></h3><ol><?php foreach ((array) $detailExerciseContent['steps'] as $step): ?><li><?= e((string) $step) ?></li><?php endforeach; ?></ol></section><?php endif; ?>
+                            <button class="btn btn-primary workouts-exercise-detail-done" type="button" data-app-modal-close><?= e(t('workouts.done')) ?></button>
+                        </div>
+                    </div>
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
+        </div>
     <?php elseif (!empty($wkStatsExercise)): ?>
         <?php
         $exStat = (array) $wkStatsExercise;
@@ -2252,7 +2305,7 @@ $libraryClearUrl = $libraryUrl([
         $exLast1rm = $exHist !== [] ? (float) $exHist[count($exHist) - 1]['best_1rm'] : 0.0;
         $exDelta = $exLast1rm - $exFirst1rm;
         ?>
-        <a class="workouts-stats-back" href="/?page=workouts&amp;view=stats"><span aria-hidden="true">&larr;</span><?= e(t('workouts.stats_back')) ?></a>
+        <a class="workouts-stats-back workouts-stats-local-back" href="/?page=workouts&amp;view=stats"><span aria-hidden="true">&larr;</span><?= e(t('workouts.stats_back')) ?></a>
         <article class="panel workouts-session-detail-card">
             <div class="workouts-session-detail-head">
                 <span class="workouts-session-detail-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
@@ -2323,6 +2376,19 @@ $libraryClearUrl = $libraryUrl([
                 <span><small><?= e(t('workouts.stat_sessions')) ?> · <?= e(t('workouts.all_time')) ?></small><strong><?= (int) ($summaryAllStats['sessions'] ?? 0) ?></strong></span>
             </article>
         </div>
+
+        <?php
+        $allTimeVolume = max(0.0, (float) ($summaryAllStats['volume'] ?? 0));
+        $equivalenceKg = $allTimeVolume >= 41000 ? 41000.0 : 1500.0;
+        $equivalenceKey = $allTimeVolume >= 41000 ? 'workouts.equivalence_plane' : 'workouts.equivalence_car';
+        $equivalenceCount = $equivalenceKg > 0 ? $allTimeVolume / $equivalenceKg : 0;
+        $equivalenceProgress = min(100, (int) round(($allTimeVolume / $equivalenceKg) * 100));
+        ?>
+        <article class="workouts-weight-equivalence">
+            <span class="workouts-weight-equivalence-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span>
+            <div><p class="eyebrow"><?= e(t('workouts.total_lifted')) ?></p><h2><?= e(t($equivalenceKey, ['count' => number_format($equivalenceCount, $equivalenceCount < 10 ? 1 : 0, ',', '.')])) ?></h2><p><?= e(t('workouts.equivalence_hint', ['weight' => $compactStatNumber($allTimeVolume, ' kg')])) ?></p></div>
+            <span class="workouts-weight-equivalence-progress" aria-hidden="true"><i style="width: <?= $equivalenceProgress ?>%"></i></span>
+        </article>
 
         <?php if (($stats['messages'] ?? []) !== []): ?>
             <section class="workouts-analytics-insights" aria-label="<?= e(t('workouts.insights')) ?>">
@@ -2430,7 +2496,7 @@ $libraryClearUrl = $libraryUrl([
                         <li>
                             <a href="/?page=workouts&amp;view=stats&amp;detail_session=<?= (int) ($sess['id'] ?? 0) ?>">
                                 <span class="workouts-stats-session-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
-                                <span class="workouts-stats-session-copy"><strong><?= e((string) ($sess['title'] ?? '') !== '' ? (string) $sess['title'] : t('workouts.session')) ?></strong><small><?= e(human_time_ago((string) ($sess['started_at'] ?? ''))) ?></small></span>
+                                <span class="workouts-stats-session-copy"><strong><?= e(wk_session_display_title((array) $sess) ?: t('workouts.session')) ?></strong><small><?= e(human_time_ago((string) ($sess['started_at'] ?? ''))) ?></small></span>
                                 <span class="workouts-stats-session-arrow" aria-hidden="true">&rsaquo;</span>
                             </a>
                         </li>
@@ -2442,7 +2508,7 @@ $libraryClearUrl = $libraryUrl([
     </section>
 <?php endif; ?>
 
-<?php if ($wkView === 'library' && !$hasLibraryTarget && $activeRoutines !== []): ?>
+<?php if (($wkView === 'library' && !$hasLibraryTarget || $wkView === 'analytics' && !empty($wkStatsSession)) && $activeRoutines !== []): ?>
 <div class="app-modal workouts-add-routine-modal" id="wk-add-exercise-modal" hidden role="dialog" aria-modal="true" aria-labelledby="wk-add-exercise-title" data-workout-routine-picker data-single-routine="<?= count($activeRoutines) === 1 ? '1' : '0' ?>">
     <div class="app-modal-card workouts-add-routine-card">
         <div class="app-modal-head">

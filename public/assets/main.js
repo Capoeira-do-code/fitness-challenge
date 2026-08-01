@@ -6392,6 +6392,173 @@ document.addEventListener('click', (event) => {
     }
 })();
 
+(function () {
+    'use strict';
+    function initFeedComments(root) {
+        var scope = root || document;
+        function submitFeedForm(form) {
+            var button = form.querySelector('button[type="submit"]');
+            var payload = new FormData(form);
+            payload.set('feed_ajax', '1');
+            if (button) button.disabled = true;
+            form.classList.remove('has-error');
+            var endpoint = form.getAttribute('action') || window.location.href;
+            return fetch(endpoint, {
+                method: 'POST',
+                body: payload,
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'feed-fetch', 'Accept': 'application/json' }
+            }).then(function (response) {
+                return response.json().catch(function () { return {}; }).then(function (data) {
+                    if (!response.ok || !data.ok) throw new Error(data.message || 'Feed update failed');
+                    return data;
+                });
+            }).finally(function () {
+                form.dataset.submitting = '';
+                form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function (control) {
+                    control.disabled = false;
+                    control.classList.remove('is-busy');
+                });
+            });
+        }
+        scope.querySelectorAll('[data-feed-comment-toggle]').forEach(function (button) {
+            if (button.dataset.feedCommentReady === '1') return;
+            button.dataset.feedCommentReady = '1';
+            button.addEventListener('click', function () {
+                var post = button.closest('.home-feed-post');
+                var comments = post ? post.querySelector('[data-feed-comments]') : null;
+                if (!(comments instanceof HTMLElement)) return;
+                comments.hidden = !comments.hidden;
+                button.setAttribute('aria-expanded', comments.hidden ? 'false' : 'true');
+                if (!comments.hidden) comments.querySelector('input[name="comment"]')?.focus({ preventScroll: true });
+            });
+        });
+        scope.querySelectorAll('[data-feed-like-form]').forEach(function (form) {
+            if (form.dataset.feedLikeReady === '1') return;
+            form.dataset.feedLikeReady = '1';
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+                submitFeedForm(form).then(function (data) {
+                    var button = form.querySelector('.home-feed-like');
+                    var count = form.querySelector('[data-feed-like-count]');
+                    if (button) {
+                        button.classList.toggle('is-liked', Boolean(data.liked));
+                        button.setAttribute('aria-pressed', data.liked ? 'true' : 'false');
+                    }
+                    if (count) count.textContent = String(data.like_count || 0);
+                }).catch(function () { form.classList.add('has-error'); });
+            });
+        });
+        scope.querySelectorAll('[data-feed-comment-form]').forEach(function (form) {
+            if (form.dataset.feedCommentFormReady === '1') return;
+            form.dataset.feedCommentFormReady = '1';
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+                submitFeedForm(form).then(function (data) {
+                    var comments = form.closest('[data-feed-comments]');
+                    var post = form.closest('.home-feed-post');
+                    var count = post ? post.querySelector('[data-feed-comment-count]') : null;
+                    if (comments && data.comment) {
+                        var line = document.createElement('p');
+                        var author = document.createElement('strong');
+                        author.textContent = data.author || '';
+                        line.appendChild(author);
+                        line.appendChild(document.createTextNode(' ' + data.comment));
+                        comments.insertBefore(line, form);
+                    }
+                    if (count) count.textContent = String(data.comment_count || 0);
+                    form.reset();
+                    form.querySelector('input[name="comment"]')?.focus({ preventScroll: true });
+                }).catch(function () { form.classList.add('has-error'); });
+            });
+        });
+        scope.querySelectorAll('[data-feed-share]').forEach(function (button) {
+            if (button.dataset.feedShareReady === '1') return;
+            button.dataset.feedShareReady = '1';
+            button.addEventListener('click', async function () {
+                var url = new URL(button.dataset.shareUrl || window.location.href, window.location.href).href;
+                var payload = { title: button.dataset.shareTitle || document.title, text: button.dataset.shareText || '', url: url };
+                try {
+                    if (navigator.share) await navigator.share(payload);
+                    else if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText([payload.text, url].filter(Boolean).join('\n'));
+                    else window.prompt('Copy link', url);
+                } catch (error) {
+                    if (!error || error.name !== 'AbortError') button.classList.add('has-error');
+                }
+            });
+        });
+        scope.querySelectorAll('[data-feed-exercises-toggle]').forEach(function (button) {
+            if (button.dataset.feedExercisesReady === '1') return;
+            button.dataset.feedExercisesReady = '1';
+            button.addEventListener('click', function () {
+                var workout = button.closest('.home-feed-workout');
+                var extras = workout ? workout.querySelectorAll('[data-feed-extra-exercise]') : [];
+                var expanded = button.getAttribute('aria-expanded') !== 'true';
+                extras.forEach(function (item) { item.hidden = !expanded; });
+                button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                button.textContent = expanded ? (button.dataset.labelLess || '') : (button.dataset.labelMore || '');
+            });
+        });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { initFeedComments(document); });
+    else initFeedComments(document);
+    document.addEventListener('pjax:loaded', function () { initFeedComments(document); });
+    document.addEventListener('fc:afterPageSwap', function () { initFeedComments(document); });
+})();
+
+/* Native workout sharing (iOS/Android), with a clipboard fallback on desktop. */
+(function () {
+    'use strict';
+    function initWorkoutShare(root) {
+        (root || document).querySelectorAll('[data-workout-native-share]').forEach(function (button) {
+            if (button.dataset.nativeShareReady === '1') return;
+            button.dataset.nativeShareReady = '1';
+            button.addEventListener('click', async function () {
+                var url = button.dataset.shareUrl || window.location.href;
+                var payload = { title: button.dataset.shareTitle || document.title, text: button.dataset.shareText || '', url: url };
+                try {
+                    if (navigator.share) {
+                        await navigator.share(payload);
+                    } else if (navigator.clipboard && window.isSecureContext) {
+                        await navigator.clipboard.writeText([payload.text, url].filter(Boolean).join('\n'));
+                        button.classList.add('is-copied');
+                        window.setTimeout(function () { button.classList.remove('is-copied'); }, 1600);
+                    } else {
+                        window.prompt('Copy this workout link', url);
+                    }
+                } catch (error) {
+                    if (error && error.name === 'AbortError') return;
+                }
+            });
+        });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { initWorkoutShare(document); });
+    else initWorkoutShare(document);
+    document.addEventListener('pjax:loaded', function () { initWorkoutShare(document); });
+    document.addEventListener('fc:afterPageSwap', function () { initWorkoutShare(document); });
+})();
+
+/* Workout-history exercise sheets use their own delegated trigger so they keep
+ * working after in-app navigation swaps the session detail into the page. */
+(function () {
+    'use strict';
+    if (window.__workoutExerciseDetailTriggerReady) return;
+    window.__workoutExerciseDetailTriggerReady = true;
+
+    document.addEventListener('click', function (event) {
+        var target = event.target;
+        if (!(target instanceof Element)) return;
+        var trigger = target.closest('[data-workout-exercise-detail-open]');
+        if (!(trigger instanceof HTMLElement)) return;
+        var modalId = trigger.getAttribute('data-workout-exercise-detail-open') || '';
+        var modal = modalId !== '' ? document.getElementById(modalId) : null;
+        if (!(modal instanceof HTMLElement) || !window.AppOverlay) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        window.AppOverlay.open(modal);
+    });
+})();
+
 /* Compact character counters for constrained profile fields. */
 (function () {
     function initCharacterCounters(root) {

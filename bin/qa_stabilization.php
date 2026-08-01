@@ -597,6 +597,137 @@ try {
     $assert($searchAfter === [], 'friend search excludes users with an existing relationship');
     $assert(friends_respond($pdo, $secondUserId, $firstUserId, true), 'friend request can be accepted');
 
+    $sharedCustomExerciseId = wk_user_save_exercise($pdo, $secondUserId, null, [
+        'name' => 'QA shared custom press',
+        'muscle_group' => 'chest',
+        'exercise_type' => 'strength',
+        'equipment' => 'dumbbell',
+    ]);
+    $importedCustomExerciseId = wk_user_clone_exercise($pdo, $sharedCustomExerciseId, $firstUserId, true, false);
+    $importedCustomExercise = wk_exercise_get_for_user($pdo, $importedCustomExerciseId, $firstUserId);
+    $importTargetRoutineId = wk_routine_create($pdo, $firstUserId, 'QA imported routine');
+    $importedRoutineExerciseId = wk_routine_add_exercise($pdo, $importTargetRoutineId, $importedCustomExerciseId);
+    $assert(
+        $importedCustomExerciseId > 0
+            && $importedRoutineExerciseId > 0
+            && (int) ($importedCustomExercise['user_id'] ?? 0) === $firstUserId
+            && (string) ($importedCustomExercise['display_name'] ?? '') === 'QA shared custom press',
+        'a custom exercise from a shared workout is safely copied into my routine'
+    );
+
+    $socialNow = now_iso();
+    db_execute(
+        $pdo,
+        'INSERT INTO nutrition_entries (user_id,photo_entry_id,entry_date,entry_time,meal_type,notes,photo_path,calories,protein_g,carbs_g,fat_g,fiber_g,sugar_g,sodium_mg,version,created_at,updated_at)
+         VALUES (:user,NULL,:date,NULL,"lunch","QA social meal",NULL,500,30,50,15,NULL,NULL,NULL,1,:now,:now)',
+        [':user' => $secondUserId, ':date' => to_date(null), ':now' => $socialNow]
+    );
+    $socialMealId = (int) $pdo->lastInsertId();
+    $focusedMealFeed = social_feed_items($pdo, $firstUserId, 'friends', 1, 'meal', $socialMealId);
+    $assert(
+        count($focusedMealFeed) === 1
+            && (string) ($focusedMealFeed[0]['type'] ?? '') === 'meal'
+            && (int) ($focusedMealFeed[0]['id'] ?? 0) === $socialMealId,
+        'a shared meal link loads only its exact feed post'
+    );
+    $assert(social_feed_toggle_like($pdo, $firstUserId, 'meal', $socialMealId), 'liking a friend activity succeeds');
+    $mealLikeNotification = db_fetch_one(
+        $pdo,
+        'SELECT * FROM user_notifications WHERE user_id=:user AND kind="social_like" ORDER BY id DESC LIMIT 1',
+        [':user' => $secondUserId]
+    );
+    $mealLikePayload = json_decode((string) ($mealLikeNotification['payload_json'] ?? ''), true);
+    $assert(
+        is_array($mealLikeNotification)
+            && (string) ($mealLikePayload['entity_type'] ?? '') === 'meal'
+            && (int) ($mealLikePayload['entity_id'] ?? 0) === $socialMealId,
+        'a like notifies the activity owner with its exact target'
+    );
+    $mealLikeDestination = open_user_notification($pdo, (int) ($mealLikeNotification['id'] ?? 0), $secondUserId);
+    $assert(
+        str_contains($mealLikeDestination, 'page=dashboard')
+            && str_contains($mealLikeDestination, 'post_type=meal')
+            && str_contains($mealLikeDestination, 'post_id=' . $socialMealId)
+            && str_contains($mealLikeDestination, '#feed-meal-' . $socialMealId),
+        'clicking a meal like notification opens that feed item'
+    );
+    $assert(!social_feed_toggle_like($pdo, $firstUserId, 'meal', $socialMealId), 'removing a like succeeds without a new notification');
+    $assert(social_feed_toggle_like($pdo, $firstUserId, 'meal', $socialMealId), 'the same activity can be liked again');
+    $mealLikeNotificationCount = (int) (db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=:user AND kind="social_like" AND unique_key=:key',
+        [':user' => $secondUserId, ':key' => 'social_like:meal:' . $socialMealId . ':' . $firstUserId]
+    )['n'] ?? 0);
+    $assert($mealLikeNotificationCount === 1, 're-liking does not duplicate the same notification');
+    $assert(
+        social_feed_add_comment($pdo, $firstUserId, 'meal', $socialMealId, 'Gran comida para recuperar'),
+        'commenting on a friend activity succeeds'
+    );
+    $mealCommentNotification = db_fetch_one(
+        $pdo,
+        'SELECT * FROM user_notifications WHERE user_id=:user AND kind="social_comment" ORDER BY id DESC LIMIT 1',
+        [':user' => $secondUserId]
+    );
+    $mealCommentDestination = open_user_notification($pdo, (int) ($mealCommentNotification['id'] ?? 0), $secondUserId);
+    $assert(
+        str_contains((string) ($mealCommentNotification['message'] ?? ''), 'Gran comida para recuperar')
+            && str_contains($mealCommentDestination, 'comments=meal-' . $socialMealId)
+            && str_contains($mealCommentDestination, '#feed-meal-' . $socialMealId),
+        'a comment notification opens the exact activity with comments expanded'
+    );
+    $notificationCountBeforeSelfLike = (int) (db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=:user AND kind="social_like"',
+        [':user' => $secondUserId]
+    )['n'] ?? 0);
+    $assert(social_feed_toggle_like($pdo, $secondUserId, 'meal', $socialMealId), 'liking your own activity remains valid');
+    $notificationCountAfterSelfLike = (int) (db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=:user AND kind="social_like"',
+        [':user' => $secondUserId]
+    )['n'] ?? 0);
+    $assert($notificationCountAfterSelfLike === $notificationCountBeforeSelfLike, 'self likes do not create notifications');
+
+    db_execute(
+        $pdo,
+        'INSERT INTO photo_entries (user_id,log_date,category,caption,file_path,has_photo,created_at,updated_at)
+         VALUES (:user,:date,"meal","QA social photo","qa/social-photo.jpg",1,:now,:now)',
+        [':user' => $secondUserId, ':date' => to_date(null), ':now' => now_iso()]
+    );
+    $socialPhotoId = (int) $pdo->lastInsertId();
+    $assert(social_feed_toggle_like($pdo, $firstUserId, 'photo', $socialPhotoId), 'liking a friend photo succeeds');
+    $photoNotification = db_fetch_one(
+        $pdo,
+        'SELECT * FROM user_notifications WHERE user_id=:user AND kind="social_like" AND payload_json LIKE :photo ORDER BY id DESC LIMIT 1',
+        [':user' => $secondUserId, ':photo' => '%"entity_type":"photo"%']
+    );
+    $assert(
+        resolve_notification_destination($pdo, (array) $photoNotification) === '/?page=photo&photo_id=' . $socialPhotoId,
+        'clicking a photo notification opens that photo'
+    );
+    $assert(
+        create_photo_comment($pdo, $socialPhotoId, $firstUserId, 'Comentario desde el detalle de foto') !== [],
+        'commenting from the photo detail succeeds'
+    );
+    $photoCommentNotification = db_fetch_one(
+        $pdo,
+        'SELECT * FROM user_notifications WHERE user_id=:user AND kind="social_comment" AND payload_json LIKE :photo ORDER BY id DESC LIMIT 1',
+        [':user' => $secondUserId, ':photo' => '%"entity_type":"photo"%']
+    );
+    $assert(
+        str_contains((string) ($photoCommentNotification['message'] ?? ''), 'Comentario desde el detalle de foto')
+            && resolve_notification_destination($pdo, (array) $photoCommentNotification) === '/?page=photo&photo_id=' . $socialPhotoId,
+        'a comment from the photo detail notifies its owner and links back to it'
+    );
+    $workoutDestination = resolve_notification_destination($pdo, [
+        'kind' => 'social_comment',
+        'payload_json' => json_encode(['entity_type' => 'workout', 'entity_id' => 321], JSON_UNESCAPED_SLASHES),
+    ]);
+    $assert(
+        $workoutDestination === '/?page=workouts&view=stats&detail_session=321',
+        'clicking a workout notification opens that workout summary'
+    );
+
     $assert(!duels_create($pdo, $firstUserId, $firstUserId, 'steps', 7), 'duel creation rejects challenging yourself');
     $assert(duels_create($pdo, $firstUserId, $secondUserId, 'steps', 7), 'duel creation accepts a valid friend and metric');
     $duel = db_fetch_one($pdo, 'SELECT * FROM user_duels ORDER BY id DESC LIMIT 1');
