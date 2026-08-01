@@ -5622,6 +5622,10 @@ document.addEventListener('click', (event) => {
                 panel.dataset.workoutFilterReady = '1';
                 openButtons.forEach((button) => button.addEventListener('click', () => setOpen(!panel.classList.contains('is-open'))));
                 closeButton?.addEventListener('click', () => setOpen(false));
+                // Applying filters closes the sheet immediately (it feels like a
+                // reload otherwise); the searched term and other filters travel
+                // along in the same GET form, so nothing typed is lost.
+                panel.querySelector('.workouts-library-filters')?.addEventListener('submit', () => setOpen(false));
                 document.addEventListener('pointerdown', (event) => {
                     if (!panel.classList.contains('is-open') || !window.matchMedia('(max-width: 899px)').matches) {
                         return;
@@ -5668,6 +5672,187 @@ document.addEventListener('click', (event) => {
                 setSearchOpen(true);
             }
         }
+
+        // Body-part chips are plain checkboxes now (multi-select, applied only
+        // when "Filtrar" is submitted). The "All body parts" chip is a client-side
+        // convenience, not a submitted field: it clears the others, and reflects
+        // whether any specific body part is currently checked.
+        document.querySelectorAll('[data-workout-muscle-filters]').forEach((group) => {
+            if (!(group instanceof HTMLElement) || group.dataset.workoutMuscleFiltersReady === '1') {
+                return;
+            }
+            group.dataset.workoutMuscleFiltersReady = '1';
+            const allCheckbox = group.querySelector('[data-workout-muscle-all]');
+            const muscleCheckboxes = Array.from(group.querySelectorAll('input[name="muscle[]"]'));
+            if (!(allCheckbox instanceof HTMLInputElement) || muscleCheckboxes.length === 0) {
+                return;
+            }
+            const syncAll = () => {
+                allCheckbox.checked = !muscleCheckboxes.some((input) => input.checked);
+            };
+            allCheckbox.addEventListener('change', () => {
+                if (allCheckbox.checked) {
+                    muscleCheckboxes.forEach((input) => { input.checked = false; });
+                } else {
+                    syncAll();
+                }
+            });
+            muscleCheckboxes.forEach((input) => input.addEventListener('change', syncAll));
+        });
+    };
+
+    const initWorkoutMediaLightbox = () => {
+        const modal = document.getElementById('workouts-media-lightbox');
+        const body = modal?.querySelector('[data-workout-media-lightbox-body]');
+        const titleEl = modal?.querySelector('[data-workout-media-lightbox-title]');
+        if (!(modal instanceof HTMLElement) || !(body instanceof HTMLElement) || modal.dataset.workoutMediaLightboxReady === '1') {
+            return;
+        }
+        modal.dataset.workoutMediaLightboxReady = '1';
+        document.addEventListener('click', (event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) {
+                return;
+            }
+            const trigger = target.closest('[data-workout-media-preview]');
+            if (!trigger) {
+                return;
+            }
+            const src = trigger.getAttribute('data-preview-src') || '';
+            const embed = trigger.getAttribute('data-preview-embed') || '';
+            if (src === '' && embed === '') {
+                return;
+            }
+            event.preventDefault();
+            const title = trigger.getAttribute('data-preview-title') || '';
+            body.innerHTML = '';
+            if (embed !== '') {
+                const frame = document.createElement('iframe');
+                frame.src = embed;
+                frame.title = title;
+                frame.loading = 'lazy';
+                frame.allow = 'accelerometer; encrypted-media; gyroscope; picture-in-picture';
+                frame.allowFullscreen = true;
+                body.appendChild(frame);
+            } else {
+                const img = document.createElement('img');
+                img.src = src;
+                img.alt = title;
+                body.appendChild(img);
+            }
+            if (titleEl instanceof HTMLElement) {
+                titleEl.textContent = title;
+            }
+            window.AppOverlay?.open(modal);
+        });
+        // Emptying the body on close matters for the video case: a detached-but-
+        // still-present iframe keeps playing audio behind the closed dialog.
+        modal.addEventListener('click', (event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) {
+                return;
+            }
+            if (target.closest('[data-app-modal-close]') || target === modal) {
+                window.setTimeout(() => { body.innerHTML = ''; }, 260);
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && modal.classList.contains('is-open')) {
+                window.setTimeout(() => { body.innerHTML = ''; }, 260);
+            }
+        });
+    };
+
+    const initWorkoutLibraryAjaxAdd = () => {
+        document.querySelectorAll('[data-workout-ajax-add]').forEach((form) => {
+            if (!(form instanceof HTMLFormElement) || form.dataset.workoutAjaxAddReady === '1') {
+                return;
+            }
+            form.dataset.workoutAjaxAddReady = '1';
+            form.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const button = form.querySelector('button[type="submit"]');
+                if (button instanceof HTMLButtonElement) {
+                    if (button.disabled) {
+                        return;
+                    }
+                    button.disabled = true;
+                    button.classList.add('is-loading');
+                }
+                // form.action would normally resolve the submit URL, but this form
+                // also carries a hidden input named "action" (the app's own POST
+                // action dispatcher) which shadows that property on the form
+                // element, so the raw attribute must be read instead.
+                const actionUrl = form.getAttribute('action') || window.location.href;
+                fetch(actionUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    body: new FormData(form),
+                }).then((response) => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    if (button instanceof HTMLButtonElement) {
+                        button.classList.remove('is-loading', 'btn-primary');
+                        button.classList.add('btn-ghost', 'is-added');
+                        button.textContent = button.dataset.addedLabel || button.textContent;
+                    }
+                }).catch((error) => {
+                    console.error('Add to routine failed:', error);
+                    if (button instanceof HTMLButtonElement) {
+                        button.disabled = false;
+                        button.classList.remove('is-loading');
+                    }
+                });
+            });
+        });
+    };
+
+    const initWorkoutCreateModal = () => {
+        const trigger = document.querySelector('[data-workout-create-modal-open]');
+        const modal = document.querySelector('[data-workout-create-modal]');
+        const body = modal?.querySelector('[data-workout-create-modal-body]');
+        if (!(trigger instanceof HTMLButtonElement)
+            || !(modal instanceof HTMLElement)
+            || !(body instanceof HTMLElement)
+            || trigger.dataset.workoutCreateModalReady === '1') {
+            return;
+        }
+        trigger.dataset.workoutCreateModalReady = '1';
+        trigger.addEventListener('click', () => {
+            const url = trigger.dataset.createUrl || '';
+            if (url === '') {
+                return;
+            }
+            window.AppOverlay?.open(modal);
+            body.innerHTML = `<p class="muted">${body.dataset.loadingLabel || ''}</p>`;
+            fetch(url, {
+                credentials: 'same-origin',
+                headers: { Accept: 'text/html', 'X-Requested-With': 'XMLHttpRequest' },
+            }).then((response) => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.text();
+            }).then((html) => {
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                // Pulling just the editor form (not the whole fetched view
+                // section) matters: that section also contains the page's other
+                // global modals further down, which would otherwise get imported
+                // a second time and leave stray duplicate-id nodes in the DOM.
+                const form = doc.querySelector('.workouts-custom-editor');
+                if (!(form instanceof HTMLElement)) {
+                    throw new Error('Editor form missing from response');
+                }
+                body.innerHTML = '';
+                body.appendChild(document.importNode(form, true));
+                runPageHydration(false);
+            }).catch((error) => {
+                console.error('Failed to load the create-exercise form:', error);
+                body.innerHTML = `<p class="muted">${body.dataset.errorLabel || ''}</p>`;
+            });
+        });
     };
 
     const initWorkoutRoutinePicker = () => {
@@ -5863,6 +6048,7 @@ document.addEventListener('click', (event) => {
                 }
 
                 initWorkoutRoutinePicker();
+                initWorkoutLibraryAjaxAdd();
                 document.dispatchEvent(new CustomEvent('fc:libraryItemsAdded', { detail: { added } }));
                 status.textContent = formatLoaded();
                 if (nextUrl === '' || added === 0 || grid.querySelectorAll(':scope > .workouts-library-card').length >= total) {
@@ -6161,6 +6347,9 @@ document.addEventListener('click', (event) => {
         safeInit(initCollapsibleLists);
         safeInit(initWorkoutHubTabs);
         safeInit(initWorkoutLibraryFilters);
+        safeInit(initWorkoutMediaLightbox);
+        safeInit(initWorkoutLibraryAjaxAdd);
+        safeInit(initWorkoutCreateModal);
         safeInit(initWorkoutRoutinePicker);
         safeInit(initWorkoutStartConfirm);
         safeInit(initWorkoutLibraryInfiniteScroll);

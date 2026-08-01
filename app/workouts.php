@@ -1619,20 +1619,20 @@ function wk_exercise_library(PDO $pdo, int $userId, array $filters = []): array
 {
     $lower = static fn(string $value): string => function_exists('mb_strtolower') ? mb_strtolower($value) : strtolower($value);
     $query = $lower(trim((string) ($filters['q'] ?? '')));
-    $muscle = trim((string) ($filters['muscle'] ?? ''));
+    $muscleList = array_values(array_filter(array_map('trim', explode(',', (string) ($filters['muscle'] ?? ''))), static fn(string $m): bool => $m !== ''));
     $equipment = trim((string) ($filters['equipment'] ?? ''));
     $context = trim((string) ($filters['context'] ?? ''));
     $scope = trim((string) ($filters['scope'] ?? ''));
     $rows = wk_exercises_for_user($pdo, $userId);
 
-    return array_values(array_filter($rows, static function (array $row) use ($query, $muscle, $equipment, $context, $scope, $userId, $lower): bool {
+    return array_values(array_filter($rows, static function (array $row) use ($query, $muscleList, $equipment, $context, $scope, $userId, $lower): bool {
         if ($scope === 'mine' && (int) ($row['user_id'] ?? 0) !== $userId) {
             return false;
         }
         if ($scope === 'favorites' && (int) ($row['is_favorite'] ?? 0) !== 1) {
             return false;
         }
-        if ($muscle !== '' && (string) ($row['muscle_group'] ?? '') !== $muscle) {
+        if ($muscleList !== [] && !in_array((string) ($row['muscle_group'] ?? ''), $muscleList, true)) {
             return false;
         }
         $equipmentTags = json_decode((string) ($row['equipment_tags_json'] ?? '[]'), true);

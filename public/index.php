@@ -4192,9 +4192,22 @@ if ($page === 'workouts') {
     $wkLibraryTotal = 0;
     $wkLibraryQuery = trim((string) ($_GET['q'] ?? ''));
     $wkLibraryQuery = function_exists('mb_substr') ? mb_substr($wkLibraryQuery, 0, 80) : substr($wkLibraryQuery, 0, 80);
+    // The muscle filter accepts several body parts at once. It arrives either as
+    // muscle[]=chest&muscle[]=back (checkbox form submit) or muscle=chest,back
+    // (bookmarked/shared link), and is normalized back into one comma-joined
+    // string so the rest of the request (URLs, hidden inputs, wk_exercise_library)
+    // keeps treating $filters['muscle'] as a single scalar value.
+    $muscleParam = $_GET['muscle'] ?? '';
+    $muscleCandidates = is_array($muscleParam)
+        ? $muscleParam
+        : (trim((string) $muscleParam) !== '' ? explode(',', (string) $muscleParam) : []);
+    $muscleSelected = array_values(array_unique(array_filter(
+        array_map(static fn($m): string => trim((string) $m), $muscleCandidates),
+        static fn(string $m): bool => in_array($m, wk_muscle_groups(), true)
+    )));
     $wkLibraryFilters = [
         'q' => $wkLibraryQuery,
-        'muscle' => in_array((string) ($_GET['muscle'] ?? ''), wk_muscle_groups(), true) ? (string) $_GET['muscle'] : '',
+        'muscle' => implode(',', $muscleSelected),
         'equipment' => in_array((string) ($_GET['equipment'] ?? ''), wk_equipment_options(), true) ? (string) $_GET['equipment'] : '',
         'context' => in_array((string) ($_GET['context'] ?? ''), wk_context_options(), true) ? (string) $_GET['context'] : '',
         'scope' => in_array((string) ($_GET['scope'] ?? ''), ['mine', 'favorites'], true) ? (string) $_GET['scope'] : '',

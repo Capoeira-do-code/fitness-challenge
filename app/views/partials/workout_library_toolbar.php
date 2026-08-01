@@ -26,7 +26,11 @@ $libraryToolbarVariant = in_array((string) ($libraryToolbarVariant ?? ''), ['des
         </form>
         <?php endif; ?>
         <button class="workouts-library-tool<?= $hasLibrarySearch ? ' is-active' : '' ?>" type="button" data-workout-search-toggle aria-expanded="<?= $hasLibrarySearch ? 'true' : 'false' ?>" aria-controls="workouts-library-search" aria-label="<?= e(t('workouts.search_exercises')) ?>" title="<?= e(t('workouts.search_exercises')) ?>"><?= activity_icon_svg('search') ?></button>
+        <?php if ($hasLibraryTarget && $libraryToolbarVariant === 'desktop'): ?>
+        <button class="workouts-library-tool is-primary" type="button" data-workout-create-modal-open data-create-url="<?= e($customExerciseUrl) ?>" aria-label="<?= e(t('workouts.create_custom')) ?>" title="<?= e(t('workouts.create_custom')) ?>"><?= activity_icon_svg('plus') ?></button>
+        <?php else: ?>
         <a class="workouts-library-tool is-primary" href="<?= e($customExerciseUrl) ?>" aria-label="<?= e(t('workouts.create_custom')) ?>" title="<?= e(t('workouts.create_custom')) ?>"><?= activity_icon_svg('plus') ?></a>
+        <?php endif; ?>
         <button class="workouts-library-tool workouts-filter-open<?= $hasActiveLibraryFilters ? ' is-active' : '' ?>" type="button" data-workout-filter-open aria-expanded="false" aria-controls="workouts-library-filters" aria-label="<?= e(t('common.filter')) ?>" title="<?= e(t('common.filter')) ?>"><?= activity_icon_svg('sliders') ?><?php if ($hasActiveLibraryFilters): ?><span class="workouts-library-tool-dot" aria-hidden="true"></span><?php endif; ?></button>
     <?php endif; ?>
 </div>
