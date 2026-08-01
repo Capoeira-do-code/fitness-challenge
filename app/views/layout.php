@@ -111,6 +111,7 @@ $desktopNavItems = [
     'table' => ['label' => t('nav.table'), 'href' => '/?page=workouts', 'icon' => 'dumbbell'],
     'gallery' => ['label' => t('gallery.title'), 'href' => '/?page=gallery&gallery_view=recent', 'icon' => 'gallery'],
     'analytics' => ['label' => t('nav.analytics'), 'href' => '/?page=analytics', 'icon' => 'analytics'],
+    'ranks' => ['label' => 'Ranks', 'href' => '/?page=ranks', 'icon' => 'analytics'],
     'team' => ['label' => t('nav.team'), 'href' => '/?page=team', 'icon' => 'users'],
     'profile' => ['label' => t('nav.profile'), 'href' => '/?page=profile', 'icon' => 'user'],
 ];
