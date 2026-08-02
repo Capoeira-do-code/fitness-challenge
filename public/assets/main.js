@@ -5866,12 +5866,18 @@ document.addEventListener('click', (event) => {
             form.addEventListener('submit', (event) => {
                 event.preventDefault();
                 const button = form.querySelector('button[type="submit"]');
+                const card = form.closest('.workouts-library-card');
+                const detailButton = card?.querySelector('[data-workout-library-detail-add]');
                 if (button instanceof HTMLButtonElement) {
                     if (button.disabled) {
                         return;
                     }
                     button.disabled = true;
                     button.classList.add('is-loading');
+                }
+                if (detailButton instanceof HTMLButtonElement) {
+                    detailButton.disabled = true;
+                    detailButton.classList.add('is-loading');
                 }
                 // form.action would normally resolve the submit URL, but this form
                 // also carries a hidden input named "action" (the app's own POST
@@ -5892,11 +5898,23 @@ document.addEventListener('click', (event) => {
                         button.classList.add('btn-ghost', 'is-added');
                         button.textContent = button.dataset.addedLabel || button.textContent;
                     }
+                    if (detailButton instanceof HTMLButtonElement) {
+                        const detailLabel = detailButton.querySelector('[data-workout-library-detail-add-label]');
+                        detailButton.classList.remove('is-loading', 'btn-primary');
+                        detailButton.classList.add('btn-ghost', 'is-added');
+                        if (detailLabel instanceof HTMLElement && button instanceof HTMLButtonElement) {
+                            detailLabel.textContent = button.dataset.addedLabel || detailLabel.textContent;
+                        }
+                    }
                 }).catch((error) => {
                     console.error('Add to routine failed:', error);
                     if (button instanceof HTMLButtonElement) {
                         button.disabled = false;
                         button.classList.remove('is-loading');
+                    }
+                    if (detailButton instanceof HTMLButtonElement) {
+                        detailButton.disabled = false;
+                        detailButton.classList.remove('is-loading');
                     }
                 });
             });
@@ -6847,12 +6865,28 @@ document.addEventListener('click', (event) => {
         if (!(target instanceof Element)) return;
         var trigger = target.closest('[data-workout-exercise-detail-open]');
         if (!(trigger instanceof HTMLElement)) return;
+        if (trigger.classList.contains('workouts-library-card')) {
+            if (target.closest('.app-modal') || target.closest('a, button, input, select, textarea, form, label')) return;
+        }
         var modalId = trigger.getAttribute('data-workout-exercise-detail-open') || '';
         var modal = modalId !== '' ? document.getElementById(modalId) : null;
         if (!(modal instanceof HTMLElement) || !window.AppOverlay) return;
         event.preventDefault();
         event.stopImmediatePropagation();
         window.AppOverlay.open(modal);
+    });
+
+    document.addEventListener('click', function (event) {
+        var target = event.target;
+        if (!(target instanceof Element)) return;
+        var button = target.closest('[data-workout-library-detail-add]');
+        if (!(button instanceof HTMLButtonElement) || button.disabled) return;
+        var card = button.closest('.workouts-library-card');
+        var form = card ? card.querySelector('[data-workout-ajax-add]') : null;
+        var submit = form instanceof HTMLFormElement ? form.querySelector('button[type="submit"]') : null;
+        if (!(form instanceof HTMLFormElement) || !(submit instanceof HTMLButtonElement) || submit.disabled) return;
+        event.preventDefault();
+        form.requestSubmit(submit);
     });
 })();
 

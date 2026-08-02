@@ -170,6 +170,7 @@ $muscleSelectedList = array_values(array_filter(
     static fn(string $m): bool => $m !== ''
 ));
 $libraryExercises = (array) ($wkLibrary ?? []);
+$libraryExerciseMediaMap = (array) ($wkLibraryExerciseMedia ?? []);
 $libraryScope = (string) ($filters['scope'] ?? '');
 $libraryMode = (string) ($wkLibraryMode ?? 'browse') === 'organize' && $libraryScope === 'favorites' && !$hasLibraryTarget ? 'organize' : 'browse';
 $libraryLayout = in_array((string) ($wkLibraryLayout ?? 'cards'), ['cards', 'compact'], true) ? (string) $wkLibraryLayout : 'cards';
@@ -190,6 +191,9 @@ $libraryUrl = static function (array $changes = []) use ($filters, $targetRoutin
     return '/?' . http_build_query($query);
 };
 $customExerciseUrl = $libraryUrl(['custom_exercise' => 'new', 'library_page' => null]);
+$libraryTargetReturnUrl = $targetSessionId > 0
+    ? '/?page=workouts&session_id=' . $targetSessionId
+    : '/?page=workouts&routine_id=' . $targetRoutineId;
 $hasLibrarySearch = trim((string) ($filters['q'] ?? '')) !== '';
 $hasActiveLibraryFilters = trim((string) ($filters['muscle'] ?? '')) !== ''
     || trim((string) ($filters['equipment'] ?? '')) !== ''
@@ -734,11 +738,10 @@ $libraryClearUrl = $libraryUrl([
 <?php elseif ($wkView === 'library'): ?>
     <?php if ($hasLibraryTarget): ?>
         <aside class="workouts-library-target" aria-label="<?= e(t('workouts.add_exercises')) ?>">
-            <a class="workouts-picker-cancel" href="<?= e($targetSessionId > 0 ? '/?page=workouts&session_id=' . $targetSessionId : '/?page=workouts&routine_id=' . $targetRoutineId) ?>"><?= e(t('common.cancel')) ?></a>
+            <a class="workouts-picker-cancel" href="<?= e($libraryTargetReturnUrl) ?>"><?= e(t('common.cancel')) ?></a>
             <span class="workouts-library-target-icon"<?= $targetRoutineId > 0 ? ' style="--routine-accent: ' . e(wk_normalize_routine_color($targetRoutine['accent_color'] ?? '#14b8a6')) . '"' : '' ?>><?= activity_icon_svg($targetSessionId > 0 ? 'fire' : wk_normalize_routine_icon($targetRoutine['icon'] ?? 'dumbbell')) ?></span>
             <div><small><?= e($targetSessionId > 0 ? t('workouts.adding_to_session') : t('workouts.add_exercises_to')) ?></small><strong class="workouts-library-target-name"><?= e($targetSessionId > 0 ? ((string) ($targetSession['title'] ?? '') !== '' ? (string) $targetSession['title'] : t('workouts.active_session')) : (string) ($targetRoutine['name'] ?? '')) ?></strong><strong class="workouts-picker-title"><?= e(t('workouts.add_exercise')) ?></strong></div>
-            <a class="workouts-picker-create" href="<?= e($customExerciseUrl) ?>"><?= e(t('common.create')) ?></a>
-            <a class="btn btn-primary small workouts-library-target-done" href="<?= e($targetSessionId > 0 ? '/?page=workouts&session_id=' . $targetSessionId : '/?page=workouts&routine_id=' . $targetRoutineId) ?>"><?= e($targetSessionId > 0 ? t('workouts.back_to_session') : t('workouts.finish_adding')) ?></a>
+            <a class="btn btn-primary small workouts-picker-create workouts-picker-save" href="<?= e($libraryTargetReturnUrl) ?>"><?= e(t('common.save')) ?></a>
         </aside>
     <?php endif; ?>
     <?php if ($libraryMode !== 'organize'): ?>
@@ -764,14 +767,23 @@ $libraryClearUrl = $libraryUrl([
                 <button type="button" data-workout-filter-open><?= e((string) ($filters['equipment'] ?? '') !== '' ? $equipmentLabel((string) $filters['equipment']) : t('workouts.all_equipment')) ?></button>
                 <button type="button" data-workout-filter-open><?= e($muscleSelectedList !== [] ? implode(', ', array_map($muscleLabel, $muscleSelectedList)) : t('workouts.all_body_parts')) ?></button>
             </div>
+            <button class="workouts-picker-custom-create" type="button" data-app-modal-open="wk-create-exercise-leave-modal" aria-haspopup="dialog">
+                <span aria-hidden="true"><?= activity_icon_svg('plus') ?></span>
+                <span><strong><?= e(t('workouts.create_custom')) ?></strong><small><?= e(t('workouts.create_custom_picker_hint')) ?></small></span>
+                <b aria-hidden="true">&rsaquo;</b>
+            </button>
         <?php endif; ?>
         <div class="workouts-library-results<?= $hasAnyLibraryFilter ? ' is-filtered' : '' ?>" aria-live="polite">
-            <strong><?= e(t('workouts.library_results', ['count' => $libraryResultTotal])) ?></strong>
-            <?php if ($hasAnyLibraryFilter): ?>
-                <small><?php if ($hasLibrarySearch): ?><span>&ldquo;<?= e(trim((string) $filters['q'])) ?>&rdquo;</span><?php endif; ?><?php if ($muscleSelectedList !== []): ?><span><?= e(implode(', ', array_map($muscleLabel, $muscleSelectedList))) ?></span><?php endif; ?><?php if ((string) ($filters['equipment'] ?? '') !== ''): ?><span><?= e($equipmentLabel((string) $filters['equipment'])) ?></span><?php endif; ?><?php if ((string) ($filters['context'] ?? '') !== ''): ?><span><?= e($contextLabel((string) $filters['context'])) ?></span><?php endif; ?></small>
-            <?php else: ?>
-                <small><?= e(t('workouts.library_subtitle')) ?></small>
-            <?php endif; ?>
+            <span class="workouts-library-results-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span>
+            <div>
+                <strong><?= e(t('workouts.library_results', ['count' => $libraryResultTotal])) ?></strong>
+                <?php if ($hasAnyLibraryFilter): ?>
+                    <small><?php if ($hasLibrarySearch): ?><span>&ldquo;<?= e(trim((string) $filters['q'])) ?>&rdquo;</span><?php endif; ?><?php if ($muscleSelectedList !== []): ?><span><?= e(implode(', ', array_map($muscleLabel, $muscleSelectedList))) ?></span><?php endif; ?><?php if ((string) ($filters['equipment'] ?? '') !== ''): ?><span><?= e($equipmentLabel((string) $filters['equipment'])) ?></span><?php endif; ?><?php if ((string) ($filters['context'] ?? '') !== ''): ?><span><?= e($contextLabel((string) $filters['context'])) ?></span><?php endif; ?></small>
+                <?php else: ?>
+                    <small><?= e(t('workouts.library_subtitle')) ?></small>
+                <?php endif; ?>
+            </div>
+            <?php if ($hasAnyLibraryFilter): ?><a href="<?= e($libraryClearUrl) ?>"><?= e(t('common.clear')) ?></a><?php endif; ?>
         </div>
     </article>
     <div class="workouts-filter-sheet" id="workouts-library-filters" data-workout-filter-panel aria-hidden="true">
@@ -876,23 +888,29 @@ $libraryClearUrl = $libraryUrl([
                     'isometric' => $libraryTrainingDefaults['target_sets'] . '×' . ($libraryTrainingDefaults['target_duration'] !== null ? (int) $libraryTrainingDefaults['target_duration'] . 's' : '—'),
                     default => $libraryTrainingDefaults['target_sets'] . '×' . ($libraryTrainingDefaults['target_reps'] ?? '—'),
                 };
+                $libraryExerciseId = (int) ($exercise['id'] ?? 0);
+                $libraryExerciseName = (string) ($exercise['display_name'] ?? $exercise['name'] ?? '');
+                $libraryExerciseDetailId = 'workout-library-exercise-detail-' . $libraryExerciseId;
+                $libraryExerciseGallery = array_values((array) ($libraryExerciseMediaMap[$libraryExerciseId] ?? []));
+                $librarySecondaryDecoded = json_decode((string) ($exercise['secondary_muscles'] ?? '[]'), true);
+                $librarySecondaryMuscles = array_values(array_filter(array_map('strval', is_array($librarySecondaryDecoded) ? $librarySecondaryDecoded : [])));
                 ?>
-                <article class="workouts-library-card<?= $isPersonalExercise ? ' is-personal' : '' ?><?= $isFavoriteExercise ? ' is-favorite' : '' ?>" style="<?= e($workoutExerciseStyle((array) $exercise)) ?>" data-exercise-id="<?= (int) $exercise['id'] ?>" data-muscle="<?= e((string) ($exercise['muscle_group'] ?? '')) ?>" data-cover-mode="<?= e($exerciseCoverMode) ?>">
+                <article class="workouts-library-card<?= $isPersonalExercise ? ' is-personal' : '' ?><?= $isFavoriteExercise ? ' is-favorite' : '' ?>" style="<?= e($workoutExerciseStyle((array) $exercise)) ?>" data-exercise-id="<?= $libraryExerciseId ?>" data-muscle="<?= e((string) ($exercise['muscle_group'] ?? '')) ?>" data-cover-mode="<?= e($exerciseCoverMode) ?>" data-workout-exercise-detail-open="<?= e($libraryExerciseDetailId) ?>">
                     <?php $libraryImageUrl = $useExercisePhoto ? media_thumbnail_url($exerciseImagePath, 400) : ''; ?>
                     <?php if ($libraryImageUrl !== ''): ?>
-                        <a class="workouts-library-media" href="<?= e($exerciseGuideUrl) ?>" aria-label="<?= e((string) ($exercise['display_name'] ?? $exercise['name'])) ?>" data-workout-media-preview data-preview-src="<?= e(media_thumbnail_url($exerciseImagePath, 800)) ?>" data-preview-title="<?= e((string) ($exercise['display_name'] ?? $exercise['name'])) ?>">
+                        <a class="workouts-library-media" href="<?= e($exerciseGuideUrl) ?>" aria-label="<?= e($libraryExerciseName) ?>" data-workout-exercise-detail-open="<?= e($libraryExerciseDetailId) ?>" aria-haspopup="dialog" aria-controls="<?= e($libraryExerciseDetailId) ?>">
                             <img src="<?= e($libraryImageUrl) ?>" srcset="<?= e(media_thumbnail_srcset($exerciseImagePath, [200, 400, 800])) ?>" sizes="(max-width: 700px) calc(100vw - 32px), 360px" width="400" height="225" alt="" loading="lazy" decoding="async" style="object-position: <?= e($exerciseImagePosition) ?>">
                             <span class="workouts-library-media-badges"><?php if ($isPersonalExercise): ?><em><?= e(t('workouts.mine')) ?></em><?php endif; ?><?php if ($hasExerciseVideo): ?><em aria-label="<?= e(t('workouts.custom_video')) ?>"><?= activity_icon_svg('play') ?></em><?php endif; ?></span>
                         </a>
                     <?php elseif ($useVideoThumbnail): ?>
-                        <a class="workouts-library-media is-video-thumbnail" href="<?= e($exerciseGuideUrl) ?>" aria-label="<?= e((string) ($exercise['display_name'] ?? $exercise['name'])) ?>" style="--workout-video-thumb: url('<?= e($libraryVideoThumbnail) ?>')" data-workout-media-preview data-preview-embed="<?= e((string) ($exerciseVideoSource['url'] ?? '')) ?>" data-preview-title="<?= e((string) ($exercise['display_name'] ?? $exercise['name'])) ?>">
+                        <a class="workouts-library-media is-video-thumbnail" href="<?= e($exerciseGuideUrl) ?>" aria-label="<?= e($libraryExerciseName) ?>" style="--workout-video-thumb: url('<?= e($libraryVideoThumbnail) ?>')" data-workout-exercise-detail-open="<?= e($libraryExerciseDetailId) ?>" aria-haspopup="dialog" aria-controls="<?= e($libraryExerciseDetailId) ?>">
                             <span class="workouts-library-video-fallback" aria-hidden="true"><?= e($workoutExerciseMark((array) $exercise)) ?></span>
                             <span class="workouts-library-video-thumb" aria-hidden="true"></span>
                             <span class="workouts-library-play" aria-hidden="true"><?= activity_icon_svg('play') ?></span>
                             <span class="workouts-library-media-badges"><?php if ($isPersonalExercise): ?><em><?= e(t('workouts.mine')) ?></em><?php endif; ?><em><?= e(t('workouts.youtube')) ?></em></span>
                         </a>
                     <?php else: ?>
-                        <a class="workouts-library-media is-placeholder" href="<?= e($exerciseGuideUrl) ?>" aria-label="<?= e((string) ($exercise['display_name'] ?? $exercise['name'])) ?>"><span><?= activity_icon_svg('dumbbell') ?></span><small><?= e($hasExerciseVideo ? t('workouts.video_available') : $muscleLabel((string) ($exercise['muscle_group'] ?? ''))) ?></small><span class="workouts-library-media-badges"><?php if ($isPersonalExercise): ?><em><?= e(t('workouts.mine')) ?></em><?php endif; ?><?php if ($hasExerciseVideo): ?><em aria-label="<?= e(t('workouts.custom_video')) ?>"><?= activity_icon_svg('play') ?></em><?php endif; ?></span></a>
+                        <a class="workouts-library-media is-placeholder" href="<?= e($exerciseGuideUrl) ?>" aria-label="<?= e($libraryExerciseName) ?>" data-workout-exercise-detail-open="<?= e($libraryExerciseDetailId) ?>" aria-haspopup="dialog" aria-controls="<?= e($libraryExerciseDetailId) ?>"><span><?= activity_icon_svg('dumbbell') ?></span><small><?= e($hasExerciseVideo ? t('workouts.video_available') : $muscleLabel((string) ($exercise['muscle_group'] ?? ''))) ?></small><span class="workouts-library-media-badges"><?php if ($isPersonalExercise): ?><em><?= e(t('workouts.mine')) ?></em><?php endif; ?><?php if ($hasExerciseVideo): ?><em aria-label="<?= e(t('workouts.custom_video')) ?>"><?= activity_icon_svg('play') ?></em><?php endif; ?></span></a>
                     <?php endif; ?>
                     <div class="workouts-library-card-head">
                         <form method="post" action="/?page=workouts" class="workouts-favorite-form">
@@ -904,7 +922,7 @@ $libraryClearUrl = $libraryUrl([
                         </form>
                     </div>
                     <div class="workouts-library-copy">
-                        <h3><a class="workouts-library-name-link" href="<?= e($exerciseGuideUrl) ?>"><?= e((string) ($exercise['display_name'] ?? $exercise['name'])) ?></a></h3>
+                        <h3><a class="workouts-library-name-link" href="<?= e($exerciseGuideUrl) ?>" data-workout-exercise-detail-open="<?= e($libraryExerciseDetailId) ?>" aria-haspopup="dialog" aria-controls="<?= e($libraryExerciseDetailId) ?>"><?= e($libraryExerciseName) ?></a></h3>
                         <p><?= e((string) ($content['summary'] ?? '')) ?></p>
                     </div>
                     <?php if ($libraryRankScore > 0): ?>
@@ -915,7 +933,7 @@ $libraryClearUrl = $libraryUrl([
                     <?php endif; ?>
                     <div class="workouts-exercise-tags"><span><?= e($muscleLabel((string) ($exercise['muscle_group'] ?? ''))) ?></span><span><?= e($equipmentLabel((string) ($exercise['equipment'] ?? ''))) ?></span><span><?= e($difficultyLabel((string) ($exercise['difficulty'] ?? 'beginner'))) ?></span><?php if ($isPersonalExercise): ?><span class="workouts-training-default-chip" title="<?= e(t('workouts.training_defaults')) ?>"><?= e($libraryTrainingLabel) ?></span><?php endif; ?></div>
                     <div class="workouts-library-card-foot">
-                        <div class="inline-actions"><a class="btn btn-ghost small" href="<?= e($exerciseGuideUrl) ?>"><?= e(t('workouts.view_guide')) ?></a><?php if ($isPersonalExercise): ?><a class="btn btn-ghost small" href="<?= e($libraryUrl(['custom_exercise' => (int) $exercise['id'], 'library_page' => null])) ?>"><?= e(t('common.edit')) ?></a><?php endif; ?></div>
+                        <div class="inline-actions"><a class="btn btn-ghost small" href="<?= e($exerciseGuideUrl) ?>" data-workout-exercise-detail-open="<?= e($libraryExerciseDetailId) ?>" aria-haspopup="dialog" aria-controls="<?= e($libraryExerciseDetailId) ?>"><?= e(t('workouts.view_guide')) ?></a><?php if ($isPersonalExercise): ?><a class="btn btn-ghost small" href="<?= e($libraryUrl(['custom_exercise' => (int) $exercise['id'], 'library_page' => null])) ?>"><?= e(t('common.edit')) ?></a><?php endif; ?></div>
                         <?php if ($targetSessionId > 0): ?>
                             <form method="post" action="/?page=workouts" class="workouts-library-add is-contextual" data-workout-ajax-add>
                                 <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>"><input type="hidden" name="action" value="library_add_exercise"><input type="hidden" name="exercise_def_id" value="<?= (int) $exercise['id'] ?>"><input type="hidden" name="target_session_id" value="<?= $targetSessionId ?>">
@@ -933,6 +951,33 @@ $libraryClearUrl = $libraryUrl([
                         <?php else: ?>
                             <button class="btn btn-primary workouts-library-add-trigger" type="button" data-app-modal-open="wk-new-routine-modal" aria-label="<?= e(t('workouts.new_routine')) ?>"><span aria-hidden="true"><?= activity_icon_svg('plus') ?></span><span class="workouts-library-add-label"><?= e(t('workouts.new_routine')) ?></span></button>
                         <?php endif; ?>
+                    </div>
+                    <div class="app-modal workouts-exercise-detail-modal workouts-library-exercise-detail-modal" id="<?= e($libraryExerciseDetailId) ?>" hidden role="dialog" aria-modal="true" aria-labelledby="<?= e($libraryExerciseDetailId) ?>-title">
+                        <div class="app-modal-card workouts-exercise-detail-sheet workouts-library-exercise-detail-sheet">
+                            <div class="workouts-exercise-detail-grabber" aria-hidden="true"></div>
+                            <div class="workouts-exercise-detail-head"><h2 id="<?= e($libraryExerciseDetailId) ?>-title"><?= e($libraryExerciseName) ?></h2><button type="button" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button></div>
+                            <?php if ($libraryExerciseGallery !== []): ?>
+                                <div class="workouts-exercise-detail-gallery">
+                                    <?php foreach ($libraryExerciseGallery as $galleryIndex => $galleryItem): ?><figure<?= $galleryIndex === 0 ? ' class="is-primary"' : '' ?>><img src="<?= e(media_thumbnail_url((string) ($galleryItem['path'] ?? ''), $galleryIndex === 0 ? 900 : 320)) ?>" alt="<?= e((string) ($galleryItem['caption'] ?? '')) ?>" loading="lazy" style="object-position: <?= e(wk_image_position_css($galleryItem['position'] ?? 'center')) ?>"><?php if (trim((string) ($galleryItem['caption'] ?? '')) !== ''): ?><figcaption><?= e((string) $galleryItem['caption']) ?></figcaption><?php endif; ?></figure><?php endforeach; ?>
+                                </div>
+                            <?php elseif ($exerciseImagePath !== ''): ?><img class="workouts-exercise-detail-cover" src="<?= e(media_thumbnail_url($exerciseImagePath, 900)) ?>" alt="<?= e($libraryExerciseName) ?>" loading="lazy" style="object-position: <?= e($exerciseImagePosition) ?>"><?php endif; ?>
+                            <?php if (trim((string) ($content['summary'] ?? '')) !== ''): ?><p class="workouts-exercise-detail-summary"><?= e((string) $content['summary']) ?></p><?php endif; ?>
+                            <dl class="workouts-exercise-detail-meta">
+                                <div><dt><?= e(t('workouts.primary_muscle')) ?></dt><dd><?= e($muscleLabel((string) ($exercise['muscle_group'] ?? ''))) ?></dd></div>
+                                <?php if ($librarySecondaryMuscles !== []): ?><div><dt><?= e(t('workouts.secondary_muscles')) ?></dt><dd><?= e(implode(', ', array_map($muscleLabel, $librarySecondaryMuscles))) ?></dd></div><?php endif; ?>
+                                <div><dt><?= e(t('workouts.equipment')) ?></dt><dd><?= e($equipmentLabel((string) ($exercise['equipment'] ?? ''))) ?></dd></div>
+                                <div><dt><?= e(t('workouts.exercise_type')) ?></dt><dd><?= e($exerciseTypeLabel((string) ($exercise['exercise_type'] ?? 'strength'))) ?></dd></div>
+                                <div><dt><?= e(t('workouts.difficulty')) ?></dt><dd><?= e($difficultyLabel((string) ($exercise['difficulty'] ?? 'beginner'))) ?></dd></div>
+                            </dl>
+                            <div class="workouts-exercise-detail-actions<?= $hasLibraryTarget ? '' : ' is-single' ?>">
+                                <a class="btn btn-ghost" href="/?page=workouts&amp;view=stats&amp;exercise_stats=<?= $libraryExerciseId ?>"><?= activity_icon_svg('chart') ?><span><?= e(t('workouts.see_your_stats')) ?></span></a>
+                                <?php if ($hasLibraryTarget): ?><button class="btn <?= $isInLibraryTarget ? 'btn-ghost is-added' : 'btn-primary' ?>" type="button" data-workout-library-detail-add<?= $isInLibraryTarget ? ' disabled' : '' ?>><span aria-hidden="true"><?= activity_icon_svg($isInLibraryTarget ? 'check' : 'plus') ?></span><span data-workout-library-detail-add-label><?= e($isInLibraryTarget ? ($targetSessionId > 0 ? t('workouts.added_to_session') : t('workouts.added_to_routine')) : ($targetSessionId > 0 ? t('workouts.add_to_session') : t('workouts.add_to_routine'))) ?></span></button><?php endif; ?>
+                            </div>
+                            <?php if ($exerciseVideoSource !== null): ?><div class="workouts-exercise-detail-video"><?php if (($exerciseVideoSource['type'] ?? '') === 'iframe'): ?><iframe src="<?= e((string) ($exerciseVideoSource['url'] ?? '')) ?>" title="<?= e($libraryExerciseName) ?>" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe><?php elseif (($exerciseVideoSource['type'] ?? '') === 'video'): ?><video src="<?= e((string) ($exerciseVideoSource['url'] ?? '')) ?>" controls preload="metadata"></video><?php else: ?><a class="btn btn-ghost" href="<?= e((string) ($exerciseVideoSource['url'] ?? '')) ?>" target="_blank" rel="noopener noreferrer"><?= e(t('workouts.watch_video')) ?> &nearr;</a><?php endif; ?></div><?php endif; ?>
+                            <?php if ((array) ($content['steps'] ?? []) !== []): ?><section class="workouts-exercise-detail-how"><h3><?= e(t('workouts.how_to')) ?></h3><ol><?php foreach ((array) $content['steps'] as $step): ?><li><?= e((string) $step) ?></li><?php endforeach; ?></ol></section><?php endif; ?>
+                            <?php if ((array) ($content['tips'] ?? []) !== []): ?><section class="workouts-exercise-detail-notes"><h3><?= e(t('workouts.tips')) ?></h3><ul><?php foreach ((array) $content['tips'] as $tip): ?><li><?= e((string) $tip) ?></li><?php endforeach; ?></ul></section><?php endif; ?>
+                            <button class="btn btn-primary workouts-exercise-detail-done" type="button" data-app-modal-close><?= e(t('workouts.done')) ?></button>
+                        </div>
                     </div>
                 </article>
             <?php endforeach; ?>
@@ -2596,13 +2641,16 @@ $libraryClearUrl = $libraryUrl([
 <?php endif; ?>
 
 <?php if ($wkView === 'library' && $hasLibraryTarget): ?>
-<div class="app-modal workouts-create-exercise-modal" id="wk-create-exercise-modal" hidden role="dialog" aria-modal="true" aria-labelledby="wk-create-exercise-title" data-workout-create-modal>
-    <div class="app-modal-card workouts-create-exercise-card">
+<div class="app-modal workouts-create-exercise-leave-modal" id="wk-create-exercise-leave-modal" hidden role="dialog" aria-modal="true" aria-labelledby="wk-create-exercise-leave-title">
+    <div class="app-modal-card workouts-create-exercise-leave-card">
         <div class="app-modal-head">
-            <h2 id="wk-create-exercise-title"><?= e(t('workouts.create_custom')) ?></h2>
+            <h2 id="wk-create-exercise-leave-title"><?= e(t('workouts.create_custom')) ?></h2>
             <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button>
         </div>
-        <div class="workouts-create-exercise-body" data-workout-create-modal-body data-loading-label="<?= e(t('workouts.loading_more')) ?>" data-error-label="<?= e(t('workouts.load_failed')) ?>"></div>
+        <span class="workouts-create-exercise-leave-icon" aria-hidden="true"><?= activity_icon_svg('plus') ?></span>
+        <p><?= e(t('workouts.create_custom_leave_hint')) ?></p>
+        <p class="workouts-create-exercise-leave-saved"><span aria-hidden="true"><?= activity_icon_svg('check') ?></span><span><?= e(t('workouts.create_custom_saved_hint')) ?></span></p>
+        <div class="workouts-create-exercise-leave-actions"><button class="btn btn-ghost" type="button" data-app-modal-close><?= e(t('common.cancel')) ?></button><a class="btn btn-primary" href="<?= e($customExerciseUrl) ?>"><?= e(t('common.continue')) ?></a></div>
     </div>
 </div>
 <?php endif; ?>

@@ -11771,7 +11771,9 @@ function system_backup_create_zip_archive(string $archivePath, string $dbPath, a
         $zip->close();
         throw new RuntimeException('Could not write backup manifest.');
     }
-    $zip->close();
+    if (!$zip->close() || !is_file($archivePath) || (int) (@filesize($archivePath) ?: 0) <= 0) {
+        throw new RuntimeException('Could not finalize backup archive.');
+    }
 }
 
 function system_backup_create_tar_gz_archive(string $archivePath, string $backupDir, string $dbPath, array $uploadFiles, array $manifest): void
@@ -12042,11 +12044,59 @@ function system_backup_extract_archive_to(string $archivePath, string $destinati
         if ($zip->open($archivePath) !== true) {
             throw new RuntimeException('Backup archive could not be opened.');
         }
-        if (!$zip->extractTo($destination)) {
+        try {
+            $requiredBytes = 0;
+            for ($index = 0; $index < $zip->numFiles; $index++) {
+                $entryStats = $zip->statIndex($index);
+                if (is_array($entryStats)) {
+                    $requiredBytes += max(0, (int) ($entryStats['size'] ?? 0));
+                }
+            }
+            $freeBytes = @disk_free_space($destination);
+            if ($freeBytes !== false && $requiredBytes > 0 && $freeBytes < ($requiredBytes + 1048576)) {
+                throw new RuntimeException('Not enough free space to extract the backup archive.');
+            }
+
+            for ($index = 0; $index < $zip->numFiles; $index++) {
+                $entryName = $zip->getNameIndex($index);
+                if (!is_string($entryName)) {
+                    throw new RuntimeException('Backup archive contains an unreadable entry.');
+                }
+                $normalizedEntry = system_backup_validate_archive_entry_name($entryName);
+                $targetPath = rtrim($destination, '/\\') . '/' . $normalizedEntry;
+                if (str_ends_with($normalizedEntry, '/')) {
+                    if (!is_dir($targetPath) && !mkdir($targetPath, 0775, true) && !is_dir($targetPath)) {
+                        throw new RuntimeException('Could not create a backup extraction directory.');
+                    }
+                    continue;
+                }
+
+                $targetDir = dirname($targetPath);
+                if (!is_dir($targetDir) && !mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
+                    throw new RuntimeException('Could not create a backup extraction directory.');
+                }
+                $sourceHandle = $zip->getStream($entryName);
+                if (!is_resource($sourceHandle)) {
+                    throw new RuntimeException('Backup archive entry could not be opened: ' . $normalizedEntry);
+                }
+                $targetHandle = @fopen($targetPath, 'wb');
+                if (!is_resource($targetHandle)) {
+                    fclose($sourceHandle);
+                    throw new RuntimeException('Backup archive entry could not be written: ' . $normalizedEntry);
+                }
+                $copiedBytes = @stream_copy_to_stream($sourceHandle, $targetHandle);
+                fclose($sourceHandle);
+                fclose($targetHandle);
+                $entryStats = $zip->statIndex($index);
+                $expectedBytes = is_array($entryStats) ? max(0, (int) ($entryStats['size'] ?? 0)) : null;
+                if ($copiedBytes === false || ($expectedBytes !== null && $copiedBytes !== $expectedBytes)) {
+                    @unlink($targetPath);
+                    throw new RuntimeException('Backup archive entry could not be extracted completely: ' . $normalizedEntry);
+                }
+            }
+        } finally {
             $zip->close();
-            throw new RuntimeException('Backup archive could not be extracted.');
         }
-        $zip->close();
         return;
     }
 
@@ -12069,7 +12119,15 @@ function validate_system_backup_archive(string $archivePath): array
         throw new RuntimeException('Backup file not found.');
     }
 
-    $tmpDir = rtrim(sys_get_temp_dir(), '/\\') . '/fitness_backup_validate_' . date('YmdHis') . '_' . bin2hex(random_bytes(4));
+    // Validate beside the archive whenever possible. In the live Docker
+    // runtime /tmp lives on the small ephemeral overlay, while backups live on
+    // the persistent storage volume. Large upload sets could therefore create
+    // a valid ZIP and then fail only while validating it in /tmp.
+    $archiveDir = dirname((string) (realpath($archivePath) ?: $archivePath));
+    $workspaceRoot = is_dir($archiveDir) && is_writable($archiveDir)
+        ? $archiveDir
+        : rtrim(sys_get_temp_dir(), '/\\');
+    $tmpDir = rtrim($workspaceRoot, '/\\') . '/.fitness_backup_validate_' . date('YmdHis') . '_' . bin2hex(random_bytes(4));
     try {
         system_backup_extract_archive_to($archivePath, $tmpDir);
 

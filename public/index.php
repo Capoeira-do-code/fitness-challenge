@@ -4479,6 +4479,7 @@ if ($page === 'workouts') {
     $wkTargetSession = null;
     $wkTargetSessionExerciseIds = [];
     $wkLibrary = [];
+    $wkLibraryExerciseMedia = [];
     $wkLibraryPage = max(1, (int) ($_GET['library_page'] ?? 1));
     $wkLibraryPerPage = 12;
     $wkLibraryTotal = 0;
@@ -4727,6 +4728,7 @@ if ($page === 'workouts') {
             }
             unset($libraryExercise);
         }
+        $wkLibraryExerciseMedia = wk_exercise_media_map($pdo, $wkLibrary);
     } elseif ($requestedWorkoutView === 'ranks') {
         $wkExerciseRanks = wk_exercise_ranks_for_user($pdo, $meId);
         $wkMuscleRanks = wk_muscle_ranks_for_user($pdo, $meId);
@@ -4802,6 +4804,7 @@ if ($page === 'workouts') {
         'wkRoutineSection' => $routineSection,
         'wkRoutineSettingsView' => $routineSettingsView,
         'wkLibrary' => $wkLibrary,
+        'wkLibraryExerciseMedia' => $wkLibraryExerciseMedia,
         'wkLibraryPage' => $wkLibraryPage,
         'wkLibraryPerPage' => $wkLibraryPerPage,
         'wkLibraryTotal' => $wkLibraryTotal,
