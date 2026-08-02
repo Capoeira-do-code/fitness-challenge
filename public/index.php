@@ -7798,17 +7798,6 @@ if ($page === 'admin') {
             redirect('/?page=admin&section=registration_links');
         }
 
-        if ($action === 'update_public_registration') {
-            set_app_setting(
-                $pdo,
-                'public_registration_enabled',
-                bool_from_form('public_registration_enabled') === 1 ? '1' : '0',
-                (int) $currentUser['id']
-            );
-            flash_set('success', t('flash.public_registration_updated'));
-            redirect('/?page=admin&section=users');
-        }
-
         if ($action === 'create_user') {
             $payload = [
                 'username' => trim((string) ($_POST['username'] ?? '')),
@@ -11193,7 +11182,15 @@ if ($page === 'dashboard' || $page === 'overview') {
     $dashboardStandaloneOverview = $page === 'overview';
     $dashboardRoutePage = $dashboardStandaloneOverview ? 'overview' : 'dashboard';
     $dashboardRouteUrl = '/?page=' . $dashboardRoutePage;
-    if (!$dashboardStandaloneOverview && !is_post() && (string) ($_GET['home'] ?? '') === 'classic') {
+    if (
+        !$dashboardStandaloneOverview
+        && !is_post()
+        && (
+            (string) ($_GET['home'] ?? '') === 'classic'
+            || trim((string) ($_GET['section'] ?? '')) !== ''
+            || (string) ($_GET['layout_edit'] ?? '') === '1'
+        )
+    ) {
         // Classic used to be a second Home. Keep old bookmarks working while
         // making Home unambiguously the social feed.
         $overviewQuery = $_GET;
@@ -11437,6 +11434,39 @@ if ($page === 'dashboard' || $page === 'overview') {
             ];
             redirect('/?' . http_build_query($dashboardRedirectParams));
         }
+    }
+
+    // Home is the social feed only. Resolve and render it before any of the
+    // challenge metrics, dashboard widgets or Overview preferences below are
+    // loaded; those belong exclusively to the standalone Overview route.
+    if (!$dashboardStandaloneOverview) {
+        $dashboardFeedScope = (string) ($_GET['feed'] ?? 'friends') === 'global' ? 'global' : 'friends';
+        $dashboardFeedFocusType = social_feed_entity_type((string) ($_GET['post_type'] ?? ''));
+        $dashboardFeedFocusId = max(0, (int) ($_GET['post_id'] ?? 0));
+        $dashboardFeedFocused = $dashboardFeedFocusType !== '' && $dashboardFeedFocusId > 0;
+        $dashboardFeedItems = social_feed_items(
+            $pdo,
+            (int) $currentUser['id'],
+            $dashboardFeedScope,
+            $dashboardFeedFocused ? 1 : 18,
+            $dashboardFeedFocusType,
+            $dashboardFeedFocusId
+        );
+        if ($dashboardFeedFocused && $dashboardFeedItems === []) {
+            http_response_code(404);
+        }
+
+        render_view('dashboard', [
+            'title' => t('feed.title'),
+            'currentPage' => 'dashboard',
+            'currentUser' => $currentUser,
+            'dashboardStandaloneOverview' => false,
+            'dashboardSection' => '',
+            'dashboardFeedScope' => $dashboardFeedScope,
+            'dashboardFeedItems' => $dashboardFeedItems,
+            'dashboardFeedFocused' => $dashboardFeedFocused,
+            'config' => $config,
+        ]);
     }
 
     $dashboardRequestStartedAt = microtime(true);
@@ -11767,24 +11797,8 @@ if ($page === 'dashboard' || $page === 'overview') {
     }
     unset($dashboardCustomMetric);
 
-    $dashboardFeedScope = (string) ($_GET['feed'] ?? 'friends') === 'global' ? 'global' : 'friends';
-    $dashboardFeedFocusType = social_feed_entity_type((string) ($_GET['post_type'] ?? ''));
-    $dashboardFeedFocusId = max(0, (int) ($_GET['post_id'] ?? 0));
-    $dashboardFeedFocused = $dashboardFeedFocusType !== '' && $dashboardFeedFocusId > 0;
-    $dashboardFeedItems = social_feed_items(
-        $pdo,
-        (int) $currentUser['id'],
-        $dashboardFeedScope,
-        $dashboardFeedFocused ? 1 : 18,
-        $dashboardFeedFocusType,
-        $dashboardFeedFocusId
-    );
-    if ($dashboardFeedFocused && $dashboardFeedItems === []) {
-        http_response_code(404);
-    }
-
     render_view('dashboard', [
-        'title' => $dashboardStandaloneOverview ? t('overview.title') : t('feed.title'),
+        'title' => t('overview.title'),
         // Keep the established dashboard body scope. dashboard.css contains a
         // large, intentional body[data-page="dashboard"] contract; the
         // standalone Overview is a route/surface distinction, not a new CSS
@@ -11835,9 +11849,6 @@ if ($page === 'dashboard' || $page === 'overview') {
         'dashboardTodayLog' => $dashboardTodayLog,
         'dashboardTodayCalorieStats' => $dashboardTodayCalorieStats,
         'dashboardAchievements' => $dashboardAchievements,
-        'dashboardFeedScope' => $dashboardFeedScope,
-        'dashboardFeedItems' => $dashboardFeedItems,
-        'dashboardFeedFocused' => $dashboardFeedFocused,
         'motivationQuote' => random_motivation_quote_from_db($pdo, (string) ($currentUser['locale'] ?? 'en')),
         'config' => $config,
     ]);

@@ -156,7 +156,7 @@ const profileState = (page) => page.evaluate(() => {
                     page.click('[data-spa-section="goals"] .profile-create-view button[type="submit"]'),
                 ]);
                 await page.waitForLoadState('networkidle');
-                const goalRow = page.locator('[data-profile-goals-list] .goal-row', { hasText: goalTitle }).first();
+                const goalRow = page.locator('[data-profile-goals-list] [data-profile-goal-item]', { hasText: goalTitle }).first();
                 check('El objetivo creado aparece en la lista', await goalRow.count() === 1);
                 await page.evaluate(() => { window.__qaProfileMain = document.querySelector('main.container'); });
                 const detailRequestCount = profileGets.length;

@@ -2,15 +2,25 @@
 
 declare(strict_types=1);
 
+$dashboardStandaloneOverview = !empty($dashboardStandaloneOverview);
+if (!$dashboardStandaloneOverview) {
+    ?>
+    <section class="screen stack-lg dashboard-hierarchy-screen is-feed-mode" data-dashboard-page data-dashboard-section="">
+        <?php require __DIR__ . '/partials/dashboard_social_feed.php'; ?>
+    </section>
+    <?php
+    return;
+}
+
 $selectedUser = $selectedMetric['user'];
 $dashboardSection = (string) ($dashboardSection ?? '');
 if (!in_array($dashboardSection, ['', 'progress', 'rewards', 'history', 'alerts'], true)) {
     $dashboardSection = '';
 }
-$dashboardHomeMode = !empty($dashboardStandaloneOverview) ? 'classic' : 'feed';
-$dashboardRoutePage = !empty($dashboardStandaloneOverview) ? 'overview' : 'dashboard';
+$dashboardHomeMode = 'classic';
+$dashboardRoutePage = 'overview';
 $dashboardBaseUrl = '/?page=' . $dashboardRoutePage;
-$dashboardRouteLabel = !empty($dashboardStandaloneOverview) ? t('overview.title') : t('nav.home');
+$dashboardRouteLabel = t('overview.title');
 $penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
 $dashboardLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
 $dashboardMobileSurfaces = ['mobile_today', 'mobile_primary', 'mobile_progress', 'mobile_shortcuts'];
@@ -410,9 +420,6 @@ ob_start();
 $topbarControls = ob_get_clean();
 ?>
 <section class="screen stack-lg dashboard-hierarchy-screen<?= $dashboardSection !== '' ? ' has-section' : '' ?><?= $dashboardSection === '' ? ' is-' . e($dashboardHomeMode) . '-mode' : '' ?>" data-dashboard-page data-dashboard-section="<?= e($dashboardSection) ?>" data-dashboard-panel-state-endpoint="/?page=dashboard_panel_state" data-dashboard-panel-csrf="<?= e(csrf_token()) ?>">
-    <?php if ($dashboardSection === '' && !$dashboardLayoutEditMode): ?>
-        <?php if ($dashboardHomeMode === 'feed'): require __DIR__ . '/partials/dashboard_social_feed.php'; endif; ?>
-    <?php endif; ?>
     <?php if ($dashboardSection !== ''): ?>
         <header class="hierarchy-page-header">
             <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="<?= e($dashboardBaseUrl) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e($dashboardRouteLabel) ?>"><span aria-hidden="true">&larr;</span><strong><?= e($dashboardRouteLabel) ?></strong></button>

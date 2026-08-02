@@ -184,10 +184,10 @@ $onboardingTelegramTimezones = array_values(array_unique(array_filter([
                 </div>
                 <label class="onboarding-profile-message"><span><?= e(t('profile.edit_tagline')) ?></span><input type="text" name="profile_tagline" maxlength="<?= profile_tagline_max_length() ?>" value="<?= e(normalize_profile_tagline((string) ($currentUser['profile_tagline'] ?? ''))) ?>" placeholder="<?= e(t('profile.subtitle')) ?>"><small><?= e(t('onboarding.profile_message_hint')) ?></small></label>
                 <fieldset class="onboarding-theme-choice">
-                    <legend>Tema inicial</legend>
+                    <legend><?= e(t('onboarding.theme_title')) ?></legend>
                     <div class="onboarding-privacy-options">
-                        <label class="onboarding-privacy-option"><input type="radio" name="theme_mode" value="light" <?= ($currentUser['theme_mode'] ?? 'light') !== 'dark' ? 'checked' : '' ?> data-onboarding-theme-choice><span><strong>Claro</strong><small>Fondos luminosos y alto contraste.</small></span><i aria-hidden="true"></i></label>
-                        <label class="onboarding-privacy-option"><input type="radio" name="theme_mode" value="dark" <?= ($currentUser['theme_mode'] ?? '') === 'dark' ? 'checked' : '' ?> data-onboarding-theme-choice><span><strong>Oscuro</strong><small>Menos brillo para entrenar de noche.</small></span><i aria-hidden="true"></i></label>
+                        <label class="onboarding-privacy-option"><input type="radio" name="theme_mode" value="light" <?= ($currentUser['theme_mode'] ?? 'light') !== 'dark' ? 'checked' : '' ?> data-onboarding-theme-choice><span><strong><?= e(t('onboarding.theme_light')) ?></strong><small><?= e(t('onboarding.theme_light_hint')) ?></small></span><i aria-hidden="true"></i></label>
+                        <label class="onboarding-privacy-option"><input type="radio" name="theme_mode" value="dark" <?= ($currentUser['theme_mode'] ?? '') === 'dark' ? 'checked' : '' ?> data-onboarding-theme-choice><span><strong><?= e(t('onboarding.theme_dark')) ?></strong><small><?= e(t('onboarding.theme_dark_hint')) ?></small></span><i aria-hidden="true"></i></label>
                     </div>
                 </fieldset>
             <?php elseif ($step === 'privacy'): ?>

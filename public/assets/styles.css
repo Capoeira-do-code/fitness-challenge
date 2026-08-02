@@ -30238,7 +30238,7 @@ body[data-page="social"] .social-team-summary-members > strong {
 
 body[data-page="social"] .social-team-summary-members .social-avatar-list {
     min-width: 0;
-    min-height: 40px;
+    min-height: 44px;
     margin: 0;
     padding: 0;
 }
@@ -30246,10 +30246,10 @@ body[data-page="social"] .social-team-summary-members .social-avatar-list {
 body[data-page="social"] .social-team-summary-members .social-avatar-list > * + * { margin-left: -20px; }
 
 body[data-page="social"] .social-team-summary-members .social-avatar-list > a {
-    width: 40px;
-    min-width: 40px;
-    height: 40px;
-    min-height: 40px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
     transition: transform 0.16s ease;
 }
 

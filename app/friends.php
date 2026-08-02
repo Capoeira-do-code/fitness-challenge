@@ -419,7 +419,7 @@ function social_comment_delete(PDO $pdo, array $actor, string $type, int $entity
 function social_comment_thread_html(
     array $comments,
     array $currentUser,
-    int $ownerId,
+    int $socialCommentOwnerId,
     string $endpoint,
     string $entityType,
     int $entityId,
@@ -427,7 +427,6 @@ function social_comment_thread_html(
 ): string {
     $socialComments = array_values($comments);
     $socialCommentCurrentUser = $currentUser;
-    $socialCommentOwnerId = $ownerId;
     $socialCommentEndpoint = $endpoint;
     $socialCommentEntityType = $entityType;
     $socialCommentEntityId = $entityId;

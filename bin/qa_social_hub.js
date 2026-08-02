@@ -76,7 +76,7 @@ const rootState = (page) => page.evaluate(() => {
         categories: categories.length,
         categorySections: categories.map((item) => item.getAttribute('href') || ''),
         cards: cards.length,
-        teamName: document.querySelector('.social-team-overview .social-featured-row strong')?.textContent?.trim() || '',
+        teamName: document.querySelector('.social-team-overview .social-team-summary-identity strong')?.textContent?.trim() || '',
         teamAvatars: document.querySelectorAll('.social-team-overview .social-avatar-list a').length,
         competitionMetrics: document.querySelectorAll('.social-competition-metrics a').length,
         communityUseful: Boolean(document.querySelector('.social-community-overview .social-preview-grid-root a')
@@ -116,8 +116,9 @@ const rootState = (page) => page.evaluate(() => {
 
         const initial = await rootState(page);
         check('Social ofrece cuatro acciones rápidas reales', initial.actions === 4 && initial.actionsReal, JSON.stringify(initial.categorySections));
-        check('Social conserva tres niveles de entrada claros', initial.categories === 3
-            && initial.categorySections.every((href) => href.includes('page=social&section=')), JSON.stringify(initial.categorySections));
+        check('Social conserva cuatro niveles de entrada claros', initial.categories === 4
+            && initial.categorySections.filter((href) => href.includes('page=social&section=')).length === 3
+            && initial.categorySections.some((href) => href.includes('page=workouts&view=ranks')), JSON.stringify(initial.categorySections));
         check('Social muestra cinco módulos útiles', initial.cards === 5);
         check('El módulo de equipo usa datos reales', initial.teamName.length > 0 && initial.teamAvatars >= 2,
             `${initial.teamName} / ${initial.teamAvatars} miembros visibles`);
@@ -135,7 +136,7 @@ const rootState = (page) => page.evaluate(() => {
             await page.setViewportSize({ width, height: width === 320 ? 568 : 844 });
             await page.goto(`${BASE}/?page=social`, { waitUntil: 'networkidle' });
             const state = await rootState(page);
-            check(`Social estable a ${width}px`, !state.overflow && state.actions === 4 && state.categories === 3
+            check(`Social estable a ${width}px`, !state.overflow && state.actions === 4 && state.categories === 4
                 && state.cards === 5 && state.minTargetHeight >= 44,
             JSON.stringify({ overflow: state.overflow, height: state.height, minTargetHeight: state.minTargetHeight, shortTargets: state.shortTargets }));
         }
@@ -154,7 +155,7 @@ const rootState = (page) => page.evaluate(() => {
         await page.goto(`${BASE}/?page=social`, { waitUntil: 'networkidle' });
         await forceTheme(page, 'light');
         const desktop = await rootState(page);
-        check('Desktop recibe los mismos módulos sociales', desktop.actions === 4 && desktop.categories === 3
+        check('Desktop recibe los mismos módulos sociales', desktop.actions === 4 && desktop.categories === 4
             && desktop.cards === 5 && !desktop.overflow);
         await page.screenshot({ path: path.join(REPORT_DIR, 'ui-social-hub-rich-desktop.png'), fullPage: true });
 

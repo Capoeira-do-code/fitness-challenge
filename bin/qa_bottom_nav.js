@@ -175,6 +175,7 @@ const navGeometry = (page) => page.evaluate(() => {
         check('El final del contenido puede quedar completamente sobre la barra', endState.navVisible && endState.contentClear,
             JSON.stringify(endState));
 
+        await page.evaluate(() => window.scrollTo(0, 0));
         const topbarLog = page.locator('.topbar summary[data-add-button]');
         check('Log vive en la barra superior y no ocupa un sexto destino', await topbarLog.count() === 1
             && await topbarLog.isVisible());

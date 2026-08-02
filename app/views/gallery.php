@@ -255,7 +255,7 @@ $topbarControls = ob_get_clean();
                     ?>
                     <a class="photos-gallery-tile<?= $photoUrl !== '' ? ' is-image-loading' : '' ?>" href="/?page=photo&photo_id=<?= $photoId ?>" aria-label="<?= e(t('common.photo')) ?> <?= e($dateLabel) ?>" data-month-label="<?= e($monthLabel) ?>"<?= $isFirstInMonth ? ' data-month-start="1"' : '' ?>>
                         <?php if ($photoUrl !== ''): ?>
-                            <img src="<?= e($photoUrl) ?>" srcset="<?= e($photoSrcset) ?>" sizes="(max-width: 700px) 33vw, (max-width: 1100px) 20vw, 170px" width="400" height="400" alt="<?= e(t('common.photo')) ?>" loading="<?= e($photoLoading) ?>" fetchpriority="<?= e($photoFetchPriority) ?>" decoding="async" data-gallery-image>
+                            <img src="<?= e($photoUrl) ?>" srcset="<?= e($photoSrcset) ?>" sizes="(max-width: 1100px) 33vw, 326px" width="400" height="400" alt="<?= e(t('common.photo')) ?>" loading="<?= e($photoLoading) ?>" fetchpriority="<?= e($photoFetchPriority) ?>" decoding="async" data-gallery-image>
                         <?php else: ?>
                             <span class="entries-calendar-empty"><?= e(t('entries.no_photo')) ?></span>
                         <?php endif; ?>

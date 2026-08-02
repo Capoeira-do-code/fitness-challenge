@@ -87,9 +87,6 @@ $loginStyle = login_style_normalize($loginStyle ?? 'split');
                         <span><?= e(t('login.submit')) ?></span>
                         <span class="loginx-submit-arrow" aria-hidden="true">&rarr;</span>
                     </button>
-                    <?php if ($publicRegistrationEnabled): ?>
-                        <p class="loginx-register"><span><?= e(t('login.no_account')) ?></span><a href="/?page=register"><?= e(t('login.register')) ?></a></p>
-                    <?php endif; ?>
                 </form>
                 <?php if ($publicRegistrationEnabled): ?>
                     <p class="loginx-register">

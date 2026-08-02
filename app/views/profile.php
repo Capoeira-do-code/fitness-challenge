@@ -99,6 +99,7 @@ $profileUrl = static function (string $section = '', array $extra = []) use ($pr
 
     return '/?' . http_build_query($query);
 };
+$showProfileRankShortcut = $isOwnProfile && $canViewProfileWorkouts;
 $profileCollapseStateKey = static fn(string $block): string => 'profile.' . (int) ($profileUser['id'] ?? 0) . '.' . $block;
 $profileCollapseControl = static function (): string {
     $collapseLabel = t('profile.show_less');
@@ -912,7 +913,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         <div class="profile-mobile-root">
             <nav class="hierarchy-nav-list mobile-hub-section-grid" aria-label="<?= e(t('nav.profile')) ?>">
                 <a class="hierarchy-nav-row" data-tone="orange" href="<?= e($profileUrl('goals')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('profile.mobile_goals')) ?></strong><small><?= e(t('profile.mobile_goals_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count($profileActiveGoalCards) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
-                <?php if ($isOwnProfile && $canViewProfileWorkouts): ?>
+                <?php if ($showProfileRankShortcut): ?>
                     <a class="hierarchy-nav-row profile-rank-shortcut" data-tone="blue" href="/?page=workouts&amp;view=ranks"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('workouts.rank_' . $profileTrainingRankKey)) ?></strong><small><?= e(t('profile.rank_shortcut_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= e(number_format((float) ($profileTrainingRank['score'] ?? 0), 1, '.', '')) ?> pt</span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
                 <?php endif; ?>
                 <a class="hierarchy-nav-row" data-tone="amber" href="<?= e($profileUrl('achievements')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('medal') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('profile.achievements')) ?></strong><small><?= e(t('profile.mobile_achievements_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count((array) ($userAchievements ?? [])) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
@@ -1235,11 +1236,18 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         <article class="panel profile-home-card profile-training-rank-card compact-panel glass-panel" data-profile-block="training_rank" data-profile-collapsible="<?= e($profileCollapseStateKey('training-rank')) ?>" data-rank="<?= e($profileTrainingRankKey) ?>" style="<?= e($profileBlockStyle('training_rank')) ?>; --rank-color: <?= e((string) ($profileTrainingRank['color'] ?? '#64748b')) ?>">
             <div class="profile-home-card-head">
                 <span class="dashboard-disclosure-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span>
+                <?php if ($showProfileRankShortcut): ?>
                 <a class="profile-rank-heading-link" href="/?page=workouts&amp;view=ranks" aria-label="<?= e(t('workouts.overall_rank')) ?>: <?= e(t('common.view_all')) ?>">
                     <p class="eyebrow"><?= e(t('workouts.overall_rank')) ?></p>
                     <h2><?= e(t('dashboard.training_rank_title')) ?></h2>
                 </a>
-                <div class="profile-panel-head-actions"><a class="btn btn-ghost small" href="/?page=workouts&amp;view=ranks"><?= e(t('common.view_all')) ?></a><?= $profileCollapseControl() ?></div>
+                <?php else: ?>
+                <div class="profile-rank-heading-link">
+                    <p class="eyebrow"><?= e(t('workouts.overall_rank')) ?></p>
+                    <h2><?= e(t('dashboard.training_rank_title')) ?></h2>
+                </div>
+                <?php endif; ?>
+                <div class="profile-panel-head-actions"><?php if ($showProfileRankShortcut): ?><a class="btn btn-ghost small" href="/?page=workouts&amp;view=ranks"><?= e(t('common.view_all')) ?></a><?php endif; ?><?= $profileCollapseControl() ?></div>
             </div>
             <div class="profile-training-rank-main">
                 <span class="profile-training-rank-emblem">
@@ -1267,7 +1275,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                     <?php endforeach; ?>
                 </div>
             <?php else: ?>
-                <a class="profile-training-empty" href="/?page=workouts"><?= e(t('dashboard.training_empty')) ?></a>
+                <?php if ($isOwnProfile): ?><a class="profile-training-empty" href="/?page=workouts"><?= e(t('dashboard.training_empty')) ?></a><?php else: ?><span class="profile-training-empty"><?= e(t('dashboard.training_empty')) ?></span><?php endif; ?>
             <?php endif; ?>
         </article>
 
@@ -1308,7 +1316,7 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                     <?php endforeach; ?>
                 </div>
             <?php else: ?>
-                <a class="profile-training-empty" href="/?page=workouts"><?= e(t('dashboard.training_empty')) ?></a>
+                <?php if ($isOwnProfile): ?><a class="profile-training-empty" href="/?page=workouts"><?= e(t('dashboard.training_empty')) ?></a><?php else: ?><span class="profile-training-empty"><?= e(t('dashboard.training_empty')) ?></span><?php endif; ?>
             <?php endif; ?>
         </article>
         <?php endif; ?>
@@ -1817,34 +1825,6 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
                 <?php endif; ?>
             </div>
         <?php endforeach; ?>
-    </article>
-
-    <?php if ($canViewProfileWorkouts): ?>
-    <article class="panel settings-panel profile-native-section<?= $activeSection === 'training' ? ' active' : '' ?>" data-spa-section="training" <?= $activeSection === 'training' ? '' : 'hidden' ?>>
-        <div class="panel-head profile-native-section-head profile-section-header"><a class="hierarchy-back destination-back profile-section-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.profile')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.profile')) ?></strong></a><div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.mobile_training')) ?></h2></div></div>
-        <div class="mobile-kpi-grid">
-            <div><small><?= e(t('dashboard.training_rank_title')) ?></small><strong><?= e(t('workouts.rank_' . $profileTrainingRankKey)) ?></strong><span><?= e(number_format((float) ($profileTrainingRank['score'] ?? 0), 1, '.', '')) ?> <?= e(t('workouts.lift_points')) ?></span></div>
-            <div><small><?= e(t('workouts.stat_sessions')) ?> · <?= e(t('workouts.this_month')) ?></small><strong><?= (int) ($profileTrainingMonth['sessions'] ?? 0) ?></strong><span><?= e(number_format((float) ($profileTrainingMonth['volume'] ?? 0), 0, '.', ' ')) ?> kg</span></div>
-            <div><small><?= e(t('workouts.streak')) ?></small><strong><?= (int) ($profileTrainingStreak ?? 0) ?></strong><span><?= e(t('common.days')) ?></span></div>
-            <div><small><?= e(t('workouts.stat_reps')) ?> · <?= e(t('workouts.all_time')) ?></small><strong><?= e(number_format((int) ($profileTrainingAll['reps'] ?? 0), 0, '.', ' ')) ?></strong><span><?= e(t('workouts.stat_sets')) ?> <?= e(number_format((int) ($profileTrainingAll['sets'] ?? 0), 0, '.', ' ')) ?></span></div>
-        </div>
-        <nav class="hierarchy-nav-list">
-            <a class="hierarchy-nav-row" href="/?page=workouts&view=ranks"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('workouts.tab_ranks')) ?></strong><small><?= e(t('workouts.rank_subtitle')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
-            <a class="hierarchy-nav-row" href="/?page=workouts&view=stats"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('run') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('workouts.stats')) ?></strong><small><?= e(t('workouts.stats_subtitle')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
-        </nav>
-        <?php if ($profileTrainingRecentSessions !== []): ?><article class="native-list-card"><h3><?= e(t('workouts.recent_sessions')) ?></h3><?php foreach ($profileTrainingRecentSessions as $session): ?><?php if ($isOwnProfile): ?><a class="native-list-row" href="/?page=workouts&amp;view=stats&amp;detail_session=<?= (int) ($session['id'] ?? 0) ?>"><span><strong><?= e((string) (($session['title'] ?? '') !== '' ? $session['title'] : t('workouts.session'))) ?></strong><small><?= e(human_time_ago((string) ($session['started_at'] ?? ''))) ?></small></span><b aria-hidden="true">&rsaquo;</b></a><?php else: ?><div class="native-list-row"><span><strong><?= e((string) (($session['title'] ?? '') !== '' ? $session['title'] : t('workouts.session'))) ?></strong><small><?= e(human_time_ago((string) ($session['started_at'] ?? ''))) ?></small></span></div><?php endif; ?><?php endforeach; ?></article><?php endif; ?>
-    </article>
-    <?php endif; ?>
-
-    <article class="panel settings-panel profile-native-section<?= $activeSection === 'social' ? ' active' : '' ?>" data-spa-section="social" <?= $activeSection === 'social' ? '' : 'hidden' ?>>
-        <div class="panel-head profile-native-section-head profile-section-header"><a class="hierarchy-back destination-back profile-section-back" href="<?= e($profileUrl()) ?>" data-spa-back aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.profile')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.profile')) ?></strong></a><div class="profile-section-heading"><p class="eyebrow"><?= e(t('nav.profile')) ?></p><h2 data-navigation-focus tabindex="-1"><?= e(t('profile.mobile_social')) ?></h2></div></div>
-        <div class="hierarchy-status-strip"><span><strong><?= count($profileFriends) ?></strong><small><?= e(t('nav.friends')) ?></small></span><span><strong><?= count((array) ($profileTeams ?? [])) ?></strong><small><?= e(t('social_hub.teams')) ?></small></span><span><strong><?= (int) (($profileDuelsSummary ?? [])['won'] ?? 0) + (int) (($profileCompetitionsSummary ?? [])['won'] ?? 0) ?></strong><small><?= e(t('common.won')) ?></small></span></div>
-        <nav class="hierarchy-nav-list">
-            <a class="hierarchy-nav-row" href="/?page=friends"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.friends')) ?></strong><small><?= e(t('social_hub.friends_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count($profileFriends) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
-            <a class="hierarchy-nav-row" href="/?page=duels"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('sword') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.duels')) ?></strong><small><?= e(t('social_hub.duels_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= (int) (($profileDuelsSummary ?? [])['active'] ?? 0) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
-            <a class="hierarchy-nav-row" href="/?page=competitions"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.competitions')) ?></strong><small><?= e(t('social_hub.competitions_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= (int) (($profileCompetitionsSummary ?? [])['active'] ?? 0) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
-            <a class="hierarchy-nav-row" href="/?page=team"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.team')) ?></strong><small><?= e(t('social_hub.team_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count((array) ($profileTeams ?? [])) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
-        </nav>
     </article>
 
     <?php
