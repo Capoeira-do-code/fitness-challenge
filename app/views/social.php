@@ -93,6 +93,7 @@ $row = static function (string $href, string $icon, string $title, string $descr
             <?php $row('/?page=social&section=team', 'users', t('social_hub.section_team'), $teamPreview !== '' ? $teamPreview : t('social_hub.section_team_hint'), $teamCount > 0 ? (string) $teamCount : '', 'blue'); ?>
             <?php $row('/?page=social&section=community', 'image', t('social_hub.section_community'), $friendPreview !== '' ? $friendPreview : t('social_hub.section_community_hint'), count($friends) > 0 ? (string) count($friends) : '', 'green'); ?>
             <?php $row('/?page=social&section=competition', 'trophy', t('social_hub.section_competition'), $competitionPreview, (string) $competitionActive, 'violet'); ?>
+            <?php $row('/?page=workouts&view=ranks&rank_section=team', 'medal', t('workouts.tab_ranks'), t('workouts.rank_subtitle'), '', 'amber'); ?>
         </nav>
 
         <div class="social-dashboard-grid">

@@ -11658,12 +11658,7 @@ if ($page === 'dashboard') {
 }
 
 if ($page === 'ranks') {
-    render_view('ranks', [
-        'title' => 'Ranks',
-        'currentPage' => 'ranks',
-        'currentUser' => $currentUser,
-        'config' => $config,
-    ]);
+    redirect('/?page=workouts&view=ranks');
 }
 
 http_response_code(404);

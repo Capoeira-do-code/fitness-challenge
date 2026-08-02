@@ -111,7 +111,7 @@ $desktopNavItems = [
     'table' => ['label' => t('nav.table'), 'href' => '/?page=workouts', 'icon' => 'dumbbell'],
     'gallery' => ['label' => t('gallery.title'), 'href' => '/?page=gallery&gallery_view=recent', 'icon' => 'gallery'],
     'analytics' => ['label' => t('nav.analytics'), 'href' => '/?page=analytics', 'icon' => 'analytics'],
-    'ranks' => ['label' => 'Ranks', 'href' => '/?page=ranks', 'icon' => 'analytics'],
+    'ranks' => ['label' => 'Ranks', 'href' => '/?page=workouts&view=ranks', 'icon' => 'analytics'],
     'team' => ['label' => t('nav.team'), 'href' => '/?page=team', 'icon' => 'users'],
     'profile' => ['label' => t('nav.profile'), 'href' => '/?page=profile', 'icon' => 'user'],
 ];
@@ -158,10 +158,12 @@ $isNavActive = static function (string $pageKey) use ($currentPage): bool {
         return in_array($currentPage, ['gallery', 'photo'], true);
     }
     if ($pageKey === 'table') {
-        return in_array($currentPage, ['table', 'week_editor', 'workouts'], true);
+        return in_array($currentPage, ['table', 'week_editor'], true)
+            || ($currentPage === 'workouts' && (string) ($_GET['view'] ?? '') !== 'ranks');
     }
     if ($pageKey === 'ranks') {
-        return $currentPage === 'ranks';
+        return $currentPage === 'ranks'
+            || ($currentPage === 'workouts' && (string) ($_GET['view'] ?? '') === 'ranks');
     }
     if ($pageKey === 'nutrition') {
         return $currentPage === 'nutrition' || ($currentPage === 'entries' && (string) ($_GET['mode'] ?? '') === 'nutrition');
@@ -339,9 +341,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
             <nav class="nav-links nav-desktop" aria-label="Primary">
                 <?php foreach ($desktopNavItems as $pageKey => $item): ?>
                     <?php $navActive = $isNavActive((string) $pageKey); ?>
-                    <a class="<?= $navActive ? 'active' : '' ?>" href="<?= e($item['href']) ?>" <?= $navActive ? 'aria-current="page"' : '' ?>>
-                        <span><?= e($item['label']) ?></span>
-                    </a>
+                    <a class="<?= $navActive ? 'active' : '' ?>" href="<?= e($item['href']) ?>" <?= $navActive ? 'aria-current="page"' : '' ?>><span><?= e($item['label']) ?></span></a>
                 <?php endforeach; ?>
             </nav>
 
@@ -427,7 +427,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                         </a>
                     <?php endif; ?>
                     <a class="user-menu-link" href="/?page=profile"<?= $currentPage === 'profile' ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('user') ?></span><span><?= e(t('nav.profile')) ?></span></a>
-                    <a class="user-menu-link" href="/?page=workouts"<?= $currentPage === 'workouts' ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span><span><?= e(t('nav.workouts')) ?></span></a>
+                    <a class="user-menu-link" href="/?page=workouts&amp;view=ranks"<?= ($currentPage === 'ranks' || ($currentPage === 'workouts' && (string) ($_GET['view'] ?? '') === 'ranks')) ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><span><?= e(t('workouts.tab_ranks')) ?></span></a>
                     <a class="user-menu-link" href="/?page=friends"<?= $currentPage === 'friends' ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span><span><?= e(t('nav.friends')) ?></span></a>
                     <a class="user-menu-link" href="/?page=settings"<?= $currentPage === 'settings' ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('sliders') ?></span><span><?= e(t('nav.settings')) ?></span></a>
                     <button type="button" class="user-menu-theme-toggle" data-theme-toggle data-csrf="<?= e(csrf_token()) ?>" data-label-dark="<?= e(t('nav.theme_toggle_dark')) ?>" data-label-light="<?= e(t('nav.theme_toggle_light')) ?>" aria-pressed="<?= $themeMode === 'dark' ? 'true' : 'false' ?>">

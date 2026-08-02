@@ -8169,6 +8169,8 @@ document.addEventListener('click', (event) => {
             const overlay = id ? document.getElementById(id) : null;
             if (overlay) {
                 event.preventDefault();
+                const rankInfoPopover = opener.closest('.workouts-rank-info-popover');
+                if (rankInfoPopover instanceof HTMLDetailsElement) rankInfoPopover.open = false;
                 const currentOverlay = opener.closest('.app-modal, .app-drawer');
                 if (currentOverlay && currentOverlay !== overlay) {
                     closeOverlay(currentOverlay, true);

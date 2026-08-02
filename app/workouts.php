@@ -4274,7 +4274,7 @@ function wk_rank_leaderboard(PDO $pdo, int $limit = 20, string $division = 'open
     }
     $users = db_fetch_all(
         $pdo,
-        'SELECT id, display_name, username, avatar_path
+        'SELECT id, display_name, username, avatar_path, profile_cover_path
          FROM users WHERE active = 1' . $divisionSql . '
          ORDER BY display_name COLLATE NOCASE ASC',
         $params
