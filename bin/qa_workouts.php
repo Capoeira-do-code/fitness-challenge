@@ -629,12 +629,11 @@ db_execute($pdo, 'UPDATE users SET height_cm = 170 WHERE id = :user', [':user' =
 
 $pullUp = db_fetch_one($pdo, 'SELECT id FROM exercise_definitions WHERE slug = "pull_up"');
 $pullUpId = (int) ($pullUp['id'] ?? 0);
-db_execute(
-    $pdo,
-    'INSERT INTO personal_records (user_id, exercise_def_id, metric, value, achieved_at, session_id)
-     VALUES (:user, :exercise, "max_reps", 10, :achieved, NULL)',
-    [':user' => $me, ':exercise' => $pullUpId, ':achieved' => now_iso()]
-);
+$pullUpSessionId = wk_session_start($pdo, $me, null, 'QA calisthenics rank');
+$pullUpSessionExerciseId = wk_session_add_exercise($pdo, $pullUpSessionId, $pullUpId, $me);
+$pullUpSetId = (int) (wk_session_exercises($pdo, $pullUpSessionId)[0]['sets'][0]['id'] ?? 0);
+wk_set_update($pdo, $pullUpSetId, ['reps' => 10, 'weight' => '', 'completed' => 1], $me);
+wk_session_finish($pdo, $pullUpSessionId, $me, false);
 $pullUpRank = null;
 foreach (wk_exercise_ranks_for_user($pdo, $me) as $rankedExercise) {
     if ((int) $rankedExercise['id'] === $pullUpId) {
@@ -651,10 +650,9 @@ $check(
     'calistenia usa la curva de repeticiones sin exigir pesaje',
     (string) ($pullUpRank['score'] ?? 0)
 );
-db_execute(
-    $pdo,
-    'DELETE FROM personal_records WHERE user_id = :user AND exercise_def_id = :exercise AND metric = "max_reps"',
-    [':user' => $me, ':exercise' => $pullUpId]
+$check(
+    $pullUpSessionExerciseId > 0 && wk_session_delete($pdo, $pullUpSessionId, $me),
+    'borrar la sesión de calistenia retira su rango derivado'
 );
 $chestRank = null;
 foreach (wk_muscle_ranks_for_user($pdo, $me) as $muscleRank) {
@@ -677,6 +675,19 @@ $check(
 );
 $leaderboard = wk_rank_leaderboard($pdo);
 $check((int) ($leaderboard[0]['id'] ?? 0) === $me, 'clasificación de equipo');
+$unrankedLeaderboardRow = null;
+foreach ($leaderboard as $leaderboardRow) {
+    if ((int) ($leaderboardRow['id'] ?? 0) === $other) {
+        $unrankedLeaderboardRow = $leaderboardRow;
+        break;
+    }
+}
+$check(
+    $unrankedLeaderboardRow !== null
+        && ($unrankedLeaderboardRow['rank']['key'] ?? '') === 'unranked'
+        && ($unrankedLeaderboardRow['position'] ?? null) === null,
+    'usuarios sin rango no reciben una posición ficticia'
+);
 db_execute($pdo, 'UPDATE users SET competitive_division = "women" WHERE id = :user', [':user' => $other]);
 $menLeaderboard = wk_rank_leaderboard($pdo, 20, 'men');
 $womenLeaderboard = wk_rank_leaderboard($pdo, 20, 'women');
@@ -686,6 +697,172 @@ $check(
         && array_map(static fn(array $row): int => (int) $row['id'], $womenLeaderboard) === [$other]
         && count($openLeaderboard) === 2,
     'las categorías filtran la clasificación pero no la fórmula'
+);
+
+// End-to-end rank projection regression. This deliberately starts with a
+// completed session that has no personal_records row, matching older accounts
+// created before the ranking projection existed (without hardcoding a member).
+$originalTimezone = date_default_timezone_get();
+$sqliteToday = (string) (db_fetch_one($pdo, 'SELECT date("now", "localtime") AS d')['d'] ?? '');
+$rankTimezone = 'Pacific/Kiritimati';
+foreach (['Pacific/Kiritimati', 'Pacific/Pago_Pago'] as $candidateTimezone) {
+    $candidateToday = (new DateTimeImmutable('now', new DateTimeZone($candidateTimezone)))->format('Y-m-d');
+    if ($candidateToday !== $sqliteToday) {
+        $rankTimezone = $candidateTimezone;
+        break;
+    }
+}
+db_execute($pdo, 'DELETE FROM daily_logs WHERE user_id = :user', [':user' => $other]);
+
+$legacyRankSessionId = wk_session_start($pdo, $other, null, 'QA legacy rank source');
+$legacyRankExerciseId = wk_session_add_exercise($pdo, $legacyRankSessionId, $benchId, $other);
+$legacyRankSetId = (int) (wk_session_exercises($pdo, $legacyRankSessionId)[0]['sets'][0]['id'] ?? 0);
+wk_set_update($pdo, $legacyRankSetId, ['weight' => 65, 'reps' => 5, 'completed' => 1], $other);
+db_execute(
+    $pdo,
+    'UPDATE workout_sessions SET status = \'completed\', ended_at = :now, updated_at = :now WHERE id = :session',
+    [':now' => now_iso(), ':session' => $legacyRankSessionId]
+);
+db_execute($pdo, 'DELETE FROM personal_records WHERE user_id = :user', [':user' => $other]);
+$pendingWeightRank = wk_overall_rank_for_user($pdo, $other);
+$check(
+    $legacyRankExerciseId > 0
+        && (float) ($pendingWeightRank['score'] ?? -1) === 0.0
+        && !empty($pendingWeightRank['activity_detected'])
+        && !empty($pendingWeightRank['requires_weight']),
+    'actividad completada sin pesaje se distingue de un historial vacío',
+    json_encode($pendingWeightRank)
+);
+
+try {
+    date_default_timezone_set($rankTimezone);
+    $timezoneToday = (new DateTimeImmutable('today'))->format('Y-m-d');
+    db_execute(
+        $pdo,
+        'INSERT INTO daily_logs (user_id, log_date, steps, workout_done, workout_type, weight, created_at, updated_at)
+         VALUES (:user, :date, 0, 0, "", 75, :now, :now)',
+        [':user' => $other, ':date' => $timezoneToday, ':now' => now_iso()]
+    );
+    $timezoneWeight = wk_user_bodyweight_record($pdo, $other);
+    $unlockedWeightRank = wk_overall_rank_for_user($pdo, $other);
+    $check(
+        (string) ($timezoneWeight['log_date'] ?? '') === $timezoneToday
+            && (float) ($unlockedWeightRank['score'] ?? 0) > 0
+            && !empty($unlockedWeightRank['activity_detected'])
+            && empty($unlockedWeightRank['requires_weight']),
+        'el pesaje usa el día local de la app y desbloquea la actividad pendiente',
+        $rankTimezone . ' · app=' . $timezoneToday . ' · sqlite=' . $sqliteToday . ' · score=' . (string) ($unlockedWeightRank['score'] ?? 0)
+    );
+} finally {
+    date_default_timezone_set($originalTimezone);
+}
+$rankToday = (new DateTimeImmutable('today'))->format('Y-m-d');
+db_execute(
+    $pdo,
+    'UPDATE daily_logs SET log_date = :today, updated_at = :now WHERE user_id = :user',
+    [':today' => $rankToday, ':now' => now_iso(), ':user' => $other]
+);
+
+$legacyRank = wk_overall_rank_for_user($pdo, $other);
+$check(
+    $legacyRankExerciseId > 0
+        && (float) ($legacyRank['score'] ?? 0) > 0
+        && (int) (db_fetch_one($pdo, 'SELECT COUNT(*) AS c FROM personal_records WHERE user_id = :user', [':user' => $other])['c'] ?? -1) === 0,
+    'sesión histórica válida actualiza el rango aunque falte la proyección PR',
+    (string) ($legacyRank['score'] ?? 0)
+);
+$check(wk_session_delete($pdo, $legacyRankSessionId, $other), 'limpiar sesión histórica recalcula el rango');
+
+$rankPipelineSessionId = wk_session_start($pdo, $other, null, 'QA rank pipeline');
+wk_session_add_exercise($pdo, $rankPipelineSessionId, $benchId, $other);
+$rankPipelineSetId = (int) (wk_session_exercises($pdo, $rankPipelineSessionId)[0]['sets'][0]['id'] ?? 0);
+wk_set_update($pdo, $rankPipelineSetId, ['weight' => 80, 'reps' => 5, 'completed' => 1], $other);
+$activeRankScore = (float) (wk_overall_rank_for_user($pdo, $other)['score'] ?? 0);
+$rankPipelineFinished = wk_session_finish($pdo, $rankPipelineSessionId, $other, false);
+$finishedRankScore = (float) (wk_overall_rank_for_user($pdo, $other)['score'] ?? 0);
+$check(
+    $activeRankScore === 0.0 && $rankPipelineFinished && $finishedRankScore > 0,
+    'una serie activa entra en ranking únicamente al finalizar su sesión',
+    $activeRankScore . ' -> ' . $finishedRankScore
+);
+$tiedLeaderboard = wk_rank_leaderboard($pdo);
+$tiedRows = array_values(array_filter(
+    $tiedLeaderboard,
+    static fn(array $row): bool => in_array((int) ($row['id'] ?? 0), [$me, $other], true)
+));
+$check(
+    count($tiedRows) === 2
+        && abs((float) ($tiedRows[0]['rank']['score'] ?? -1) - (float) ($tiedRows[1]['rank']['score'] ?? -2)) < 0.0001
+        && (int) ($tiedRows[0]['position'] ?? 0) === 1
+        && (int) ($tiedRows[1]['position'] ?? 0) === 1,
+    'los empates comparten posición competitiva',
+    json_encode(array_map(static fn(array $row): array => [
+        'user' => (int) ($row['id'] ?? 0),
+        'score' => (float) ($row['rank']['score'] ?? 0),
+        'position' => $row['position'] ?? null,
+    ], $tiedRows))
+);
+
+db_execute(
+    $pdo,
+    'INSERT OR REPLACE INTO workout_rank_snapshots (user_id, scope, scope_key, score, tier, captured_on, created_at)
+     VALUES (:user, "muscle", "back", 999, "elite", :today, :now)',
+    [':user' => $other, ':today' => $rankToday, ':now' => now_iso()]
+);
+wk_capture_rank_snapshots($pdo, $other);
+wk_capture_rank_snapshots($pdo, $other);
+$snapshotRowsAfterRepeat = db_fetch_all(
+    $pdo,
+    'SELECT scope, scope_key, score FROM workout_rank_snapshots WHERE user_id = :user AND captured_on = :today ORDER BY scope, scope_key',
+    [':user' => $other, ':today' => $rankToday]
+);
+$check(
+    count($snapshotRowsAfterRepeat) === 2
+        && count(array_filter($snapshotRowsAfterRepeat, static fn(array $row): bool => (string) ($row['scope_key'] ?? '') === 'back')) === 0,
+    'snapshot diario es idempotente y elimina zonas obsoletas',
+    json_encode($snapshotRowsAfterRepeat)
+);
+
+wk_set_update($pdo, $rankPipelineSetId, ['weight' => 40, 'reps' => 5, 'completed' => 1]);
+$editedRankScore = (float) (wk_overall_rank_for_user($pdo, $other)['score'] ?? 0);
+$editedRecord = db_fetch_one(
+    $pdo,
+    'SELECT value FROM personal_records WHERE user_id = :user AND exercise_def_id = :exercise AND metric = "est_1rm"',
+    [':user' => $other, ':exercise' => $benchId]
+);
+$editedSnapshot = db_fetch_one(
+    $pdo,
+    'SELECT score FROM workout_rank_snapshots WHERE user_id = :user AND scope = "overall" AND scope_key = "" AND captured_on = :today',
+    [':user' => $other, ':today' => $rankToday]
+);
+$check(
+    $editedRankScore > 0
+        && $editedRankScore < $finishedRankScore
+        && abs((float) ($editedRecord['value'] ?? 0) - 46.7) < 0.11
+        && abs((float) ($editedSnapshot['score'] ?? -1) - $editedRankScore) < 0.11,
+    'editar una sesión completada baja PR, ranking y snapshot sin caché antigua',
+    $finishedRankScore . ' -> ' . $editedRankScore
+);
+
+$rankPipelineDeleted = wk_session_delete($pdo, $rankPipelineSessionId, $other);
+$deletedRank = wk_overall_rank_for_user($pdo, $other);
+$deletedPrCount = (int) (db_fetch_one($pdo, 'SELECT COUNT(*) AS c FROM personal_records WHERE user_id = :user', [':user' => $other])['c'] ?? -1);
+$deletedSnapshotRows = db_fetch_all(
+    $pdo,
+    'SELECT scope, scope_key, score, tier FROM workout_rank_snapshots WHERE user_id = :user AND captured_on = :today',
+    [':user' => $other, ':today' => $rankToday]
+);
+$check(
+    $rankPipelineDeleted
+        && (float) ($deletedRank['score'] ?? -1) === 0.0
+        && empty($deletedRank['activity_detected'])
+        && empty($deletedRank['requires_weight'])
+        && $deletedPrCount === 0
+        && count($deletedSnapshotRows) === 1
+        && (string) ($deletedSnapshotRows[0]['scope'] ?? '') === 'overall'
+        && (float) ($deletedSnapshotRows[0]['score'] ?? -1) === 0.0,
+    'borrar la sesión limpia PR y deja snapshot general no clasificado',
+    json_encode($deletedSnapshotRows)
 );
 
 $bronzeDefault = wk_default_rank_tiers()['bronze'];

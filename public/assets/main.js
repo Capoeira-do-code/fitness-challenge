@@ -5489,6 +5489,19 @@ document.addEventListener('click', (event) => {
                 // history entries and reload behavior stuck on the page the user
                 // clicked from while the content shown was the redirect target.
                 const resolvedUrl = new URL(response.url || targetUrl.toString(), window.location.origin);
+                // URL fragments never reach the server, so fetch().url cannot
+                // return them. Keep the requested anchor when the response did
+                // not redirect to a different route; otherwise PJAX "Back to
+                // post" links silently landed at the top of the feed.
+                if (
+                    resolvedUrl.hash === ''
+                    && targetUrl.hash !== ''
+                    && resolvedUrl.origin === targetUrl.origin
+                    && resolvedUrl.pathname === targetUrl.pathname
+                    && resolvedUrl.search === targetUrl.search
+                ) {
+                    resolvedUrl.hash = targetUrl.hash;
+                }
                 const html = await response.text();
                 const doc = new DOMParser().parseFromString(html, 'text/html');
                 const nextMain = doc.querySelector('main.container');
@@ -5528,7 +5541,19 @@ document.addEventListener('click', (event) => {
                 runPageHydration(false);
 
                 if (push) {
-                    window.scrollTo(0, 0);
+                    let anchorTarget = null;
+                    if (resolvedUrl.hash !== '') {
+                        try {
+                            anchorTarget = document.getElementById(decodeURIComponent(resolvedUrl.hash.slice(1)));
+                        } catch (_) {
+                            anchorTarget = document.getElementById(resolvedUrl.hash.slice(1));
+                        }
+                    }
+                    if (anchorTarget instanceof HTMLElement) {
+                        anchorTarget.scrollIntoView({ block: 'start' });
+                    } else {
+                        window.scrollTo(0, 0);
+                    }
                 } else {
                     restoreScrollFromState(popState);
                 }
@@ -6768,7 +6793,6 @@ document.addEventListener('click', (event) => {
                 if (!(comments instanceof HTMLElement)) return;
                 comments.hidden = !comments.hidden;
                 button.setAttribute('aria-expanded', comments.hidden ? 'false' : 'true');
-                if (!comments.hidden) comments.querySelector('input[name="comment"]')?.focus({ preventScroll: true });
             });
         });
         scope.querySelectorAll('[data-feed-like-form]').forEach(function (form) {
@@ -6796,16 +6820,27 @@ document.addEventListener('click', (event) => {
                 if (prompt !== '' && !window.confirm(prompt)) return;
                 var button = form.querySelector('.home-feed-copy-workout');
                 form.classList.add('is-busy');
+                if (button instanceof HTMLButtonElement) button.setAttribute('aria-busy', 'true');
                 submitFeedForm(form).then(function (data) {
                     if (!data.routine_url) throw new Error(data.message || 'Workout import failed');
                     var link = document.createElement('a');
                     link.className = 'home-feed-copy-workout is-copied';
                     link.href = String(data.routine_url);
-                    link.setAttribute('aria-label', button?.dataset.labelDone || 'Copied');
+                    link.setAttribute('aria-label', button?.dataset.labelOpen || button?.dataset.labelDone || 'Copied');
                     if (button instanceof HTMLElement) {
-                        link.innerHTML = button.innerHTML;
-                        var label = link.querySelector('span');
-                        if (label instanceof HTMLElement) label.textContent = button.dataset.labelDone || 'Copied';
+                        var icon = button.querySelector('svg')?.cloneNode(true);
+                        if (icon instanceof SVGElement) {
+                            icon.innerHTML = '<circle cx="12" cy="12" r="9"></circle><path d="m8 12 3 3 5-6"></path>';
+                            link.appendChild(icon);
+                        }
+                        var labels = document.createElement('span');
+                        labels.className = 'home-feed-copy-workout-label';
+                        var primary = document.createElement('strong');
+                        primary.textContent = button.dataset.labelDone || 'Copied';
+                        var secondary = document.createElement('small');
+                        secondary.textContent = button.dataset.labelOpen || '';
+                        labels.append(primary, secondary);
+                        link.appendChild(labels);
                     } else {
                         link.textContent = 'Copied';
                     }
@@ -6815,6 +6850,7 @@ document.addEventListener('click', (event) => {
                     form.setAttribute('title', error && error.message ? error.message : 'Workout import failed');
                 }).finally(function () {
                     form.classList.remove('is-busy');
+                    if (button instanceof HTMLButtonElement) button.removeAttribute('aria-busy');
                 });
             });
         });
@@ -6878,9 +6914,6 @@ document.addEventListener('click', (event) => {
                     });
                     if (!form.hasAttribute('data-social-comment-delete')) form.reset();
                     if (region instanceof HTMLElement) initFeedComments(region);
-                    if (form.isConnected && !form.classList.contains('is-inline')) {
-                        form.querySelector('input[name="comment"], textarea[name="comment"]')?.focus({ preventScroll: true });
-                    }
                 }).catch(function (error) {
                     form.classList.add('has-error');
                     form.setAttribute('title', error && error.message ? error.message : 'Comment update failed');

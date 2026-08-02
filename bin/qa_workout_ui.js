@@ -76,6 +76,8 @@ const login = async (page) => {
         ensure(await page.locator('.workouts-section-grid .hierarchy-nav-row').count() === 4, 'submenu del hub reducido a cuatro destinos únicos');
         await page.goto(`${BASE}/?page=workouts&view=library`, { waitUntil: 'networkidle' });
         ensure(await page.locator('.workouts-library-pagination').count() === 1, 'biblioteca ofrece paginación');
+        ensure(await page.locator('[data-library-layout-switch]:visible').count() === 0, 'móvil usa una densidad estable sin recargar la barra');
+        await page.setViewportSize({ width: 1280, height: 900 });
         ensure(await page.locator('[data-library-layout-switch]:visible').count() === 1, 'selector de densidad disponible');
         if (await page.locator('[data-library-layout-switch]:visible button[value="cards"][aria-pressed="true"]').count() !== 1) {
             await Promise.all([
@@ -106,12 +108,15 @@ const login = async (page) => {
         ensure(layoutTargetSizes.every((size) => size >= 44), 'selector compacto mantiene objetivos táctiles de 44 px', layoutTargetSizes.map(Math.round).join(', '));
         await page.reload({ waitUntil: 'networkidle' });
         ensure(await page.locator('.workouts-library-grid.is-compact').count() === 1, 'preferencia compacta persiste al recargar');
+        await page.setViewportSize({ width: 390, height: 844 });
+        ensure(await page.locator('[data-library-layout-switch]:visible').count() === 0, 'selector de densidad no comprime la cabecera móvil');
         await noHorizontalOverflow(page, 'biblioteca compacta móvil sin desbordamiento');
         await page.screenshot({ path: path.join(reportDir, 'ui-workout-library-compact-mobile.png'), fullPage: true });
         await page.goto(`${BASE}/?page=workouts&view=library&library_page=2`, { waitUntil: 'networkidle' });
         const secondLibraryCount = await page.locator('.workouts-library-card').count();
         ensure(secondLibraryCount >= 12 && secondLibraryCount <= 24, 'segunda carga mantiene la paginación', `${secondLibraryCount} ejercicios`);
         ensure(await page.locator('.workouts-library-grid.is-compact').count() === 1, 'preferencia compacta persiste al paginar');
+        await page.setViewportSize({ width: 1280, height: 900 });
         await Promise.all([
             page.waitForLoadState('networkidle'),
             page.locator('[data-library-layout-switch]:visible button[value="cards"]').click(),
@@ -124,6 +129,7 @@ const login = async (page) => {
         ]);
         ensure(page.url().includes('library_page=2')
             && await page.locator('.workouts-library-grid.is-compact').count() === 1, 'volver a compacta conserva la página');
+        await page.setViewportSize({ width: 390, height: 844 });
         const pagedGuideHref = await page.locator('.workouts-library-card h3 a').first().getAttribute('href');
         ensure((pagedGuideHref || '').includes('library_page=2'), 'guía conserva la página de biblioteca');
         await noHorizontalOverflow(page, 'biblioteca móvil sin desbordamiento');
@@ -155,21 +161,22 @@ const login = async (page) => {
         await routineModal.locator('input[name="days[]"][value="sun"] + span').click();
         await Promise.all([
             page.waitForLoadState('networkidle'),
-            routineModal.locator('button[type="submit"]').click(),
+            routineModal.locator('[data-routine-create-save]').click(),
         ]);
         const routineUrl = page.url();
         ensure(routineUrl.includes('routine_id='), 'crear rutina desde la interfaz');
+        const routineId = new URL(routineUrl).searchParams.get('routine_id');
+        ensure(Boolean(routineId), 'rutina creada expone un destino contextual');
         await page.goto(`${routineUrl}&section=settings&settings_view=schedule`, { waitUntil: 'networkidle' });
         ensure(await page.locator('.workouts-day-picker input[value="tue"]:checked').count() === 1, 'martes persistido en UI');
         ensure(await page.locator('.workouts-day-picker input[value="sun"]:checked').count() === 1, 'domingo persistido en UI');
 
-        await page.goto(`${BASE}/?page=workouts&view=library&muscle=chest`, { waitUntil: 'networkidle' });
+        await page.goto(`${BASE}/?page=workouts&view=library&muscle=chest&target_routine_id=${encodeURIComponent(routineId)}`, { waitUntil: 'networkidle' });
         const firstCard = page.locator('.workouts-library-card').first();
-        await firstCard.locator('select[name="routine_id"]').selectOption({ label: routineName });
-        await Promise.all([
-            page.waitForLoadState('networkidle'),
-            firstCard.locator('.workouts-library-add button[type="submit"]').click(),
-        ]);
+        const contextualAdd = firstCard.locator('.workouts-library-add button[type="submit"]');
+        await contextualAdd.click();
+        await contextualAdd.waitFor({ state: 'visible' });
+        await page.waitForFunction((button) => button instanceof HTMLButtonElement && button.disabled && button.classList.contains('is-added'), await contextualAdd.elementHandle());
         await page.goto(routineUrl, { waitUntil: 'networkidle' });
         ensure(await page.locator('.workouts-exercise-row').count() === 1, 'añadir ejercicio a rutina desde biblioteca');
 
@@ -180,7 +187,13 @@ const login = async (page) => {
         ]);
         ensure(page.url().includes('session_id='), 'iniciar entrenamiento desde rutina');
         ensure(await page.locator('.workouts-session-exercise').count() === 1, 'sesión contiene ejercicio de rutina');
-        ensure(await page.locator('.workouts-session-guide').count() === 1, 'explicación disponible durante entrenamiento');
+        const sessionExerciseHead = page.locator('.workouts-session-exercise-head').first();
+        ensure(await sessionExerciseHead.count() === 1, 'cabecera limpia abre la ficha del ejercicio');
+        await sessionExerciseHead.click();
+        const sessionExerciseModal = page.locator('.workouts-session-exercise + .workouts-exercise-detail-modal, .workouts-session-exercise ~ .workouts-exercise-detail-modal').first();
+        ensure(await sessionExerciseModal.evaluate((element) => element.classList.contains('is-open') && !element.hidden), 'ficha del ejercicio se abre in-page');
+        ensure(await sessionExerciseModal.locator('.workouts-exercise-detail-how li').count() === 3, 'explicación disponible durante entrenamiento');
+        await sessionExerciseModal.locator('[data-app-modal-close]').first().click();
         const firstSet = page.locator('.workouts-set-row').first();
         await firstSet.locator('input[name="weight"]').fill('60');
         await firstSet.locator('input[name="reps"]').fill('8');
@@ -189,10 +202,14 @@ const login = async (page) => {
             firstSet.locator('button[name="completed"]').click(),
         ]);
         ensure(await page.locator('.workouts-set-row.is-done').count() === 1, 'marcar serie completada');
-        const finishForm = page.locator('form').filter({ has: page.locator('input[name="action"][value="session_finish"]') });
+        await page.locator('.workouts-session-more > summary').click();
+        await page.locator('.workouts-session-more [data-app-modal-open="wk-finish-session-modal"]').click();
+        const finishModal = page.locator('#wk-finish-session-modal');
+        ensure(await finishModal.evaluate((element) => element.classList.contains('is-open') && !element.hidden), 'finalización abre sus opciones in-page');
+        const finishForm = finishModal.locator('form').filter({ has: page.locator('input[name="action"][value="session_finish"]') });
         await Promise.all([
             page.waitForLoadState('networkidle'),
-            finishForm.locator('button[type="submit"]').click(),
+            finishForm.locator('button[name="finish_mode"][value="current"]').click(),
         ]);
         ensure(!page.url().includes('session_id='), 'finalizar entrenamiento desde UI');
 

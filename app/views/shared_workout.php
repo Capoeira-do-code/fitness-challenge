@@ -29,13 +29,19 @@ $sharedRoutines = array_values((array) ($sharedUserRoutines ?? []));
 $sharedViewerId = (int) ($currentUser['id'] ?? 0);
 $sharedIsOtherWorkout = $session !== null && (int) ($session['user_id'] ?? 0) !== $sharedViewerId;
 $token = trim((string) ($_GET['token'] ?? ''));
+$sharedReturnCandidate = (string) ($_GET['origin'] ?? '') === 'home_feed'
+    ? trim((string) ($_GET['return_to'] ?? ''))
+    : '';
+$sharedBackUrl = $sharedReturnCandidate !== '' ? safe_redirect_target($sharedReturnCandidate) : '/';
+$sharedBackLabel = $sharedReturnCandidate !== '' ? t('feed.title') : (string) ($config['app_name'] ?? 'Fitness Challenge');
+$sharedFormAction = trim((string) ($sharedReturnUrl ?? '')) ?: '/?page=shared_workout&token=' . rawurlencode($token);
 $mediaUrl = static fn(string $path, int $width = 900): string => '/?page=shared_workout_media&token=' . rawurlencode($token) . '&path=' . rawurlencode($path) . '&w=' . max(80, min(1200, $width));
 ?>
 <section class="shared-workout-page">
 <?php if ($session === null): ?>
     <article class="panel shared-workout-empty"><h1><?= e(t('workouts.shared_not_found')) ?></h1><p><?= e(t('workouts.shared_not_found_hint')) ?></p><a class="btn btn-primary" href="/?page=login"><?= e(t('login.submit')) ?></a></article>
 <?php else: ?>
-    <header class="shared-workout-topbar"><a href="/"><span aria-hidden="true">&larr;</span><strong><?= e((string) ($config['app_name'] ?? 'Fitness Challenge')) ?></strong></a><span><?= e(t('workouts.shared_public')) ?></span></header>
+    <header class="shared-workout-topbar"><a href="<?= e($sharedBackUrl) ?>"><span aria-hidden="true">&larr;</span><strong><?= e($sharedBackLabel) ?></strong></a><span><?= e(t('workouts.shared_public')) ?></span></header>
     <main class="shared-workout-detail">
         <article class="shared-workout-summary">
             <header class="shared-workout-author"><span><?= e(initials_for($owner)) ?></span><div><strong><?= e($owner) ?></strong><p><?= e(format_date_eu((string) ($session['started_at'] ?? ''))) ?><?= $started > 0 ? ' · ' . e(date('H:i', $started)) : '' ?></p></div></header>
@@ -103,7 +109,7 @@ $mediaUrl = static fn(string $path, int $width = 900): string => '/?page=shared_
         <div class="app-modal shared-workout-routine-modal" id="shared-workout-add-routine-modal" hidden role="dialog" aria-modal="true" aria-labelledby="shared-workout-add-routine-title" data-workout-routine-picker data-single-routine="<?= count($sharedRoutines) === 1 ? '1' : '0' ?>">
             <div class="app-modal-card shared-workout-routine-card">
                 <div class="app-modal-head"><div><p class="eyebrow"><?= e(t('workouts.exercises')) ?></p><h2 id="shared-workout-add-routine-title"><?= e(t('workouts.add_to_routine')) ?></h2><p class="muted" data-workout-routine-picker-copy><?= e(t('workouts.choose_routine')) ?></p></div><button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button></div>
-                <form method="post" action="/?page=shared_workout&amp;token=<?= e(rawurlencode($token)) ?>" data-workout-routine-picker-form>
+                <form method="post" action="<?= e($sharedFormAction) ?>" data-workout-routine-picker-form>
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="shared_workout_add_exercise">
                     <input type="hidden" name="exercise_def_id" value="" data-workout-routine-picker-exercise>

@@ -667,9 +667,14 @@ body[data-page="profile"]:is([data-theme="dark"], .theme-active-dark) .profile-g
 }
 
 /* Custom profile showcases: user-owned media, text and achievement displays. */
-body[data-page="profile"] .profile-widget-feed-actions { display: flex; align-items: center; gap: 7px; }
+body[data-page="profile"] .profile-widget-feed-head { align-items: center; }
+body[data-page="profile"] .profile-widget-feed-actions { display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 7px; }
 body[data-page="profile"] .profile-widget-feed-actions :is(button, a) {
+    display: inline-flex;
+    height: 38px;
     min-height: 38px;
+    align-items: center;
+    justify-content: center;
     padding: 8px 11px;
     border: 1px solid var(--line);
     border-radius: 12px;
@@ -685,6 +690,7 @@ body[data-page="profile"] .profile-widget-feed-actions .profile-widget-add-butto
     display: grid;
     width: 38px;
     min-width: 38px;
+    height: 38px;
     padding: 0;
     place-items: center;
     border-color: color-mix(in srgb, var(--primary) 34%, var(--line));
@@ -695,6 +701,20 @@ body[data-page="profile"] .profile-widget-feed-actions .profile-widget-add-butto
     line-height: 1;
     box-shadow: 0 7px 16px color-mix(in srgb, var(--primary) 24%, transparent);
 }
+body[data-page="profile"] .profile-widget-feed-actions .profile-layout-customize-button {
+    min-width: 0;
+    max-width: min(42vw, 180px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body[data-page="profile"] .profile-layout-editbar .dashboard-editbar-row {
+    flex-wrap: nowrap;
+    align-items: center;
+}
+body[data-page="profile"] .profile-layout-editbar .dashboard-editbar-hint { flex: 1 1 auto; }
+body[data-page="profile"] .profile-layout-editbar .dashboard-editbar-actions { align-items: center; }
 body[data-page="profile"] .profile-achievement-preview-link { display: inline-flex; min-height: 38px; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 12px; color: inherit; background: var(--surface-2); font-size: 0.66rem; font-weight: 850; text-decoration: none; }
 body[data-page="profile"] .profile-achievement-preview-link b { color: var(--primary); font-size: 1.05rem; line-height: 1; }
 body[data-page="profile"] .profile-achievement-preview-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
@@ -867,9 +887,12 @@ body[data-page="profile"] .profile-widget-delete { margin-top: 8px; padding-top:
 body[data-page="profile"] .profile-widget-delete button { min-height: 36px; padding: 5px 0; border: 0; color: var(--danger, #dc2626); background: transparent; font-size: 0.68rem; font-weight: 850; cursor: pointer; }
 
 @media (max-width: 700px) {
-    body[data-page="profile"] .profile-widget-feed-head { align-items: flex-end; }
+    body[data-page="profile"] .profile-widget-feed-head { align-items: center; }
     body[data-page="profile"] .profile-widget-feed-actions { gap: 5px; }
-    body[data-page="profile"] .profile-widget-feed-actions :is(button, a) { min-height: 34px; padding: 6px 8px; font-size: 0.61rem; }
+    body[data-page="profile"] .profile-widget-feed-actions :is(button, a) { height: 36px; min-height: 36px; padding: 6px 9px; font-size: 0.61rem; }
+    body[data-page="profile"] .profile-widget-feed-actions .profile-widget-add-button { width: 36px; min-width: 36px; height: 36px; padding: 0; }
+    body[data-page="profile"] .profile-layout-editbar .dashboard-editbar-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; }
+    body[data-page="profile"] .profile-layout-editbar .dashboard-editbar-actions { display: grid; grid-template-columns: repeat(2, minmax(68px, 1fr)); }
     body[data-page="profile"] .profile-custom-showcase { gap: 9px; padding: 11px; border-radius: 18px; }
     body[data-page="profile"] .profile-achievement-preview-list { grid-template-columns: minmax(0, 1fr); }
     body[data-page="profile"] .profile-achievement-preview-item { grid-template-columns: 38px minmax(0, 1fr) 8px; min-height: 52px; }
@@ -890,7 +913,7 @@ body[data-page="profile"] .profile-widget-delete button { min-height: 36px; padd
 }
 
 @media (max-width: 390px) {
-    body[data-page="profile"] .profile-widget-feed-actions a { display: none; }
+    body[data-page="profile"] .profile-widget-feed-actions .profile-layout-customize-button { max-width: 118px; }
     body[data-page="profile"] .profile-widget-field-head { display: grid; gap: 2px; }
 }
 
@@ -1277,6 +1300,21 @@ body[data-page="profile"] .profile-training-rank-card > .profile-home-card-head 
     background: color-mix(in srgb, var(--rank-color) 12%, var(--surface));
 }
 
+body[data-page="profile"] .profile-rank-shortcut {
+    border-color: color-mix(in srgb, var(--rank-color) 24%, var(--line));
+    background: var(--surface);
+}
+
+body[data-page="profile"] .profile-rank-shortcut .profile-rank-shortcut-icon {
+    border: 1px solid color-mix(in srgb, var(--rank-color) 54%, transparent);
+    border-radius: 50%;
+    color: #fff;
+    background:
+        radial-gradient(110% 100% at 30% 18%, color-mix(in srgb, var(--rank-color) 35%, #fff), transparent 45%),
+        linear-gradient(155deg, color-mix(in srgb, var(--rank-color) 74%, #fff), var(--rank-color) 55%, color-mix(in srgb, var(--rank-color) 60%, #000));
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, #fff 24%, transparent), 0 5px 12px color-mix(in srgb, var(--rank-color) 25%, transparent);
+}
+
 body[data-page="profile"] .profile-training-rank-card .profile-rank-heading-link:where(:hover, :focus-visible) {
     outline: none;
 }
@@ -1298,9 +1336,11 @@ body[data-page="profile"] .profile-training-rank-card > .profile-training-rank-m
 
 body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem {
     position: relative;
-    min-height: 108px;
+    min-height: 132px;
     overflow: hidden;
-    gap: 3px;
+    align-content: center;
+    gap: 6px;
+    padding: 10px 6px;
     border-color: color-mix(in srgb, var(--rank-color) 36%, var(--line));
     border-radius: 15px;
     background:
@@ -1310,12 +1350,7 @@ body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emb
 }
 
 body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem::after {
-    content: "";
-    position: absolute;
-    inset: 7px;
-    pointer-events: none;
-    border: 1px solid color-mix(in srgb, var(--rank-color) 15%, transparent);
-    border-radius: 10px;
+    display: none;
 }
 
 body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem > * {
@@ -1324,23 +1359,73 @@ body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emb
 }
 
 body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem strong {
-    color: var(--ink);
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    color: color-mix(in srgb, var(--rank-color) 76%, var(--ink));
     font-family: var(--ui-heading-font);
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     font-weight: 900;
-    letter-spacing: -0.01em;
-    text-transform: none;
+    letter-spacing: 0.035em;
+    line-height: 1.1;
+    text-transform: uppercase;
 }
 
-body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem b {
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-mark {
+    position: relative;
+    display: grid;
+    width: 54px;
+    height: 54px;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--rank-color) 66%, transparent);
+    border-radius: 50%;
+    color: #fff;
+    background:
+        radial-gradient(120% 120% at 30% 20%, color-mix(in srgb, var(--rank-color) 44%, #fff), transparent 45%),
+        linear-gradient(158deg, color-mix(in srgb, var(--rank-color) 72%, #fff) 0%, var(--rank-color) 47%, color-mix(in srgb, var(--rank-color) 58%, #000) 100%);
+    box-shadow:
+        inset 0 1px 2px rgba(255, 255, 255, 0.58),
+        inset 0 -5px 9px color-mix(in srgb, var(--rank-color) 55%, #000),
+        inset 0 0 0 3px color-mix(in srgb, #fff 27%, transparent),
+        0 7px 16px color-mix(in srgb, var(--rank-color) 36%, transparent);
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-mark::before {
+    position: absolute;
+    inset: 8% 14% 54%;
+    border-radius: 50%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.68), transparent);
+    content: "";
+    pointer-events: none;
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-mark svg {
+    position: relative;
+    width: 26px;
+    height: 26px;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-score {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 3px;
+    color: var(--muted);
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-score b {
+    color: var(--rank-color);
     font-family: var(--ui-heading-font);
-    font-size: 1.75rem;
+    font-size: 1.18rem;
     font-weight: 900;
     letter-spacing: -0.045em;
 }
 
-body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem small {
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-score small {
     font-size: 0.52rem;
+    letter-spacing: 0;
+    text-transform: none;
 }
 
 body[data-page="profile"] .profile-training-rank-card .profile-training-rank-detail {
@@ -1406,6 +1491,63 @@ body[data-page="profile"] .profile-training-rank-card .profile-training-rank-bar
     transform: translate(2px, -50%);
 }
 
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-readiness {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    min-height: 48px;
+    align-items: center;
+    gap: 9px;
+    margin-top: 9px;
+    padding: 8px 10px;
+    border: 1px solid color-mix(in srgb, var(--rank-color) 20%, var(--line));
+    border-radius: 14px;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--rank-color) 5%, var(--surface));
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-readiness > span {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border-radius: 50%;
+    color: var(--rank-color);
+    background: color-mix(in srgb, var(--rank-color) 13%, var(--surface));
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-readiness > span svg {
+    width: 16px;
+    height: 16px;
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-readiness p {
+    min-width: 0;
+    margin: 0;
+    font-size: 0.66rem;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-readiness a {
+    display: inline-flex;
+    min-height: 34px;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 9px;
+    border: 1px solid color-mix(in srgb, var(--rank-color) 26%, var(--line));
+    border-radius: 10px;
+    color: var(--rank-color);
+    background: var(--surface);
+    font-size: 0.62rem;
+    font-weight: 900;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+body[data-page="profile"] .profile-training-rank-card .profile-training-rank-readiness.is-empty {
+    grid-template-columns: 30px minmax(0, 1fr);
+}
+
 body[data-page="profile"] .profile-training-rank-card > .profile-training-muscles {
     grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
     gap: 6px;
@@ -1446,12 +1588,38 @@ body[data-page="profile"] .profile-training-rank-card .profile-training-muscles 
     }
 
     body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem {
-        min-height: 98px;
+        min-height: 118px;
         padding-inline: 4px;
     }
 
-    body[data-page="profile"] .profile-training-rank-card .profile-training-rank-emblem b {
-        font-size: 1.45rem;
+    body[data-page="profile"] .profile-training-rank-card .profile-training-rank-mark {
+        width: 46px;
+        height: 46px;
+    }
+
+    body[data-page="profile"] .profile-training-rank-card .profile-training-rank-mark svg {
+        width: 22px;
+        height: 22px;
+    }
+
+    body[data-page="profile"] .profile-training-rank-card .profile-training-rank-score b {
+        font-size: 1.05rem;
+    }
+
+    body[data-page="profile"] .profile-training-rank-card .profile-training-rank-readiness {
+        grid-template-columns: 28px minmax(0, 1fr);
+        padding: 8px;
+    }
+
+    body[data-page="profile"] .profile-training-rank-card .profile-training-rank-readiness > span {
+        width: 28px;
+        height: 28px;
+    }
+
+    body[data-page="profile"] .profile-training-rank-card .profile-training-rank-readiness a {
+        grid-column: 2;
+        width: max-content;
+        max-width: 100%;
     }
 
     body[data-page="profile"] .profile-training-rank-card > .profile-training-muscles {

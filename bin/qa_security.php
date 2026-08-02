@@ -45,6 +45,26 @@ foreach ($probePaths as $probePath) {
 $check(!security_classify_request('/workouts', 'GET')['suspicious'], 'a normal application route is not classified as a scanner');
 $check(security_classify_request('/', 'TRACE')['suspicious'], 'TRACE is rejected as a forbidden method');
 
+$check(safe_redirect_target('/?page=profile#training') === '/?page=profile#training', 'a local redirect path is preserved');
+$check(safe_redirect_target('//evil.example/path') === '/', 'a protocol-relative redirect is rejected');
+$check(safe_redirect_target('/\\evil.example/path') === '/', 'a backslash authority redirect is rejected');
+$check(safe_redirect_target('/%5Cevil.example/path') === '/', 'an encoded backslash redirect is rejected');
+$check(safe_redirect_target('/%250d%250aLocation:%20https://evil.example') === '/', 'double-encoded control bytes are rejected');
+$check(safe_redirect_target('/%25255C%25255Cevil.example/path') === '/', 'triple-encoded backslash authorities are rejected');
+$check(
+    social_action_public_error(new InvalidArgumentException('Useful validation feedback'), 'Generic failure') === 'Useful validation feedback'
+        && social_action_public_error(new SocialActionException('Permission denied safely'), 'Generic failure') === 'Permission denied safely',
+    'expected social validation and permission errors remain useful to the client'
+);
+$unsafeSocialError = social_action_public_error(
+    new PDOException('SQLSTATE[HY000]: secret schema detail'),
+    'Generic social failure'
+);
+$check(
+    $unsafeSocialError === 'Generic social failure' && !str_contains($unsafeSocialError, 'SQLSTATE'),
+    'unexpected database errors are replaced before reaching social AJAX clients'
+);
+
 $check(security_parse_host_header('fitness.example.com:8443') === [
     'host' => 'fitness.example.com',
     'port' => 8443,

@@ -2,6 +2,42 @@
 
 declare(strict_types=1);
 
+/**
+ * Keep the optional Nutrition workspace fields available on upgraded installs.
+ *
+ * This lives next to the feature instead of making archived meals depend on a
+ * one-off migration being run manually. The static guard keeps the schema check
+ * to once per PDO connection/request.
+ */
+function nutrition_ensure_schema(PDO $pdo): void
+{
+    static $ready = [];
+    $connectionId = spl_object_id($pdo);
+    if (isset($ready[$connectionId])) {
+        return;
+    }
+
+    ensure_column($pdo, 'nutrition_entries', 'archived_at', 'TEXT');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_nutrition_entries_user_archive_date
+        ON nutrition_entries(user_id, archived_at, entry_date DESC, entry_time DESC)');
+    $ready[$connectionId] = true;
+}
+
+/** Parse a localized non-negative number without silently truncating `12,5`. */
+function nutrition_optional_number(array $input, string $key): ?float
+{
+    $raw = trim((string) ($input[$key] ?? ''));
+    if ($raw === '') {
+        return null;
+    }
+    $normalized = str_replace([' ', ','], ['', '.'], $raw);
+    if (!is_numeric($normalized)) {
+        throw new InvalidArgumentException(t('metric.invalid'));
+    }
+
+    return max(0.0, (float) $normalized);
+}
+
 function nutrition_activity_factor(string $level): float
 {
     return match ($level) {
@@ -51,12 +87,60 @@ function nutrition_latest_weight(PDO $pdo, int $userId): ?float
     return $weight > 0 ? $weight : null;
 }
 
+/**
+ * Return one active meal when its owner allows the viewer to see nutrition.
+ *
+ * This is the canonical read model for links outside the owner's Nutrition
+ * workspace. Archived meals deliberately behave like missing meals so a
+ * guessed URL cannot reveal either their contents or their existence.
+ */
+function nutrition_public_entry_for_viewer(PDO $pdo, int $entryId, array $viewer): ?array
+{
+    nutrition_ensure_schema($pdo);
+    $viewerId = (int) ($viewer['id'] ?? 0);
+    if ($entryId <= 0 || $viewerId <= 0) {
+        return null;
+    }
+
+    $entry = db_fetch_one(
+        $pdo,
+        'SELECT n.*, u.username, u.display_name, u.avatar_path, u.profile_cover_path,
+                u.profile_visibility, u.data_visibility_json, u.active AS owner_active
+         FROM nutrition_entries n
+         JOIN users u ON u.id=n.user_id
+         WHERE n.id=:id AND n.archived_at IS NULL AND u.active=1
+         LIMIT 1',
+        [':id' => $entryId]
+    );
+    if ($entry === null) {
+        return null;
+    }
+
+    $ownerId = (int) ($entry['user_id'] ?? 0);
+    $viewerIsAdmin = is_admin($viewer);
+    if (
+        !can_view_user_content(
+            $pdo,
+            $viewerId,
+            $ownerId,
+            $viewerIsAdmin,
+            (string) ($entry['profile_visibility'] ?? 'public')
+        )
+        || !can_view_user_data($pdo, $viewerId, $ownerId, 'nutrition', $viewerIsAdmin, $entry)
+    ) {
+        return null;
+    }
+
+    return $entry;
+}
+
 function nutrition_create_entry(PDO $pdo, int $userId, array $input, ?string $photoPath = null): array
 {
+    nutrition_ensure_schema($pdo);
     $date = to_date((string) ($input['entry_date'] ?? null));
     $mealType = in_array(($input['meal_type'] ?? ''), ['breakfast', 'lunch', 'dinner', 'snack', 'other'], true)
         ? (string) $input['meal_type'] : 'other';
-    $numeric = static fn(string $key): ?float => ($input[$key] ?? '') !== '' ? max(0.0, (float) $input[$key]) : null;
+    $numeric = static fn(string $key): ?float => nutrition_optional_number($input, $key);
     $calories = $numeric('calories') ?? 0.0;
     if ($calories <= 0 && trim((string) ($input['notes'] ?? '')) === '' && $photoPath === null) {
         throw new InvalidArgumentException(t('metric.invalid'));
@@ -85,6 +169,7 @@ function nutrition_create_entry(PDO $pdo, int $userId, array $input, ?string $ph
 /** Update one meal owned by $userId and keep its gallery photo in sync. */
 function nutrition_update_entry(PDO $pdo, array $config, int $entryId, int $userId, array $input): ?array
 {
+    nutrition_ensure_schema($pdo);
     $entry = db_fetch_one(
         $pdo,
         'SELECT * FROM nutrition_entries WHERE id=:id AND user_id=:user LIMIT 1',
@@ -93,10 +178,34 @@ function nutrition_update_entry(PDO $pdo, array $config, int $entryId, int $user
     if ($entry === null) {
         return null;
     }
+    $stateAction = trim((string) ($input['nutrition_entry_state'] ?? ''));
+    if ($stateAction !== '') {
+        if (!in_array($stateAction, ['archive', 'unarchive'], true)) {
+            throw new InvalidArgumentException(t('metric.invalid'));
+        }
+        db_execute(
+            $pdo,
+            'UPDATE nutrition_entries
+             SET archived_at=:archived, version=version+1, updated_at=:now
+             WHERE id=:id AND user_id=:user',
+            [
+                ':archived' => $stateAction === 'archive' ? now_iso() : null,
+                ':now' => now_iso(),
+                ':id' => $entryId,
+                ':user' => $userId,
+            ]
+        );
+
+        return db_fetch_one(
+            $pdo,
+            'SELECT * FROM nutrition_entries WHERE id=:id AND user_id=:user LIMIT 1',
+            [':id' => $entryId, ':user' => $userId]
+        );
+    }
     $date = to_date((string) ($input['entry_date'] ?? $entry['entry_date'] ?? null));
     $mealType = in_array(($input['meal_type'] ?? ''), ['breakfast', 'lunch', 'dinner', 'snack', 'other'], true)
         ? (string) $input['meal_type'] : 'other';
-    $numeric = static fn(string $key): ?float => ($input[$key] ?? '') !== '' ? max(0.0, (float) $input[$key]) : null;
+    $numeric = static fn(string $key): ?float => nutrition_optional_number($input, $key);
     $calories = $numeric('calories') ?? 0.0;
     $notes = trim((string) ($input['notes'] ?? ''));
     if ($calories <= 0 && $notes === '' && trim((string) ($entry['photo_path'] ?? '')) === '') {
@@ -157,6 +266,7 @@ function nutrition_update_entry(PDO $pdo, array $config, int $entryId, int $user
 /** Delete one meal and its linked gallery post/media when present. */
 function nutrition_delete_entry(PDO $pdo, array $config, int $entryId, int $userId): ?array
 {
+    nutrition_ensure_schema($pdo);
     $entry = db_fetch_one(
         $pdo,
         'SELECT * FROM nutrition_entries WHERE id=:id AND user_id=:user LIMIT 1',
@@ -178,6 +288,20 @@ function nutrition_delete_entry(PDO $pdo, array $config, int $entryId, int $user
         }
         db_execute($pdo, 'DELETE FROM social_feed_likes WHERE entity_type="meal" AND entity_id=:id', [':id' => $entryId]);
         db_execute($pdo, 'DELETE FROM social_feed_comments WHERE entity_type="meal" AND entity_id=:id', [':id' => $entryId]);
+        db_execute(
+            $pdo,
+            'DELETE FROM user_notifications
+             WHERE kind IN ("social_like", "social_comment", "social_reply")
+               AND json_extract(
+                   CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END,
+                   "$.entity_type"
+               ) = "meal"
+               AND CAST(json_extract(
+                   CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END,
+                   "$.entity_id"
+               ) AS INTEGER) = :id',
+            [':id' => $entryId]
+        );
         db_execute($pdo, 'DELETE FROM nutrition_entries WHERE id=:id AND user_id=:user', [':id' => $entryId, ':user' => $userId]);
         if ($ownsTransaction) {
             $pdo->commit();
@@ -195,6 +319,7 @@ function nutrition_delete_entry(PDO $pdo, array $config, int $entryId, int $user
 
 function nutrition_daily_summary(PDO $pdo, array $user, string $from, string $to): array
 {
+    nutrition_ensure_schema($pdo);
     $mealRows = db_fetch_all(
         $pdo,
         'SELECT n.entry_date, COALESCE(SUM(n.calories), 0) AS consumed,

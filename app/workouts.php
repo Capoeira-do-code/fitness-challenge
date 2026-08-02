@@ -258,6 +258,8 @@ function workouts_ensure_schema(PDO $pdo): void
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_wk_routines_imported_routine ON workout_routines(user_id, source_user_id, source_routine_id) WHERE source_routine_id IS NOT NULL');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_wk_routines_imported_session ON workout_routines(user_id, source_user_id, source_session_id) WHERE source_session_id IS NOT NULL');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_sessions_user ON workout_sessions(user_id, status, started_at DESC)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_session_exercises_session ON session_exercises(session_id, exercise_def_id)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_sets_exercise_completed ON workout_sets(session_exercise_id, completed)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_wk_sessions_share_token ON workout_sessions(share_token) WHERE share_token IS NOT NULL AND share_token != ""');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_pr_user ON personal_records(user_id, exercise_def_id)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_wk_exercise_slug ON exercise_definitions(slug) WHERE slug IS NOT NULL AND slug != ""');
@@ -3218,16 +3220,21 @@ function wk_decimal_value(mixed $value): ?float
 
 function wk_set_update(PDO $pdo, int $setId, array $fields, ?int $userId = null): bool
 {
+    $rankContext = db_fetch_one(
+        $pdo,
+        'SELECT s.user_id, s.status
+         FROM workout_sets ws
+         JOIN session_exercises se ON se.id = ws.session_exercise_id
+         JOIN workout_sessions s ON s.id = se.session_id
+         WHERE ws.id = :id',
+        [':id' => $setId]
+    );
     if ($userId !== null) {
-        $owned = db_fetch_one(
-            $pdo,
-            'SELECT ws.id FROM workout_sets ws
-             JOIN session_exercises se ON se.id = ws.session_exercise_id
-             JOIN workout_sessions s ON s.id = se.session_id
-             WHERE ws.id = :id AND s.user_id = :u AND s.status = "active"',
-            [':id' => $setId, ':u' => $userId]
-        );
-        if ($owned === null) {
+        if (
+            $rankContext === null
+            || (int) ($rankContext['user_id'] ?? 0) !== $userId
+            || (string) ($rankContext['status'] ?? '') !== 'active'
+        ) {
             return false;
         }
     }
@@ -3251,7 +3258,33 @@ function wk_set_update(PDO $pdo, int $setId, array $fields, ?int $userId = null)
         return false;
     }
 
-    return db_execute($pdo, 'UPDATE workout_sets SET ' . implode(', ', $sets) . ' WHERE id = :id', $params);
+    $completedContext = (string) ($rankContext['status'] ?? '') === 'completed';
+    $ownsTransaction = $completedContext && !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        $updated = db_execute($pdo, 'UPDATE workout_sets SET ' . implode(', ', $sets) . ' WHERE id = :id', $params);
+        // Internal/admin maintenance may edit an already-completed session.
+        // Keep its source row, PR projection and daily snapshot atomic.
+        if ($updated && $completedContext) {
+            $rankUserId = (int) ($rankContext['user_id'] ?? 0);
+            if ($rankUserId > 0) {
+                wk_rebuild_personal_records_for_user($pdo, $rankUserId);
+                wk_capture_rank_snapshots($pdo, $rankUserId);
+            }
+        }
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $exception) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $exception;
+    }
+
+    return $updated;
 }
 
 /**
@@ -3559,7 +3592,40 @@ function wk_session_finish_with_previous_sets(
 
 function wk_set_delete(PDO $pdo, int $setId): bool
 {
-    return db_execute($pdo, 'DELETE FROM workout_sets WHERE id = :id', [':id' => $setId]);
+    $rankContext = db_fetch_one(
+        $pdo,
+        'SELECT s.user_id, s.status
+         FROM workout_sets ws
+         JOIN session_exercises se ON se.id = ws.session_exercise_id
+         JOIN workout_sessions s ON s.id = se.session_id
+         WHERE ws.id = :id',
+        [':id' => $setId]
+    );
+    $completedContext = (string) ($rankContext['status'] ?? '') === 'completed';
+    $ownsTransaction = $completedContext && !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        $deleted = db_execute($pdo, 'DELETE FROM workout_sets WHERE id = :id', [':id' => $setId]);
+        if ($deleted && $completedContext) {
+            $rankUserId = (int) ($rankContext['user_id'] ?? 0);
+            if ($rankUserId > 0) {
+                wk_rebuild_personal_records_for_user($pdo, $rankUserId);
+                wk_capture_rank_snapshots($pdo, $rankUserId);
+            }
+        }
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $exception) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $exception;
+    }
+
+    return $deleted;
 }
 
 function wk_set_delete_for_user(PDO $pdo, int $setId, int $userId): bool
@@ -3624,29 +3690,46 @@ function wk_session_finish(PDO $pdo, int $sessionId, int $userId, bool $countTow
     if ($session === null || (string) $session['status'] !== 'active') {
         return false;
     }
-    db_execute(
-        $pdo,
-        'UPDATE workout_sessions SET status = \'completed\', ended_at = :now, updated_at = :now WHERE id = :id AND user_id = :u',
-        [':now' => now_iso(), ':id' => $sessionId, ':u' => $userId]
-    );
-    wk_refresh_personal_records($pdo, $userId, $sessionId);
-    // Snapshot the post-workout rank so the zone history reflects this session.
-    wk_capture_rank_snapshots($pdo, $userId);
-
-    // Only count sessions that actually have a completed set toward the
-    // challenge, so an accidentally-finished empty session doesn't mark a day.
-    if ($countTowardChallenge) {
-        $done = db_fetch_one(
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        db_execute(
             $pdo,
-            'SELECT COUNT(*) AS c FROM session_exercises se
-             JOIN workout_sets ws ON ws.session_exercise_id = se.id
-             WHERE se.session_id = :s AND ws.completed = 1',
-            [':s' => $sessionId]
+            'UPDATE workout_sessions SET status = \'completed\', ended_at = :now, updated_at = :now WHERE id = :id AND user_id = :u',
+            [':now' => now_iso(), ':id' => $sessionId, ':u' => $userId]
         );
-        if ((int) ($done['c'] ?? 0) > 0) {
-            $title = trim((string) ($session['title'] ?? ''));
-            wk_link_session_to_daily_log($pdo, $userId, $sessionId, $title !== '' ? $title : t('workouts.session'));
+        // Rebuild instead of only promoting new maxima. This repairs older
+        // users whose sessions predate the PR projection and makes repeated
+        // completion hooks converge on the same derived state.
+        wk_rebuild_personal_records_for_user($pdo, $userId);
+        // Snapshot the post-workout rank so the zone history reflects this session.
+        wk_capture_rank_snapshots($pdo, $userId);
+
+        // Only count sessions that actually have a completed set toward the
+        // challenge, so an accidentally-finished empty session doesn't mark a day.
+        if ($countTowardChallenge) {
+            $done = db_fetch_one(
+                $pdo,
+                'SELECT COUNT(*) AS c FROM session_exercises se
+                 JOIN workout_sets ws ON ws.session_exercise_id = se.id
+                 WHERE se.session_id = :s AND ws.completed = 1',
+                [':s' => $sessionId]
+            );
+            if ((int) ($done['c'] ?? 0) > 0) {
+                $title = trim((string) ($session['title'] ?? ''));
+                wk_link_session_to_daily_log($pdo, $userId, $sessionId, $title !== '' ? $title : t('workouts.session'));
+            }
         }
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $exception) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $exception;
     }
 
     return true;
@@ -3753,14 +3836,9 @@ function wk_session_delete(PDO $pdo, int $sessionId, int $actorUserId, bool $act
 
         wk_rebuild_personal_records_for_user($pdo, $ownerUserId);
 
-        // Today's snapshot is derived from live sessions. Remove the now-stale
-        // point; the next normal capture will write the corrected value.
-        db_execute(
-            $pdo,
-            'DELETE FROM workout_rank_snapshots
-             WHERE user_id = :user AND captured_on = :today',
-            [':user' => $ownerUserId, ':today' => (new DateTimeImmutable('today'))->format('Y-m-d')]
-        );
+        // Replace today's point now, including an explicit unranked overall
+        // row when the deleted session was the member's only ranked work.
+        wk_capture_rank_snapshots($pdo, $ownerUserId);
 
         if ($dailyLogId > 0) {
             $remainingLinked = db_fetch_one(
@@ -3815,22 +3893,36 @@ function wk_session_delete(PDO $pdo, int $sessionId, int $actorUserId, bool $act
  */
 function wk_rebuild_personal_records_for_user(PDO $pdo, int $userId): void
 {
-    db_execute($pdo, 'DELETE FROM personal_records WHERE user_id = :user', [':user' => $userId]);
-    $sessions = db_fetch_all(
-        $pdo,
-        'SELECT id, COALESCE(ended_at, started_at) AS achieved_at
-         FROM workout_sessions
-         WHERE user_id = :user AND status = "completed"
-         ORDER BY started_at ASC, id ASC',
-        [':user' => $userId]
-    );
-    foreach ($sessions as $session) {
-        wk_refresh_personal_records(
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        db_execute($pdo, 'DELETE FROM personal_records WHERE user_id = :user', [':user' => $userId]);
+        $sessions = db_fetch_all(
             $pdo,
-            $userId,
-            (int) ($session['id'] ?? 0),
-            (string) ($session['achieved_at'] ?? '')
+            'SELECT id, COALESCE(ended_at, started_at) AS achieved_at
+             FROM workout_sessions
+             WHERE user_id = :user AND status = "completed"
+             ORDER BY started_at ASC, id ASC',
+            [':user' => $userId]
         );
+        foreach ($sessions as $session) {
+            wk_refresh_personal_records(
+                $pdo,
+                $userId,
+                (int) ($session['id'] ?? 0),
+                (string) ($session['achieved_at'] ?? '')
+            );
+        }
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $exception) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $exception;
     }
 }
 
@@ -4043,20 +4135,24 @@ function wk_rank_from_score(float $score): array
  */
 function wk_user_bodyweight_record(PDO $pdo, int $userId, int $maxAgeDays = 180): ?array
 {
+    // SQLite's "localtime" follows the server/OS timezone, which can differ
+    // from the application's configured timezone around midnight. Bind the
+    // application-local calendar date explicitly instead.
+    $today = (new DateTimeImmutable('today'))->format('Y-m-d');
     $row = db_fetch_one(
         $pdo,
         'SELECT weight, log_date FROM daily_logs
          WHERE user_id = :u AND weight IS NOT NULL AND weight > 0
-           AND log_date <= date("now", "localtime")
+           AND log_date <= :today
          ORDER BY log_date DESC, id DESC LIMIT 1',
-        [':u' => $userId]
+        [':u' => $userId, ':today' => $today]
     );
     if ($row === null || (float) ($row['weight'] ?? 0) <= 0) {
         return null;
     }
 
     $logDate = trim((string) ($row['log_date'] ?? ''));
-    $cutoff = (new DateTimeImmutable('today'))->modify('-' . max(1, $maxAgeDays) . ' days')->format('Y-m-d');
+    $cutoff = (new DateTimeImmutable($today))->modify('-' . max(1, $maxAgeDays) . ' days')->format('Y-m-d');
 
     return [
         'weight' => (float) $row['weight'],
@@ -4286,16 +4382,48 @@ function wk_rank_score_from_reps(float $reps): float
 /** @return array<int,array<string,mixed>> */
 function wk_exercise_ranks_for_user(PDO $pdo, int $userId): array
 {
+    // Ranking is a live projection of performed work, not of the
+    // `personal_records` acceleration table. Older accounts can legitimately
+    // have completed sets without a PR row (for example sessions created
+    // before rankings existed), and PR rows can become stale after a downward
+    // edit. Reading the authoritative rows makes create/finish/edit/delete
+    // behaviour deterministic and self-healing without user-specific fixes.
     $records = db_fetch_all(
         $pdo,
-        'SELECT exercise_def_id, metric, MAX(value) AS value
-         FROM personal_records WHERE user_id = :u
-         GROUP BY exercise_def_id, metric',
+        'SELECT se.exercise_def_id,
+                MAX(CASE
+                    WHEN ws.weight IS NOT NULL AND ws.weight > 0
+                    THEN ws.weight
+                END) AS max_weight,
+                MAX(CASE
+                    WHEN ws.weight IS NOT NULL AND ws.weight > 0
+                     AND ws.reps IS NOT NULL AND ws.reps > 0
+                    THEN ROUND(ws.weight * (1.0 + ws.reps / 30.0), 1)
+                END) AS est_1rm,
+                MAX(CASE
+                    WHEN ws.reps IS NOT NULL AND ws.reps > 0
+                    THEN ws.reps
+                END) AS max_reps
+         FROM workout_sessions s
+         JOIN session_exercises se ON se.session_id = s.id
+         JOIN workout_sets ws ON ws.session_exercise_id = se.id
+         WHERE s.user_id = :u
+           AND s.status = \'completed\'
+           AND ws.completed = 1
+         GROUP BY se.exercise_def_id',
         [':u' => $userId]
     );
     $byExercise = [];
     foreach ($records as $record) {
-        $byExercise[(int) $record['exercise_def_id']][(string) $record['metric']] = (float) $record['value'];
+        $exerciseId = (int) ($record['exercise_def_id'] ?? 0);
+        if ($exerciseId <= 0) {
+            continue;
+        }
+        foreach (['max_weight', 'est_1rm', 'max_reps'] as $metric) {
+            if ($record[$metric] !== null) {
+                $byExercise[$exerciseId][$metric] = (float) $record[$metric];
+            }
+        }
     }
     $weightRecord = wk_user_bodyweight_record($pdo, $userId);
     $bodyweight = $weightRecord !== null && $weightRecord['recent'] ? (float) $weightRecord['weight'] : null;
@@ -4357,11 +4485,9 @@ function wk_exercise_ranks_for_user(PDO $pdo, int $userId): array
             $metric = 'max_reps';
             $value = $maxReps;
             $score = wk_rank_score_from_reps($maxReps);
-            $calculation = array_merge($calculation, [
-                'method' => 'bodyweight_reps',
-                'adjustment' => 1.0,
-                'base_score' => $maxReps,
-            ]);
+            $calculation['method'] = 'bodyweight_reps';
+            $calculation['adjustment'] = 1.0;
+            $calculation['base_score'] = $maxReps;
         }
         $exercise['rank'] = array_merge(wk_rank_from_score($score), [
             'metric' => $metric,
@@ -4389,7 +4515,15 @@ function wk_muscle_ranks_for_user(PDO $pdo, int $userId): array
         if ($muscle === 'cardio') {
             continue;
         }
-        $groups[$muscle] = ['muscle' => $muscle, 'catalog_count' => 0, 'ranked_count' => 0, 'score_sum' => 0.0, 'top_exercises' => []];
+        $groups[$muscle] = [
+            'muscle' => $muscle,
+            'catalog_count' => 0,
+            'activity_count' => 0,
+            'requires_weight_count' => 0,
+            'ranked_count' => 0,
+            'score_sum' => 0.0,
+            'top_exercises' => [],
+        ];
     }
     foreach (wk_exercise_ranks_for_user($pdo, $userId) as $exercise) {
         $muscle = (string) ($exercise['muscle_group'] ?? '');
@@ -4397,6 +4531,12 @@ function wk_muscle_ranks_for_user(PDO $pdo, int $userId): array
             continue;
         }
         $groups[$muscle]['catalog_count']++;
+        if ((float) ($exercise['rank']['value'] ?? 0) > 0 && (string) ($exercise['rank']['metric'] ?? '') !== '') {
+            $groups[$muscle]['activity_count']++;
+        }
+        if (!empty($exercise['rank']['requires_weight'])) {
+            $groups[$muscle]['requires_weight_count']++;
+        }
         $score = (float) ($exercise['rank']['score'] ?? 0.0);
         if ($score > 0) {
             $groups[$muscle]['ranked_count']++;
@@ -4428,6 +4568,8 @@ function wk_overall_rank_for_user(PDO $pdo, int $userId): array
     $muscles = wk_muscle_ranks_for_user($pdo, $userId);
     $ranked = array_values(array_filter($muscles, static fn(array $row): bool => (float) ($row['rank']['score'] ?? 0) > 0));
     $rankable = array_values(array_filter($muscles, static fn(array $row): bool => (int) ($row['catalog_count'] ?? 0) > 0));
+    $activityCount = array_sum(array_map(static fn(array $row): int => (int) ($row['activity_count'] ?? 0), $muscles));
+    $requiresWeightCount = array_sum(array_map(static fn(array $row): int => (int) ($row['requires_weight_count'] ?? 0), $muscles));
     $score = $ranked === [] || $rankable === []
         ? 0.0
         : array_sum(array_map(static fn(array $row): float => (float) $row['rank']['score'], $ranked)) / count($rankable);
@@ -4435,18 +4577,32 @@ function wk_overall_rank_for_user(PDO $pdo, int $userId): array
     return array_merge(wk_rank_from_score($score), [
         'body_parts_ranked' => count($ranked),
         'body_parts_total' => count($rankable),
+        // Readiness metadata lets the UI distinguish an empty history from a
+        // valid completed lift that only lacks a recent measured bodyweight.
+        'activity_detected' => $activityCount > 0,
+        'requires_weight' => $requiresWeightCount > 0,
     ]);
 }
 
 /**
- * Persist today's overall + per-zone rank scores (one row per day, upserted).
- * Forward-only history; pass pre-computed ranks to avoid recomputation.
+ * Persist an app-local day's overall + per-zone rank scores. The day is fully
+ * replaced so a lower edit/deletion cannot leave an obsolete muscle row.
+ * Pass pre-computed ranks to avoid recomputation.
  */
-function wk_capture_rank_snapshots(PDO $pdo, int $userId, ?array $muscleRanks = null, ?array $overall = null): void
+function wk_capture_rank_snapshots(
+    PDO $pdo,
+    int $userId,
+    ?array $muscleRanks = null,
+    ?array $overall = null,
+    ?string $capturedOn = null
+): void
 {
     $muscleRanks = $muscleRanks ?? wk_muscle_ranks_for_user($pdo, $userId);
     $overall = $overall ?? wk_overall_rank_for_user($pdo, $userId);
-    $today = (new DateTimeImmutable('today'))->format('Y-m-d');
+    $today = trim((string) $capturedOn);
+    if ($today === '' || preg_match('/^\d{4}-\d{2}-\d{2}$/', $today) !== 1) {
+        $today = (new DateTimeImmutable('today'))->format('Y-m-d');
+    }
     $now = now_iso();
     $rows = [['overall', '', (float) ($overall['score'] ?? 0), (string) ($overall['key'] ?? 'unranked')]];
     foreach ($muscleRanks as $mr) {
@@ -4456,13 +4612,32 @@ function wk_capture_rank_snapshots(PDO $pdo, int $userId, ?array $muscleRanks = 
         }
         $rows[] = ['muscle', (string) ($mr['muscle'] ?? ''), $score, (string) ($mr['rank']['key'] ?? 'unranked')];
     }
-    foreach ($rows as [$scope, $scopeKey, $score, $tier]) {
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
         db_execute(
             $pdo,
-            'INSERT OR REPLACE INTO workout_rank_snapshots (user_id, scope, scope_key, score, tier, captured_on, created_at)
-             VALUES (:u, :s, :k, :sc, :t, :d, :n)',
-            [':u' => $userId, ':s' => $scope, ':k' => $scopeKey, ':sc' => $score, ':t' => $tier, ':d' => $today, ':n' => $now]
+            'DELETE FROM workout_rank_snapshots WHERE user_id = :u AND captured_on = :d',
+            [':u' => $userId, ':d' => $today]
         );
+        foreach ($rows as [$scope, $scopeKey, $score, $tier]) {
+            db_execute(
+                $pdo,
+                'INSERT OR REPLACE INTO workout_rank_snapshots (user_id, scope, scope_key, score, tier, captured_on, created_at)
+                 VALUES (:u, :s, :k, :sc, :t, :d, :n)',
+                [':u' => $userId, ':s' => $scope, ':k' => $scopeKey, ':sc' => $score, ':t' => $tier, ':d' => $today, ':n' => $now]
+            );
+        }
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $exception) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $exception;
     }
 }
 
@@ -4514,8 +4689,23 @@ function wk_rank_leaderboard(PDO $pdo, int $limit = 20, string $division = 'open
         $scoreCompare = (float) ($b['rank']['score'] ?? 0) <=> (float) ($a['rank']['score'] ?? 0);
         return $scoreCompare !== 0 ? $scoreCompare : strcasecmp((string) $a['display_name'], (string) $b['display_name']);
     });
+    $lastRankedScore = null;
+    $lastRankedPosition = null;
     foreach ($rows as $index => &$row) {
-        $row['position'] = $index + 1;
+        $score = (float) ($row['rank']['score'] ?? 0);
+        if ($score <= 0) {
+            // Keep active members discoverable in the team view, but do not
+            // assign a misleading competitive position before they qualify.
+            $row['position'] = null;
+            continue;
+        }
+        if ($lastRankedScore === null || abs($score - $lastRankedScore) > 0.0001) {
+            // Competition ranking: 1, 1, 3. The stable name sort above only
+            // orders equal-score rows visually; it must not break the tie.
+            $lastRankedPosition = $index + 1;
+            $lastRankedScore = $score;
+        }
+        $row['position'] = $lastRankedPosition;
     }
     unset($row);
 

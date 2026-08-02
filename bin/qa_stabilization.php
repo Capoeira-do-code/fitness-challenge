@@ -73,6 +73,32 @@ try {
     $assert($emptySeedCount === 0, 'a fresh database creates no fixed seed users without SEED_PASSWORD');
     $explicitSeedCount = $probeSeedUserCount($qaRoot . '/seed-explicit.sqlite', $qaRoot . '/seed-explicit-uploads', 'explicit-qa-password');
     $assert($explicitSeedCount === 2, 'seed users are created only when SEED_PASSWORD is explicitly configured');
+
+    $schemaGuardPdo = new PDO('sqlite::memory:');
+    $schemaGuardPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $schemaGuardPdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $schemaGuardPdo->exec('PRAGMA foreign_keys = ON');
+    initialize_database($schemaGuardPdo, $config);
+    $schemaGuardPdo->beginTransaction();
+    friends_ensure_schema($schemaGuardPdo);
+    $schemaGuardPdo->rollBack();
+    $assert(
+        db_fetch_one($schemaGuardPdo, "SELECT 1 FROM sqlite_master WHERE type='table' AND name='social_feed_likes'") === null,
+        'social schema state is not cached when an outer transaction rolls its DDL back'
+    );
+    friends_ensure_schema($schemaGuardPdo);
+    $assert(
+        db_fetch_one($schemaGuardPdo, "SELECT 1 FROM sqlite_master WHERE type='table' AND name='social_feed_likes'") !== null
+            && db_fetch_one($schemaGuardPdo, "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_social_feed_cleanup_workout_delete'") === null,
+        'social schema initializes once without marking a missing lazy workout source ready'
+    );
+    workouts_ensure_schema($schemaGuardPdo);
+    friends_ensure_schema($schemaGuardPdo);
+    $assert(
+        db_fetch_one($schemaGuardPdo, "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_social_feed_cleanup_workout_delete'") !== null,
+        'social schema guard installs the workout cleanup trigger after its lazy table appears'
+    );
+
     $expandedAchievementCodes = [
         'steps_2m_total', 'steps_5m_total', 'steps_70k_week', 'distance_1000k_total',
         'workouts_200_total', 'workouts_365_total', 'workouts_5_week', 'reading_50_total',
@@ -771,12 +797,53 @@ try {
         [':user' => $secondUserId, ':date' => to_date(null), ':now' => $socialNow]
     );
     $socialMealId = (int) $pdo->lastInsertId();
+    // The first seed account is an administrator. Use the same accepted-friend
+    // identity without its admin override to exercise the ordinary viewer rule.
+    $socialMealRegularViewer = array_merge($users[0], ['role' => 'user']);
+    $visibleSocialMeal = nutrition_public_entry_for_viewer($pdo, $socialMealId, $socialMealRegularViewer);
+    $assert(
+        (int) ($visibleSocialMeal['id'] ?? 0) === $socialMealId
+            && (int) ($visibleSocialMeal['user_id'] ?? 0) === $secondUserId,
+        'a viewer allowed to see nutrition can open a friend meal detail'
+    );
+    privacy_set_preferences($pdo, $secondUserId, 'public', ['nutrition' => 'private']);
+    $assert(
+        nutrition_public_entry_for_viewer($pdo, $socialMealId, $socialMealRegularViewer) === null,
+        'a direct meal link cannot bypass the owner nutrition privacy setting'
+    );
+    privacy_set_preferences($pdo, $secondUserId, 'public', ['nutrition' => 'public']);
+    db_execute($pdo, 'UPDATE nutrition_entries SET archived_at=:now WHERE id=:id', [':now' => now_iso(), ':id' => $socialMealId]);
+    $assert(
+        nutrition_public_entry_for_viewer($pdo, $socialMealId, $socialMealRegularViewer) === null
+            && nutrition_public_entry_for_viewer($pdo, 999999, $socialMealRegularViewer) === null,
+        'archived and missing meals are both unavailable through a direct detail link'
+    );
+    db_execute($pdo, 'UPDATE nutrition_entries SET archived_at=NULL WHERE id=:id', [':id' => $socialMealId]);
     $focusedMealFeed = social_feed_items($pdo, $firstUserId, 'friends', 1, 'meal', $socialMealId);
     $assert(
         count($focusedMealFeed) === 1
             && (string) ($focusedMealFeed[0]['type'] ?? '') === 'meal'
             && (int) ($focusedMealFeed[0]['id'] ?? 0) === $socialMealId,
         'a shared meal link loads only its exact feed post'
+    );
+    $renderMealFeedItem = static function (array $item, array $viewer): string {
+        $dashboardFeedItems = [$item];
+        $dashboardFeedScope = 'friends';
+        $dashboardFeedFocused = true;
+        $currentUser = $viewer;
+        ob_start();
+        require dirname(__DIR__) . '/app/views/partials/dashboard_social_feed.php';
+        return (string) ob_get_clean();
+    };
+    $friendMealFeedHtml = $renderMealFeedItem($focusedMealFeed[0], $users[0]);
+    $ownerMealFeedHtml = $renderMealFeedItem($focusedMealFeed[0], $users[1]);
+    preg_match('/data-share-url="([^"]+)"/', $friendMealFeedHtml, $mealShareMatch);
+    $mealShareUrl = html_entity_decode((string) ($mealShareMatch[1] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $assert(
+        str_contains($friendMealFeedHtml, 'href="/?page=meal&amp;meal_id=' . $socialMealId . '&amp;origin=home_feed')
+            && str_contains($ownerMealFeedHtml, 'href="/?page=meal&amp;meal_id=' . $socialMealId . '&amp;origin=home_feed')
+            && $mealShareUrl === '/?page=meal&meal_id=' . $socialMealId,
+        'meal cards use one canonical detail URL while keeping feed return context out of the shared URL'
     );
     $assert(social_feed_toggle_like($pdo, $firstUserId, 'meal', $socialMealId), 'liking a friend activity succeeds');
     $mealLikeNotification = db_fetch_one(
@@ -828,13 +895,74 @@ try {
         'SELECT * FROM social_feed_comments WHERE entity_type="meal" AND entity_id=:id AND user_id=:user ORDER BY id DESC LIMIT 1',
         [':id' => $socialMealId, ':user' => $firstUserId]
     );
+    $mealTopCommentId = (int) ($mealTopComment['id'] ?? 0);
+    $likedMealComment = social_comment_toggle_like(
+        $pdo,
+        $secondUserId,
+        'meal',
+        $socialMealId,
+        $mealTopCommentId
+    );
+    db_execute(
+        $pdo,
+        'INSERT OR IGNORE INTO social_comment_likes (user_id,entity_type,comment_id,created_at)
+         VALUES (:user,"meal",:comment,:now)',
+        [':user' => $secondUserId, ':comment' => $mealTopCommentId, ':now' => now_iso()]
+    );
+    $mealCommentLikeCount = (int) (db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS n FROM social_comment_likes
+         WHERE user_id=:user AND entity_type="meal" AND comment_id=:comment',
+        [':user' => $secondUserId, ':comment' => $mealTopCommentId]
+    )['n'] ?? 0);
+    $ownerHydratedComments = social_comments_for_entity($pdo, 'meal', $socialMealId, 250, $secondUserId);
+    $authorHydratedComments = social_comments_for_entity($pdo, 'meal', $socialMealId, 250, $firstUserId);
+    $ownerHydratedComment = null;
+    $authorHydratedComment = null;
+    foreach ($ownerHydratedComments as $hydratedComment) {
+        if ((int) ($hydratedComment['id'] ?? 0) === $mealTopCommentId) $ownerHydratedComment = $hydratedComment;
+    }
+    foreach ($authorHydratedComments as $hydratedComment) {
+        if ((int) ($hydratedComment['id'] ?? 0) === $mealTopCommentId) $authorHydratedComment = $hydratedComment;
+    }
+    $assert(
+        (int) ($likedMealComment['comment_liked'] ?? 0) === 1
+            && (int) ($likedMealComment['comment_like_count'] ?? 0) === 1
+            && $mealCommentLikeCount === 1,
+        'a persistent comment like is unique even when the same row is inserted again'
+    );
+    $assert(
+        (int) ($ownerHydratedComment['comment_liked'] ?? 0) === 1
+            && (int) ($ownerHydratedComment['comment_like_count'] ?? 0) === 1
+            && (int) ($authorHydratedComment['comment_liked'] ?? 0) === 0
+            && (int) ($authorHydratedComment['comment_like_count'] ?? 0) === 1,
+        'comment hydration exposes the shared count and viewer-specific liked state'
+    );
+    $unlikedMealComment = social_comment_toggle_like(
+        $pdo,
+        $secondUserId,
+        'meal',
+        $socialMealId,
+        $mealTopCommentId
+    );
+    $assert(
+        (int) ($unlikedMealComment['comment_liked'] ?? 1) === 0
+            && (int) ($unlikedMealComment['comment_like_count'] ?? -1) === 0
+            && (int) (db_fetch_one(
+                $pdo,
+                'SELECT COUNT(*) AS n FROM social_comment_likes WHERE entity_type="meal" AND comment_id=:comment',
+                [':comment' => $mealTopCommentId]
+            )['n'] ?? -1) === 0,
+        'comment likes toggle off without leaving a duplicate row'
+    );
+    social_comment_toggle_like($pdo, $secondUserId, 'meal', $socialMealId, $mealTopCommentId);
     $mealOwnerReply = social_comment_create(
         $pdo,
         $secondUserId,
         'meal',
         $socialMealId,
         'Gracias por comentar',
-        (int) ($mealTopComment['id'] ?? 0)
+        $mealTopCommentId
     );
     $replyNotification = db_fetch_one(
         $pdo,
@@ -868,11 +996,17 @@ try {
         $ownerCouldEditAnotherComment = false;
     }
     $assert(!$ownerCouldEditAnotherComment, 'a post owner cannot edit another author comment');
-    $deletedThread = social_comment_delete($pdo, $users[1], 'meal', $socialMealId, (int) ($mealTopComment['id'] ?? 0));
+    $deletedThread = social_comment_delete($pdo, $users[1], 'meal', $socialMealId, $mealTopCommentId);
+    $commentLikesAfterThreadDelete = (int) (db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS n FROM social_comment_likes WHERE entity_type="meal" AND comment_id=:comment',
+        [':comment' => $mealTopCommentId]
+    )['n'] ?? 0);
     $assert(
-        (int) ($deletedThread['id'] ?? 0) === (int) ($mealTopComment['id'] ?? 0)
-            && social_comment_count($pdo, 'meal', $socialMealId) === 0,
-        'the post owner can delete another author top-level comment and its replies'
+        (int) ($deletedThread['id'] ?? 0) === $mealTopCommentId
+            && social_comment_count($pdo, 'meal', $socialMealId) === 0
+            && $commentLikesAfterThreadDelete === 0,
+        'the post owner can delete another author thread and its persistent comment likes'
     );
     $notificationCountBeforeSelfLike = (int) (db_fetch_one(
         $pdo,
@@ -886,6 +1020,105 @@ try {
         [':user' => $secondUserId]
     )['n'] ?? 0);
     $assert($notificationCountAfterSelfLike === $notificationCountBeforeSelfLike, 'self likes do not create notifications');
+
+    $mealSocialNotificationsBeforeDelete = (int) (db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS n FROM user_notifications
+         WHERE kind IN ("social_like", "social_comment", "social_reply")
+           AND json_extract(CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END, "$.entity_type") = "meal"
+           AND CAST(json_extract(CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END, "$.entity_id") AS INTEGER) = :meal',
+        [':meal' => $socialMealId]
+    )['n'] ?? 0);
+    $deletedSocialMeal = nutrition_delete_entry($pdo, $config, $socialMealId, $secondUserId);
+    $mealSocialNotificationsAfterDelete = (int) (db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS n FROM user_notifications
+         WHERE kind IN ("social_like", "social_comment", "social_reply")
+           AND json_extract(CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END, "$.entity_type") = "meal"
+           AND CAST(json_extract(CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END, "$.entity_id") AS INTEGER) = :meal',
+        [':meal' => $socialMealId]
+    )['n'] ?? 0);
+    $assert(
+        (int) ($deletedSocialMeal['id'] ?? 0) === $socialMealId
+            && $mealSocialNotificationsBeforeDelete >= 3
+            && $mealSocialNotificationsAfterDelete === 0
+            && db_fetch_one($pdo, 'SELECT 1 FROM social_feed_likes WHERE entity_type="meal" AND entity_id=:meal', [':meal' => $socialMealId]) === null,
+        'deleting a meal clears its activity state and every social notification that targeted it'
+    );
+
+    // A meal captured with a photo is stored in both Nutrition and Gallery, but
+    // must behave as one Meal Update in the feed. This is the historical shape
+    // that used to survive after its nutrition row was archived or deleted.
+    db_execute(
+        $pdo,
+        'INSERT INTO photo_entries (user_id,log_date,category,caption,file_path,has_photo,calories,protein_g,created_at,updated_at)
+         VALUES (:user,:date,"meal","QA linked meal photo","qa/linked-meal.jpg",1,610,36,:now,:now)',
+        [':user' => $secondUserId, ':date' => to_date(null), ':now' => now_iso()]
+    );
+    $linkedMealPhotoId = (int) $pdo->lastInsertId();
+    db_execute(
+        $pdo,
+        'INSERT INTO nutrition_entries (user_id,photo_entry_id,entry_date,entry_time,meal_type,notes,photo_path,calories,protein_g,carbs_g,fat_g,version,created_at,updated_at)
+         VALUES (:user,:photo,:date,"20:15","dinner","QA linked meal","qa/linked-meal.jpg",610,36,72,18,1,:now,:now)',
+        [':user' => $secondUserId, ':photo' => $linkedMealPhotoId, ':date' => to_date(null), ':now' => now_iso()]
+    );
+    $linkedMealId = (int) $pdo->lastInsertId();
+    $linkedMealFeed = social_feed_items($pdo, $firstUserId, 'friends', 1, 'photo', $linkedMealPhotoId);
+    $linkedMealOwnerHtml = $linkedMealFeed !== [] ? $renderMealFeedItem($linkedMealFeed[0], $users[1]) : '';
+    $assert(
+        count($linkedMealFeed) === 1
+            && (int) ($linkedMealFeed[0]['meal_entry_id'] ?? 0) === $linkedMealId
+            && str_contains($linkedMealOwnerHtml, 'href="/?page=meal&amp;meal_id=' . $linkedMealId . '&amp;origin=home_feed')
+            && str_contains($linkedMealOwnerHtml, 'name="entry_id" value="' . $linkedMealId . '"'),
+        'a photo-backed Meal Update opens its meal and exposes the owner delete action'
+    );
+    $assert(social_feed_toggle_like($pdo, $firstUserId, 'photo', $linkedMealPhotoId), 'a visible photo-backed meal accepts social actions');
+    $linkedMealComment = social_comment_create($pdo, $firstUserId, 'photo', $linkedMealPhotoId, 'QA linked meal comment');
+    nutrition_update_entry($pdo, $config, $linkedMealId, $secondUserId, ['nutrition_entry_state' => 'archive']);
+    $linkedMealArchiveRejectedComment = false;
+    try {
+        social_comment_create($pdo, $firstUserId, 'photo', $linkedMealPhotoId, 'Must not be stored');
+    } catch (SocialActionException) {
+        $linkedMealArchiveRejectedComment = true;
+    }
+    $assert(
+        social_feed_items($pdo, $firstUserId, 'friends', 1, 'photo', $linkedMealPhotoId) === []
+            && !social_feed_entity_visible($pdo, $firstUserId, 'photo', $linkedMealPhotoId)
+            && $linkedMealArchiveRejectedComment,
+        'archiving a photo-backed meal removes it from the feed and blocks direct mutations'
+    );
+    nutrition_update_entry($pdo, $config, $linkedMealId, $secondUserId, ['nutrition_entry_state' => 'unarchive']);
+    $assert(
+        count(social_feed_items($pdo, $firstUserId, 'friends', 1, 'photo', $linkedMealPhotoId)) === 1,
+        'unarchiving a photo-backed meal restores its single feed activity'
+    );
+    $linkedMealNotificationCount = (int) (db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS n FROM user_notifications
+         WHERE kind IN ("social_like", "social_comment", "social_reply")
+           AND json_extract(CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END, "$.entity_type")="photo"
+           AND CAST(json_extract(CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END, "$.entity_id") AS INTEGER)=:photo',
+        [':photo' => $linkedMealPhotoId]
+    )['n'] ?? 0);
+    $deletedLinkedMeal = nutrition_delete_entry($pdo, $config, $linkedMealId, $secondUserId);
+    $assert(
+        (int) ($deletedLinkedMeal['id'] ?? 0) === $linkedMealId
+            && (int) ($linkedMealComment['id'] ?? 0) > 0
+            && $linkedMealNotificationCount >= 2
+            && db_fetch_one($pdo, 'SELECT 1 FROM nutrition_entries WHERE id=:id', [':id' => $linkedMealId]) === null
+            && db_fetch_one($pdo, 'SELECT 1 FROM photo_entries WHERE id=:id', [':id' => $linkedMealPhotoId]) === null
+            && db_fetch_one($pdo, 'SELECT 1 FROM social_feed_likes WHERE entity_type="photo" AND entity_id=:id', [':id' => $linkedMealPhotoId]) === null
+            && db_fetch_one($pdo, 'SELECT 1 FROM photo_comments WHERE photo_id=:id', [':id' => $linkedMealPhotoId]) === null
+            && (int) (db_fetch_one(
+                $pdo,
+                'SELECT COUNT(*) AS n FROM user_notifications
+                 WHERE kind IN ("social_like", "social_comment", "social_reply")
+                   AND json_extract(CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END, "$.entity_type")="photo"
+                   AND CAST(json_extract(CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END, "$.entity_id") AS INTEGER)=:photo',
+                [':photo' => $linkedMealPhotoId]
+            )['n'] ?? -1) === 0,
+        'deleting a photo-backed meal removes its gallery row, activity, conversation and notifications'
+    );
 
     db_execute(
         $pdo,

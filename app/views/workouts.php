@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 $wkView = (string) ($wkView ?? 'list');
 $csrf = csrf_token();
+$workoutContextOrigin = in_array((string) ($_GET['origin'] ?? ''), ['home_feed', 'profile'], true)
+    ? (string) $_GET['origin']
+    : '';
+$workoutContextReturnCandidate = $workoutContextOrigin !== '' ? trim((string) ($_GET['return_to'] ?? '')) : '';
+$workoutContextReturnUrl = $workoutContextReturnCandidate !== '' ? safe_redirect_target($workoutContextReturnCandidate) : '';
+$workoutContextReturnLabel = $workoutContextOrigin === 'profile' ? t('nav.profile') : t('feed.title');
 $exercises = (array) ($wkExercises ?? []);
 $personalExerciseCount = count(array_filter($exercises, static fn(array $exercise): bool => (int) ($exercise['is_system'] ?? 0) === 0));
 $favoriteExerciseCount = count(array_filter($exercises, static fn(array $exercise): bool => (int) ($exercise['is_favorite'] ?? 0) === 1));
@@ -333,7 +339,11 @@ $libraryClearUrl = $libraryUrl([
         <?php else: ?>
             <header class="workouts-mobile-subheader hierarchy-page-header<?= $wkView === 'library' ? ' is-library' : '' ?><?= $wkView === 'ranks' ? ' is-ranks' : '' ?>">
                 <?php if ($wkView !== 'ranks'): ?>
-                    <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="/?page=workouts" aria-label="<?= e(t('common.back')) ?>: <?= e(t('workouts.title')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('workouts.title')) ?></strong></button>
+                    <?php
+                    $workoutMobileBackUrl = !empty($wkStatsSession) && $workoutContextReturnUrl !== '' ? $workoutContextReturnUrl : '/?page=workouts';
+                    $workoutMobileBackLabel = !empty($wkStatsSession) && $workoutContextReturnUrl !== '' ? $workoutContextReturnLabel : t('workouts.title');
+                    ?>
+                    <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="<?= e($workoutMobileBackUrl) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e($workoutMobileBackLabel) ?>"><span aria-hidden="true"><?= activity_icon_svg('chevron-left') ?></span><strong><?= e($workoutMobileBackLabel) ?></strong></button>
                     <div><p class="eyebrow"><?= e(t('workouts.title')) ?></p><h1><?= e($tabView === 'stats' ? (!empty($wkStatsSession) ? t('workouts.workout_detail') : t('workouts.stats')) : $workoutHeroTitle) ?></h1></div>
                 <?php endif; ?>
                 <?php if ($wkView === 'library'): ?>
@@ -851,8 +861,8 @@ $libraryClearUrl = $libraryUrl([
         </form>
         <?php if ($hasLibraryTarget): ?>
             <div class="workouts-picker-filter-buttons" aria-label="<?= e(t('common.filter')) ?>">
-                <button type="button" data-workout-filter-open><?= e((string) ($filters['equipment'] ?? '') !== '' ? $equipmentLabel((string) $filters['equipment']) : t('workouts.all_equipment')) ?></button>
-                <button type="button" data-workout-filter-open><?= e($muscleSelectedList !== [] ? implode(', ', array_map($muscleLabel, $muscleSelectedList)) : t('workouts.all_body_parts')) ?></button>
+                <button type="button" data-workout-filter-open aria-expanded="false" aria-controls="workouts-library-filters"<?= (string) ($filters['equipment'] ?? '') !== '' ? ' class="is-active"' : '' ?>><?= e((string) ($filters['equipment'] ?? '') !== '' ? $equipmentLabel((string) $filters['equipment']) : t('workouts.all_equipment')) ?></button>
+                <button type="button" data-workout-filter-open aria-expanded="false" aria-controls="workouts-library-filters"<?= $muscleSelectedList !== [] ? ' class="is-active"' : '' ?>><?= e($muscleSelectedList !== [] ? implode(', ', array_map($muscleLabel, $muscleSelectedList)) : t('workouts.all_body_parts')) ?></button>
             </div>
             <button class="workouts-picker-custom-create" type="button" data-app-modal-open="wk-create-exercise-leave-modal" aria-haspopup="dialog">
                 <span aria-hidden="true"><?= activity_icon_svg('plus') ?></span>
@@ -1193,7 +1203,9 @@ $libraryClearUrl = $libraryUrl([
             $rankTeamPosition = null;
             foreach ((array) ($wkRankLeaderboard ?? []) as $rankLeaderRow) {
                 if ((int) ($rankLeaderRow['id'] ?? 0) === (int) ($currentUser['id'] ?? 0)) {
-                    $rankTeamPosition = (int) ($rankLeaderRow['position'] ?? 0);
+                    $rankTeamPosition = isset($rankLeaderRow['position'])
+                        ? (int) $rankLeaderRow['position']
+                        : null;
                     break;
                 }
             }
@@ -1368,7 +1380,7 @@ $libraryClearUrl = $libraryUrl([
                                 <li>
                                     <a href="/?page=profile&amp;user_id=<?= (int) ($rankPreviewUser['id'] ?? 0) ?>" data-rank="<?= e($rankPreviewUserKey) ?>"<?= $rankPreviewCoverUrl !== '' ? ' class="has-profile-cover"' : '' ?><?= (int) ($rankPreviewUser['id'] ?? 0) === (int) ($currentUser['id'] ?? 0) ? ' aria-current="true"' : '' ?>>
                                         <?php if ($rankPreviewCoverUrl !== ''): ?><img class="workouts-rank-preview-cover" src="<?= e($rankPreviewCoverUrl) ?>" alt="" loading="lazy" aria-hidden="true"><?php endif; ?>
-                                        <strong>#<?= (int) ($rankPreviewUser['position'] ?? 0) ?></strong>
+                                        <strong><?= isset($rankPreviewUser['position']) ? '#' . (int) $rankPreviewUser['position'] : '&mdash;' ?></strong>
                                         <?php if ($rankPreviewAvatarUrl !== ''): ?><img class="avatar-small" src="<?= e($rankPreviewAvatarUrl) ?>" alt="<?= e((string) ($rankPreviewUser['display_name'] ?? '')) ?>" loading="lazy"><?php else: ?><span class="avatar-small"><?= e(initials_for((string) ($rankPreviewUser['display_name'] ?? ''))) ?></span><?php endif; ?>
                                         <span><b><?= e((string) ($rankPreviewUser['display_name'] ?? '')) ?></b><small>@<?= e((string) ($rankPreviewUser['username'] ?? '')) ?></small></span>
                                         <span><b><?= e(number_format((float) ($rankPreviewUserRank['score'] ?? 0), 1, '.', '')) ?></b><small><?= e(t('workouts.points_abbr')) ?></small></span>
@@ -1379,8 +1391,10 @@ $libraryClearUrl = $libraryUrl([
                     </article>
                 </div>
             </section>
-            <?php if (empty($rankProfile['bodyweight_recent'])): ?>
-                <div class="workouts-rank-notice"><?= activity_icon_svg('info') ?><span><?= e(t('workouts.bodyweight_required')) ?></span><a href="/?page=entries&mode=data"><?= e(t('entries.quick_data')) ?></a></div>
+            <?php if (!empty($overallRank['activity_detected']) && !empty($overallRank['requires_weight'])): ?>
+                <div class="workouts-rank-notice" data-rank-readiness="needs-weight"><?= activity_icon_svg('info') ?><span><?= e(t('workouts.bodyweight_required')) ?></span><a href="/?page=entries&mode=data"><?= e(t('entries.quick_data')) ?></a></div>
+            <?php elseif (empty($overallRank['activity_detected'])): ?>
+                <div class="workouts-rank-notice" data-rank-readiness="empty"><?= activity_icon_svg('info') ?><span><?= e(t('workouts.no_rank_yet')) ?></span><a href="/?page=workouts"><?= e(t('nav.workouts')) ?></a></div>
             <?php endif; ?>
         <?php elseif ($rankSection === 'body'): ?>
             <?php
@@ -1521,9 +1535,23 @@ $libraryClearUrl = $libraryUrl([
                 <p class="workouts-rank-division-hint muted small"><?= e(t('workouts.rank_division_hint')) ?></p>
                 <div class="workouts-leaderboard-list" data-collapsible-list data-persist-collapsible="workouts.ranks.leaderboard" data-mobile-count="10" data-desktop-count="16">
                     <?php foreach ((array) ($wkRankLeaderboard ?? []) as $rankedUser): ?>
-                        <?php $userRank = (array) ($rankedUser['rank'] ?? []); $userRankKey = (string) ($userRank['key'] ?? 'unranked'); ?>
-                        <a href="/?page=profile&user_id=<?= (int) $rankedUser['id'] ?>" class="workouts-leaderboard-row<?= (int) $rankedUser['id'] === (int) $currentUser['id'] ? ' is-me' : '' ?><?= (int) $rankedUser['position'] <= 3 ? ' is-podium' : '' ?>" data-position="<?= (int) $rankedUser['position'] ?>" data-collapsible-item>
-                            <strong>#<?= (int) $rankedUser['position'] ?></strong><span class="avatar-small"><?= e(initials_for((string) $rankedUser['display_name'])) ?></span><span><strong><?= e((string) $rankedUser['display_name']) ?></strong><small>@<?= e((string) $rankedUser['username']) ?> · <?= e(t('workouts.rank_points_short', ['points' => number_format((float) ($userRank['score'] ?? 0), 1, '.', '')])) ?></small></span><span class="workouts-rank-badge" data-rank="<?= e($userRankKey) ?>"><?= e($rankLabel($userRankKey)) ?></span>
+                        <?php
+                        $userRank = (array) ($rankedUser['rank'] ?? []);
+                        $userRankKey = (string) ($userRank['key'] ?? 'unranked');
+                        $rankedUserAvatar = avatar_url((array) $rankedUser);
+                        $rankedUserCoverUrl = '';
+                        $rankedUserCoverPath = trim((string) ($rankedUser['profile_cover_path'] ?? ''));
+                        if ($rankedUserCoverPath !== '') {
+                            $rankedUserCoverFile = resolve_media_storage_path((array) $GLOBALS['config'], $rankedUserCoverPath);
+                            if ($rankedUserCoverFile !== null && is_file($rankedUserCoverFile)) {
+                                $rankedUserCoverUrl = media_thumbnail_url($rankedUserCoverPath, 960);
+                            }
+                        }
+                        ?>
+                        <?php $rankedUserPosition = isset($rankedUser['position']) ? (int) $rankedUser['position'] : null; ?>
+                        <a href="/?page=profile&user_id=<?= (int) $rankedUser['id'] ?>" class="workouts-leaderboard-row<?= (int) $rankedUser['id'] === (int) $currentUser['id'] ? ' is-me' : '' ?><?= $rankedUserPosition !== null && $rankedUserPosition <= 3 ? ' is-podium' : '' ?><?= $rankedUserCoverUrl !== '' ? ' has-profile-cover' : '' ?>" data-position="<?= $rankedUserPosition ?? 0 ?>" data-rank="<?= e($userRankKey) ?>" data-collapsible-item>
+                            <?php if ($rankedUserCoverUrl !== ''): ?><img class="workouts-rank-team-cover" src="<?= e($rankedUserCoverUrl) ?>" alt="" loading="lazy" aria-hidden="true"><?php endif; ?>
+                            <strong><?= $rankedUserPosition !== null ? '#' . $rankedUserPosition : '&mdash;' ?></strong><?php if ($rankedUserAvatar !== ''): ?><img class="avatar-small" src="<?= e($rankedUserAvatar) ?>" alt="<?= e((string) ($rankedUser['display_name'] ?? '')) ?>" loading="lazy"><?php else: ?><span class="avatar-small"><?= e(initials_for((string) $rankedUser['display_name'])) ?></span><?php endif; ?><span class="workouts-rank-team-identity"><strong><?= e((string) $rankedUser['display_name']) ?></strong><small>@<?= e((string) $rankedUser['username']) ?> · <?= e(t('workouts.rank_points_short', ['points' => number_format((float) ($userRank['score'] ?? 0), 1, '.', '')])) ?></small></span><span class="workouts-rank-badge" data-rank="<?= e($userRankKey) ?>"><?= e($rankLabel($userRankKey)) ?></span>
                         </a>
                     <?php endforeach; ?>
                     <button class="inline-list-toggle" type="button" data-collapsible-toggle data-label-more="<?= e(t('profile.show_more')) ?>" data-label-less="<?= e(t('profile.show_less')) ?>"><?= e(t('profile.show_more')) ?></button>
@@ -2400,7 +2428,7 @@ $libraryClearUrl = $libraryUrl([
         $detailAvatarUrl = avatar_url((array) ($currentUser ?? []));
         $detailOwnerName = trim((string) (($currentUser['display_name'] ?? '') ?: ($currentUser['username'] ?? '')));
         ?>
-        <a class="workouts-stats-back workouts-stats-local-back" href="/?page=workouts&amp;view=stats"><span aria-hidden="true">&larr;</span><?= e(t('workouts.stats_back')) ?></a>
+        <a class="workouts-stats-back workouts-stats-local-back" href="<?= e($workoutContextReturnUrl !== '' ? $workoutContextReturnUrl : '/?page=workouts&view=stats') ?>"><span aria-hidden="true">&larr;</span><?= e($workoutContextReturnUrl !== '' ? $workoutContextReturnLabel : t('workouts.stats_back')) ?></a>
         <div class="workouts-session-detail-shell">
         <article class="workouts-session-detail-card">
             <header class="workouts-session-detail-author">

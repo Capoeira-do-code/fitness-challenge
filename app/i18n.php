@@ -95,6 +95,11 @@ $TRANSLATIONS = [
         'nutrition.sugar' => 'Sugar (g)',
         'nutrition.sodium' => 'Sodium (mg)',
         'nutrition.notes' => 'Notes',
+        'nutrition.meal_unavailable' => 'Meal unavailable',
+        'nutrition.meal_unavailable_hint' => 'This meal no longer exists or is not shared with you.',
+        'nutrition.back_to_feed' => 'Back to feed',
+        'nutrition.shared_read_only' => 'Shared meal · read-only view',
+        'nutrition.open_workspace' => 'Open in Nutrition',
         'nutrition.type_breakfast' => 'Breakfast',
         'nutrition.type_lunch' => 'Lunch',
         'nutrition.type_dinner' => 'Dinner',
@@ -1000,6 +1005,11 @@ $TRANSLATIONS = [
         'nutrition.sugar' => 'Azúcar (g)',
         'nutrition.sodium' => 'Sodio (mg)',
         'nutrition.notes' => 'Notas',
+        'nutrition.meal_unavailable' => 'Comida no disponible',
+        'nutrition.meal_unavailable_hint' => 'Esta comida ya no existe o no está compartida contigo.',
+        'nutrition.back_to_feed' => 'Volver al feed',
+        'nutrition.shared_read_only' => 'Comida compartida · vista de solo lectura',
+        'nutrition.open_workspace' => 'Abrir en Nutrición',
         'nutrition.type_breakfast' => 'Desayuno',
         'nutrition.type_lunch' => 'Comida',
         'nutrition.type_dinner' => 'Cena',
@@ -1904,6 +1914,11 @@ $TRANSLATIONS = [
         'nutrition.sugar' => 'Zucchero (g)',
         'nutrition.sodium' => 'Sodio (mg)',
         'nutrition.notes' => 'Note',
+        'nutrition.meal_unavailable' => 'Pasto non disponibile',
+        'nutrition.meal_unavailable_hint' => 'Questo pasto non esiste più o non è condiviso con te.',
+        'nutrition.back_to_feed' => 'Torna al feed',
+        'nutrition.shared_read_only' => 'Pasto condiviso · vista di sola lettura',
+        'nutrition.open_workspace' => 'Apri in Nutrizione',
         'nutrition.type_breakfast' => 'Colazione',
         'nutrition.type_lunch' => 'Pranzo',
         'nutrition.type_dinner' => 'Cena',
@@ -8423,6 +8438,7 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'workouts.remove_routine_photo' => 'Remove current cover photo',
         'workouts.routine_video' => 'Routine video',
         'workouts.routine_video_hint' => 'Paste a YouTube, Vimeo or direct video link.',
+        'workouts.watch_video' => 'Watch video',
         'workouts.watch_routine_video' => 'Watch video',
         'workouts.routine_media_saved' => 'Routine and visual cover saved.',
         'workouts.routine_name_required' => 'Enter a name for the routine.',
@@ -8648,6 +8664,7 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'workouts.remove_routine_photo' => 'Eliminar la foto de portada actual',
         'workouts.routine_video' => 'Vídeo de la rutina',
         'workouts.routine_video_hint' => 'Pega un enlace de YouTube, Vimeo o vídeo directo.',
+        'workouts.watch_video' => 'Ver vídeo',
         'workouts.watch_routine_video' => 'Ver vídeo',
         'workouts.routine_media_saved' => 'Rutina y portada visual guardadas.',
         'workouts.routine_name_required' => 'Escribe un nombre para la rutina.',
@@ -8873,6 +8890,7 @@ $TRANSLATIONS = array_replace_recursive($TRANSLATIONS, [
         'workouts.remove_routine_photo' => 'Rimuovi la foto di copertina attuale',
         'workouts.routine_video' => 'Video routine',
         'workouts.routine_video_hint' => 'Incolla un link YouTube, Vimeo o video diretto.',
+        'workouts.watch_video' => 'Guarda video',
         'workouts.watch_routine_video' => 'Guarda video',
         'workouts.routine_media_saved' => 'Routine e copertina salvate.',
         'workouts.routine_name_required' => 'Inserisci un nome per la routine.',
@@ -10466,8 +10484,33 @@ function label_for_status(string $status): string
 function safe_redirect_target(?string $target): string
 {
     $target = trim((string) $target);
-    if ($target === '' || $target[0] !== '/' || str_starts_with($target, '//')) {
+    if ($target === '' || $target[0] !== '/') {
         return '/';
+    }
+
+    // WHATWG URL parsers treat backslashes as path separators for special
+    // schemes. A value such as `/\evil.example` can therefore become a
+    // protocol-relative redirect in a browser even though it starts with `/`
+    // on the server. Inspect decoded variants too and reject control bytes so
+    // this helper remains safe for both Location headers and href attributes.
+    $candidate = $target;
+    // A small bounded decode loop also covers values that have passed through
+    // more than one form/query encoder. Browsers do not normally recurse this
+    // far, but rejecting the dangerous decoded form is safer than depending on
+    // which layer performs the final decode.
+    for ($decodePass = 0; $decodePass < 4; $decodePass++) {
+        if (
+            str_starts_with($candidate, '//')
+            || str_contains($candidate, '\\')
+            || preg_match('/[\x00-\x1F\x7F]/', $candidate) === 1
+        ) {
+            return '/';
+        }
+        $decoded = rawurldecode($candidate);
+        if ($decoded === $candidate) {
+            break;
+        }
+        $candidate = $decoded;
     }
 
     return $target;

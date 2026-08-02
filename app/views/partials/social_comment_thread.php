@@ -59,6 +59,17 @@ $renderComment = static function (array $comment, bool $isReply = false) use (
         </header>
         <p class="social-comment-body"><?= nl2br(e((string) ($comment['comment'] ?? ''))) ?></p>
         <div class="social-comment-actions">
+            <?php $commentLiked = (int) ($comment['comment_liked'] ?? 0) === 1; ?>
+            <form method="post" action="<?= e($threadEndpoint) ?>" class="social-comment-like" data-social-comment-form data-social-comment-like data-allow-multi-submit>
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="social_feed_comment_like">
+                <input type="hidden" name="entity_type" value="<?= e($threadType) ?>">
+                <input type="hidden" name="entity_id" value="<?= $threadEntityId ?>">
+                <input type="hidden" name="comment_id" value="<?= $commentId ?>">
+                <?php if ($threadScope !== ''): ?><input type="hidden" name="feed_scope" value="<?= e($threadScope) ?>"><?php endif; ?>
+                <button type="submit" class="<?= $commentLiked ? 'is-liked' : '' ?>" aria-label="<?= e(t('feed.like')) ?>" aria-pressed="<?= $commentLiked ? 'true' : 'false' ?>"><?= activity_icon_svg('heart') ?><span><?= max(0, (int) ($comment['comment_like_count'] ?? 0)) ?></span></button>
+            </form>
+            <span aria-hidden="true">·</span>
             <button type="button" data-social-comment-reply-toggle aria-expanded="false" aria-controls="<?= e($replyFormId) ?>"><?= e(t('feed.reply')) ?></button>
             <?php if ($canEdit): ?>
                 <span aria-hidden="true">·</span>

@@ -6358,7 +6358,8 @@ body[data-page="workouts"] .workouts-tools-disclosure .workouts-section-grid { g
         background: color-mix(in srgb, var(--ink) 5%, var(--surface));
     }
     body[data-page="workouts"] .workouts-mobile-subheader > .destination-back > strong { display: none; }
-    body[data-page="workouts"] .workouts-mobile-subheader > .destination-back > span { font-size: 1.25rem; }
+    body[data-page="workouts"] .workouts-mobile-subheader > .destination-back > span { display: grid; width: 22px; height: 22px; place-items: center; line-height: 1; }
+    body[data-page="workouts"] .workouts-mobile-subheader > .destination-back > span svg { display: block; width: 22px; height: 22px; }
     body[data-page="workouts"] .workouts-mobile-subheader > div:nth-child(2) { min-width: 0; }
     body[data-page="workouts"] .workouts-mobile-subheader > div:nth-child(2) .eyebrow { display: none; }
     body[data-page="workouts"] .workouts-mobile-subheader > div:nth-child(2) h1 { margin: 0; font-size: 1.2rem; line-height: 1.2; }
@@ -6442,7 +6443,7 @@ body[data-page="workouts"] .workouts-tools-disclosure .workouts-section-grid { g
 
     body[data-page="workouts"] .workouts-routine-library-organizer { padding: 0.85rem; border-radius: 18px; }
     body[data-page="workouts"] .workouts-routine-order-group { padding: 0.75rem; border-radius: 16px; }
-    body[data-page="workouts"] .workouts-routine-organizer-item { min-height: 76px; padding: 0.6rem; border-radius: 14px; }
+    body[data-page="workouts"] .workouts-routine-organizer-item { min-height: 64px; padding: 0.45rem 0.5rem; border-radius: 14px; }
     body[data-page="workouts"] .workouts-routine-order-copy strong { font-size: 0.88rem; }
     body[data-page="workouts"] .workouts-routine-order-copy small { font-size: 0.7rem; }
 
@@ -8236,7 +8237,49 @@ body[data-page="workouts"] .workouts-rank-arena .avatar-small {
     height: 42px;
     place-items: center;
     flex: 0 0 42px;
+    overflow: hidden;
     border-radius: 50%;
+    object-fit: cover;
+    object-position: center;
     font-size: 0.72rem;
     font-weight: 900;
+}
+
+body[data-page="workouts"] .workouts-rank-arena .workouts-leaderboard-row {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+}
+body[data-page="workouts"] .workouts-rank-arena .workouts-leaderboard-row.has-profile-cover::before {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: linear-gradient(90deg, rgba(5,18,24,.78), rgba(6,22,28,.52) 55%, rgba(5,18,24,.82));
+    content: "";
+}
+body[data-page="workouts"] .workouts-rank-team-cover {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: .8;
+}
+body[data-page="workouts"] .workouts-rank-arena .workouts-leaderboard-row > :not(.workouts-rank-team-cover) {
+    position: relative;
+    z-index: 2;
+}
+body[data-page="workouts"] .workouts-rank-team-identity {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+/* The mobile rank selector sits on the dark competitive canvas even when the
+   application theme is dark. Use the arena's high-contrast teal instead of
+   the general-purpose --primary-dark token, which is too dim on this surface. */
+body[data-page="workouts"]:is([data-theme="dark"], .theme-active-dark) .workouts-rank-mobile-selector > summary {
+    border-color: rgba(116, 217, 204, 0.3);
+    color: #9fe5dc;
+    background: rgba(20, 184, 166, 0.1);
 }

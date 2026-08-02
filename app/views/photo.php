@@ -13,7 +13,12 @@ $ownerName = (string) ($photo['display_name'] ?? t('common.user'));
 $photoCategory = (string) ($photo['category'] ?? 'other');
 $photoCanDelete = (bool) ($canDeletePhoto ?? false);
 $photoCanEdit = (bool) ($canEditPhoto ?? false);
-$backUrl = '/?page=entries&mode=nutrition&date=' . rawurlencode($photoLogDate);
+$defaultBackUrl = '/?page=entries&mode=nutrition&date=' . rawurlencode($photoLogDate);
+$photoReturnCandidate = (string) ($_GET['origin'] ?? '') === 'home_feed'
+    ? trim((string) ($_GET['return_to'] ?? ''))
+    : '';
+$backUrl = $photoReturnCandidate !== '' ? safe_redirect_target($photoReturnCandidate) : $defaultBackUrl;
+$backLabel = $photoReturnCandidate !== '' ? t('feed.title') : t('nav.entries');
 $categoryLabels = [
     'breakfast' => t('entries.breakfast'),
     'lunch' => t('entries.lunch'),
@@ -77,7 +82,7 @@ foreach ($nutritionFields as $field => $meta) {
                 <h1 class="photo-post-title"><?= e(t('photo.title')) ?></h1>
             </div>
             <div class="photo-post-head-actions">
-                <a class="hierarchy-back destination-back photo-back-btn" href="<?= e($backUrl) ?>" aria-label="<?= e(t('photo.back_to_entries')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.entries')) ?></strong></a>
+                <a class="hierarchy-back destination-back photo-back-btn" href="<?= e($backUrl) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e($backLabel) ?>"><span aria-hidden="true">&larr;</span><strong><?= e($backLabel) ?></strong></a>
                 <?php if ($photoCanDelete || $photoCanEdit): ?>
                     <?php
                     $photoDeleteFormId = 'photo-delete-form-page-' . $photoId;

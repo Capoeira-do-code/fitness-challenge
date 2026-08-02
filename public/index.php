@@ -12,7 +12,7 @@ if ($page === null) {
     if ($pathPage === 'index.php') {
         $pathPage = '';
     }
-    if (in_array($pathPage, ['dashboard', 'overview', 'search', 'dashboard_panel_state', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'workouts', 'ranks', 'social', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'quests', 'season', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'competitions', 'login', 'register', 'onboarding', 'login_background'], true)) {
+    if (in_array($pathPage, ['dashboard', 'overview', 'search', 'dashboard_panel_state', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'workouts', 'ranks', 'social', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'quests', 'season', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'competitions', 'meal', 'login', 'register', 'onboarding', 'login_background'], true)) {
         $page = $pathPage;
     } elseif ($pathPage !== '') {
         security_mark_current_request($pdo, 'not_found', 10);
@@ -965,7 +965,13 @@ if ($page === 'shared_workout') {
     if ($sharedSession === null) {
         http_response_code(404);
     }
+    $sharedOrigin = (string) ($_GET['origin'] ?? '') === 'home_feed' ? 'home_feed' : '';
+    $sharedOriginReturn = $sharedOrigin !== '' ? trim((string) ($_GET['return_to'] ?? '')) : '';
+    $sharedOriginReturn = $sharedOriginReturn !== '' ? safe_redirect_target($sharedOriginReturn) : '';
     $sharedReturnUrl = '/?page=shared_workout&token=' . rawurlencode($sharedToken);
+    if ($sharedOriginReturn !== '') {
+        $sharedReturnUrl .= '&origin=home_feed&return_to=' . rawurlencode($sharedOriginReturn);
+    }
     if (is_post() && $sharedSession !== null) {
         if ($currentUser === null) {
             flash_set('error', t('auth.login_required'));
@@ -1033,6 +1039,7 @@ if ($page === 'shared_workout') {
         'sharedSession' => $sharedSession,
         'sharedExercises' => $sharedExercises,
         'sharedExerciseMedia' => $sharedExerciseMedia,
+        'sharedReturnUrl' => $sharedReturnUrl,
         'sharedUserRoutines' => $currentUser !== null && (int) ($sharedSession['user_id'] ?? 0) !== (int) ($currentUser['id'] ?? 0)
             ? wk_routines_for_user($pdo, (int) $currentUser['id'], false)
             : [],
@@ -2105,12 +2112,36 @@ if ($page === 'api_meal_calendar') {
     ]);
 }
 
+if ($page === 'meal') {
+    $mealEntryId = max(0, (int) ($_GET['meal_id'] ?? 0));
+    $mealEntry = nutrition_public_entry_for_viewer($pdo, $mealEntryId, $currentUser);
+    $mealOriginReturn = (string) ($_GET['origin'] ?? '') === 'home_feed'
+        ? trim((string) ($_GET['return_to'] ?? ''))
+        : '';
+    $mealBackUrl = str_starts_with($mealOriginReturn, '/') && !str_starts_with($mealOriginReturn, '//')
+        ? safe_redirect_target($mealOriginReturn)
+        : '/?page=dashboard&home=feed&feed=friends#home-social-feed';
+    if ($mealEntry === null) {
+        http_response_code(404);
+    }
+
+    render_view('meal', [
+        'title' => t('nutrition.meal_details'),
+        'currentPage' => 'nutrition',
+        'currentUser' => $currentUser,
+        'mealEntry' => $mealEntry,
+        'mealBackUrl' => $mealBackUrl,
+        'config' => $config,
+    ]);
+}
+
 if ($page === 'nutrition') {
     $currentUser = require_login($pdo);
     $nutritionReturnContext = trim((string) ($_POST['return_to'] ?? ($_GET['return_to'] ?? '')));
+    $nutritionHasLocalReturn = str_starts_with($nutritionReturnContext, '/') && !str_starts_with($nutritionReturnContext, '//');
     $nutritionReturnUrl = $nutritionReturnContext === 'gallery'
         ? '/?page=gallery&gallery_view=recent'
-        : '/?page=nutrition';
+        : ($nutritionHasLocalReturn ? safe_redirect_target($nutritionReturnContext) : '/?page=nutrition');
     if (is_post()) {
         if (!csrf_verify()) {
             flash_set('error', t('flash.csrf'));
@@ -2202,7 +2233,7 @@ if ($page === 'nutrition') {
             error_log('Nutrition action failed: ' . $e->getMessage());
             flash_set('error', $e instanceof InvalidArgumentException ? $e->getMessage() : t('flash.save_failed'));
         }
-        redirect($nutritionReturnContext === 'gallery'
+        redirect($nutritionReturnContext === 'gallery' || $nutritionHasLocalReturn
             ? $nutritionReturnUrl
             : '/?page=nutrition&date=' . rawurlencode($nutritionReturnDate));
     }
@@ -2213,7 +2244,7 @@ if ($page === 'nutrition') {
     $nutritionCalculationWeight = $nutritionLatestWeight
         ?? ((float) ($currentUser['ideal_weight'] ?? 0) > 0 ? (float) $currentUser['ideal_weight'] : null);
     render_view('nutrition', [
-        'title' => t('dashboard.calories_consumed'),
+        'title' => t('nav.nutrition'),
         'currentPage' => 'nutrition',
         'currentUser' => $currentUser,
         'nutritionSeries' => nutrition_daily_summary($pdo, $currentUser, $rangeStart, $rangeEnd),
@@ -2227,8 +2258,11 @@ if ($page === 'nutrition') {
         'nutritionWeightIsLatest' => $nutritionLatestWeight !== null,
         'rangeStart' => $rangeStart,
         'rangeEnd' => $rangeEnd,
-        'nutritionReturnContext' => $nutritionReturnContext === 'gallery' ? 'gallery' : '',
+        'nutritionReturnContext' => $nutritionReturnContext === 'gallery'
+            ? 'gallery'
+            : ($nutritionHasLocalReturn ? $nutritionReturnUrl : ''),
         'nutritionAutoOpen' => (string) ($_GET['create'] ?? '') === '1',
+        'nutritionAutoOpenMealId' => max(0, (int) ($_GET['meal_id'] ?? 0)),
         'config' => $config,
     ]);
 }
@@ -2695,25 +2729,31 @@ if ($page === 'photo') {
 
         $action = (string) ($_POST['action'] ?? '');
 
-        if (in_array($action, ['social_feed_comment', 'social_feed_comment_edit', 'social_feed_comment_delete'], true)) {
+        if (in_array($action, ['social_feed_comment', 'social_feed_comment_edit', 'social_feed_comment_delete', 'social_feed_comment_like'], true)) {
             $commentMutation = null;
             $commentError = '';
             try {
                 $commentMutation = social_comment_apply_action($pdo, $currentUser, $action, 'photo', $photoId, $_POST);
-                audit_log(
-                    $pdo,
-                    (int) $currentUser['id'],
-                    match ($action) {
-                        'social_feed_comment_edit' => 'photo_comment_updated',
-                        'social_feed_comment_delete' => 'photo_comment_deleted',
-                        default => 'photo_comment_created',
-                    },
-                    'photo_comment',
-                    (string) ($commentMutation['id'] ?? ''),
-                    'Photo comment thread updated.'
-                );
+                if ($action !== 'social_feed_comment_like') {
+                    audit_log(
+                        $pdo,
+                        (int) $currentUser['id'],
+                        match ($action) {
+                            'social_feed_comment_edit' => 'photo_comment_updated',
+                            'social_feed_comment_delete' => 'photo_comment_deleted',
+                            default => 'photo_comment_created',
+                        },
+                        'photo_comment',
+                        (string) ($commentMutation['id'] ?? ''),
+                        'Photo comment thread updated.'
+                    );
+                }
             } catch (Throwable $error) {
-                $commentError = trim($error->getMessage());
+                $expectedSocialError = $error instanceof InvalidArgumentException || $error instanceof SocialActionException;
+                if (!$expectedSocialError) {
+                    error_log('Photo social action failed [' . get_debug_type($error) . ']: ' . $error->getMessage());
+                }
+                $commentError = social_action_public_error($error, t('feed.comment_error'));
             }
 
             if ($isSocialCommentFetch) {
@@ -2736,12 +2776,14 @@ if ($page === 'photo') {
                 exit;
             }
 
-            flash_set(
-                is_array($commentMutation) ? 'success' : 'error',
-                is_array($commentMutation)
-                    ? ($action === 'social_feed_comment_delete' ? t('photo.comment_deleted') : t('photo.comment_added'))
-                    : ($commentError !== '' ? $commentError : t('feed.comment_error'))
-            );
+            if ($action !== 'social_feed_comment_like' || !is_array($commentMutation)) {
+                flash_set(
+                    is_array($commentMutation) ? 'success' : 'error',
+                    is_array($commentMutation)
+                        ? ($action === 'social_feed_comment_delete' ? t('photo.comment_deleted') : t('photo.comment_added'))
+                        : ($commentError !== '' ? $commentError : t('feed.comment_error'))
+                );
+            }
             redirect('/?page=photo&photo_id=' . $photoId . '#comment-photo-' . (int) ($commentMutation['id'] ?? 0));
         }
 
@@ -2902,7 +2944,7 @@ if ($page === 'photo') {
         'currentPage' => 'photo',
         'currentUser' => $currentUser,
         'photo' => $photo,
-        'comments' => fetch_photo_comments($pdo, $photoId, 250),
+        'comments' => social_comments_for_entity($pdo, 'photo', $photoId, 250, $photoViewerId),
         'canDeletePhoto' => $canDeletePhoto,
         'canEditPhoto' => $canEditPhoto,
         'config' => $config,
@@ -4882,7 +4924,7 @@ if ($page === 'workouts') {
         : [];
 
     render_view('workouts', [
-        'title' => t('workouts.title'),
+        'title' => t('nav.table'),
         'currentPage' => 'workouts',
         'currentUser' => $currentUser,
         'wkView' => $wkView,
@@ -6871,7 +6913,9 @@ if ($page === 'profile') {
     $profileTrainingPosition = null;
     foreach (wk_rank_leaderboard($pdo, 100) as $profileTrainingRow) {
         if ((int) ($profileTrainingRow['id'] ?? 0) === $profileTrainingUserId) {
-            $profileTrainingPosition = (int) ($profileTrainingRow['position'] ?? 0);
+            $profileTrainingPosition = isset($profileTrainingRow['position'])
+                ? (int) $profileTrainingRow['position']
+                : null;
             break;
         }
     }
@@ -11222,7 +11266,7 @@ if ($page === 'dashboard' || $page === 'overview') {
         }
 
         $action = (string) ($_POST['action'] ?? '');
-        $socialCommentActions = ['social_feed_comment', 'social_feed_comment_edit', 'social_feed_comment_delete'];
+        $socialCommentActions = ['social_feed_comment', 'social_feed_comment_edit', 'social_feed_comment_delete', 'social_feed_comment_like'];
         if ($action === 'social_feed_like' || $action === 'social_feed_copy_workout' || in_array($action, $socialCommentActions, true)) {
             $feedType = (string) ($_POST['entity_type'] ?? '');
             $feedId = max(0, (int) ($_POST['entity_id'] ?? 0));
@@ -11248,7 +11292,18 @@ if ($page === 'dashboard' || $page === 'overview') {
                     $saved = social_comment_apply_action($pdo, $currentUser, $action, $feedType, $feedId, $_POST);
                 }
             } catch (Throwable $error) {
-                $feedError = trim($error->getMessage());
+                $expectedSocialError = $error instanceof InvalidArgumentException
+                    || $error instanceof SocialActionException
+                    || ($action === 'social_feed_copy_workout'
+                        && $error instanceof RuntimeException
+                        && !($error instanceof PDOException));
+                if (!$expectedSocialError) {
+                    error_log('Feed action failed [' . get_debug_type($error) . ']: ' . $error->getMessage());
+                }
+                $feedFallback = $action === 'social_feed_copy_workout'
+                    ? t('workouts.routine_copy_failed')
+                    : t('feed.comment_error');
+                $feedError = social_action_public_error($error, $feedFallback);
             }
             $isFeedFetch = (string) ($_POST['feed_ajax'] ?? '') === '1'
                 || strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'feed-fetch';
@@ -11700,7 +11755,9 @@ if ($page === 'dashboard' || $page === 'overview') {
             continue;
         }
         $dashboardTrainingRank = (array) ($trainingRow['rank'] ?? []);
-        $dashboardTrainingPosition = (int) ($trainingRow['position'] ?? 0);
+        $dashboardTrainingPosition = isset($trainingRow['position'])
+            ? (int) $trainingRow['position']
+            : null;
         break;
     }
     if (!is_array($dashboardTrainingRank)) {
