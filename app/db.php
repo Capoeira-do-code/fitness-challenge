@@ -1075,6 +1075,7 @@ function ensure_schema_columns(PDO $pdo, array $config): void
     ensure_column($pdo, 'daily_logs', 'distance_exception_reason', 'TEXT');
     ensure_column($pdo, 'daily_logs', 'log_time', 'TEXT');
     ensure_column($pdo, 'photo_entries', 'has_photo', 'INTEGER NOT NULL DEFAULT 1');
+    ensure_column($pdo, 'photo_comments', 'parent_comment_id', 'INTEGER');
 
     ensure_column($pdo, 'approval_requests', 'request_state', 'TEXT NOT NULL DEFAULT "sent"');
     ensure_column($pdo, 'approval_requests', 'resent_count', 'INTEGER NOT NULL DEFAULT 0');
@@ -1239,6 +1240,7 @@ function ensure_indexes(PDO $pdo): void
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_entries_user_date_media ON photo_entries(user_id, log_date, has_photo)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_user_metric_preferences_enabled ON user_metric_preferences(user_id, enabled, metric_key)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_comments_photo_created ON photo_comments(photo_id, created_at)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_comments_thread ON photo_comments(photo_id, parent_comment_id, created_at, id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_photo_comments_user ON photo_comments(user_id)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_team_memberships_team ON team_memberships(team_id, active)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_team_memberships_user ON team_memberships(user_id, active)');

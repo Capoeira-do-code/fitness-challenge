@@ -2,7 +2,16 @@
 
 declare(strict_types=1);
 
-$registrationMode = (string) ($registrationMode ?? 'invalid');
+$registrationMode = (string) ($registrationMode ?? '');
+if (!in_array($registrationMode, ['invite', 'public', 'closed', 'invalid'], true)) {
+    if (!empty($registrationIsPublic)) {
+        $registrationMode = 'public';
+    } elseif (!empty($registrationAllowed) || (string) ($registrationInviteStatus ?? 'invalid') === 'active') {
+        $registrationMode = 'invite';
+    } else {
+        $registrationMode = trim((string) ($registrationToken ?? '')) === '' ? 'closed' : 'invalid';
+    }
+}
 $registrationIsPublic = $registrationMode === 'public';
 $registrationCanContinue = in_array($registrationMode, ['invite', 'public'], true);
 $inviteLabel = trim((string) (($registrationInvite['label'] ?? '')));
@@ -35,8 +44,8 @@ $inviteLabel = trim((string) (($registrationInvite['label'] ?? '')));
                 <div class="registration-grid">
                     <label><span><?= e(t('common.display_name')) ?></span><input type="text" name="display_name" maxlength="80" autocomplete="name" value="<?= e((string) ($_POST['display_name'] ?? '')) ?>" required autofocus></label>
                     <label><span><?= e(t('common.username')) ?></span><input type="text" name="username" minlength="3" maxlength="32" pattern="[A-Za-z0-9_.\-]+" autocomplete="username" autocapitalize="none" value="<?= e((string) ($_POST['username'] ?? '')) ?>" required><small><?= e(t('register.username_hint')) ?></small></label>
-                    <label><span><?= e(t('common.password')) ?></span><input type="password" name="password" autocomplete="new-password" required></label>
-                    <label><span><?= e(t('register.password_confirm')) ?></span><input type="password" name="password_confirm" autocomplete="new-password" required></label>
+                    <label><span><?= e(t('common.password')) ?></span><input type="password" name="password" autocomplete="new-password" required data-caps-lock-field><small class="password-caps-warning" data-caps-lock-warning role="status" hidden><?= e(t('auth.caps_lock_on')) ?></small></label>
+                    <label><span><?= e(t('register.password_confirm')) ?></span><input type="password" name="password_confirm" autocomplete="new-password" required data-caps-lock-field><small class="password-caps-warning" data-caps-lock-warning role="status" hidden><?= e(t('auth.caps_lock_on')) ?></small></label>
                     <label class="registration-locale"><span><?= e(t('common.language')) ?></span><select name="locale"><?php foreach (SUPPORTED_LOCALES as $locale): ?><option value="<?= e($locale) ?>" <?= normalize_locale((string) ($_POST['locale'] ?? current_locale()), 'en') === $locale ? 'selected' : '' ?>><?= e(t('locale.' . $locale)) ?></option><?php endforeach; ?></select></label>
                 </div>
                 <button class="btn btn-primary registration-submit" type="submit"><?= e(t('register.submit')) ?></button>

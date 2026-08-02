@@ -41,10 +41,13 @@ function friends_ensure_schema(PDO $pdo): void
             comment TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
+            parent_comment_id INTEGER,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )'
     );
+    ensure_column($pdo, 'social_feed_comments', 'parent_comment_id', 'INTEGER');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_social_feed_comments_entity ON social_feed_comments(entity_type, entity_id, created_at)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_social_feed_comments_thread ON social_feed_comments(entity_type, entity_id, parent_comment_id, created_at, id)');
     $hasPhotoComments = db_fetch_one($pdo, "SELECT 1 FROM sqlite_master WHERE type='table' AND name='photo_comments'") !== null;
     if ($hasPhotoComments) {
         // Photo posts have one canonical conversation. Move comments created by
@@ -181,21 +184,321 @@ function social_feed_toggle_like(PDO $pdo, int $userId, string $type, int $id): 
 
 function social_feed_add_comment(PDO $pdo, int $userId, string $type, int $id, string $comment): bool
 {
-    $type = social_feed_entity_type($type);
-    $comment = trim($comment);
-    if ($userId <= 0 || $id <= 0 || $type === '' || $comment === '' || !social_feed_entity_exists($pdo, $type, $id) || !social_feed_entity_visible($pdo, $userId, $type, $id)) return false;
-    if ((function_exists('mb_strlen') ? mb_strlen($comment) : strlen($comment)) > 500) return false;
-    if ($type === 'photo' && function_exists('create_photo_comment')) {
-        try {
-            return create_photo_comment($pdo, $id, $userId, $comment) !== [];
-        } catch (Throwable) {
-            return false;
-        }
+    try {
+        return social_comment_create($pdo, $userId, $type, $id, $comment) !== [];
+    } catch (Throwable) {
+        return false;
     }
+}
+
+/** @return array<string,mixed>|null */
+function social_comment_find(PDO $pdo, string $type, int $entityId, int $commentId): ?array
+{
+    $type = social_feed_entity_type($type);
+    if ($type === '' || $entityId <= 0 || $commentId <= 0) return null;
+
+    if ($type === 'photo') {
+        return db_fetch_one(
+            $pdo,
+            'SELECT c.*,u.display_name,u.username,u.avatar_path,u.updated_at AS user_updated_at
+             FROM photo_comments c JOIN users u ON u.id=c.user_id
+             WHERE c.id=:comment_id AND c.photo_id=:entity_id LIMIT 1',
+            [':comment_id' => $commentId, ':entity_id' => $entityId]
+        );
+    }
+
+    return db_fetch_one(
+        $pdo,
+        'SELECT c.*,u.display_name,u.username,u.avatar_path,u.updated_at AS user_updated_at
+         FROM social_feed_comments c JOIN users u ON u.id=c.user_id
+         WHERE c.id=:comment_id AND c.entity_type=:type AND c.entity_id=:entity_id LIMIT 1',
+        [':comment_id' => $commentId, ':type' => $type, ':entity_id' => $entityId]
+    );
+}
+
+/** @return array<int,array<string,mixed>> */
+function social_comments_for_entity(PDO $pdo, string $type, int $entityId, int $limit = 250): array
+{
+    $type = social_feed_entity_type($type);
+    if ($type === '' || $entityId <= 0) return [];
+    $safeLimit = max(1, min(500, $limit));
+
+    if ($type === 'photo') {
+        return db_fetch_all(
+            $pdo,
+            'SELECT c.*,u.display_name,u.username,u.avatar_path,u.updated_at AS user_updated_at
+             FROM photo_comments c JOIN users u ON u.id=c.user_id
+             WHERE c.photo_id=:entity_id
+             ORDER BY CASE WHEN c.parent_comment_id IS NULL THEN c.created_at ELSE (SELECT p.created_at FROM photo_comments p WHERE p.id=c.parent_comment_id) END ASC,
+                      CASE WHEN c.parent_comment_id IS NULL THEN 0 ELSE 1 END ASC,c.created_at ASC,c.id ASC
+             LIMIT ' . $safeLimit,
+            [':entity_id' => $entityId]
+        );
+    }
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT c.*,u.display_name,u.username,u.avatar_path,u.updated_at AS user_updated_at
+         FROM social_feed_comments c JOIN users u ON u.id=c.user_id
+         WHERE c.entity_type=:type AND c.entity_id=:entity_id
+         ORDER BY CASE WHEN c.parent_comment_id IS NULL THEN c.created_at ELSE (SELECT p.created_at FROM social_feed_comments p WHERE p.id=c.parent_comment_id) END ASC,
+                  CASE WHEN c.parent_comment_id IS NULL THEN 0 ELSE 1 END ASC,c.created_at ASC,c.id ASC
+         LIMIT ' . $safeLimit,
+        [':type' => $type, ':entity_id' => $entityId]
+    );
+}
+
+function social_comment_count(PDO $pdo, string $type, int $entityId): int
+{
+    $type = social_feed_entity_type($type);
+    if ($type === '' || $entityId <= 0) return 0;
+    $row = $type === 'photo'
+        ? db_fetch_one($pdo, 'SELECT COUNT(*) AS n FROM photo_comments WHERE photo_id=:id', [':id' => $entityId])
+        : db_fetch_one($pdo, 'SELECT COUNT(*) AS n FROM social_feed_comments WHERE entity_type=:type AND entity_id=:id', [':type' => $type, ':id' => $entityId]);
+    return max(0, (int) ($row['n'] ?? 0));
+}
+
+function social_comment_text(string $comment): string
+{
+    $comment = trim($comment);
+    if ($comment === '') throw new InvalidArgumentException(t('photo.comment_required'));
+    if (app_text_length($comment) > 1200) throw new InvalidArgumentException(t('photo.comment_too_long'));
+    return $comment;
+}
+
+/** @return array<string,mixed> */
+function social_comment_create(
+    PDO $pdo,
+    int $userId,
+    string $type,
+    int $entityId,
+    string $comment,
+    int $replyToCommentId = 0
+): array {
+    $type = social_feed_entity_type($type);
+    $comment = social_comment_text($comment);
+    if ($userId <= 0 || $entityId <= 0 || $type === ''
+        || !social_feed_entity_exists($pdo, $type, $entityId)
+        || !social_feed_entity_visible($pdo, $userId, $type, $entityId)
+    ) {
+        throw new RuntimeException(t('flash.no_permission'));
+    }
+
+    $replyTarget = null;
+    $parentCommentId = null;
+    if ($replyToCommentId > 0) {
+        $replyTarget = social_comment_find($pdo, $type, $entityId, $replyToCommentId);
+        if ($replyTarget === null) throw new RuntimeException(t('flash.not_found'));
+        $parentCommentId = (int) ($replyTarget['parent_comment_id'] ?? 0) > 0
+            ? (int) $replyTarget['parent_comment_id']
+            : (int) $replyTarget['id'];
+    }
+
     $now = now_iso();
-    $saved = db_execute($pdo, 'INSERT INTO social_feed_comments (user_id,entity_type,entity_id,comment,created_at,updated_at) VALUES (:user,:type,:id,:comment,:now,:now)', [':user' => $userId, ':type' => $type, ':id' => $id, ':comment' => $comment, ':now' => $now]);
-    if ($saved) social_feed_notify_interaction($pdo, $userId, $type, $id, 'comment', $comment);
-    return $saved;
+    if ($type === 'photo') {
+        db_execute(
+            $pdo,
+            'INSERT INTO photo_comments (photo_id,user_id,parent_comment_id,comment,created_at,updated_at)
+             VALUES (:entity_id,:user_id,:parent_id,:comment,:now,:now)',
+            [':entity_id' => $entityId, ':user_id' => $userId, ':parent_id' => $parentCommentId, ':comment' => $comment, ':now' => $now]
+        );
+    } else {
+        db_execute(
+            $pdo,
+            'INSERT INTO social_feed_comments (user_id,entity_type,entity_id,parent_comment_id,comment,created_at,updated_at)
+             VALUES (:user_id,:type,:entity_id,:parent_id,:comment,:now,:now)',
+            [':user_id' => $userId, ':type' => $type, ':entity_id' => $entityId, ':parent_id' => $parentCommentId, ':comment' => $comment, ':now' => $now]
+        );
+    }
+    $created = social_comment_find($pdo, $type, $entityId, (int) $pdo->lastInsertId());
+    if ($created === null) throw new RuntimeException(t('flash.save_failed'));
+
+    social_comment_notify_created($pdo, $userId, $type, $entityId, $created, $replyTarget);
+    return $created;
+}
+
+function social_comment_notify_created(
+    PDO $pdo,
+    int $actorUserId,
+    string $type,
+    int $entityId,
+    array $created,
+    ?array $replyTarget
+): void {
+    if ($replyTarget === null) {
+        social_feed_notify_interaction($pdo, $actorUserId, $type, $entityId, 'comment', (string) ($created['comment'] ?? ''));
+        return;
+    }
+
+    $actorName = social_user_name($pdo, $actorUserId);
+    $item = t('notif.social_item_' . $type);
+    $comment = trim((string) ($created['comment'] ?? ''));
+    $excerpt = app_text_substr($comment, 0, 120);
+    if (app_text_length($comment) > 120) $excerpt .= '…';
+    $payload = [
+        'actor_user_id' => $actorUserId,
+        'entity_type' => $type,
+        'entity_id' => $entityId,
+        'comment_id' => (int) ($created['id'] ?? 0),
+        'parent_comment_id' => (int) ($created['parent_comment_id'] ?? 0),
+        'reply_to_comment_id' => (int) ($replyTarget['id'] ?? 0),
+    ];
+    $targetAuthorId = (int) ($replyTarget['user_id'] ?? 0);
+    if ($targetAuthorId > 0 && $targetAuthorId !== $actorUserId) {
+        social_notify(
+            $pdo,
+            $targetAuthorId,
+            'social_reply',
+            t('notif.social_reply_title'),
+            t('notif.social_reply_body', ['name' => $actorName, 'item' => $item, 'comment' => $excerpt]),
+            $payload
+        );
+    }
+    $ownerId = social_feed_entity_owner_id($pdo, $type, $entityId);
+    if ($ownerId > 0 && $ownerId !== $actorUserId && $ownerId !== $targetAuthorId) {
+        social_notify(
+            $pdo,
+            $ownerId,
+            'social_reply',
+            t('notif.social_reply_post_title'),
+            t('notif.social_reply_post_body', ['name' => $actorName, 'item' => $item, 'comment' => $excerpt]),
+            $payload
+        );
+    }
+}
+
+/** @return array<string,mixed> */
+function social_comment_update(PDO $pdo, int $actorUserId, string $type, int $entityId, int $commentId, string $comment): array
+{
+    $type = social_feed_entity_type($type);
+    $existing = social_comment_find($pdo, $type, $entityId, $commentId);
+    if ($existing === null) throw new RuntimeException(t('flash.not_found'));
+    if ((int) ($existing['user_id'] ?? 0) !== $actorUserId) throw new RuntimeException(t('flash.no_permission'));
+    $comment = social_comment_text($comment);
+    $params = [':comment' => $comment, ':now' => now_iso(), ':id' => $commentId];
+    if ($type === 'photo') {
+        db_execute($pdo, 'UPDATE photo_comments SET comment=:comment,updated_at=:now WHERE id=:id', $params);
+    } else {
+        db_execute($pdo, 'UPDATE social_feed_comments SET comment=:comment,updated_at=:now WHERE id=:id', $params);
+    }
+    $updated = social_comment_find($pdo, $type, $entityId, $commentId);
+    if ($updated === null) throw new RuntimeException(t('flash.save_failed'));
+    return $updated;
+}
+
+/** @return array<string,mixed> */
+function social_comment_delete(PDO $pdo, array $actor, string $type, int $entityId, int $commentId): array
+{
+    $type = social_feed_entity_type($type);
+    $existing = social_comment_find($pdo, $type, $entityId, $commentId);
+    if ($existing === null) throw new RuntimeException(t('flash.not_found'));
+    $actorId = (int) ($actor['id'] ?? 0);
+    $ownerId = social_feed_entity_owner_id($pdo, $type, $entityId);
+    if ($actorId <= 0 || (!is_admin($actor) && $actorId !== (int) ($existing['user_id'] ?? 0) && $actorId !== $ownerId)) {
+        throw new RuntimeException(t('flash.no_permission'));
+    }
+
+    $started = !$pdo->inTransaction();
+    if ($started) $pdo->beginTransaction();
+    try {
+        if ($type === 'photo') {
+            db_execute($pdo, 'DELETE FROM photo_comments WHERE parent_comment_id=:id', [':id' => $commentId]);
+            db_execute($pdo, 'DELETE FROM photo_comments WHERE id=:id', [':id' => $commentId]);
+        } else {
+            db_execute($pdo, 'DELETE FROM social_feed_comments WHERE parent_comment_id=:id', [':id' => $commentId]);
+            db_execute($pdo, 'DELETE FROM social_feed_comments WHERE id=:id', [':id' => $commentId]);
+        }
+        if ($started) $pdo->commit();
+    } catch (Throwable $error) {
+        if ($started && $pdo->inTransaction()) $pdo->rollBack();
+        throw $error;
+    }
+    return $existing;
+}
+
+function social_comment_thread_html(
+    array $comments,
+    array $currentUser,
+    int $ownerId,
+    string $endpoint,
+    string $entityType,
+    int $entityId,
+    string $feedScope = ''
+): string {
+    $socialComments = array_values($comments);
+    $socialCommentCurrentUser = $currentUser;
+    $socialCommentOwnerId = $ownerId;
+    $socialCommentEndpoint = $endpoint;
+    $socialCommentEntityType = $entityType;
+    $socialCommentEntityId = $entityId;
+    $socialCommentFeedScope = $feedScope;
+    ob_start();
+    require __DIR__ . '/views/partials/social_comment_thread.php';
+    return (string) ob_get_clean();
+}
+
+/** @return array<string,mixed> */
+function social_comment_apply_action(PDO $pdo, array $actor, string $action, string $type, int $entityId, array $input): array
+{
+    $type = social_feed_entity_type($type);
+    $actorId = (int) ($actor['id'] ?? 0);
+    if ($actorId <= 0 || $type === '' || $entityId <= 0
+        || !social_feed_entity_exists($pdo, $type, $entityId)
+        || !social_feed_entity_visible($pdo, $actorId, $type, $entityId)
+    ) {
+        throw new RuntimeException(t('flash.no_permission'));
+    }
+
+    return match ($action) {
+        'social_feed_comment' => social_comment_create(
+            $pdo,
+            $actorId,
+            $type,
+            $entityId,
+            (string) ($input['comment'] ?? ''),
+            max(0, (int) ($input['parent_comment_id'] ?? 0))
+        ),
+        'social_feed_comment_edit' => social_comment_update(
+            $pdo,
+            $actorId,
+            $type,
+            $entityId,
+            max(0, (int) ($input['comment_id'] ?? 0)),
+            (string) ($input['comment'] ?? '')
+        ),
+        'social_feed_comment_delete' => social_comment_delete(
+            $pdo,
+            $actor,
+            $type,
+            $entityId,
+            max(0, (int) ($input['comment_id'] ?? 0))
+        ),
+        default => throw new RuntimeException(t('flash.not_found')),
+    };
+}
+
+/** @return array<string,mixed> */
+function social_comment_response_data(
+    PDO $pdo,
+    array $currentUser,
+    string $type,
+    int $entityId,
+    string $endpoint,
+    string $feedScope = ''
+): array {
+    $comments = social_comments_for_entity($pdo, $type, $entityId, 250);
+    return [
+        'comment_count' => count($comments),
+        'comments_html' => social_comment_thread_html(
+            $comments,
+            $currentUser,
+            social_feed_entity_owner_id($pdo, $type, $entityId),
+            $endpoint,
+            $type,
+            $entityId,
+            $feedScope
+        ),
+    ];
 }
 
 /** @return array<int,array<string,mixed>> */
@@ -259,12 +562,20 @@ function social_feed_items(
         $params = [':type' => $item['type'], ':id' => (int) $item['id']];
         $item['like_count'] = (int) (db_fetch_one($pdo, 'SELECT COUNT(*) AS n FROM social_feed_likes WHERE entity_type=:type AND entity_id=:id', $params)['n'] ?? 0);
         $item['liked'] = db_fetch_one($pdo, 'SELECT 1 FROM social_feed_likes WHERE user_id=:user AND entity_type=:type AND entity_id=:id', $params + [':user' => $viewerId]) !== null;
-        if ((string) $item['type'] === 'photo' && function_exists('fetch_photo_comments')) {
-            $item['comments'] = fetch_photo_comments($pdo, (int) $item['id'], 50);
-            $item['comment_count'] = (int) (db_fetch_one($pdo, 'SELECT COUNT(*) AS n FROM photo_comments WHERE photo_id=:id', [':id' => (int) $item['id']])['n'] ?? 0);
-        } else {
-            $item['comments'] = db_fetch_all($pdo, 'SELECT c.*,u.display_name,u.username FROM social_feed_comments c JOIN users u ON u.id=c.user_id WHERE c.entity_type=:type AND c.entity_id=:id ORDER BY c.created_at ASC LIMIT 50', $params);
-            $item['comment_count'] = (int) (db_fetch_one($pdo, 'SELECT COUNT(*) AS n FROM social_feed_comments WHERE entity_type=:type AND entity_id=:id', $params)['n'] ?? 0);
+        $item['comments'] = social_comments_for_entity($pdo, (string) $item['type'], (int) $item['id'], 100);
+        $item['comment_count'] = social_comment_count($pdo, (string) $item['type'], (int) $item['id']);
+        $item['copied_routine_id'] = 0;
+        $item['can_copy_workout'] = false;
+        if ((string) $item['type'] === 'workout' && (int) ($item['user_id'] ?? 0) !== $viewerId) {
+            $copiedRoutine = db_fetch_one(
+                $pdo,
+                'SELECT id FROM workout_routines
+                 WHERE user_id=:viewer AND source_user_id=:owner AND source_session_id=:session
+                 LIMIT 1',
+                [':viewer' => $viewerId, ':owner' => (int) $item['user_id'], ':session' => (int) $item['id']]
+            );
+            $item['copied_routine_id'] = (int) ($copiedRoutine['id'] ?? 0);
+            $item['can_copy_workout'] = true;
         }
     }
     unset($item);

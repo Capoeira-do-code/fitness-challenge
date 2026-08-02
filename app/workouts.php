@@ -59,6 +59,9 @@ function workouts_ensure_schema(PDO $pdo): void
             description TEXT NOT NULL DEFAULT "",
             is_favorite INTEGER NOT NULL DEFAULT 0,
             is_archived INTEGER NOT NULL DEFAULT 0,
+            source_user_id INTEGER,
+            source_routine_id INTEGER,
+            source_session_id INTEGER,
             sort_order INTEGER NOT NULL DEFAULT 0,
             recommended_days_mask TEXT NOT NULL DEFAULT "0000000",
             created_at TEXT NOT NULL,
@@ -244,11 +247,16 @@ function workouts_ensure_schema(PDO $pdo): void
     ensure_column($pdo, 'workout_routines', 'video_url', 'TEXT');
     ensure_column($pdo, 'workout_routines', 'cover_mode', 'TEXT NOT NULL DEFAULT "auto"');
     ensure_column($pdo, 'workout_routines', 'image_position', 'TEXT NOT NULL DEFAULT "center"');
+    ensure_column($pdo, 'workout_routines', 'source_user_id', 'INTEGER');
+    ensure_column($pdo, 'workout_routines', 'source_routine_id', 'INTEGER');
+    ensure_column($pdo, 'workout_routines', 'source_session_id', 'INTEGER');
     ensure_column($pdo, 'workout_sessions', 'share_token', 'TEXT');
     ensure_column($pdo, 'session_exercises', 'rest_seconds', 'INTEGER');
 
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_rank_snapshots ON workout_rank_snapshots(user_id, scope, scope_key, captured_on)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_routines_user ON workout_routines(user_id, is_archived, sort_order)');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_wk_routines_imported_routine ON workout_routines(user_id, source_user_id, source_routine_id) WHERE source_routine_id IS NOT NULL');
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_wk_routines_imported_session ON workout_routines(user_id, source_user_id, source_session_id) WHERE source_session_id IS NOT NULL');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_sessions_user ON workout_sessions(user_id, status, started_at DESC)');
     $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_wk_sessions_share_token ON workout_sessions(share_token) WHERE share_token IS NOT NULL AND share_token != ""');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_wk_pr_user ON personal_records(user_id, exercise_def_id)');
@@ -1970,37 +1978,246 @@ function wk_routine_copy_from_user(PDO $pdo, int $sourceRoutineId, int $sourceUs
     if ($routine === null || $sourceUserId === $targetUserId) {
         return 0;
     }
-    $newId = wk_routine_create(
+    $existingImport = db_fetch_one(
         $pdo,
-        $targetUserId,
-        (string) $routine['name'],
-        (string) $routine['icon'],
-        (string) $routine['description'],
-        (string) ($routine['recommended_days_mask'] ?? '0000000'),
-        (string) ($routine['accent_color'] ?? '#14b8a6'),
-        ($routine['image_path'] ?? null) !== null ? (string) $routine['image_path'] : null,
-        ($routine['video_url'] ?? null) !== null ? (string) $routine['video_url'] : null,
-        (string) ($routine['cover_mode'] ?? 'auto'),
-        (string) ($routine['image_position'] ?? 'center')
+        'SELECT id FROM workout_routines
+         WHERE user_id=:target AND source_user_id=:source_user AND source_routine_id=:source_routine
+         LIMIT 1',
+        [':target' => $targetUserId, ':source_user' => $sourceUserId, ':source_routine' => $sourceRoutineId]
     );
-    if ($newId <= 0) {
-        return 0;
+    if ($existingImport !== null) {
+        return (int) $existingImport['id'];
     }
-    foreach (wk_routine_exercises($pdo, $sourceRoutineId) as $ex) {
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        $newId = wk_routine_create(
+            $pdo,
+            $targetUserId,
+            (string) $routine['name'],
+            (string) $routine['icon'],
+            (string) $routine['description'],
+            (string) ($routine['recommended_days_mask'] ?? '0000000'),
+            (string) ($routine['accent_color'] ?? '#14b8a6'),
+            ($routine['image_path'] ?? null) !== null ? (string) $routine['image_path'] : null,
+            ($routine['video_url'] ?? null) !== null ? (string) $routine['video_url'] : null,
+            (string) ($routine['cover_mode'] ?? 'auto'),
+            (string) ($routine['image_position'] ?? 'center')
+        );
+        if ($newId <= 0) {
+            throw new RuntimeException(t('workouts.routine_copy_failed'));
+        }
         db_execute(
             $pdo,
-            'INSERT INTO routine_exercises (routine_id, exercise_def_id, sort_order, target_sets, target_reps, target_weight, target_duration, target_distance, rest_seconds, unit, notes)
-             VALUES (:r, :e, :so, :ts, :tr, :tw, :td, :ds, :rs, :un, :no)',
-            [
-                ':r' => $newId, ':e' => (int) $ex['exercise_def_id'], ':so' => (int) $ex['sort_order'],
-                ':ts' => (int) $ex['target_sets'], ':tr' => $ex['target_reps'], ':tw' => $ex['target_weight'],
-                ':td' => $ex['target_duration'], ':ds' => $ex['target_distance'], ':rs' => $ex['rest_seconds'],
-                ':un' => (string) $ex['unit'], ':no' => (string) $ex['notes'],
-            ]
+            'UPDATE workout_routines SET source_user_id=:source_user, source_routine_id=:source_routine WHERE id=:id AND user_id=:target',
+            [':source_user' => $sourceUserId, ':source_routine' => $sourceRoutineId, ':id' => $newId, ':target' => $targetUserId]
         );
+        foreach (wk_routine_exercises($pdo, $sourceRoutineId) as $ex) {
+            $targetExerciseId = wk_exercise_import_for_user($pdo, (int) $ex['exercise_def_id'], $targetUserId);
+            if ($targetExerciseId <= 0 || wk_routine_add_exercise($pdo, $newId, $targetExerciseId, [
+                'target_sets' => $ex['target_sets'],
+                'target_reps' => $ex['target_reps'],
+                'target_weight' => $ex['target_weight'],
+                'target_duration' => $ex['target_duration'],
+                'target_distance' => $ex['target_distance'],
+                'rest_seconds' => $ex['rest_seconds'],
+                'unit' => (string) $ex['unit'],
+                'notes' => (string) $ex['notes'],
+            ]) <= 0) {
+                throw new RuntimeException(t('workouts.routine_copy_failed'));
+            }
+        }
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+
+        return $newId;
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
+/** Resolve an exercise into a definition the target user is allowed to own/use. */
+function wk_exercise_import_for_user(PDO $pdo, int $sourceExerciseId, int $targetUserId): int
+{
+    $exercise = wk_exercise_get($pdo, $sourceExerciseId);
+    if ($exercise === null || (int) ($exercise['active'] ?? 1) !== 1 || $targetUserId <= 0) {
+        return 0;
+    }
+    if ((int) ($exercise['is_system'] ?? 0) === 1
+        || (int) ($exercise['user_id'] ?? 0) === 0
+        || (int) ($exercise['user_id'] ?? 0) === $targetUserId) {
+        return $sourceExerciseId;
     }
 
-    return $newId;
+    return wk_user_clone_exercise($pdo, $sourceExerciseId, $targetUserId, true, false);
+}
+
+/**
+ * Copy selected rows from a friend's routine into one existing routine.
+ * Returns the number of newly-added exercises (existing duplicates are skipped).
+ *
+ * @param array<int,int|string> $routineExerciseIds
+ */
+function wk_routine_copy_exercises_from_user(
+    PDO $pdo,
+    int $sourceRoutineId,
+    int $sourceUserId,
+    int $targetRoutineId,
+    int $targetUserId,
+    array $routineExerciseIds
+): int {
+    if ($sourceUserId === $targetUserId
+        || wk_routine_get($pdo, $sourceRoutineId, $sourceUserId) === null
+        || wk_routine_get($pdo, $targetRoutineId, $targetUserId) === null) {
+        return 0;
+    }
+    $requested = array_fill_keys(array_values(array_unique(array_filter(array_map('intval', $routineExerciseIds)))), true);
+    if ($requested === []) {
+        return 0;
+    }
+    $selected = array_values(array_filter(
+        wk_routine_exercises($pdo, $sourceRoutineId),
+        static fn(array $exercise): bool => isset($requested[(int) ($exercise['id'] ?? 0)])
+    ));
+    if ($selected === []) {
+        return 0;
+    }
+
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        $added = 0;
+        foreach ($selected as $exercise) {
+            $targetExerciseId = wk_exercise_import_for_user($pdo, (int) ($exercise['exercise_def_id'] ?? 0), $targetUserId);
+            if ($targetExerciseId <= 0) {
+                throw new RuntimeException(t('workouts.routine_copy_failed'));
+            }
+            $alreadyExists = db_fetch_one(
+                $pdo,
+                'SELECT id FROM routine_exercises WHERE routine_id=:routine AND exercise_def_id=:exercise LIMIT 1',
+                [':routine' => $targetRoutineId, ':exercise' => $targetExerciseId]
+            ) !== null;
+            $rowId = wk_routine_add_exercise($pdo, $targetRoutineId, $targetExerciseId, [
+                'target_sets' => $exercise['target_sets'],
+                'target_reps' => $exercise['target_reps'],
+                'target_weight' => $exercise['target_weight'],
+                'target_duration' => $exercise['target_duration'],
+                'target_distance' => $exercise['target_distance'],
+                'rest_seconds' => $exercise['rest_seconds'],
+                'unit' => (string) ($exercise['unit'] ?? 'kg'),
+                'notes' => (string) ($exercise['notes'] ?? ''),
+            ]);
+            if ($rowId <= 0) {
+                throw new RuntimeException(t('workouts.routine_copy_failed'));
+            }
+            if (!$alreadyExists) {
+                $added++;
+            }
+        }
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+
+        return $added;
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
+/** Build an editable routine from the exercises actually completed in a session. */
+function wk_routine_copy_from_session(PDO $pdo, int $sessionId, int $sourceUserId, int $targetUserId): int
+{
+    $session = wk_session_get($pdo, $sessionId, $sourceUserId);
+    if ($session === null || (string) ($session['status'] ?? '') !== 'completed' || $sourceUserId === $targetUserId) {
+        return 0;
+    }
+    $exercises = wk_session_completed_exercises(wk_session_exercises($pdo, $sessionId));
+    if ($exercises === []) {
+        return 0;
+    }
+    $existingImport = db_fetch_one(
+        $pdo,
+        'SELECT id FROM workout_routines
+         WHERE user_id=:target AND source_user_id=:source_user AND source_session_id=:source_session
+         LIMIT 1',
+        [':target' => $targetUserId, ':source_user' => $sourceUserId, ':source_session' => $sessionId]
+    );
+    if ($existingImport !== null) {
+        return (int) $existingImport['id'];
+    }
+    $name = wk_session_display_title($session);
+    if ($name === '') {
+        $name = t('workouts.session');
+    }
+
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        $routineId = wk_routine_create(
+            $pdo,
+            $targetUserId,
+            $name,
+            (string) ($session['routine_icon'] ?? 'dumbbell'),
+            '',
+            '0000000',
+            (string) ($session['routine_accent_color'] ?? '#14b8a6'),
+            ($session['routine_image_path'] ?? null) !== null ? (string) $session['routine_image_path'] : null,
+            ($session['routine_video_url'] ?? null) !== null ? (string) $session['routine_video_url'] : null,
+            (string) ($session['routine_cover_mode'] ?? 'auto'),
+            (string) ($session['routine_image_position'] ?? 'center')
+        );
+        if ($routineId <= 0) {
+            throw new RuntimeException(t('workouts.routine_copy_failed'));
+        }
+        db_execute(
+            $pdo,
+            'UPDATE workout_routines SET source_user_id=:source_user, source_session_id=:source_session WHERE id=:id AND user_id=:target',
+            [':source_user' => $sourceUserId, ':source_session' => $sessionId, ':id' => $routineId, ':target' => $targetUserId]
+        );
+        foreach ($exercises as $exercise) {
+            $completedSets = array_values(array_filter(
+                (array) ($exercise['sets'] ?? []),
+                static fn(array $set): bool => (int) ($set['completed'] ?? 0) === 1
+            ));
+            $lastSet = (array) ($completedSets[count($completedSets) - 1] ?? []);
+            $targetExerciseId = wk_exercise_import_for_user($pdo, (int) ($exercise['exercise_def_id'] ?? 0), $targetUserId);
+            if ($targetExerciseId <= 0 || wk_routine_add_exercise($pdo, $routineId, $targetExerciseId, [
+                'target_sets' => count($completedSets),
+                'target_reps' => $lastSet['reps'] ?? null,
+                'target_weight' => $lastSet['weight'] ?? null,
+                'target_duration' => $lastSet['duration'] ?? null,
+                'target_distance' => $lastSet['distance'] ?? null,
+                'rest_seconds' => $exercise['rest_seconds'] ?? null,
+                'unit' => (string) ($exercise['unit'] ?? 'kg'),
+                'notes' => (string) ($exercise['notes'] ?? ''),
+            ]) <= 0) {
+                throw new RuntimeException(t('workouts.routine_copy_failed'));
+            }
+        }
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+
+        return $routineId;
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
 }
 
 /**
@@ -2023,6 +2240,15 @@ function wk_friends_routines(PDO $pdo, int $userId): array
         foreach (wk_routines_for_user($pdo, $friendId, true) as $routine) {
             $routine['friend_id'] = $friendId;
             $routine['friend_name'] = (string) ($friend['display_name'] ?? $friend['username'] ?? '');
+            $routine['exercises'] = wk_routine_exercises($pdo, (int) ($routine['id'] ?? 0));
+            $existingCopy = db_fetch_one(
+                $pdo,
+                'SELECT id FROM workout_routines
+                 WHERE user_id=:viewer AND source_user_id=:owner AND source_routine_id=:routine
+                 LIMIT 1',
+                [':viewer' => $userId, ':owner' => $friendId, ':routine' => (int) ($routine['id'] ?? 0)]
+            );
+            $routine['copied_routine_id'] = (int) ($existingCopy['id'] ?? 0);
             $out[] = $routine;
         }
     }

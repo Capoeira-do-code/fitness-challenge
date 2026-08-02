@@ -17,7 +17,6 @@ $feedFocused = !empty($dashboardFeedFocused);
         <?php if ($feedFocused): ?>
             <a class="home-feed-focus-back" href="/?page=dashboard&amp;home=feed&amp;feed=<?= e($feedScope) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('feed.title')) ?></strong></a>
         <?php else: ?>
-            <nav class="home-mode-switch" aria-label="<?= e(t('feed.home_mode')) ?>"><a href="/?page=dashboard&amp;home=feed&amp;feed=<?= e($feedScope) ?>" aria-current="page"><?= activity_icon_svg('users') ?><span><?= e(t('feed.title')) ?></span></a><a href="/?page=dashboard&amp;home=classic"><?= activity_icon_svg('grid') ?><span><?= e(t('feed.classic_home')) ?></span></a></nav>
             <nav class="home-feed-scope" aria-label="<?= e(t('feed.scope')) ?>"><a href="/?page=dashboard&amp;home=feed&amp;feed=friends#home-social-feed"<?= $feedScope === 'friends' ? ' aria-current="page"' : '' ?>><?= e(t('feed.friends')) ?></a><a href="/?page=dashboard&amp;home=feed&amp;feed=global#home-social-feed"<?= $feedScope === 'global' ? ' aria-current="page"' : '' ?>><?= e(t('feed.global')) ?></a></nav>
         <?php endif; ?>
     </header>
@@ -67,12 +66,26 @@ $feedFocused = !empty($dashboardFeedFocused);
                 <?php endif; ?>
                 <div class="home-feed-actions">
                     <form method="post" action="/?page=dashboard" data-feed-like-form data-allow-multi-submit><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="social_feed_like"><input type="hidden" name="entity_type" value="<?= e($feedType) ?>"><input type="hidden" name="entity_id" value="<?= $feedId ?>"><input type="hidden" name="feed_scope" value="<?= e($feedScope) ?>"><button type="submit" class="home-feed-like<?= !empty($feedItem['liked']) ? ' is-liked' : '' ?>" aria-label="<?= e(t('feed.like')) ?>" aria-pressed="<?= !empty($feedItem['liked']) ? 'true' : 'false' ?>"><?= activity_icon_svg('heart') ?><span data-feed-like-count><?= (int) ($feedItem['like_count'] ?? 0) ?></span></button></form>
-                    <button type="button" data-feed-comment-toggle aria-expanded="<?= $feedOpenComments === $feedType . '-' . $feedId ? 'true' : 'false' ?>" aria-label="<?= e(t('feed.comment')) ?>"><?= activity_icon_svg('message') ?><span data-feed-comment-count><?= (int) ($feedItem['comment_count'] ?? count((array) ($feedItem['comments'] ?? []))) ?></span></button>
+                    <button type="button" data-feed-comment-toggle aria-expanded="<?= $feedOpenComments === $feedType . '-' . $feedId ? 'true' : 'false' ?>" aria-label="<?= e(t('feed.comment')) ?>"><?= activity_icon_svg('message') ?><span data-feed-comment-count data-social-comment-count><?= (int) ($feedItem['comment_count'] ?? count((array) ($feedItem['comments'] ?? []))) ?></span></button>
                     <button type="button" data-feed-share data-share-title="<?= e($feedShareTitle) ?>" data-share-text="<?= e($feedShareTitle) ?>" data-share-url="<?= e($feedSharePath) ?>" aria-label="<?= e(t('feed.share')) ?>"><?= activity_icon_svg('share') ?><span class="sr-only"><?= e(t('feed.share')) ?></span></button>
+                    <?php if ($feedType === 'workout' && !empty($feedItem['can_copy_workout'])): ?>
+                        <?php if ((int) ($feedItem['copied_routine_id'] ?? 0) > 0): ?>
+                            <a class="home-feed-copy-workout is-copied" href="/?page=workouts&amp;routine_id=<?= (int) $feedItem['copied_routine_id'] ?>" aria-label="<?= e(t('workouts.view_copied_routine')) ?>"><?= activity_icon_svg('check') ?><span><?= e(t('workouts.copied')) ?></span></a>
+                        <?php else: ?>
+                            <form method="post" action="/?page=dashboard" class="home-feed-copy-workout-form" data-feed-copy-workout-form data-confirm="<?= e(t('workouts.copy_workout_confirm', ['title' => $feedTitle])) ?>" data-allow-multi-submit>
+                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="social_feed_copy_workout">
+                                <input type="hidden" name="entity_type" value="workout">
+                                <input type="hidden" name="entity_id" value="<?= $feedId ?>">
+                                <input type="hidden" name="feed_scope" value="<?= e($feedScope) ?>">
+                                <button type="submit" class="home-feed-copy-workout" aria-label="<?= e(t('workouts.copy_workout')) ?>" data-label-copy="<?= e(t('workouts.copy_workout')) ?>" data-label-done="<?= e(t('workouts.copied')) ?>"><?= activity_icon_svg('plus') ?><span><?= e(t('workouts.copy_workout')) ?></span></button>
+                            </form>
+                        <?php endif; ?>
+                    <?php endif; ?>
                 </div>
-                <div class="home-feed-comments"<?= $feedOpenComments === $feedType . '-' . $feedId ? '' : ' hidden' ?> data-feed-comments>
-                    <?php foreach ((array) ($feedItem['comments'] ?? []) as $comment): ?><p><strong><?= e((string) ($comment['display_name'] ?? $comment['username'] ?? '')) ?></strong> <?= e((string) ($comment['comment'] ?? '')) ?></p><?php endforeach; ?>
-                    <form method="post" action="/?page=dashboard" data-feed-comment-form data-allow-multi-submit><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="social_feed_comment"><input type="hidden" name="entity_type" value="<?= e($feedType) ?>"><input type="hidden" name="entity_id" value="<?= $feedId ?>"><input type="hidden" name="feed_scope" value="<?= e($feedScope) ?>"><input type="text" name="comment" maxlength="500" required placeholder="<?= e(t('feed.comment_placeholder')) ?>"><button type="submit" aria-label="<?= e(t('feed.send')) ?>"><?= activity_icon_svg('send') ?></button></form>
+                <div class="home-feed-comments"<?= $feedOpenComments === $feedType . '-' . $feedId ? '' : ' hidden' ?> data-feed-comments data-social-comment-region>
+                    <?= social_comment_thread_html((array) ($feedItem['comments'] ?? []), $currentUser, (int) ($feedItem['user_id'] ?? 0), '/?page=dashboard', $feedType, $feedId, $feedScope) ?>
+                    <form method="post" action="/?page=dashboard" class="social-comment-composer" data-social-comment-form data-allow-multi-submit><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="social_feed_comment"><input type="hidden" name="entity_type" value="<?= e($feedType) ?>"><input type="hidden" name="entity_id" value="<?= $feedId ?>"><input type="hidden" name="feed_scope" value="<?= e($feedScope) ?>"><label><span class="sr-only"><?= e(t('feed.comment_placeholder')) ?></span><input type="text" name="comment" maxlength="1200" required placeholder="<?= e(t('feed.comment_placeholder')) ?>"></label><button type="submit" aria-label="<?= e(t('feed.send')) ?>"><?= activity_icon_svg('send') ?></button></form>
                 </div>
             </article>
         <?php endforeach; ?>

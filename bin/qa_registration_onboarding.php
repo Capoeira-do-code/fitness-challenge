@@ -47,8 +47,8 @@ $adminId = (int) ($admin['id'] ?? 0);
 $check(!public_registration_enabled($pdo), 'public registration is closed by default');
 $closedRegistrationRejected = false;
 try {
-    register_user_with_invite($pdo, '', [
-        'username' => 'qa.closed.registration',
+    register_user_public($pdo, [
+        'username' => 'qa.public.closed',
         'display_name' => 'QA Closed Registration',
         'password' => 'StrongPass123!',
         'locale' => 'en',
@@ -60,8 +60,8 @@ $check($closedRegistrationRejected, 'a direct registration request is rejected w
 
 set_app_setting_silent($pdo, 'public_registration_enabled', '1', $adminId);
 $check(public_registration_enabled($pdo), 'an administrator setting can open public registration');
-$publicUser = register_user_with_invite($pdo, '', [
-    'username' => 'qa.public.registration',
+$publicUser = register_user_public($pdo, [
+    'username' => 'qa.public.open',
     'display_name' => 'QA Public Registration',
     'password' => 'StrongPass123!',
     'locale' => 'it',
@@ -69,8 +69,25 @@ $publicUser = register_user_with_invite($pdo, '', [
 $check((int) ($publicUser['id'] ?? 0) > 0, 'public registration creates an account without an invitation');
 $check(onboarding_is_pending($publicUser), 'publicly registered users enter the same onboarding flow');
 $check((string) ($publicUser['locale'] ?? '') === 'it', 'public registration persists the selected language');
+$check((string) ($publicUser['onboarding_step'] ?? '') === 'profile', 'public registration starts with the profile step');
 set_app_setting_silent($pdo, 'public_registration_enabled', '0', $adminId);
 $check(!public_registration_enabled($pdo), 'public registration can be closed again');
+
+$configForLoginView = $config;
+$loginAppIconUrl = '';
+$loginRememberDefault = false;
+$loginStyle = 'split';
+$publicRegistrationEnabled = false;
+ob_start();
+require dirname(__DIR__) . '/app/views/login.php';
+$privateLoginHtml = (string) ob_get_clean();
+$publicRegistrationEnabled = true;
+ob_start();
+require dirname(__DIR__) . '/app/views/login.php';
+$publicLoginHtml = (string) ob_get_clean();
+$check(!str_contains($privateLoginHtml, '/?page=register'), 'private login hides the registration link');
+$check(str_contains($publicLoginHtml, '/?page=register'), 'open registration adds the Register link to login');
+$check(str_contains($publicLoginHtml, 'data-caps-lock-warning'), 'login renders the Caps Lock warning hook');
 
 $serverOriginSnapshot = [
     'HTTP_HOST' => $_SERVER['HTTP_HOST'] ?? null,
@@ -115,7 +132,7 @@ $registered = register_user_with_invite($pdo, $rawToken, [
 $registeredId = (int) ($registered['id'] ?? 0);
 $check($registeredId > 0, 'an active invitation creates a user');
 $check(onboarding_is_pending($registered), 'invited users start with onboarding pending');
-$check((string) ($registered['onboarding_step'] ?? '') === 'goals', 'new setup starts on the goals step');
+$check((string) ($registered['onboarding_step'] ?? '') === 'profile', 'new setup starts on the profile step');
 $check((string) ($registered['locale'] ?? '') === 'es', 'the selected registration language is persisted');
 $check((int) ($registered['step_goal'] ?? -1) === 0, 'a step goal is not created implicitly');
 $check((int) ($registered['workout_target'] ?? -1) === 0, 'a workout goal is not created implicitly');
@@ -174,7 +191,7 @@ $check($dismissedUser !== null && !user_should_show_onboarding_prompt($dismissed
 restart_user_onboarding($pdo, (int) $noTeamUser['id']);
 $restartedUser = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $noTeamUser['id']]);
 $check($restartedUser !== null && onboarding_is_pending($restartedUser), 'Settings can restart the setup flow');
-$check((string) ($restartedUser['onboarding_step'] ?? '') === 'goals', 'a restarted setup begins on goals');
+$check((string) ($restartedUser['onboarding_step'] ?? '') === 'profile', 'a restarted setup begins on profile');
 $check((int) ($restartedUser['onboarding_skipped'] ?? 1) === 0 && (int) ($restartedUser['onboarding_prompt_dismissed'] ?? 1) === 0, 'restarting clears the skipped reminder state');
 
 $revocable = create_registration_invite($pdo, $adminId, 'QA revoke', 7, 1);
@@ -198,6 +215,9 @@ $check((string) ($resumable['onboarding_step'] ?? '') === 'profile', 'setup prog
 set_user_onboarding_step($pdo, $registeredId, 'telegram');
 $telegramStep = db_fetch_one($pdo, 'SELECT onboarding_step FROM users WHERE id = :id', [':id' => $registeredId]);
 $check((string) ($telegramStep['onboarding_step'] ?? '') === 'telegram', 'Telegram is a resumable setup step');
+set_user_onboarding_step($pdo, $registeredId, 'challenge');
+$removedChallengeStep = db_fetch_one($pdo, 'SELECT onboarding_step FROM users WHERE id = :id', [':id' => $registeredId]);
+$check((string) ($removedChallengeStep['onboarding_step'] ?? '') === 'telegram', 'the removed Challenge step can no longer be stored');
 telegram_update_user_prefs($pdo, $registeredId, [
     'telegram_reminders_enabled' => 1,
     'telegram_reminder_time' => '19:45',

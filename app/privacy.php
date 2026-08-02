@@ -176,6 +176,46 @@ function privacy_visible_owner_sql(string $usersAlias, int $viewerId, bool $view
 }
 
 /**
+ * Search active profiles without leaking identities that the viewer cannot open.
+ * Keeping this beside the visibility policy makes every global people search use
+ * the same public / friends / private rules as profile and feed rendering.
+ *
+ * @return array<int,array<string,mixed>>
+ */
+function privacy_search_visible_users(PDO $pdo, array $viewer, string $query, int $limit = 12): array
+{
+    $viewerId = (int) ($viewer['id'] ?? 0);
+    $query = trim($query);
+    if ($viewerId <= 0 || $query === '') {
+        return [];
+    }
+    $limit = max(1, min(50, $limit));
+    if (function_exists('mb_substr')) {
+        $query = mb_substr($query, 0, 80);
+    } else {
+        $query = substr($query, 0, 80);
+    }
+    $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $query);
+    $params = [
+        ':query' => '%' . $escaped . '%',
+        ':current_user' => $viewerId,
+    ];
+    $visibilitySql = privacy_visible_owner_sql('u', $viewerId, is_admin($viewer), $params);
+
+    return db_fetch_all(
+        $pdo,
+        'SELECT u.id, u.username, u.display_name, u.avatar_path, u.profile_cover_path, u.profile_visibility
+         FROM users u
+         WHERE u.active = 1
+           AND ' . $visibilitySql . '
+           AND (u.display_name LIKE :query ESCAPE "\\" OR u.username LIKE :query ESCAPE "\\")
+         ORDER BY CASE WHEN u.id = :current_user THEN 0 ELSE 1 END, u.display_name COLLATE NOCASE ASC
+         LIMIT ' . $limit,
+        $params
+    );
+}
+
+/**
  * Tell a user's friends they logged a meal or training, at most once per day per
  * type. Skips users whose visibility is private. Pushes to both the in-app
  * notifications and Telegram (via social_notify).

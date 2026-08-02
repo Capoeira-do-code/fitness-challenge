@@ -72,8 +72,9 @@ $loginStyle = login_style_normalize($loginStyle ?? 'split');
                         <span class="loginx-field-label"><?= e(t('common.password')) ?></span>
                         <span class="loginx-field-control">
                             <span class="loginx-field-icon" aria-hidden="true"><?= activity_icon_svg('shield') ?></span>
-                            <input type="password" name="password" autocomplete="current-password" required<?= $loginRetryUsername !== '' ? ' autofocus' : '' ?> placeholder="••••••••">
+                            <input type="password" name="password" autocomplete="current-password" required<?= $loginRetryUsername !== '' ? ' autofocus' : '' ?> placeholder="••••••••" data-caps-lock-field>
                         </span>
+                        <small class="password-caps-warning" data-caps-lock-warning role="status" hidden><?= e(t('auth.caps_lock_on')) ?></small>
                     </label>
 
                     <label class="loginx-remember">
@@ -86,6 +87,9 @@ $loginStyle = login_style_normalize($loginStyle ?? 'split');
                         <span><?= e(t('login.submit')) ?></span>
                         <span class="loginx-submit-arrow" aria-hidden="true">&rarr;</span>
                     </button>
+                    <?php if ($publicRegistrationEnabled): ?>
+                        <p class="loginx-register"><span><?= e(t('login.no_account')) ?></span><a href="/?page=register"><?= e(t('login.register')) ?></a></p>
+                    <?php endif; ?>
                 </form>
                 <?php if ($publicRegistrationEnabled): ?>
                     <p class="loginx-register">

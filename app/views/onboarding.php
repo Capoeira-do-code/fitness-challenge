@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-$step = (string) ($onboardingStep ?? 'goals');
+$step = (string) ($onboardingStep ?? 'profile');
 $stepIndex = (int) ($onboardingStepIndex ?? 0);
 $furthestStepIndex = max($stepIndex, (int) ($onboardingFurthestIndex ?? $stepIndex));
-$steps = (array) ($onboardingSteps ?? ['goals', 'profile', 'privacy', 'telegram', 'challenge', 'teams', 'install']);
+$steps = (array) ($onboardingSteps ?? ['profile', 'privacy', 'telegram', 'goals', 'teams']);
 $totalSteps = count($steps);
 $profileAvatarUrl = avatar_url($currentUser);
 $profileCoverPath = trim((string) ($currentUser['profile_cover_path'] ?? ''));
@@ -68,23 +68,6 @@ $onboardingTelegramTimezones = array_values(array_unique(array_filter([
     'America/Los_Angeles',
     'UTC',
 ])));
-$onboardingGoal = is_array($onboardingGoal ?? null) ? $onboardingGoal : [];
-$onboardingChallengeTypeCandidate = (string) ($onboardingGoal['target_type'] ?? 'steps');
-$onboardingChallengeType = in_array($onboardingChallengeTypeCandidate, ['steps', 'km', 'workouts'], true)
-    ? $onboardingChallengeTypeCandidate
-    : 'steps';
-$onboardingInstallUrl = request_app_base_url();
-$onboardingAppName = trim((string) (app_setting($GLOBALS['pdo'], 'app_name', (string) ($config['app_name'] ?? 'Fitness Challenge')) ?? 'Fitness Challenge'));
-$onboardingAppName = $onboardingAppName !== '' ? $onboardingAppName : 'Fitness Challenge';
-$onboardingAppIconPath = trim((string) (app_setting($GLOBALS['pdo'], 'app_icon_path', '') ?? ''));
-$onboardingAppIconUrl = $onboardingAppIconPath !== '' && resolve_media_storage_path((array) $config, $onboardingAppIconPath) !== null
-    ? '/?page=app_icon'
-    : '/?page=app_icon_default&size=192';
-try {
-    $defaultChallengeDate = (new DateTimeImmutable('+30 days'))->format('Y-m-d');
-} catch (Throwable) {
-    $defaultChallengeDate = to_date(null);
-}
 ?>
 <section class="onboarding-shell" data-onboarding-step="<?= e($step) ?>">
     <header class="onboarding-header">
@@ -114,7 +97,7 @@ try {
 
     <article class="onboarding-card onboarding-card-<?= e($step) ?>">
         <div class="onboarding-step-copy">
-            <span class="onboarding-step-icon" aria-hidden="true"><?= activity_icon_svg(match ($step) { 'profile' => 'image', 'privacy' => 'shield', 'telegram' => 'bell', 'challenge' => 'target', 'teams' => 'users', 'install' => 'plus', default => 'analytics' }) ?></span>
+            <span class="onboarding-step-icon" aria-hidden="true"><?= activity_icon_svg(match ($step) { 'profile' => 'image', 'privacy' => 'shield', 'telegram' => 'bell', 'teams' => 'users', default => 'analytics' }) ?></span>
             <div><p class="eyebrow"><?= e(t('onboarding.step_count', ['current' => $stepIndex + 1, 'total' => $totalSteps])) ?></p><h2><?= e(t('onboarding.' . $step . '_title')) ?></h2><p><?= e(t('onboarding.' . $step . '_hint')) ?></p></div>
         </div>
 
@@ -143,7 +126,7 @@ try {
                         <div class="onboarding-primary-head"><span class="onboarding-option-icon" aria-hidden="true"><?= activity_icon_svg('sliders') ?></span><span><strong><?= e(t('settings.tracked_metrics')) ?></strong><small><?= e(t('settings.tracked_metrics_hint')) ?></small></span></div>
                         <div class="onboarding-metric-preferences">
                             <?php foreach ($onboardingMetricDefinitions as $metricKey => $metricDefinition): ?>
-                                <?php if (in_array($metricKey, ['steps', 'workouts'], true)) {
+                                <?php if (in_array($metricKey, ['steps', 'workouts', 'weight'], true)) {
                                     continue;
                                 } ?>
                                 <label class="onboarding-metric-toggle">
@@ -156,7 +139,6 @@ try {
                         <div class="grid-inline two onboarding-metric-targets">
                             <label><?= e(t('settings.calorie_burn_goal')) ?><input type="number" min="1" step="1" name="calorie_burn_goal" value="<?= e((string) ($onboardingGoalInput['calorie_burn_goal'] ?? ($currentUser['calorie_burn_goal'] ?? ''))) ?>"></label>
                             <label><?= e(t('settings.calorie_consumed_max')) ?><input type="number" min="1" step="1" name="calorie_consumed_max" value="<?= e((string) ($onboardingGoalInput['calorie_consumed_max'] ?? ($currentUser['calorie_consumed_max'] ?? ''))) ?>"></label>
-                            <label><?= e(t('settings.ideal_weight')) ?><input type="number" min="25" max="400" step="0.1" name="ideal_weight" value="<?= e((string) ($onboardingGoalInput['ideal_weight'] ?? ($currentUser['ideal_weight'] ?? ''))) ?>"></label>
                         </div>
                         <details class="onboarding-custom-metrics">
                             <summary class="btn btn-ghost">+ Crear métricas personales</summary>
@@ -171,16 +153,34 @@ try {
                 </div>
             <?php elseif ($step === 'profile'): ?>
                 <div class="onboarding-media-grid">
-                    <label class="onboarding-media-picker onboarding-avatar-picker">
-                        <span class="onboarding-media-preview" data-onboarding-preview="avatar"><?php if ($profileAvatarUrl !== ''): ?><img src="<?= e($profileAvatarUrl) ?>" alt=""><?php else: ?><b><?= e(initials_for((string) $currentUser['display_name'])) ?></b><?php endif; ?></span>
-                        <span><strong><?= e(t('onboarding.avatar')) ?></strong><small><?= e(t('onboarding.avatar_hint')) ?></small></span>
-                        <input class="sr-only" type="file" name="avatar" accept="image/jpeg,image/png,image/webp" data-onboarding-image-input="avatar">
-                    </label>
-                    <label class="onboarding-media-picker onboarding-cover-picker">
-                        <span class="onboarding-media-preview" data-onboarding-preview="cover"><?php if ($profileCoverUrl !== ''): ?><img src="<?= e($profileCoverUrl) ?>" alt=""><?php else: ?><span aria-hidden="true"><?= activity_icon_svg('image') ?></span><?php endif; ?></span>
-                        <span><strong><?= e(t('onboarding.cover')) ?></strong><small><?= e(t('onboarding.cover_hint')) ?></small></span>
-                        <input class="sr-only" type="file" name="cover" accept="image/jpeg,image/png,image/webp" data-onboarding-image-input="cover">
-                    </label>
+                    <section class="onboarding-media-editor onboarding-avatar-picker" data-image-cropper-form>
+                        <input type="hidden" name="avatar_cropped" value="" data-image-crop-output>
+                        <label class="onboarding-media-picker">
+                            <span class="onboarding-media-preview" data-onboarding-preview="avatar"><?php if ($profileAvatarUrl !== ''): ?><img src="<?= e($profileAvatarUrl) ?>" alt=""><?php else: ?><b><?= e(initials_for((string) $currentUser['display_name'])) ?></b><?php endif; ?></span>
+                            <span><strong><?= e(t('onboarding.avatar')) ?></strong><small><?= e(t('onboarding.avatar_hint')) ?></small></span>
+                            <input class="sr-only" type="file" name="avatar" accept="image/jpeg,image/png,image/webp" data-onboarding-image-input="avatar" data-image-crop-input>
+                        </label>
+                        <div class="image-cropper onboarding-image-cropper is-avatar" data-image-cropper hidden>
+                            <canvas width="480" height="480" data-image-crop-canvas></canvas>
+                            <p class="muted small" data-image-crop-empty><?= e(t('admin.image_crop_hint')) ?></p>
+                            <label><span><?= e(t('common.zoom')) ?></span><input type="range" min="1" max="3" step="0.01" value="1" data-image-crop-zoom></label>
+                            <small><?= e(t('onboarding.crop_move_hint')) ?></small>
+                        </div>
+                    </section>
+                    <section class="onboarding-media-editor onboarding-cover-picker" data-image-cropper-form>
+                        <input type="hidden" name="cover_cropped" value="" data-image-crop-output>
+                        <label class="onboarding-media-picker">
+                            <span class="onboarding-media-preview" data-onboarding-preview="cover"><?php if ($profileCoverUrl !== ''): ?><img src="<?= e($profileCoverUrl) ?>" alt=""><?php else: ?><span aria-hidden="true"><?= activity_icon_svg('image') ?></span><?php endif; ?></span>
+                            <span><strong><?= e(t('onboarding.cover')) ?></strong><small><?= e(t('onboarding.cover_hint')) ?></small></span>
+                            <input class="sr-only" type="file" name="cover" accept="image/jpeg,image/png,image/webp" data-onboarding-image-input="cover" data-image-crop-input>
+                        </label>
+                        <div class="image-cropper onboarding-image-cropper is-cover" data-image-cropper hidden>
+                            <canvas width="1200" height="400" data-image-crop-canvas></canvas>
+                            <p class="muted small" data-image-crop-empty><?= e(t('admin.image_crop_hint')) ?></p>
+                            <label><span><?= e(t('common.zoom')) ?></span><input type="range" min="1" max="3" step="0.01" value="1" data-image-crop-zoom></label>
+                            <small><?= e(t('onboarding.crop_move_hint')) ?></small>
+                        </div>
+                    </section>
                 </div>
                 <label class="onboarding-profile-message"><span><?= e(t('profile.edit_tagline')) ?></span><input type="text" name="profile_tagline" maxlength="<?= profile_tagline_max_length() ?>" value="<?= e(normalize_profile_tagline((string) ($currentUser['profile_tagline'] ?? ''))) ?>" placeholder="<?= e(t('profile.subtitle')) ?>"><small><?= e(t('onboarding.profile_message_hint')) ?></small></label>
                 <fieldset class="onboarding-theme-choice">
@@ -268,27 +268,6 @@ try {
                         </fieldset>
                     <?php endif; ?>
                 </div>
-            <?php elseif ($step === 'challenge'): ?>
-                <div class="onboarding-fields onboarding-challenge-fields">
-                    <label class="onboarding-field-wide"><span><?= e(t('onboarding.challenge_name')) ?></span><input type="text" name="title" maxlength="120" placeholder="<?= e(t('onboarding.challenge_placeholder')) ?>" value="<?= e((string) ($onboardingGoal['title'] ?? '')) ?>"></label>
-                    <label><span><?= e(t('onboarding.challenge_metric')) ?></span><select name="target_type"><option value="steps" <?= $onboardingChallengeType === 'steps' ? 'selected' : '' ?>><?= e(t('metric.steps')) ?></option><option value="km" <?= $onboardingChallengeType === 'km' ? 'selected' : '' ?>><?= e(t('metric.distance_km')) ?></option><option value="workouts" <?= $onboardingChallengeType === 'workouts' ? 'selected' : '' ?>><?= e(t('metric.workouts')) ?></option></select></label>
-                    <label><span><?= e(t('onboarding.challenge_target')) ?></span><input type="number" name="target_value" min="0.1" step="0.1" value="<?= e((string) ($onboardingGoal['target_value'] ?? 10000)) ?>"></label>
-                    <label class="onboarding-field-wide"><span><?= e(t('onboarding.challenge_due')) ?> <em><?= e(t('onboarding.optional')) ?></em></span><input type="text" name="due_date" inputmode="numeric" autocomplete="off" placeholder="DD/MM/AAAA" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" value="<?= e(format_date_eu((string) ($onboardingGoal['due_date'] ?? $defaultChallengeDate))) ?>" data-eu-date-input><small><?= e(t('onboarding.challenge_date_hint')) ?></small></label>
-                    <details class="onboarding-field-wide onboarding-challenge-metrics">
-                        <summary>
-                        <div class="onboarding-primary-head"><span class="onboarding-option-icon" aria-hidden="true"><?= activity_icon_svg('analytics') ?></span><span><strong>Más métricas</strong><small>Añade todas las que quieras y reparte el peso hasta llegar al 100%.</small></span></div>
-                        <b aria-hidden="true">⌄</b>
-                        </summary>
-                        <div class="onboarding-challenge-metrics-body"><p class="muted small">La métrica principal usa el peso restante. Deja las filas vacías si el reto solo tiene una métrica.</p>
-                        <?php for ($challengeMetricIndex = 0; $challengeMetricIndex < 4; $challengeMetricIndex++): ?>
-                            <div class="grid-inline three challenge-extra-metric-row">
-                                <label>Métrica<select name="extra_metric_type[]"><option value="">Ninguna</option><option value="steps"><?= e(t('metric.steps')) ?></option><option value="km"><?= e(t('metric.distance_km')) ?></option><option value="workouts"><?= e(t('metric.workouts')) ?></option><option value="calories_burned"><?= e(t('dashboard.calories_burned')) ?></option><option value="calories_consumed"><?= e(t('dashboard.calories_consumed')) ?></option><?php foreach (custom_metrics_for_user($GLOBALS['pdo'], (int) $currentUser['id']) as $challengeCustomMetric): ?><option value="<?= e(custom_metric_key((int) $challengeCustomMetric['id'])) ?>"><?= e((string) $challengeCustomMetric['name']) ?></option><?php endforeach; ?></select></label>
-                                <label>Objetivo<input type="number" name="extra_metric_value[]" min="0.1" step="0.1"></label>
-                                <label>Peso %<input type="number" name="extra_metric_weight[]" min="1" max="99" step="1"></label>
-                            </div>
-                        <?php endfor; ?></div>
-                    </details>
-                </div>
             <?php elseif ($step === 'teams'): ?>
                 <?php if ((array) ($joinableTeams ?? []) === []): ?>
                     <div class="onboarding-empty"><span aria-hidden="true"><?= activity_icon_svg('users') ?></span><strong><?= e(t('onboarding.no_teams')) ?></strong><p><?= e(t('onboarding.no_teams_hint')) ?></p></div>
@@ -305,47 +284,11 @@ try {
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
-            <?php elseif ($step === 'install'): ?>
-                <div class="onboarding-install" data-pwa-install-reminder data-install-default-label="<?= e(t('onboarding.install_not_installed')) ?>" data-install-ready-label="<?= e(t('onboarding.install_ready')) ?>" data-install-installed-label="<?= e(t('onboarding.install_installed')) ?>">
-                    <section class="onboarding-install-hero">
-                        <span class="onboarding-install-app-badge"><?= e(t('onboarding.install_app_badge')) ?></span>
-                        <div class="onboarding-install-phone" aria-hidden="true">
-                            <span class="onboarding-install-phone-speaker"></span>
-                            <span class="onboarding-install-app-icon"><img src="<?= e($onboardingAppIconUrl) ?>" alt=""></span>
-                            <span class="onboarding-install-app-name"><?= e($onboardingAppName) ?></span>
-                            <span class="onboarding-install-app-bars"><i></i><i></i><i></i></span>
-                        </div>
-                        <div class="onboarding-install-copy">
-                            <span class="onboarding-install-status" data-pwa-install-status><i aria-hidden="true"></i><b><?= e(t('onboarding.install_not_installed')) ?></b></span>
-                            <h3><?= e(t('onboarding.install_app_title')) ?></h3>
-                            <p><?= e(t('onboarding.install_app_hint')) ?></p>
-                            <button class="btn btn-primary onboarding-install-native" type="button" data-pwa-install-button hidden><span aria-hidden="true">＋</span><?= e(t('onboarding.install_now')) ?></button>
-                        </div>
-                    </section>
-
-                    <section class="onboarding-install-instructions" data-pwa-install-instructions="ios" hidden>
-                        <div class="onboarding-install-instruction-head"><span aria-hidden="true"></span><div><strong><?= e(t('onboarding.install_ios_title')) ?></strong><small><?= e(t('onboarding.install_ios_hint')) ?></small></div></div>
-                        <ol><li><b>1</b><span><?= e(t('onboarding.install_ios_step_share')) ?></span><i aria-hidden="true">□↑</i></li><li><b>2</b><span><?= e(t('onboarding.install_ios_step_home')) ?></span><i aria-hidden="true">＋</i></li><li><b>3</b><span><?= e(t('onboarding.install_ios_step_confirm')) ?></span><i aria-hidden="true">✓</i></li></ol>
-                    </section>
-
-                    <section class="onboarding-install-instructions" data-pwa-install-instructions="android" hidden>
-                        <div class="onboarding-install-instruction-head"><span aria-hidden="true"><?= activity_icon_svg('plus') ?></span><div><strong><?= e(t('onboarding.install_android_title')) ?></strong><small><?= e(t('onboarding.install_android_hint')) ?></small></div></div>
-                        <ol><li><b>1</b><span><?= e(t('onboarding.install_android_step_menu')) ?></span><i aria-hidden="true">⋮</i></li><li><b>2</b><span><?= e(t('onboarding.install_android_step_install')) ?></span><i aria-hidden="true">＋</i></li></ol>
-                    </section>
-
-                    <section class="onboarding-install-instructions onboarding-install-desktop" data-pwa-install-instructions="desktop" hidden>
-                        <div class="onboarding-install-instruction-head"><span aria-hidden="true"><?= activity_icon_svg('link') ?></span><div><strong><?= e(t('onboarding.install_phone_title')) ?></strong><small><?= e(t('onboarding.install_phone_hint')) ?></small></div></div>
-                        <div class="onboarding-install-url"><input type="text" readonly value="<?= e($onboardingInstallUrl) ?>" data-pwa-install-url><button type="button" data-pwa-copy-url data-copy-label="<?= e(t('admin.invite_copy')) ?>" data-copied-label="<?= e(t('admin.invite_copied')) ?>"><?= e(t('admin.invite_copy')) ?></button></div>
-                    </section>
-
-                    <section class="onboarding-install-done" data-pwa-install-done hidden><span aria-hidden="true"><?= activity_icon_svg('check') ?></span><div><strong><?= e(t('onboarding.install_done_title')) ?></strong><small><?= e(t('onboarding.install_done_hint')) ?></small></div></section>
-                    <p class="onboarding-install-note"><span aria-hidden="true"><?= activity_icon_svg('spark') ?></span><?= e(t('onboarding.install_optional_hint')) ?></p>
-                </div>
             <?php endif; ?>
 
             <div class="onboarding-actions">
-                <button class="btn btn-ghost" type="submit" name="action" value="skip_onboarding_step" formnovalidate><?= e($step === 'teams' ? t('onboarding.no_team') : ($step === 'install' ? t('onboarding.install_not_now') : t('onboarding.do_later'))) ?></button>
-                <button class="btn btn-primary" type="submit" name="action" value="save_onboarding_step"><?= e($step === 'install' ? t('onboarding.finish') : t('common.continue')) ?></button>
+                <button class="btn btn-ghost" type="submit" name="action" value="skip_onboarding_step" formnovalidate><?= e($step === 'teams' ? t('onboarding.no_team') : t('onboarding.do_later')) ?></button>
+                <button class="btn btn-primary" type="submit" name="action" value="save_onboarding_step"><?= e($step === 'teams' ? t('onboarding.finish') : t('common.continue')) ?></button>
             </div>
             <p class="onboarding-later-note"><?= e(t('onboarding.later_note')) ?></p>
         </form>

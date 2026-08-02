@@ -334,7 +334,7 @@ $libraryClearUrl = $libraryUrl([
             <header class="workouts-mobile-subheader hierarchy-page-header<?= $wkView === 'library' ? ' is-library' : '' ?><?= $wkView === 'ranks' ? ' is-ranks' : '' ?>">
                 <?php if ($wkView !== 'ranks'): ?>
                     <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="/?page=workouts" aria-label="<?= e(t('common.back')) ?>: <?= e(t('workouts.title')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('workouts.title')) ?></strong></button>
-                    <div><p class="eyebrow"><?= e(t('workouts.title')) ?></p><h1><?= e($tabView === 'stats' ? (!empty($wkStatsSession) ? t('workouts.workout_detail') : t('workouts.stats')) : t('workouts.tab_' . $tabView)) ?></h1></div>
+                    <div><p class="eyebrow"><?= e(t('workouts.title')) ?></p><h1><?= e($tabView === 'stats' ? (!empty($wkStatsSession) ? t('workouts.workout_detail') : t('workouts.stats')) : $workoutHeroTitle) ?></h1></div>
                 <?php endif; ?>
                 <?php if ($wkView === 'library'): ?>
                     <?php $libraryToolbarVariant = 'mobile'; require __DIR__ . '/partials/workout_library_toolbar.php'; ?>
@@ -559,14 +559,18 @@ $libraryClearUrl = $libraryUrl([
                         <?php $frEx = (int) ($fr['exercise_count'] ?? 0); ?>
                         <li class="workouts-friend-routine">
                             <span class="workouts-friend-routine-icon" aria-hidden="true" style="--routine-accent: <?= e(wk_normalize_routine_color($fr['accent_color'] ?? '#14b8a6')) ?>"><?= activity_icon_svg(wk_normalize_routine_icon($fr['icon'] ?? 'dumbbell')) ?></span>
-                            <span class="workouts-friend-routine-copy"><strong><?= e((string) ($fr['name'] ?? '')) ?></strong><small><?= e((string) ($fr['friend_name'] ?? '')) ?> &middot; <?= e(t($frEx === 1 ? 'workouts.exercise_count_one' : 'workouts.exercise_count', ['count' => $frEx])) ?></small></span>
-                            <form method="post" action="/?page=workouts" class="workouts-friend-routine-form">
-                                <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
-                                <input type="hidden" name="action" value="routine_copy_friend">
-                                <input type="hidden" name="source_user_id" value="<?= (int) ($fr['friend_id'] ?? 0) ?>">
-                                <input type="hidden" name="source_routine_id" value="<?= (int) ($fr['id'] ?? 0) ?>">
-                                <button type="submit" class="btn btn-primary small" aria-label="<?= e(t('workouts.copy_routine')) ?>: <?= e((string) ($fr['name'] ?? '')) ?>"><?= e(t('workouts.copy_routine')) ?></button>
-                            </form>
+                            <a class="workouts-friend-routine-copy" href="/?page=workouts&amp;view=friends#friend-routine-<?= (int) ($fr['id'] ?? 0) ?>"><strong><?= e((string) ($fr['name'] ?? '')) ?></strong><small><?= e((string) ($fr['friend_name'] ?? '')) ?> &middot; <?= e(t($frEx === 1 ? 'workouts.exercise_count_one' : 'workouts.exercise_count', ['count' => $frEx])) ?></small></a>
+                            <?php if ((int) ($fr['copied_routine_id'] ?? 0) > 0): ?>
+                                <a class="btn btn-primary small" href="/?page=workouts&amp;routine_id=<?= (int) $fr['copied_routine_id'] ?>" aria-label="<?= e(t('workouts.view_copied_routine')) ?>"><?= activity_icon_svg('check') ?><span class="sr-only"><?= e(t('workouts.view_copied_routine')) ?></span></a>
+                            <?php else: ?>
+                                <form method="post" action="/?page=workouts" class="workouts-friend-routine-form">
+                                    <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
+                                    <input type="hidden" name="action" value="routine_copy_friend">
+                                    <input type="hidden" name="source_user_id" value="<?= (int) ($fr['friend_id'] ?? 0) ?>">
+                                    <input type="hidden" name="source_routine_id" value="<?= (int) ($fr['id'] ?? 0) ?>">
+                                    <button type="submit" class="btn btn-primary small" data-confirm-action="<?= e(t('workouts.copy_routine_confirm', ['name' => (string) ($fr['name'] ?? '')])) ?>" aria-label="<?= e(t('workouts.copy_routine')) ?>: <?= e((string) ($fr['name'] ?? '')) ?>"><?= e(t('workouts.copy_routine')) ?></button>
+                                </form>
+                            <?php endif; ?>
                         </li>
                     <?php endforeach; ?>
                 </ul>
@@ -655,22 +659,68 @@ $libraryClearUrl = $libraryUrl([
                     <?php
                     $frEx = (int) ($fr['exercise_count'] ?? 0);
                     $frDays = wk_days_from_mask((string) ($fr['recommended_days_mask'] ?? '0000000'));
+                    $frRoutineId = (int) ($fr['id'] ?? 0);
+                    $frOwnerId = (int) ($fr['friend_id'] ?? 0);
+                    $frExercises = array_values((array) ($fr['exercises'] ?? []));
+                    $frModalId = 'wk-friend-routine-modal-' . $frOwnerId . '-' . $frRoutineId;
+                    $frCopiedRoutineId = (int) ($fr['copied_routine_id'] ?? 0);
                     ?>
-                    <article class="panel workouts-friend-routine-card" style="--routine-accent: <?= e(wk_normalize_routine_color($fr['accent_color'] ?? '#14b8a6')) ?>">
+                    <article class="panel workouts-friend-routine-card" id="friend-routine-<?= $frRoutineId ?>" style="--routine-accent: <?= e(wk_normalize_routine_color($fr['accent_color'] ?? '#14b8a6')) ?>">
                         <span class="workouts-friend-routine-card-icon" aria-hidden="true"><?= activity_icon_svg(wk_normalize_routine_icon($fr['icon'] ?? 'dumbbell')) ?></span>
                         <div class="workouts-friend-routine-card-copy">
                             <small><?= e((string) ($fr['friend_name'] ?? '')) ?></small>
                             <h3><?= e((string) ($fr['name'] ?? '')) ?></h3>
                             <p><?= e(t($frEx === 1 ? 'workouts.exercise_count_one' : 'workouts.exercise_count', ['count' => $frEx])) ?><?php if ($frDays !== []): ?> · <?= e(implode(' · ', array_map($dayShortLabel, $frDays))) ?><?php endif; ?></p>
                         </div>
-                        <form method="post" action="/?page=workouts" class="workouts-friend-routine-card-action">
-                            <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
-                            <input type="hidden" name="action" value="routine_copy_friend">
-                            <input type="hidden" name="source_user_id" value="<?= (int) ($fr['friend_id'] ?? 0) ?>">
-                            <input type="hidden" name="source_routine_id" value="<?= (int) ($fr['id'] ?? 0) ?>">
-                            <button type="submit" class="btn btn-primary"><?= e(t('workouts.copy_routine')) ?></button>
-                        </form>
+                        <div class="workouts-friend-routine-card-actions">
+                            <button type="button" class="btn btn-ghost" data-app-modal-open="<?= e($frModalId) ?>"><?= e(t('workouts.inspect_routine')) ?></button>
+                            <?php if ($frCopiedRoutineId > 0): ?>
+                                <a class="btn btn-primary" href="/?page=workouts&amp;routine_id=<?= $frCopiedRoutineId ?>"><?= activity_icon_svg('check') ?><span><?= e(t('workouts.view_copied_routine')) ?></span></a>
+                            <?php else: ?>
+                                <form method="post" action="/?page=workouts" class="workouts-friend-routine-card-action">
+                                    <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
+                                    <input type="hidden" name="action" value="routine_copy_friend">
+                                    <input type="hidden" name="source_user_id" value="<?= $frOwnerId ?>">
+                                    <input type="hidden" name="source_routine_id" value="<?= $frRoutineId ?>">
+                                    <button type="submit" class="btn btn-primary" data-confirm-action="<?= e(t('workouts.copy_routine_confirm', ['name' => (string) ($fr['name'] ?? '')])) ?>"><?= e(t('workouts.copy_routine')) ?></button>
+                                </form>
+                            <?php endif; ?>
+                        </div>
                     </article>
+                    <div class="app-modal workouts-friend-routine-modal" id="<?= e($frModalId) ?>" hidden role="dialog" aria-modal="true" aria-labelledby="<?= e($frModalId) ?>-title">
+                        <div class="app-modal-card workouts-friend-routine-sheet">
+                            <div class="app-modal-head">
+                                <div><p class="eyebrow"><?= e((string) ($fr['friend_name'] ?? '')) ?></p><h2 id="<?= e($frModalId) ?>-title"><?= e((string) ($fr['name'] ?? '')) ?></h2><p class="muted"><?= e(t('workouts.inspect_routine_hint')) ?></p></div>
+                                <button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button>
+                            </div>
+                            <div class="workouts-friend-routine-exercise-list">
+                                <?php foreach ($frExercises as $friendExercise): ?>
+                                    <?php $friendExerciseImage = trim((string) ($friendExercise['image_path'] ?? '')); ?>
+                                    <article>
+                                        <span class="workouts-friend-routine-exercise-media" aria-hidden="true"><?php if ($friendExerciseImage !== ''): ?><img src="<?= e(media_thumbnail_url($friendExerciseImage, 120)) ?>" alt="" loading="lazy"><?php else: ?><?= activity_icon_svg('dumbbell') ?><?php endif; ?></span>
+                                        <span><strong><?= e((string) ($friendExercise['exercise_name'] ?? '')) ?></strong><small><?= e(t('workouts.target_summary', ['sets' => (int) ($friendExercise['target_sets'] ?? 0), 'reps' => (int) ($friendExercise['target_reps'] ?? 0)])) ?></small></span>
+                                    </article>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php if ($activeRoutines !== [] && $frExercises !== []): ?>
+                                <form method="post" action="/?page=workouts" class="workouts-friend-routine-selection-form">
+                                    <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
+                                    <input type="hidden" name="action" value="routine_copy_friend_exercises">
+                                    <input type="hidden" name="source_user_id" value="<?= $frOwnerId ?>">
+                                    <input type="hidden" name="source_routine_id" value="<?= $frRoutineId ?>">
+                                    <fieldset><legend><?= e(t('workouts.choose_exercises')) ?></legend><?php foreach ($frExercises as $friendExercise): ?><label><input type="checkbox" name="routine_exercise_ids[]" value="<?= (int) ($friendExercise['id'] ?? 0) ?>"><span><?= e((string) ($friendExercise['exercise_name'] ?? '')) ?></span></label><?php endforeach; ?></fieldset>
+                                    <label><span><?= e(t('workouts.destination_routine')) ?></span><select name="target_routine_id" required><option value=""><?= e(t('workouts.choose_routine')) ?></option><?php foreach ($activeRoutines as $targetRoutine): ?><option value="<?= (int) ($targetRoutine['id'] ?? 0) ?>"><?= e((string) ($targetRoutine['name'] ?? '')) ?></option><?php endforeach; ?></select></label>
+                                    <button type="submit" class="btn btn-primary"><?= e(t('workouts.copy_selected_exercises')) ?></button>
+                                </form>
+                            <?php elseif ($activeRoutines === []): ?>
+                                <a class="btn btn-primary btn-block" href="/?page=workouts"><?= e(t('workouts.create_routine_first')) ?></a>
+                            <?php endif; ?>
+                            <div class="workouts-friend-routine-sheet-actions">
+                                <?php if ($frCopiedRoutineId > 0): ?><a class="btn btn-primary" href="/?page=workouts&amp;routine_id=<?= $frCopiedRoutineId ?>"><?= e(t('workouts.view_copied_routine')) ?></a><?php else: ?><form method="post" action="/?page=workouts"><input type="hidden" name="csrf_token" value="<?= e($csrf) ?>"><input type="hidden" name="action" value="routine_copy_friend"><input type="hidden" name="source_user_id" value="<?= $frOwnerId ?>"><input type="hidden" name="source_routine_id" value="<?= $frRoutineId ?>"><button type="submit" class="btn btn-ghost" data-confirm-action="<?= e(t('workouts.copy_routine_confirm', ['name' => (string) ($fr['name'] ?? '')])) ?>"><?= e(t('workouts.copy_entire_routine')) ?></button></form><?php endif; ?>
+                                <button type="button" class="btn btn-ghost" data-app-modal-close><?= e(t('common.close_action')) ?></button>
+                            </div>
+                        </div>
+                    </div>
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>

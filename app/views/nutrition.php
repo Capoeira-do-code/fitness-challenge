@@ -52,11 +52,45 @@ $hasNutritionData = count(array_filter($series, static fn(array $row): bool => !
         <?php else: ?>
             <div class="nutrition-entry-list">
                 <?php foreach ($entries as $entry): ?>
+                    <?php $nutritionEntryId = (int) ($entry['id'] ?? 0); $nutritionEntryModalId = 'nutrition-entry-modal-' . $nutritionEntryId; ?>
                     <div class="nutrition-entry-row">
                         <span class="nutrition-meal-icon" aria-hidden="true"><?= activity_icon_svg('flame') ?></span>
                         <span><strong><?= e(ucfirst((string) $entry['meal_type'])) ?></strong><small><?= e(format_date_eu((string) $entry['entry_date'])) ?> · <?= e((string) ($entry['entry_time'] ?? '')) ?><?= trim((string) ($entry['notes'] ?? '')) !== '' ? ' · ' . e((string) $entry['notes']) : '' ?></small></span>
                         <strong><?= e(number_format((float) $entry['calories'], 0, ',', '.')) ?> <small>kcal</small></strong>
                         <?php if (trim((string) ($entry['photo_path'] ?? '')) !== ''): ?><span class="nutrition-photo-badge"><?= activity_icon_svg('image') ?></span><?php endif; ?>
+                        <button type="button" class="nutrition-entry-actions" data-app-modal-open="<?= e($nutritionEntryModalId) ?>" aria-label="<?= e(t('nutrition.manage_meal')) ?>"><span aria-hidden="true"><i></i><i></i><i></i></span></button>
+                    </div>
+                    <div class="app-modal nutrition-entry-modal" id="<?= e($nutritionEntryModalId) ?>" hidden role="dialog" aria-modal="true" aria-labelledby="<?= e($nutritionEntryModalId) ?>-title">
+                        <div class="app-modal-card nutrition-entry-modal-card">
+                            <div class="app-modal-head"><div><p class="eyebrow"><?= e(t('nutrition.meal_details')) ?></p><h2 id="<?= e($nutritionEntryModalId) ?>-title"><?= e(t('nutrition.edit_meal')) ?></h2></div><button type="button" class="app-modal-close" data-app-modal-close aria-label="<?= e(t('common.close_action')) ?>">&times;</button></div>
+                            <form method="post" action="/?page=nutrition" class="stack nutrition-entry-edit-form">
+                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="update_nutrition_entry">
+                                <input type="hidden" name="entry_id" value="<?= $nutritionEntryId ?>">
+                                <input type="hidden" name="return_date" value="<?= e((string) $rangeEnd) ?>">
+                                <div class="grid-inline two">
+                                    <label><?= e(t('common.date')) ?><input type="date" name="entry_date" value="<?= e((string) ($entry['entry_date'] ?? '')) ?>" required></label>
+                                    <label><?= e(t('nutrition.time')) ?><input type="time" name="entry_time" value="<?= e((string) ($entry['entry_time'] ?? '')) ?>"></label>
+                                    <label><?= e(t('nutrition.meal_type')) ?><select name="meal_type"><?php foreach (['breakfast', 'lunch', 'dinner', 'snack', 'other'] as $mealType): ?><option value="<?= e($mealType) ?>"<?= (string) ($entry['meal_type'] ?? '') === $mealType ? ' selected' : '' ?>><?= e(t('nutrition.type_' . $mealType)) ?></option><?php endforeach; ?></select></label>
+                                    <label><?= e(t('nutrition.calories')) ?><input type="number" name="calories" min="0" step="1" inputmode="numeric" value="<?= e((string) ($entry['calories'] ?? '')) ?>" required></label>
+                                    <label><?= e(t('nutrition.protein')) ?><input type="number" name="protein_g" min="0" step="0.1" inputmode="decimal" value="<?= e((string) ($entry['protein_g'] ?? '')) ?>"></label>
+                                    <label><?= e(t('nutrition.carbs')) ?><input type="number" name="carbs_g" min="0" step="0.1" inputmode="decimal" value="<?= e((string) ($entry['carbs_g'] ?? '')) ?>"></label>
+                                    <label><?= e(t('nutrition.fat')) ?><input type="number" name="fat_g" min="0" step="0.1" inputmode="decimal" value="<?= e((string) ($entry['fat_g'] ?? '')) ?>"></label>
+                                    <label><?= e(t('nutrition.fiber')) ?><input type="number" name="fiber_g" min="0" step="0.1" inputmode="decimal" value="<?= e((string) ($entry['fiber_g'] ?? '')) ?>"></label>
+                                    <label><?= e(t('nutrition.sugar')) ?><input type="number" name="sugar_g" min="0" step="0.1" inputmode="decimal" value="<?= e((string) ($entry['sugar_g'] ?? '')) ?>"></label>
+                                    <label><?= e(t('nutrition.sodium')) ?><input type="number" name="sodium_mg" min="0" step="1" inputmode="numeric" value="<?= e((string) ($entry['sodium_mg'] ?? '')) ?>"></label>
+                                </div>
+                                <label><?= e(t('nutrition.notes')) ?><textarea name="notes" rows="3" maxlength="500"><?= e((string) ($entry['notes'] ?? '')) ?></textarea></label>
+                                <button type="submit" class="btn btn-primary btn-block"><?= e(t('common.save')) ?></button>
+                            </form>
+                            <form method="post" action="/?page=nutrition" class="nutrition-entry-delete-form">
+                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="delete_nutrition_entry">
+                                <input type="hidden" name="entry_id" value="<?= $nutritionEntryId ?>">
+                                <input type="hidden" name="return_date" value="<?= e((string) $rangeEnd) ?>">
+                                <button type="submit" class="btn btn-danger-ghost btn-block" data-confirm-action="<?= e(t('nutrition.delete_meal_confirm')) ?>"><?= e(t('nutrition.delete_meal')) ?></button>
+                            </form>
+                        </div>
                     </div>
                 <?php endforeach; ?>
             </div>

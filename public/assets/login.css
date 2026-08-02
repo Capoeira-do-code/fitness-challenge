@@ -183,6 +183,8 @@ body[data-page="login"] .flash {
 .loginx-field input::placeholder { color: color-mix(in srgb, var(--muted) 78%, transparent); }
 .loginx-field input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 15%, transparent); }
 .loginx-field:focus-within .loginx-field-icon { color: var(--primary-dark); }
+.password-caps-warning { color: #b45309; font-size: .68rem; font-weight: 800; line-height: 1.3; }
+.password-caps-warning[hidden] { display: none !important; }
 
 .loginx-remember { position: relative; display: inline-flex; align-items: center; gap: 0.55rem; min-height: 44px; padding: 12px 4px; margin: -12px -4px; cursor: pointer; user-select: none; }
 .loginx-remember input { position: absolute; width: 1px; height: 1px; opacity: 0; }
@@ -217,6 +219,9 @@ body[data-page="login"] .flash {
 .loginx-submit:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 .loginx-submit-arrow { font-size: 1.15rem; transition: transform 0.18s ease; }
 .loginx-submit:hover .loginx-submit-arrow { transform: translateX(4px); }
+.loginx-register { display: flex; justify-content: center; gap: 5px; margin: 0; color: var(--muted); font-size: .76rem; text-align: center; }
+.loginx-register a { color: var(--primary-dark); font-weight: 850; text-decoration: none; }
+.loginx-register a:hover { text-decoration: underline; }
 
 .loginx-register {
     display: flex;

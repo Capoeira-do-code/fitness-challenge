@@ -7,7 +7,10 @@ $dashboardSection = (string) ($dashboardSection ?? '');
 if (!in_array($dashboardSection, ['', 'progress', 'rewards', 'history', 'alerts'], true)) {
     $dashboardSection = '';
 }
-$dashboardHomeMode = (string) ($_GET['home'] ?? 'feed') === 'classic' ? 'classic' : 'feed';
+$dashboardHomeMode = !empty($dashboardStandaloneOverview) ? 'classic' : 'feed';
+$dashboardRoutePage = !empty($dashboardStandaloneOverview) ? 'overview' : 'dashboard';
+$dashboardBaseUrl = '/?page=' . $dashboardRoutePage;
+$dashboardRouteLabel = !empty($dashboardStandaloneOverview) ? t('overview.title') : t('nav.home');
 $penaltiesEnabled = penalties_enabled($GLOBALS['pdo']);
 $dashboardLayout = json_decode((string) ($currentUser['dashboard_layout_json'] ?? ''), true);
 $dashboardMobileSurfaces = ['mobile_today', 'mobile_primary', 'mobile_progress', 'mobile_shortcuts'];
@@ -364,7 +367,7 @@ $penaltiesHref = '/?' . http_build_query([
 ]);
 $dashboardViewParam = (string) ($dashboardView ?? 'current_week');
 $dashboardTopbarQuery = [
-    'page' => 'dashboard',
+    'page' => $dashboardRoutePage,
     'view' => $dashboardViewParam,
 ];
 $dashboardEditLayoutUrl = '/?' . http_build_query($dashboardTopbarQuery + ['layout_edit' => '1']);
@@ -385,7 +388,7 @@ ob_start();
     <summary class="btn btn-ghost btn-topbar dashboard-controls-trigger"><?= e(t('dashboard.view_mode')) ?></summary>
     <div class="topbar-context-panel">
         <form method="get" class="stack dashboard-control-form" data-dashboard-control-form>
-        <input type="hidden" name="page" value="dashboard">
+        <input type="hidden" name="page" value="<?= e($dashboardRoutePage) ?>">
         <label class="dashboard-control-field">
             <?= e(t('dashboard.view_mode')) ?>
             <select class="glass-select" name="view" data-testid="dashboard-week-select">
@@ -408,13 +411,12 @@ $topbarControls = ob_get_clean();
 ?>
 <section class="screen stack-lg dashboard-hierarchy-screen<?= $dashboardSection !== '' ? ' has-section' : '' ?><?= $dashboardSection === '' ? ' is-' . e($dashboardHomeMode) . '-mode' : '' ?>" data-dashboard-page data-dashboard-section="<?= e($dashboardSection) ?>" data-dashboard-panel-state-endpoint="/?page=dashboard_panel_state" data-dashboard-panel-csrf="<?= e(csrf_token()) ?>">
     <?php if ($dashboardSection === '' && !$dashboardLayoutEditMode): ?>
-        <?php if ($dashboardHomeMode === 'classic'): ?><nav class="home-mode-switch" aria-label="<?= e(t('feed.home_mode')) ?>"><a href="/?page=dashboard&amp;home=feed&amp;feed=<?= e((string) ($dashboardFeedScope ?? 'friends')) ?>"><?= activity_icon_svg('users') ?><span><?= e(t('feed.title')) ?></span></a><a href="/?page=dashboard&amp;home=classic" aria-current="page"><?= activity_icon_svg('grid') ?><span><?= e(t('feed.classic_home')) ?></span></a></nav><?php endif; ?>
         <?php if ($dashboardHomeMode === 'feed'): require __DIR__ . '/partials/dashboard_social_feed.php'; endif; ?>
     <?php endif; ?>
     <?php if ($dashboardSection !== ''): ?>
         <header class="hierarchy-page-header">
-            <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="/?page=dashboard" aria-label="<?= e(t('common.back')) ?>: <?= e(t('nav.home')) ?>"><span aria-hidden="true">&larr;</span><strong><?= e(t('nav.home')) ?></strong></button>
-            <div><p class="eyebrow"><?= e(t('nav.home')) ?></p><h1><?= e(t('dashboard.mobile_' . $dashboardSection)) ?></h1><p><?= e(t('dashboard.mobile_' . $dashboardSection . '_hint')) ?></p></div>
+            <button class="hierarchy-back destination-back" type="button" data-hierarchy-back data-fallback="<?= e($dashboardBaseUrl) ?>" aria-label="<?= e(t('common.back')) ?>: <?= e($dashboardRouteLabel) ?>"><span aria-hidden="true">&larr;</span><strong><?= e($dashboardRouteLabel) ?></strong></button>
+            <div><p class="eyebrow"><?= e($dashboardRouteLabel) ?></p><h1><?= e(t('dashboard.mobile_' . $dashboardSection)) ?></h1><p><?= e(t('dashboard.mobile_' . $dashboardSection . '_hint')) ?></p></div>
         </header>
 
         <?php if ($dashboardSection === 'progress'): ?>
@@ -451,7 +453,7 @@ $topbarControls = ob_get_clean();
             <?php $mobileUnread = user_unread_notifications_count($GLOBALS['pdo'], (int) ($currentUser['id'] ?? 0)); ?>
             <nav class="hierarchy-nav-list">
                 <a class="hierarchy-nav-row" href="/?page=notifications"><span class="hierarchy-nav-icon" aria-hidden="true">!</span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.notifications')) ?></strong><small><?= e(t('notifications.subtitle')) ?></small></span><span class="hierarchy-nav-meta"><?= $mobileUnread ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
-                <?php if (!empty($pendingApprovals)): ?><a class="hierarchy-nav-row" href="/?page=dashboard#pending-approvals"><span class="hierarchy-nav-icon" aria-hidden="true">&#10003;</span><span class="hierarchy-nav-copy"><strong><?= e(t('dashboard.approvals_pending_eyebrow')) ?></strong><small><?= e(t('dashboard.mobile_approvals_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count($pendingApprovals) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a><?php endif; ?>
+                <?php if (!empty($pendingApprovals)): ?><a class="hierarchy-nav-row" href="<?= e($dashboardBaseUrl) ?>#pending-approvals"><span class="hierarchy-nav-icon" aria-hidden="true">&#10003;</span><span class="hierarchy-nav-copy"><strong><?= e(t('dashboard.approvals_pending_eyebrow')) ?></strong><small><?= e(t('dashboard.mobile_approvals_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count($pendingApprovals) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a><?php endif; ?>
                 <a class="hierarchy-nav-row" href="/?page=duels"><span class="hierarchy-nav-icon" aria-hidden="true">&#9876;</span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.duels')) ?></strong><small><?= e(t('social_hub.duels_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= (int) (($dashboardDuelsSummary ?? [])['active'] ?? 0) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
                 <a class="hierarchy-nav-row" href="/?page=competitions"><span class="hierarchy-nav-icon" aria-hidden="true">&#9733;</span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.competitions')) ?></strong><small><?= e(t('social_hub.competitions_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= (int) (($dashboardCompetitionsSummary ?? [])['active'] ?? 0) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
             </nav>
@@ -459,7 +461,7 @@ $topbarControls = ob_get_clean();
                 <article class="native-list-card mobile-approval-list" id="pending-approvals">
                     <h2><?= e(t('dashboard.approvals_pending_eyebrow')) ?></h2>
                     <?php foreach ($pendingApprovals as $approval): ?>
-                        <form method="post" action="/?page=dashboard&section=alerts" class="mobile-approval-row">
+                        <form method="post" action="<?= e($dashboardBaseUrl) ?>&amp;section=alerts" class="mobile-approval-row">
                             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="resolve_approval"><input type="hidden" name="approval_id" value="<?= (int) ($approval['id'] ?? 0) ?>">
                             <span><strong><?= e((string) ($approval['approval_type_label'] ?? '')) ?></strong><small><?= e((string) ($approval['owner_name'] ?? '')) ?> · <?= e(format_date_eu((string) ($approval['log_date'] ?? ''))) ?></small></span>
                             <span class="mobile-approval-actions"><button class="btn btn-primary small" type="submit" name="decision" value="approve"><?= e(t('common.approve')) ?></button><button class="btn btn-ghost small" type="submit" name="decision" value="reject"><?= e(t('common.reject')) ?></button></span>
@@ -474,8 +476,8 @@ $topbarControls = ob_get_clean();
             <span class="dashboard-setup-reminder-icon" aria-hidden="true"><?= activity_icon_svg('spark') ?></span>
             <div class="dashboard-setup-reminder-copy"><p class="eyebrow"><?= e(t('onboarding.title')) ?></p><h2 id="dashboard-setup-reminder-title"><?= e(t('onboarding.prompt_title')) ?></h2><p><?= e(t('onboarding.prompt_hint')) ?></p></div>
             <div class="dashboard-setup-reminder-actions">
-                <form method="post" action="/?page=dashboard"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="restart_onboarding"><button class="btn btn-primary" type="submit"><?= e(t('onboarding.prompt_action')) ?></button></form>
-                <form method="post" action="/?page=dashboard"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="dismiss_onboarding_prompt"><button class="btn btn-ghost" type="submit"><?= e(t('onboarding.prompt_dismiss')) ?></button></form>
+                <form method="post" action="<?= e($dashboardBaseUrl) ?>"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="restart_onboarding"><button class="btn btn-primary" type="submit"><?= e(t('onboarding.prompt_action')) ?></button></form>
+                <form method="post" action="<?= e($dashboardBaseUrl) ?>"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="dismiss_onboarding_prompt"><button class="btn btn-ghost" type="submit"><?= e(t('onboarding.prompt_dismiss')) ?></button></form>
             </div>
         </article>
     <?php endif; ?>
@@ -525,17 +527,17 @@ $topbarControls = ob_get_clean();
             <span class="mobile-progress-chevron" aria-hidden="true">&rsaquo;</span>
         </a>
         <nav class="mobile-home-shortcuts" data-dashboard-mobile-surface="mobile_shortcuts"<?= $showWidget('mobile_shortcuts') ? '' : ' hidden' ?> aria-label="<?= e(t('dashboard.mobile_more')) ?>">
-            <a href="/?page=dashboard&section=progress" data-tone="blue"><span aria-hidden="true">&#8645;</span><strong><?= e(t('dashboard.mobile_progress')) ?></strong></a>
-            <a href="/?page=dashboard&section=rewards" data-tone="amber"><span aria-hidden="true">&#9733;</span><strong><?= e(t('dashboard.mobile_rewards')) ?></strong></a>
-            <a href="/?page=dashboard&section=history" data-tone="violet"><span aria-hidden="true">&#8634;</span><strong><?= e(t('dashboard.mobile_history')) ?></strong></a>
-            <a href="/?page=dashboard&section=alerts" data-tone="red"><span aria-hidden="true">!</span><strong><?= e(t('dashboard.mobile_alerts')) ?></strong><?php if (count($pendingApprovals) > 0): ?><em><?= count($pendingApprovals) ?></em><?php endif; ?></a>
+            <a href="<?= e($dashboardBaseUrl) ?>&amp;section=progress" data-tone="blue"><span aria-hidden="true">&#8645;</span><strong><?= e(t('dashboard.mobile_progress')) ?></strong></a>
+            <a href="<?= e($dashboardBaseUrl) ?>&amp;section=rewards" data-tone="amber"><span aria-hidden="true">&#9733;</span><strong><?= e(t('dashboard.mobile_rewards')) ?></strong></a>
+            <a href="<?= e($dashboardBaseUrl) ?>&amp;section=history" data-tone="violet"><span aria-hidden="true">&#8634;</span><strong><?= e(t('dashboard.mobile_history')) ?></strong></a>
+            <a href="<?= e($dashboardBaseUrl) ?>&amp;section=alerts" data-tone="red"><span aria-hidden="true">!</span><strong><?= e(t('dashboard.mobile_alerts')) ?></strong><?php if (count($pendingApprovals) > 0): ?><em><?= count($pendingApprovals) ?></em><?php endif; ?></a>
         </nav>
     </div>
     <div class="dashboard-desktop-root">
     <header class="mobile-widget-feed-head"><div><p><?= e(t('dashboard.visible_widgets')) ?></p><h2><?= e(t('nav.dashboard')) ?></h2></div><a href="<?= e($dashboardEditLayoutUrl) ?>"><?= e(t('dashboard.edit_layout')) ?></a></header>
     <?php if ($dashboardLayoutEditMode): ?>
     <div class="dashboard-layout-editbar">
-        <form id="dashboard-layout-edit-form" method="post" action="/?page=dashboard" class="dashboard-layout-editor dashboard-layout-editor-mobile" data-dashboard-layout-editor>
+        <form id="dashboard-layout-edit-form" method="post" action="<?= e($dashboardBaseUrl) ?>" class="dashboard-layout-editor dashboard-layout-editor-mobile" data-dashboard-layout-editor>
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="save_dashboard_layout">
             <input type="hidden" name="dashboard_view" value="<?= e((string) ($dashboardView ?? 'current_week')) ?>">
@@ -1313,7 +1315,7 @@ $topbarControls = ob_get_clean();
             <?php else: ?>
                 <div class="pending-grid">
                     <?php foreach ($pendingApprovals as $approval): ?>
-                        <form method="post" action="/?page=dashboard" class="pending-card" data-testid="pending-approval-item">
+                        <form method="post" action="<?= e($dashboardBaseUrl) ?>" class="pending-card" data-testid="pending-approval-item">
                             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                             <input type="hidden" name="action" value="resolve_approval">
                             <input type="hidden" name="approval_id" value="<?= (int) $approval['id'] ?>">

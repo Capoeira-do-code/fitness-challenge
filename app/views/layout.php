@@ -70,7 +70,7 @@ $pageStylesAssetFile = match ($currentPage) {
     'profile' => 'profile.css',
     'team' => 'team.css',
     'admin' => 'admin.css',
-    'dashboard', 'quests', 'season' => 'dashboard.css',
+    'dashboard', 'overview', 'quests', 'season' => 'dashboard.css',
     'metric' => 'metric.css',
     'achievements' => 'achievements.css',
     'entries' => 'entries.css',
@@ -105,22 +105,18 @@ $pageStylesAssetUrl = $pageStylesAssetPath !== '' ? $compressedAssetUrl($pageSty
 $detailStylesAssetUrl = $detailStylesAssetPath !== '' ? $compressedAssetUrl($detailStylesAssetFile, $detailStylesAssetVersion) : '';
 $themeStylesAssetUrl = is_file($themeStylesAssetPath) ? $compressedAssetUrl($themeStylesAssetFile, $themeStylesAssetVersion) : '';
 $mainJsAssetUrl = $compressedAssetUrl('main.js', $mainJsAssetVersion);
-$desktopNavItems = [
-    'dashboard' => ['label' => t('nav.dashboard'), 'href' => '/?page=dashboard', 'icon' => 'home'],
-    'nutrition' => ['label' => 'Nutrition', 'href' => '/?page=nutrition', 'icon' => 'analytics'],
-    'table' => ['label' => t('nav.table'), 'href' => '/?page=workouts', 'icon' => 'dumbbell'],
-    'gallery' => ['label' => t('gallery.title'), 'href' => '/?page=gallery&gallery_view=recent', 'icon' => 'gallery'],
-    'analytics' => ['label' => t('nav.analytics'), 'href' => '/?page=analytics', 'icon' => 'analytics'],
-    'ranks' => ['label' => 'Ranks', 'href' => '/?page=workouts&view=ranks', 'icon' => 'analytics'],
-    'team' => ['label' => t('nav.team'), 'href' => '/?page=team', 'icon' => 'users'],
-    'profile' => ['label' => t('nav.profile'), 'href' => '/?page=profile', 'icon' => 'user'],
-];
-$mobileNavItems = [
-    'dashboard' => array_replace($desktopNavItems['dashboard'], ['label' => t('nav.home')]),
-    'table' => array_replace($desktopNavItems['table'], ['label' => t('nav.training_short')]),
+// One information architecture on every screen size. Secondary destinations
+// (profile, gallery, analytics, ranks...) live inside these five hubs instead
+// of changing position when the viewport changes.
+$primaryNavItems = [
+    'dashboard' => ['label' => t('nav.home'), 'href' => '/?page=dashboard', 'icon' => 'home'],
+    'table' => ['label' => t('nav.training_short'), 'href' => '/?page=workouts', 'icon' => 'dumbbell'],
+    'nutrition' => ['label' => t('nav.nutrition'), 'href' => '/?page=nutrition', 'icon' => 'nutrition'],
     'social' => ['label' => t('nav.social'), 'href' => '/?page=social', 'icon' => 'social'],
-    'profile' => $desktopNavItems['profile'],
+    'search' => ['label' => t('nav.search'), 'href' => '/?page=search', 'icon' => 'search'],
 ];
+$desktopNavItems = $primaryNavItems;
+$mobileNavItems = $primaryNavItems;
 $topbarControls = $topbarControls ?? '';
 $unreadNotificationsCount = $loggedIn ? user_unread_notifications_count($GLOBALS['pdo'], (int) ($currentUser['id'] ?? 0)) : 0;
 $mobileChallengeTeamId = 0;
@@ -168,14 +164,21 @@ $isNavActive = static function (string $pageKey) use ($currentPage): bool {
     if ($pageKey === 'nutrition') {
         return $currentPage === 'nutrition' || ($currentPage === 'entries' && (string) ($_GET['mode'] ?? '') === 'nutrition');
     }
+    if ($pageKey === 'social') {
+        return in_array($currentPage, ['social', 'gallery', 'photo', 'team', 'team_settings', 'friends', 'challenges', 'duels', 'competitions'], true);
+    }
+    if ($pageKey === 'search') {
+        return $currentPage === 'search';
+    }
     return $currentPage === $pageKey;
 };
 $isMobileNavActive = static function (string $pageKey) use ($currentPage): bool {
     return match ($pageKey) {
         'dashboard' => in_array($currentPage, ['dashboard', 'analytics', 'metric', 'season', 'comparison_detail', 'strikes_detail', 'penalties', 'notifications'], true),
         'table' => in_array($currentPage, ['table', 'week_editor', 'workouts'], true),
+        'nutrition' => $currentPage === 'nutrition' || ($currentPage === 'entries' && (string) ($_GET['mode'] ?? '') === 'nutrition'),
         'social' => in_array($currentPage, ['social', 'gallery', 'photo', 'team', 'team_settings', 'friends', 'challenges', 'duels', 'competitions'], true),
-        'profile' => in_array($currentPage, ['profile', 'settings', 'achievements'], true),
+        'search' => $currentPage === 'search',
         default => $currentPage === $pageKey,
     };
 };
@@ -185,6 +188,8 @@ $renderMobileIcon = static function (string $icon): string {
         'home' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h5v-5h4v5h5v-9.5"/></svg>',
         'calendar' => '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>',
         'dumbbell' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8v8M3 10v4M18 8v8M21 10v4M6 12h12"/></svg>',
+        'nutrition' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v7M3.5 3v5a2.5 2.5 0 0 0 5 0V3M6 10v11M15 3v18M15 3c3 1.5 4 4.5 4 8h-4"/></svg>',
+        'search' => '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>',
         'gallery' => '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="m21 16-4.5-4.5L9 19"/></svg>',
         'analytics' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h17"/><rect x="7" y="11" width="3" height="5" rx="1"/><rect x="12" y="7" width="3" height="9" rx="1"/><rect x="17" y="9" width="3" height="7" rx="1"/></svg>',
         'social' => '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2.5 20a5.5 5.5 0 0 1 11 0M13.5 19a4.5 4.5 0 0 1 8 0"/></svg>',
@@ -293,6 +298,9 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
 if (!$loggedIn && $currentPage === 'login' && (string) ($loginStyle ?? '') === 'spotlight') {
     $bodyClasses[] = 'login-variant-spotlight-body';
 }
+if (!empty($dashboardStandaloneOverview)) {
+    $bodyClasses[] = 'dashboard-overview-page';
+}
 $layoutEditRequested = $loggedIn
     && (string) ($_GET['layout_edit'] ?? '') === '1'
     && in_array((string) $currentPage, ['dashboard', 'analytics', 'team', 'profile'], true);
@@ -313,7 +321,6 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     $bodyStyle = "--login-bg-image:url('" . e($loginBackgroundUrl) . "');";
 }
 ?>
-
 <body data-page="<?= e((string) $currentPage) ?>" data-theme="<?= e($themeMode) ?>"
     data-ui-user="<?= $loggedIn ? (int) ($currentUser['id'] ?? 0) : 0 ?>"
     data-penalties-enabled="<?= $penaltiesEnabledForLayout ? '1' : '0' ?>"
@@ -323,7 +330,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     data-layout-visible-label="<?= e(t('layout.visible_widget')) ?>" <?= $bodyClasses !== [] ? ' class="' . e(implode(' ', $bodyClasses)) . '"' : '' ?><?= $bodyStyle !== '' ? ' style="' . $bodyStyle . '"' : '' ?>>
     <?php if ($loggedIn && !$minimalAppShell): ?>
         <header class="topbar">
-            <a class="brand" href="/?page=dashboard">
+            <a class="brand" href="/?page=dashboard" aria-label="<?= e($appName) ?>">
                 <?php if ($appIconWebUrl !== ''): ?>
                     <img class="brand-avatar" src="<?= e($appIconWebUrl) ?>" alt="<?= e($appName) ?>">
                 <?php else: ?>
@@ -341,12 +348,14 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
             <nav class="nav-links nav-desktop" aria-label="Primary">
                 <?php foreach ($desktopNavItems as $pageKey => $item): ?>
                     <?php $navActive = $isNavActive((string) $pageKey); ?>
-                    <a class="<?= $navActive ? 'active' : '' ?>" href="<?= e($item['href']) ?>" <?= $navActive ? 'aria-current="page"' : '' ?>><span><?= e($item['label']) ?></span></a>
+                    <a class="<?= $navActive ? 'active' : '' ?>" href="<?= e($item['href']) ?>" <?= $navActive ? 'aria-current="page"' : '' ?>>
+                        <span class="nav-desktop-icon" aria-hidden="true"><?= $renderMobileIcon((string) $item['icon']) ?></span>
+                        <span><?= e($item['label']) ?></span>
+                    </a>
                 <?php endforeach; ?>
             </nav>
 
-        <div class="topbar-actions">
-            <?= $topbarControls ?>
+            <div class="topbar-actions">
             <?php // Desktop: a preview dropdown, so a notification can be read (and dismissed)
                   // without leaving the page. Mobile keeps the plain link - a dropdown that
                   // tall on a phone is just a worse version of the page it links to. ?>
@@ -396,7 +405,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
             <details class="add-menu topbar-add-menu">
                 <summary class="btn btn-primary add-menu-trigger btn-add" data-add-button aria-label="<?= e(t('entries.title')) ?>">
                     <span aria-hidden="true">+</span>
-                    <span class="sr-only"><?= e(t('entries.title')) ?></span>
+                    <span class="topbar-add-label"><?= e(t('nav.entries')) ?></span>
                 </summary>
                 <div class="add-menu-panel">
                     <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=data"><span class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><?= e(t('entries.quick_data')) ?></span></a>
@@ -428,6 +437,7 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                     <?php endif; ?>
                     <a class="user-menu-link" href="/?page=profile"<?= $currentPage === 'profile' ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('user') ?></span><span><?= e(t('nav.profile')) ?></span></a>
                     <a class="user-menu-link" href="/?page=workouts&amp;view=ranks"<?= ($currentPage === 'ranks' || ($currentPage === 'workouts' && (string) ($_GET['view'] ?? '') === 'ranks')) ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><span><?= e(t('workouts.tab_ranks')) ?></span></a>
+                    <a class="user-menu-link" href="/?page=overview"<?= !empty($dashboardStandaloneOverview) ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('grid') ?></span><span><?= e(t('overview.title')) ?></span></a>
                     <a class="user-menu-link" href="/?page=friends"<?= $currentPage === 'friends' ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span><span><?= e(t('nav.friends')) ?></span></a>
                     <a class="user-menu-link" href="/?page=settings"<?= $currentPage === 'settings' ? ' aria-current="page"' : '' ?>><span class="user-menu-item-icon" aria-hidden="true"><?= activity_icon_svg('sliders') ?></span><span><?= e(t('nav.settings')) ?></span></a>
                     <button type="button" class="user-menu-theme-toggle" data-theme-toggle data-csrf="<?= e(csrf_token()) ?>" data-label-dark="<?= e(t('nav.theme_toggle_dark')) ?>" data-label-light="<?= e(t('nav.theme_toggle_light')) ?>" aria-pressed="<?= $themeMode === 'dark' ? 'true' : 'false' ?>">
@@ -442,6 +452,14 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                     </div>
                 </nav>
             </details>
+            <?php if (trim((string) $topbarControls) !== ''): ?>
+                <?php // Context controls are secondary navigation. Desktop keeps them with
+                      // the actions; mobile places this same markup on its own row so the
+                      // five primary topbar items never get reordered or squeezed out. ?>
+                <div class="topbar-secondary-controls">
+                    <?= $topbarControls ?>
+                </div>
+            <?php endif; ?>
         </div>
     </header>
 <?php endif; ?>
@@ -503,55 +521,14 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
                 </a>
             </aside>
         <?php endif; ?>
-        <details class="floating-log add-menu">
-            <summary class="add-menu-trigger" aria-label="<?= e(t('entries.title')) ?>">+</summary>
-            <div class="add-menu-panel floating-add-panel">
-                <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=data"><span
-                        class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><?= e(t('entries.quick_data')) ?></span></a>
-                <a class="btn btn-ghost quick-entry-action" href="/?page=nutrition"><span
-                        class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><?= e(t('entries.quick_meal')) ?></span></a>
-                <a class="btn btn-ghost quick-entry-action" href="/?page=workouts"><span
-                        class="quick-entry-icon"><?= $renderQuickActionIcon('workout') ?></span><span><?= e(t('quick_actions.workout')) ?></span></a>
-                <a class="btn btn-ghost quick-entry-action" href="/?page=entries&mode=data&metric_new=1"><span
-                        class="quick-entry-icon"><?= $renderQuickActionIcon('goal') ?></span><span>Metric</span></a>
-            </div>
-        </details>
         <nav class="bottom-nav mobile-liquid-nav" aria-label="<?= e(t('nav.mobile_primary')) ?>">
             <div class="liquid-nav-pill">
-                <?php $mobileNavPosition = 0; ?>
                 <?php foreach ($mobileNavItems as $pageKey => $item): ?>
-                    <?php if ($mobileNavPosition === 2): ?>
-                        <details class="bottom-nav-plus liquid-nav-plus add-menu" data-nav-action="create">
-                            <summary aria-label="<?= e(t('quick_actions.title')) ?>" aria-haspopup="menu">
-                                <span class="nav-icon bottom-nav-plus-icon" aria-hidden="true">+</span>
-                                <span class="nav-label">Log</span>
-                            </summary>
-                            <div class="add-menu-panel bottom-nav-plus-menu mobile-quick-sheet" data-menu-stack>
-                                <div class="mobile-quick-view" data-menu-view="main">
-                                    <div class="mobile-quick-head">
-                                        <div>
-                                            <strong><?= e(t('quick_actions.title')) ?></strong><small><?= e(t('quick_actions.subtitle')) ?></small>
-                                        </div>
-                                        <button type="button" data-menu-close
-                                            aria-label="<?= e(t('menu.close')) ?>">&times;</button>
-                                    </div>
-                                    <a class="mobile-quick-action" data-tone="blue" href="/?page=entries&mode=data"><span
-                                            class="quick-entry-icon"><?= $renderQuickActionIcon('data') ?></span><span><strong><?= e(t('entries.quick_data')) ?></strong><small><?= e(t('quick_actions.daily_hint')) ?></small></span></a>
-                                    <a class="mobile-quick-action" data-tone="orange" href="/?page=nutrition"><span
-                                            class="quick-entry-icon"><?= $renderQuickActionIcon('meal') ?></span><span><strong><?= e(t('entries.quick_meal')) ?></strong><small><?= e(t('quick_actions.meal_hint')) ?></small></span></a>
-                                    <a class="mobile-quick-action" data-tone="green" href="/?page=workouts"><span
-                                            class="quick-entry-icon"><?= $renderQuickActionIcon('workout') ?></span><span><strong><?= e(t('quick_actions.workout')) ?></strong><small><?= e(t('quick_actions.workout_hint')) ?></small></span></a>
-                                </div>
-                            </div>
-                        </details>
-                    <?php endif; ?>
                     <?php $navActive = $isMobileNavActive((string) $pageKey); ?>
-                    <a class="liquid-nav-item<?= $navActive ? ' active' : '' ?>"
-                        data-nav-destination="<?= e((string) $pageKey) ?>" href="<?= e($item['href']) ?>" <?= $navActive ? 'aria-current="page"' : '' ?>>
+                    <a class="liquid-nav-item<?= $navActive ? ' active' : '' ?>" data-nav-destination="<?= e((string) $pageKey) ?>" href="<?= e($item['href']) ?>" <?= $navActive ? 'aria-current="page"' : '' ?>>
                         <span class="nav-icon"><?= $renderMobileIcon((string) $item['icon']) ?></span>
                         <span class="nav-label"><?= e($item['label']) ?></span>
                     </a>
-                    <?php $mobileNavPosition++; ?>
                 <?php endforeach; ?>
             </div>
         </nav>

@@ -53,8 +53,7 @@ const navGeometry = (page) => page.evaluate(() => {
     const nav = document.querySelector('nav.bottom-nav.mobile-liquid-nav');
     const pill = nav?.querySelector(':scope > .liquid-nav-pill');
     const links = [...(pill?.querySelectorAll(':scope > .liquid-nav-item') || [])];
-    const plus = pill?.querySelector(':scope > .liquid-nav-plus > summary');
-    const targets = [...links, plus].filter(Boolean);
+    const targets = links;
     const navRect = nav?.getBoundingClientRect();
     const pillRect = pill?.getBoundingClientRect();
     const targetRects = targets.map((target) => target.getBoundingClientRect());
@@ -62,11 +61,6 @@ const navGeometry = (page) => page.evaluate(() => {
         const rect = link.getBoundingClientRect();
         return rect.top + rect.height / 2;
     });
-    const plusRect = plus?.getBoundingClientRect();
-    const plusCenter = plusRect ? plusRect.top + plusRect.height / 2 : 0;
-    const linkCenter = linkCenters.length
-        ? linkCenters.reduce((sum, value) => sum + value, 0) / linkCenters.length
-        : 0;
     const labels = [...(pill?.querySelectorAll('.nav-label') || [])];
     const pillStyle = pill ? getComputedStyle(pill) : null;
     const rgb = (value) => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
@@ -84,7 +78,9 @@ const navGeometry = (page) => page.evaluate(() => {
     const labelContrasts = labels.map((label) => contrast(getComputedStyle(label).color, pillStyle?.backgroundColor || 'rgb(255,255,255)'));
     return {
         destinations: links.length,
-        create: Boolean(plus),
+        labels: links.map((link) => link.querySelector('.nav-label')?.textContent?.trim() || ''),
+        destinationsList: links.map((link) => link.getAttribute('data-nav-destination') || ''),
+        legacyCreate: Boolean(pill?.querySelector(':scope > .liquid-nav-plus')),
         active: links.filter((link) => link.getAttribute('aria-current') === 'page').length,
         centered: Boolean(navRect && Math.abs((navRect.left + navRect.width / 2) - innerWidth / 2) <= 1),
         width: Math.round(navRect?.width || 0),
@@ -97,7 +93,8 @@ const navGeometry = (page) => page.evaluate(() => {
             && Math.max(...targetRects.map((rect) => rect.width)) - Math.min(...targetRects.map((rect) => rect.width)) <= 1.5,
         targetWidths: targetRects.map((rect) => Math.round(rect.width)),
         minTarget: targetRects.length ? Math.round(Math.min(...targetRects.map((rect) => Math.min(rect.width, rect.height)))) : 0,
-        plusAligned: Math.abs(plusCenter - linkCenter) <= 1.5,
+        verticallyAligned: linkCenters.length > 0
+            && Math.max(...linkCenters) - Math.min(...linkCenters) <= 1.5,
         labelsFit: labels.every((label) => label.scrollWidth <= label.clientWidth + 1),
         minLabelContrast: labelContrasts.length ? Math.min(...labelContrasts) : 0,
         labelColors: labels.map((label) => getComputedStyle(label).color),
@@ -133,20 +130,24 @@ const navGeometry = (page) => page.evaluate(() => {
             const phone = width <= 700;
             const expectedWidth = phone ? width : 620;
             const expectedGap = phone ? 0 : 10;
-            check(`Barra nativa estable a ${width}px`, state.destinations === 4 && state.create
+            check(`Barra nativa estable a ${width}px`, state.destinations === 5 && !state.legacyCreate
                 && state.active === 1 && state.centered && state.width === expectedWidth
                 && state.height === 68 && state.bottomGap === expectedGap
                 && state.equalSlots && state.minTarget >= 60
-                && state.plusAligned && state.labelsFit && state.minLabelContrast >= 4.5
+                && state.verticallyAligned && state.labelsFit && state.minLabelContrast >= 4.5
                 && state.pillMatches && !state.overflow,
             JSON.stringify(state));
+            check(`Los cinco destinos mantienen el mismo orden a ${width}px`,
+                JSON.stringify(state.destinationsList) === JSON.stringify(['dashboard', 'table', 'nutrition', 'social', 'search']),
+                JSON.stringify(state.destinationsList));
         }
 
         const routes = [
             ['dashboard', 'dashboard'],
             ['workouts', 'table'],
+            ['nutrition', 'nutrition'],
             ['social', 'social'],
-            ['profile', 'profile'],
+            ['search', 'search'],
         ];
         await page.setViewportSize({ width: 390, height: 844 });
         for (const [route, destination] of routes) {
@@ -174,31 +175,12 @@ const navGeometry = (page) => page.evaluate(() => {
         check('El final del contenido puede quedar completamente sobre la barra', endState.navVisible && endState.contentClear,
             JSON.stringify(endState));
 
-        const plus = page.locator('details.bottom-nav-plus');
-        await plus.locator(':scope > summary').click();
-        await page.locator('.bottom-nav-plus-menu:visible').waitFor();
-        const menuState = await page.evaluate(() => {
-            const panel = document.querySelector('.bottom-nav-plus-menu');
-            const view = panel?.querySelector('[data-menu-view="main"]');
-            const panelRect = panel?.getBoundingClientRect();
-            const viewRect = view?.getBoundingClientRect();
-            const columns = panel ? getComputedStyle(panel).gridTemplateColumns.split(/\s+/).filter(Boolean).length : 0;
-            const choices = [...(view?.querySelectorAll(':scope > [data-menu-open]') || [])];
-            return {
-                centered: Boolean(panelRect && Math.abs((panelRect.left + panelRect.width / 2) - innerWidth / 2) <= 1),
-                columns,
-                viewUsesWidth: Boolean(panelRect && viewRect && viewRect.width >= panelRect.width - 22),
-                choices: choices.length,
-                aligned: choices.every((choice) => {
-                    const rect = choice.getBoundingClientRect();
-                    return viewRect && Math.abs(rect.left - viewRect.left) <= 1 && Math.abs(rect.right - viewRect.right) <= 1;
-                }),
-            };
-        });
-        check('El menú + usa una única columna centrada y completa', menuState.centered
-            && menuState.columns === 1 && menuState.viewUsesWidth && menuState.choices === 2 && menuState.aligned,
-        JSON.stringify(menuState));
-        await page.screenshot({ path: path.join(REPORT_DIR, 'ui-bottom-nav-menu-v4.png'), fullPage: false });
+        const topbarLog = page.locator('.topbar summary[data-add-button]');
+        check('Log vive en la barra superior y no ocupa un sexto destino', await topbarLog.count() === 1
+            && await topbarLog.isVisible());
+        await topbarLog.click();
+        check('Log abre sus acciones desde la barra superior', await page.locator('.topbar .add-menu-panel:visible').count() === 1);
+        await page.screenshot({ path: path.join(REPORT_DIR, 'ui-topbar-log-menu-v5.png'), fullPage: false });
         await page.keyboard.press('Escape');
 
         await forceTheme(page, 'dark');
@@ -250,7 +232,7 @@ const navGeometry = (page) => page.evaluate(() => {
         const landscapeState = await navGeometry(page);
         check('La orientación horizontal conserva alineación y objetivos táctiles', landscapeState.centered
             && landscapeState.width === 620 && landscapeState.height === 58 && landscapeState.bottomGap === 10
-            && landscapeState.minTarget >= 50 && landscapeState.plusAligned && !landscapeState.overflow,
+            && landscapeState.minTarget >= 50 && landscapeState.verticallyAligned && !landscapeState.overflow,
         JSON.stringify(landscapeState));
         await page.screenshot({ path: path.join(REPORT_DIR, 'ui-bottom-nav-landscape-v4.png'), fullPage: false });
 

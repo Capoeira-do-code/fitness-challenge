@@ -2030,7 +2030,7 @@ function update_photo_entry(
     return $updated;
 }
 
-function delete_photo_entry(PDO $pdo, array $config, int $photoId): ?array
+function delete_photo_entry(PDO $pdo, array $config, int $photoId, bool $removeFile = true): ?array
 {
     if ($photoId <= 0) {
         return null;
@@ -2046,9 +2046,30 @@ function delete_photo_entry(PDO $pdo, array $config, int $photoId): ?array
         ':now' => now_iso(),
         ':photo' => $photoId,
     ]);
+    db_execute(
+        $pdo,
+        'DELETE FROM social_feed_likes WHERE entity_type = "photo" AND entity_id = :photo',
+        [':photo' => $photoId]
+    );
+    db_execute(
+        $pdo,
+        'DELETE FROM user_notifications
+         WHERE kind IN ("social_like", "social_comment", "social_reply")
+           AND json_extract(
+               CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END,
+               "$.entity_type"
+           ) = "photo"
+           AND CAST(json_extract(
+               CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END,
+               "$.entity_id"
+           ) AS INTEGER) = :photo',
+        [':photo' => $photoId]
+    );
     db_execute($pdo, 'DELETE FROM photo_entries WHERE id = :id', [':id' => $photoId]);
 
-    remove_media_file_if_unreferenced($pdo, $config, $filePath, 'delete_photo_entry');
+    if ($removeFile) {
+        remove_media_file_if_unreferenced($pdo, $config, $filePath, 'delete_photo_entry');
+    }
 
     return $photo;
 }
@@ -2072,6 +2093,9 @@ function fetch_photo_by_id(PDO $pdo, int $photoId): ?array
 
 function fetch_photo_comments(PDO $pdo, int $photoId, int $limit = 250): array
 {
+    if (function_exists('social_comments_for_entity')) {
+        return social_comments_for_entity($pdo, 'photo', $photoId, $limit);
+    }
     if ($photoId <= 0) {
         return [];
     }
@@ -2090,8 +2114,11 @@ function fetch_photo_comments(PDO $pdo, int $photoId, int $limit = 250): array
     );
 }
 
-function create_photo_comment(PDO $pdo, int $photoId, int $userId, string $comment): array
+function create_photo_comment(PDO $pdo, int $photoId, int $userId, string $comment, int $parentCommentId = 0): array
 {
+    if (function_exists('social_comment_create')) {
+        return social_comment_create($pdo, $userId, 'photo', $photoId, $comment, $parentCommentId);
+    }
     if ($photoId <= 0) {
         throw new InvalidArgumentException(t('flash.not_found'));
     }
@@ -2157,7 +2184,24 @@ function delete_photo_comment(PDO $pdo, int $commentId): ?array
         return null;
     }
 
-    db_execute($pdo, 'DELETE FROM photo_comments WHERE id = :id', [':id' => $commentId]);
+    $startedTransaction = !$pdo->inTransaction();
+    if ($startedTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        // Cached/older photo pages may still submit the legacy delete action.
+        // Keep it consistent with the threaded API and never leave orphaned replies.
+        db_execute($pdo, 'DELETE FROM photo_comments WHERE parent_comment_id = :id', [':id' => $commentId]);
+        db_execute($pdo, 'DELETE FROM photo_comments WHERE id = :id', [':id' => $commentId]);
+        if ($startedTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $error) {
+        if ($startedTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $error;
+    }
 
     return $existing;
 }
@@ -3145,9 +3189,9 @@ function create_user(PDO $pdo, array $payload): void
             ':primary_goal_type' => $payload['primary_goal_type'] ?? 'steps',
             ':primary_goal_value' => $payload['primary_goal_value'] ?? null,
             ':onboarding_status' => ($payload['onboarding_status'] ?? 'complete') === 'pending' ? 'pending' : 'complete',
-            ':onboarding_step' => in_array((string) ($payload['onboarding_step'] ?? 'goals'), ['goals', 'profile', 'privacy', 'telegram', 'challenge', 'teams', 'install'], true)
-                ? (string) ($payload['onboarding_step'] ?? 'goals')
-                : 'goals',
+            ':onboarding_step' => in_array((string) ($payload['onboarding_step'] ?? 'profile'), ['profile', 'privacy', 'telegram', 'goals', 'teams'], true)
+                ? (string) ($payload['onboarding_step'] ?? 'profile')
+                : 'profile',
             ':onboarding_completed_at' => ($payload['onboarding_status'] ?? 'complete') === 'pending' ? null : $now,
             ':active' => $payload['active'],
             ':created_at' => $now,
@@ -3179,6 +3223,13 @@ function registration_invite_status(array $invite, ?DateTimeImmutable $now = nul
     }
 
     return 'active';
+}
+
+function public_registration_enabled(PDO $pdo): bool
+{
+    $value = strtolower(trim((string) (app_setting($pdo, 'public_registration_enabled', '0') ?? '0')));
+
+    return in_array($value, ['1', 'true', 'yes', 'on'], true);
 }
 
 function configured_app_base_url(PDO $pdo): string
@@ -3335,6 +3386,20 @@ function revoke_registration_invite(PDO $pdo, int $inviteId, int $actorUserId): 
 
 function register_user_with_invite(PDO $pdo, string $token, array $payload): array
 {
+    return register_user_account($pdo, $payload, $token);
+}
+
+function register_user_public(PDO $pdo, array $payload): array
+{
+    return register_user_account($pdo, $payload, null);
+}
+
+/**
+ * Create a self-service account. A token uses the invitation path; a null token
+ * is accepted only while public registration is explicitly enabled by an admin.
+ */
+function register_user_account(PDO $pdo, array $payload, ?string $token): array
+{
     $username = strtolower(trim((string) ($payload['username'] ?? '')));
     $displayName = trim((string) ($payload['display_name'] ?? ''));
     $password = (string) ($payload['password'] ?? '');
@@ -3351,15 +3416,14 @@ function register_user_with_invite(PDO $pdo, string $token, array $payload): arr
     $pdo->exec('BEGIN IMMEDIATE');
     $transactionActive = true;
     try {
-        $publicRegistrationEnabled = public_registration_enabled($pdo);
-        $invite = $token !== '' ? registration_invite_from_token($pdo, $token) : null;
-        $inviteIsActive = $invite !== null && registration_invite_status($invite) === 'active';
-        if (!$inviteIsActive && !$publicRegistrationEnabled) {
-            $messageKey = $token === '' ? 'register.registration_closed' : 'register.invite_invalid';
-            throw new InvalidArgumentException(t($messageKey));
-        }
-        if (!$inviteIsActive) {
-            $invite = null;
+        $invite = null;
+        if ($token !== null) {
+            $invite = registration_invite_from_token($pdo, $token);
+            if ($invite === null || registration_invite_status($invite) !== 'active') {
+                throw new InvalidArgumentException(t('register.invite_invalid'));
+            }
+        } elseif (!public_registration_enabled($pdo)) {
+            throw new InvalidArgumentException(t('register.registration_closed'));
         }
         $existing = db_fetch_one($pdo, 'SELECT id FROM users WHERE LOWER(username) = LOWER(:username)', [':username' => $username]);
         if ($existing !== null) {
@@ -3380,6 +3444,7 @@ function register_user_with_invite(PDO $pdo, string $token, array $payload): arr
             'primary_goal_type' => 'none',
             'primary_goal_value' => null,
             'onboarding_status' => 'pending',
+            'onboarding_step' => 'profile',
             'active' => 1,
         ]);
         $user = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = last_insert_rowid()');
@@ -3405,9 +3470,9 @@ function register_user_with_invite(PDO $pdo, string $token, array $payload): arr
             'user_registered',
             'user',
             (string) $user['id'],
-            $invite !== null ? 'User registered from invite.' : 'User registered publicly.',
+            $invite !== null ? 'User registered from invite.' : 'User registered through public registration.',
             null,
-            audit_snapshot($user, ['password_hash'])
+            array_merge(audit_snapshot($user, ['password_hash']), ['registration_source' => $invite !== null ? 'invite' : 'public'])
         );
         $pdo->exec('COMMIT');
         $transactionActive = false;
@@ -3428,7 +3493,7 @@ function onboarding_is_pending(array $user): bool
 
 function set_user_onboarding_step(PDO $pdo, int $userId, string $step): void
 {
-    if (!in_array($step, ['goals', 'profile', 'privacy', 'telegram', 'challenge', 'teams', 'install'], true)) {
+    if (!in_array($step, ['profile', 'privacy', 'telegram', 'goals', 'teams'], true)) {
         return;
     }
     db_execute(
@@ -3452,7 +3517,7 @@ function restart_user_onboarding(PDO $pdo, int $userId): void
     db_execute(
         $pdo,
         'UPDATE users
-         SET onboarding_status = "pending", onboarding_step = "goals", onboarding_completed_at = NULL,
+         SET onboarding_status = "pending", onboarding_step = "profile", onboarding_completed_at = NULL,
              onboarding_skipped = 0, onboarding_prompt_dismissed = 0, onboarding_goal_id = NULL, updated_at = :updated_at
          WHERE id = :id',
         [':updated_at' => now_iso(), ':id' => $userId]
@@ -6450,13 +6515,6 @@ function set_app_setting(PDO $pdo, string $key, ?string $value, int $actorUserId
 function penalties_enabled(PDO $pdo): bool
 {
     $value = strtolower(trim((string) (app_setting($pdo, 'penalties_enabled', '0') ?? '0')));
-
-    return in_array($value, ['1', 'true', 'yes', 'on'], true);
-}
-
-function public_registration_enabled(PDO $pdo): bool
-{
-    $value = strtolower(trim((string) (app_setting($pdo, 'public_registration_enabled', '0') ?? '0')));
 
     return in_array($value, ['1', 'true', 'yes', 'on'], true);
 }
@@ -10747,13 +10805,27 @@ function resolve_notification_destination(PDO $pdo, array $notification): string
         return $senderUserId > 0 ? '/?page=profile&user_id=' . $senderUserId : '/?page=social';
     }
 
-    if (in_array($kind, ['social_like', 'social_comment'], true)) {
+    if (in_array($kind, ['social_like', 'social_comment', 'social_reply'], true)) {
         $entityType = social_feed_entity_type((string) ($payload['entity_type'] ?? ''));
         $entityId = (int) ($payload['entity_id'] ?? 0);
         if ($entityType === 'photo' && $entityId > 0) {
-            return '/?page=photo&photo_id=' . $entityId;
+            $destination = '/?page=photo&photo_id=' . $entityId;
+            $commentId = (int) ($payload['comment_id'] ?? 0);
+            return $kind === 'social_reply' && $commentId > 0
+                ? $destination . '#comment-photo-' . $commentId
+                : $destination;
         }
         if ($entityType === 'workout' && $entityId > 0) {
+            if ($kind === 'social_reply') {
+                return '/?' . http_build_query([
+                    'page' => 'dashboard',
+                    'home' => 'feed',
+                    'feed' => 'friends',
+                    'post_type' => 'workout',
+                    'post_id' => $entityId,
+                    'comments' => 'workout-' . $entityId,
+                ]) . '#feed-workout-' . $entityId;
+            }
             return '/?page=workouts&view=stats&detail_session=' . $entityId;
         }
         if ($entityType === 'meal' && $entityId > 0) {
@@ -10764,7 +10836,7 @@ function resolve_notification_destination(PDO $pdo, array $notification): string
                 'post_type' => 'meal',
                 'post_id' => $entityId,
             ];
-            if ($kind === 'social_comment') $query['comments'] = 'meal-' . $entityId;
+            if (in_array($kind, ['social_comment', 'social_reply'], true)) $query['comments'] = 'meal-' . $entityId;
             return '/?' . http_build_query($query) . '#feed-meal-' . $entityId;
         }
     }

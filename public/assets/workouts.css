@@ -5799,6 +5799,42 @@ body[data-page="workouts"] .workouts-friend-routine-card-copy h3 { overflow: hid
 body[data-page="workouts"] .workouts-friend-routine-card-copy p { color: var(--muted); font-size: 0.68rem; }
 body[data-page="workouts"] .workouts-friend-routine-card-action { grid-area: action; margin: 0; }
 body[data-page="workouts"] .workouts-friend-routine-card-action .btn { width: 100%; }
+body[data-page="workouts"] .workouts-friend-routine-card-actions {
+    grid-area: action;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+body[data-page="workouts"] .workouts-friend-routine-card-actions :is(form, .btn) { width: 100%; margin: 0; }
+body[data-page="workouts"] .workouts-friend-routine-card-actions .btn { min-height: 42px; }
+body[data-page="workouts"] .workouts-friend-routine-card-actions .btn svg { width: 17px; height: 17px; }
+body[data-page="workouts"] .workouts-friend-routine-sheet { width: min(680px, calc(100% - 1.25rem)); max-height: min(88dvh, 820px); overflow: auto; }
+body[data-page="workouts"] .workouts-friend-routine-exercise-list { display: grid; gap: 0.45rem; margin-top: 0.8rem; }
+body[data-page="workouts"] .workouts-friend-routine-exercise-list article {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.48rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--ink) 2%, var(--surface));
+}
+body[data-page="workouts"] .workouts-friend-routine-exercise-list article > span:last-child { display: grid; min-width: 0; gap: 0.08rem; }
+body[data-page="workouts"] .workouts-friend-routine-exercise-list article strong { overflow: hidden; font-size: 0.78rem; text-overflow: ellipsis; white-space: nowrap; }
+body[data-page="workouts"] .workouts-friend-routine-exercise-list article small { color: var(--muted); font-size: 0.64rem; }
+body[data-page="workouts"] .workouts-friend-routine-exercise-media { display: grid; width: 48px; height: 48px; overflow: hidden; place-items: center; border-radius: 13px; color: var(--primary); background: var(--surface); }
+body[data-page="workouts"] .workouts-friend-routine-exercise-media :is(img, svg) { width: 100%; height: 100%; object-fit: cover; }
+body[data-page="workouts"] .workouts-friend-routine-exercise-media svg { width: 22px; height: 22px; }
+body[data-page="workouts"] .workouts-friend-routine-selection-form { display: grid; gap: 0.7rem; margin-top: 0.85rem; padding: 0.75rem; border: 1px solid color-mix(in srgb, var(--primary) 20%, var(--line)); border-radius: 16px; background: color-mix(in srgb, var(--primary) 4%, var(--surface)); }
+body[data-page="workouts"] .workouts-friend-routine-selection-form fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.35rem; margin: 0; padding: 0; border: 0; }
+body[data-page="workouts"] .workouts-friend-routine-selection-form legend { grid-column: 1 / -1; margin-bottom: 0.35rem; font-size: 0.7rem; font-weight: 850; }
+body[data-page="workouts"] .workouts-friend-routine-selection-form fieldset label { display: flex; align-items: center; gap: 0.4rem; min-width: 0; padding: 0.45rem; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); font-size: 0.68rem; }
+body[data-page="workouts"] .workouts-friend-routine-selection-form fieldset label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body[data-page="workouts"] .workouts-friend-routine-selection-form > label { display: grid; gap: 0.3rem; color: var(--muted); font-size: 0.67rem; font-weight: 800; }
+body[data-page="workouts"] .workouts-friend-routine-selection-form select { min-height: 44px; border-radius: 12px; color: var(--ink); background: var(--surface); }
+body[data-page="workouts"] .workouts-friend-routine-sheet-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.8rem; padding-top: 0.7rem; border-top: 1px solid var(--line); }
+body[data-page="workouts"] .workouts-friend-routine-sheet-actions form { margin: 0; }
 body[data-page="workouts"] .workouts-friends-empty {
     display: grid;
     grid-template-columns: 48px minmax(0, 1fr) auto;
@@ -5890,6 +5926,12 @@ body[data-page="workouts"] .workouts-view-exercise .workouts-guide-meta dl > div
     body[data-page="workouts"] .workouts-friends-catalog-icon { width: 46px; height: 46px; border-radius: 14px; }
     body[data-page="workouts"] .workouts-friends-catalog-grid { grid-template-columns: 1fr; }
     body[data-page="workouts"] .workouts-friend-routine-card { padding: 0.7rem; }
+    body[data-page="workouts"] .workouts-friend-routine-card-actions { grid-template-columns: 1fr 1fr; }
+    body[data-page="workouts"] .workouts-friend-routine-card-actions .btn { padding-inline: 0.55rem; font-size: 0.66rem; }
+    body[data-page="workouts"] .workouts-friend-routine-sheet { width: 100%; max-height: calc(92dvh - env(safe-area-inset-bottom)); margin-top: auto; border-radius: 24px 24px 0 0; }
+    body[data-page="workouts"] .workouts-friend-routine-selection-form fieldset { grid-template-columns: minmax(0, 1fr); }
+    body[data-page="workouts"] .workouts-friend-routine-sheet-actions { display: grid; grid-template-columns: 1fr 1fr; }
+    body[data-page="workouts"] .workouts-friend-routine-sheet-actions :is(form, .btn) { width: 100%; }
     body[data-page="workouts"] .workouts-friends-empty { grid-template-columns: 44px minmax(0, 1fr); }
     body[data-page="workouts"] .workouts-friends-empty .btn { grid-column: 1 / -1; width: 100%; }
     body[data-page="workouts"] .workouts-view-library .workouts-library-head { padding: 0.55rem; border-radius: 16px; }

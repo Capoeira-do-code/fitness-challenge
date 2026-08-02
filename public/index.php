@@ -12,7 +12,7 @@ if ($page === null) {
     if ($pathPage === 'index.php') {
         $pathPage = '';
     }
-    if (in_array($pathPage, ['dashboard', 'dashboard_panel_state', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'workouts', 'ranks', 'social', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'quests', 'season', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'competitions', 'login', 'register', 'onboarding', 'login_background'], true)) {
+    if (in_array($pathPage, ['dashboard', 'overview', 'search', 'dashboard_panel_state', 'analytics', 'entries', 'gallery', 'table', 'week_editor', 'workouts', 'ranks', 'social', 'profile', 'settings', 'team', 'team_settings', 'admin', 'metric', 'quests', 'season', 'penalties', 'comparison_detail', 'strikes_detail', 'notifications', 'challenges', 'friends', 'duels', 'competitions', 'login', 'register', 'onboarding', 'login_background'], true)) {
         $page = $pathPage;
     } elseif ($pathPage !== '') {
         security_mark_current_request($pdo, 'not_found', 10);
@@ -138,7 +138,9 @@ if ($page === 'app_icon_default') {
     header('Content-Type: image/png');
     header('Cache-Control: public, max-age=604800');
     imagepng($icon);
-    imagedestroy($icon);
+    if (PHP_VERSION_ID < 80500) {
+        imagedestroy($icon);
+    }
     exit;
 }
 
@@ -785,32 +787,50 @@ if ($page === 'register') {
     $registrationInviteStatus = $registrationInvite !== null ? registration_invite_status($registrationInvite) : 'invalid';
     $registrationMode = $registrationInviteStatus === 'active'
         ? 'invite'
-        : ($publicRegistrationEnabled ? 'public' : ($registrationToken === '' ? 'closed' : 'invalid'));
+        : ($registrationToken === '' && $publicRegistrationEnabled ? 'public' : ($registrationToken === '' ? 'closed' : 'invalid'));
+    $registrationIsPublic = $registrationMode === 'public';
+    $registrationAllowed = in_array($registrationMode, ['invite', 'public'], true);
     $registrationError = '';
     if (is_post()) {
+        $registrationIpAddress = request_ip_address();
+        $registrationRateKey = '__public_registration__';
         $requestedLocale = normalize_locale((string) ($_POST['locale'] ?? resolve_locale($config)), config_default_locale($config));
         persist_session_locale($requestedLocale);
         set_current_locale($requestedLocale);
         if (!csrf_verify()) {
             $registrationError = t('flash.csrf');
-        } elseif (!in_array($registrationMode, ['invite', 'public'], true)) {
+        } elseif (!$registrationAllowed) {
             $registrationError = t($registrationMode === 'closed' ? 'register.registration_closed' : 'register.invite_invalid');
+        } elseif ($registrationIsPublic && login_attempt_is_blocked($pdo, $registrationRateKey, $registrationIpAddress, 5, 15)) {
+            $registrationError = t('register.rate_limited');
         } elseif ((string) ($_POST['password'] ?? '') !== (string) ($_POST['password_confirm'] ?? '')) {
             $registrationError = t('flash.password_mismatch');
+            if ($registrationIsPublic) {
+                register_failed_login_attempt($pdo, $registrationRateKey, $registrationIpAddress);
+            }
         } else {
             try {
-                $registeredUser = register_user_with_invite($pdo, $registrationToken, [
+                $registrationPayload = [
                     'username' => (string) ($_POST['username'] ?? ''),
                     'display_name' => (string) ($_POST['display_name'] ?? ''),
                     'password' => (string) ($_POST['password'] ?? ''),
                     'locale' => $requestedLocale,
-                ]);
+                ];
+                $registeredUser = $registrationIsPublic
+                    ? register_user_public($pdo, $registrationPayload)
+                    : register_user_with_invite($pdo, $registrationToken, $registrationPayload);
                 if (!login_user($pdo, (string) $registeredUser['username'], (string) ($_POST['password'] ?? ''))) {
                     throw new RuntimeException(t('register.failed'));
+                }
+                if ($registrationIsPublic) {
+                    clear_login_attempts($pdo, $registrationRateKey, $registrationIpAddress);
                 }
                 flash_set('success', t('register.success'));
                 redirect('/?page=onboarding');
             } catch (Throwable $e) {
+                if ($registrationIsPublic) {
+                    register_failed_login_attempt($pdo, $registrationRateKey, $registrationIpAddress);
+                }
                 $registrationError = $e instanceof InvalidArgumentException && $e->getMessage() !== ''
                     ? $e->getMessage()
                     : t('register.failed');
@@ -819,7 +839,9 @@ if ($page === 'register') {
                 $registrationInviteStatus = $registrationInvite !== null ? registration_invite_status($registrationInvite) : 'invalid';
                 $registrationMode = $registrationInviteStatus === 'active'
                     ? 'invite'
-                    : ($publicRegistrationEnabled ? 'public' : ($registrationToken === '' ? 'closed' : 'invalid'));
+                    : ($registrationToken === '' && $publicRegistrationEnabled ? 'public' : ($registrationToken === '' ? 'closed' : 'invalid'));
+                $registrationIsPublic = $registrationMode === 'public';
+                $registrationAllowed = in_array($registrationMode, ['invite', 'public'], true);
             }
         }
     }
@@ -832,6 +854,9 @@ if ($page === 'register') {
         'registrationInvite' => $registrationInvite,
         'registrationInviteStatus' => $registrationInviteStatus,
         'registrationMode' => $registrationMode,
+        'registrationAllowed' => $registrationAllowed,
+        'registrationIsPublic' => $registrationIsPublic,
+        'publicRegistrationEnabled' => $publicRegistrationEnabled,
         'registrationError' => $registrationError,
         'config' => $config,
     ]);
@@ -918,6 +943,7 @@ if ($page === 'login') {
     }
     $loginRememberDefault = remember_me_cookie_is_enabled($config);
     $loginStyle = login_style_normalize(app_setting($pdo, 'login_style', 'split'));
+    $publicRegistrationEnabled = public_registration_enabled($pdo);
 
     render_view('login', [
         'title' => t('login.submit'),
@@ -927,7 +953,7 @@ if ($page === 'login') {
         'loginBackgroundUrl' => $loginBackgroundUrl,
         'loginRememberDefault' => $loginRememberDefault,
         'loginStyle' => $loginStyle,
-        'publicRegistrationEnabled' => public_registration_enabled($pdo),
+        'publicRegistrationEnabled' => $publicRegistrationEnabled,
         'config' => $config,
     ]);
 }
@@ -1218,10 +1244,14 @@ if ($page === 'onboarding') {
     if (!onboarding_is_pending($currentUser)) {
         redirect('/?page=dashboard');
     }
-    $onboardingSteps = ['goals', 'profile', 'privacy', 'telegram', 'challenge', 'teams', 'install'];
-    $savedOnboardingStep = (string) ($currentUser['onboarding_step'] ?? 'goals');
+    $onboardingSteps = ['profile', 'privacy', 'telegram', 'goals', 'teams'];
+    $savedOnboardingStep = (string) ($currentUser['onboarding_step'] ?? 'profile');
+    if (in_array($savedOnboardingStep, ['challenge', 'install'], true)) {
+        $savedOnboardingStep = 'teams';
+        set_user_onboarding_step($pdo, (int) $currentUser['id'], $savedOnboardingStep);
+    }
     if (!in_array($savedOnboardingStep, $onboardingSteps, true)) {
-        $savedOnboardingStep = 'goals';
+        $savedOnboardingStep = 'profile';
     }
     $onboardingFurthestIndex = (int) array_search($savedOnboardingStep, $onboardingSteps, true);
     $onboardingStep = trim((string) ($_POST['step'] ?? ($_GET['step'] ?? $savedOnboardingStep)));
@@ -1288,12 +1318,8 @@ if ($page === 'onboarding') {
                 }
                 $calorieBurnRaw = trim((string) ($_POST['calorie_burn_goal'] ?? ''));
                 $calorieConsumedRaw = trim((string) ($_POST['calorie_consumed_max'] ?? ''));
-                $idealWeightRaw = trim((string) ($_POST['ideal_weight'] ?? ''));
-                if (
-                    ($calorieBurnRaw !== '' && (!is_numeric($calorieBurnRaw) || (float) $calorieBurnRaw <= 0))
-                    || ($calorieConsumedRaw !== '' && (!is_numeric($calorieConsumedRaw) || (float) $calorieConsumedRaw <= 0))
-                    || ($idealWeightRaw !== '' && (!is_numeric($idealWeightRaw) || (float) $idealWeightRaw < 25 || (float) $idealWeightRaw > 400))
-                ) {
+                if (($calorieBurnRaw !== '' && (!is_numeric($calorieBurnRaw) || (float) $calorieBurnRaw <= 0))
+                    || ($calorieConsumedRaw !== '' && (!is_numeric($calorieConsumedRaw) || (float) $calorieConsumedRaw <= 0))) {
                     throw new InvalidArgumentException(t('metric.invalid'));
                 }
                 $dailyGoals = [];
@@ -1312,7 +1338,7 @@ if ($page === 'onboarding') {
                     'UPDATE users SET step_goal = :step_goal, workout_target = :workout_target,
                         primary_goal_type = :primary_goal_type, primary_goal_value = :primary_goal_value,
                         primary_goals_spec = :primary_goals_spec, calorie_burn_goal = :calorie_burn_goal,
-                        calorie_consumed_max = :calorie_consumed_max, ideal_weight = :ideal_weight,
+                        calorie_consumed_max = :calorie_consumed_max,
                         updated_at = :updated_at WHERE id = :id',
                     [
                         ':step_goal' => $stepGoal,
@@ -1322,7 +1348,6 @@ if ($page === 'onboarding') {
                         ':primary_goals_spec' => $primaryGoalsSpec !== '' ? $primaryGoalsSpec : null,
                         ':calorie_burn_goal' => $calorieBurnRaw !== '' ? (float) $calorieBurnRaw : null,
                         ':calorie_consumed_max' => $calorieConsumedRaw !== '' ? (float) $calorieConsumedRaw : null,
-                        ':ideal_weight' => $idealWeightRaw !== '' ? (float) $idealWeightRaw : null,
                         ':updated_at' => now_iso(),
                         ':id' => (int) $currentUser['id'],
                     ]
@@ -1334,9 +1359,6 @@ if ($page === 'onboarding') {
                 }
                 if ($workoutTarget > 0) {
                     $enabledMetrics[] = 'workouts';
-                }
-                if ($idealWeightRaw !== '') {
-                    $enabledMetrics[] = 'weight';
                 }
                 if ($calorieBurnRaw !== '') {
                     $enabledMetrics[] = 'calories_burned';
@@ -1371,13 +1393,19 @@ if ($page === 'onboarding') {
             } elseif ($onboardingStep === 'profile') {
                 $newAvatarPath = '';
                 $newCoverPath = '';
+                $avatarCropped = trim((string) ($_POST['avatar_cropped'] ?? ''));
+                $coverCropped = trim((string) ($_POST['cover_cropped'] ?? ''));
                 $avatarUpload = is_array($_FILES['avatar'] ?? null) ? (array) $_FILES['avatar'] : [];
                 $coverUpload = is_array($_FILES['cover'] ?? null) ? (array) $_FILES['cover'] : [];
                 try {
-                    if ((int) ($avatarUpload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                    if ($avatarCropped !== '') {
+                        $newAvatarPath = save_uploaded_image_from_data_url($config, $avatarCropped, 'avatars', 'user_' . (int) $currentUser['id']);
+                    } elseif ((int) ($avatarUpload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
                         $newAvatarPath = save_uploaded_image($config, $avatarUpload, 'avatars', 'user_' . (int) $currentUser['id']);
                     }
-                    if ((int) ($coverUpload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                    if ($coverCropped !== '') {
+                        $newCoverPath = save_uploaded_image_from_data_url($config, $coverCropped, 'profile_covers', 'user_' . (int) $currentUser['id']);
+                    } elseif ((int) ($coverUpload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
                         $newCoverPath = save_uploaded_image($config, $coverUpload, 'profile_covers', 'user_' . (int) $currentUser['id']);
                     }
                     $onboardingTheme = in_array(($_POST['theme_mode'] ?? 'light'), ['light', 'dark'], true) ? (string) $_POST['theme_mode'] : 'light';
@@ -1429,76 +1457,6 @@ if ($page === 'onboarding') {
                 ) {
                     telegram_update_user_prefs($pdo, (int) $currentUser['id'], $_POST);
                 }
-            } elseif ($onboardingStep === 'challenge') {
-                $title = trim((string) ($_POST['title'] ?? ''));
-                if ($title !== '') {
-                    $targetType = in_array((string) ($_POST['target_type'] ?? 'steps'), ['steps', 'km', 'workouts'], true)
-                        ? (string) $_POST['target_type']
-                        : 'steps';
-                    $targetValue = (float) ($_POST['target_value'] ?? 0);
-                    $dueDateRaw = trim((string) ($_POST['due_date'] ?? ''));
-                    $dueDate = date_input_to_iso($dueDateRaw);
-                    if ($targetValue <= 0) {
-                        throw new InvalidArgumentException(t('onboarding.challenge_value_invalid'));
-                    }
-                    if ($dueDateRaw !== '' && $dueDate === null) {
-                        throw new InvalidArgumentException(t('onboarding.challenge_date_format'));
-                    }
-                    if ($dueDate !== null && $dueDate < to_date(null)) {
-                        throw new InvalidArgumentException(t('onboarding.challenge_date_invalid'));
-                    }
-                    $goalPayload = [
-                        'scope' => 'user',
-                        'team_id' => null,
-                        'user_id' => (int) $currentUser['id'],
-                        'title' => function_exists('mb_substr') ? mb_substr($title, 0, 120) : substr($title, 0, 120),
-                        'target_type' => $targetType,
-                        'target_value' => $targetValue,
-                        'current_value' => 0,
-                        'due_date' => $dueDate,
-                    ];
-                    $extraTypes = array_values((array) ($_POST['extra_metric_type'] ?? []));
-                    $extraValues = array_values((array) ($_POST['extra_metric_value'] ?? []));
-                    $extraWeights = array_values((array) ($_POST['extra_metric_weight'] ?? []));
-                    $metricTargets = [];
-                    $extraWeightTotal = 0.0;
-                    foreach (array_slice($extraTypes, 0, 19) as $metricIndex => $extraType) {
-                        $extraType = trim((string) $extraType);
-                        if ($extraType === '') {
-                            continue;
-                        }
-                        $extraValue = (float) ($extraValues[$metricIndex] ?? 0);
-                        $extraWeight = (float) ($extraWeights[$metricIndex] ?? 0);
-                        if ($extraValue <= 0 || $extraWeight <= 0) {
-                            throw new InvalidArgumentException('Every challenge metric needs a target and weight.');
-                        }
-                        $extraWeightTotal += $extraWeight;
-                        $metricTargets[] = ['metric_key' => $extraType, 'target_value' => $extraValue, 'weight_percent' => $extraWeight];
-                    }
-                    if ($extraWeightTotal >= 100) {
-                        throw new InvalidArgumentException('Extra metric weights must leave room for the primary metric.');
-                    }
-                    array_unshift($metricTargets, ['metric_key' => $targetType, 'target_value' => $targetValue, 'weight_percent' => 100 - $extraWeightTotal]);
-                    $goalPayload['metric_targets'] = $metricTargets;
-                    $onboardingGoalId = (int) ($currentUser['onboarding_goal_id'] ?? 0);
-                    $onboardingGoal = $onboardingGoalId > 0
-                        ? db_fetch_one(
-                            $pdo,
-                            'SELECT * FROM goals WHERE id = :id AND scope = "user" AND user_id = :user_id',
-                            [':id' => $onboardingGoalId, ':user_id' => (int) $currentUser['id']]
-                        )
-                        : null;
-                    if ($onboardingGoal !== null) {
-                        update_goal($pdo, $onboardingGoalId, $goalPayload, (int) $currentUser['id']);
-                    } else {
-                        $onboardingGoalId = create_goal($pdo, $goalPayload, (int) $currentUser['id']);
-                        db_execute(
-                            $pdo,
-                            'UPDATE users SET onboarding_goal_id = :goal_id, updated_at = :updated_at WHERE id = :id',
-                            [':goal_id' => $onboardingGoalId, ':updated_at' => now_iso(), ':id' => (int) $currentUser['id']]
-                        );
-                    }
-                }
             } elseif ($onboardingStep === 'teams') {
                 $joinableTeams = list_joinable_teams($pdo, (int) $currentUser['id']);
                 $allowedTeamIds = array_map(static fn(array $team): int => (int) ($team['id'] ?? 0), $joinableTeams);
@@ -1508,32 +1466,25 @@ if ($page === 'onboarding') {
                         request_or_join_team($pdo, $selectedTeamId, (int) $currentUser['id']);
                     }
                 }
-            } elseif ($onboardingStep === 'install') {
-                complete_user_onboarding($pdo, (int) $currentUser['id']);
-                flash_set('success', t('onboarding.completed'));
-                redirect('/?page=dashboard');
             }
         } catch (Throwable $e) {
             flash_set('error', $e->getMessage() !== '' ? $e->getMessage() : t('flash.save_failed'));
             redirect('/?page=onboarding&step=' . rawurlencode($onboardingStep));
         }
 
-        if ($onboardingNext !== '' && ($onboardingStepIndex + 1) > $onboardingFurthestIndex) {
+        if ($onboardingNext === '') {
+            complete_user_onboarding($pdo, (int) $currentUser['id']);
+            flash_set('success', t('onboarding.completed'));
+            redirect('/?page=dashboard');
+        }
+        if (($onboardingStepIndex + 1) > $onboardingFurthestIndex) {
             set_user_onboarding_step($pdo, (int) $currentUser['id'], $onboardingNext);
         }
-        redirect('/?page=onboarding&step=' . rawurlencode($onboardingNext !== '' ? $onboardingNext : 'teams'));
+        redirect('/?page=onboarding&step=' . rawurlencode($onboardingNext));
     }
 
     $currentUser = current_user($pdo) ?? $currentUser;
     $onboardingTelegramSettings = $onboardingStep === 'telegram' ? telegram_settings($pdo) : [];
-    $onboardingGoal = null;
-    if ($onboardingStep === 'challenge' && (int) ($currentUser['onboarding_goal_id'] ?? 0) > 0) {
-        $onboardingGoal = db_fetch_one(
-            $pdo,
-            'SELECT * FROM goals WHERE id = :id AND scope = "user" AND user_id = :user_id',
-            [':id' => (int) $currentUser['onboarding_goal_id'], ':user_id' => (int) $currentUser['id']]
-        );
-    }
     render_view('onboarding', [
         'title' => t('onboarding.title'),
         'currentPage' => 'onboarding',
@@ -1542,7 +1493,6 @@ if ($page === 'onboarding') {
         'onboardingStep' => $onboardingStep,
         'onboardingStepIndex' => $onboardingStepIndex,
         'onboardingFurthestIndex' => $onboardingFurthestIndex,
-        'onboardingGoal' => $onboardingGoal,
         'onboardingNext' => $onboardingNext,
         'onboardingPrivacyVisibility' => user_visibility($currentUser),
         'onboardingDataVisibility' => privacy_data_preferences($currentUser),
@@ -2167,6 +2117,7 @@ if ($page === 'nutrition') {
             redirect($nutritionReturnUrl);
         }
         $action = (string) ($_POST['action'] ?? '');
+        $nutritionReturnDate = to_date((string) ($_POST['return_date'] ?? $_POST['entry_date'] ?? null));
         try {
             if ($action === 'save_tdee_profile') {
                 $birthDate = trim((string) ($_POST['birth_date'] ?? ''));
@@ -2222,12 +2173,38 @@ if ($page === 'nutrition') {
                     ]);
                 }
                 flash_set('success', t('flash.meal_saved'));
+            } elseif ($action === 'update_nutrition_entry') {
+                $entryId = max(0, (int) ($_POST['entry_id'] ?? 0));
+                $beforeEntry = db_fetch_one(
+                    $pdo,
+                    'SELECT * FROM nutrition_entries WHERE id=:id AND user_id=:user LIMIT 1',
+                    [':id' => $entryId, ':user' => (int) $currentUser['id']]
+                );
+                if ($beforeEntry === null) {
+                    throw new RuntimeException(t('flash.not_found'));
+                }
+                $updatedEntry = nutrition_update_entry($pdo, $config, $entryId, (int) $currentUser['id'], $_POST);
+                if ($updatedEntry === null) {
+                    throw new RuntimeException(t('flash.not_found'));
+                }
+                audit_log($pdo, (int) $currentUser['id'], 'nutrition_entry_updated', 'nutrition_entry', (string) $entryId, 'Meal updated.', audit_snapshot($beforeEntry), audit_snapshot($updatedEntry));
+                flash_set('success', t('nutrition.meal_updated'));
+            } elseif ($action === 'delete_nutrition_entry') {
+                $entryId = max(0, (int) ($_POST['entry_id'] ?? 0));
+                $deletedEntry = nutrition_delete_entry($pdo, $config, $entryId, (int) $currentUser['id']);
+                if ($deletedEntry === null) {
+                    throw new RuntimeException(t('flash.not_found'));
+                }
+                audit_log($pdo, (int) $currentUser['id'], 'nutrition_entry_deleted', 'nutrition_entry', (string) $entryId, 'Meal deleted.', audit_snapshot($deletedEntry), null);
+                flash_set('success', t('nutrition.meal_deleted'));
             }
         } catch (Throwable $e) {
             error_log('Nutrition action failed: ' . $e->getMessage());
             flash_set('error', $e instanceof InvalidArgumentException ? $e->getMessage() : t('flash.save_failed'));
         }
-        redirect($nutritionReturnUrl);
+        redirect($nutritionReturnContext === 'gallery'
+            ? $nutritionReturnUrl
+            : '/?page=nutrition&date=' . rawurlencode($nutritionReturnDate));
     }
     $currentUser = db_fetch_one($pdo, 'SELECT * FROM users WHERE id = :id', [':id' => (int) $currentUser['id']]) ?? $currentUser;
     $rangeEnd = to_date($_GET['date'] ?? null);
@@ -2703,12 +2680,70 @@ if ($page === 'photo') {
     $canEditPhoto = is_admin($currentUser) || $photoOwnerId === (int) $currentUser['id'];
 
     if (is_post()) {
+        $isSocialCommentFetch = (string) ($_POST['feed_ajax'] ?? '') === '1'
+            || strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'feed-fetch';
         if (!csrf_verify()) {
+            if ($isSocialCommentFetch) {
+                http_response_code(403);
+                header('Content-Type: application/json; charset=UTF-8');
+                echo json_encode(['ok' => false, 'message' => t('flash.csrf')], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
             flash_set('error', t('flash.csrf'));
             redirect('/?page=photo&photo_id=' . (int) $photoId);
         }
 
         $action = (string) ($_POST['action'] ?? '');
+
+        if (in_array($action, ['social_feed_comment', 'social_feed_comment_edit', 'social_feed_comment_delete'], true)) {
+            $commentMutation = null;
+            $commentError = '';
+            try {
+                $commentMutation = social_comment_apply_action($pdo, $currentUser, $action, 'photo', $photoId, $_POST);
+                audit_log(
+                    $pdo,
+                    (int) $currentUser['id'],
+                    match ($action) {
+                        'social_feed_comment_edit' => 'photo_comment_updated',
+                        'social_feed_comment_delete' => 'photo_comment_deleted',
+                        default => 'photo_comment_created',
+                    },
+                    'photo_comment',
+                    (string) ($commentMutation['id'] ?? ''),
+                    'Photo comment thread updated.'
+                );
+            } catch (Throwable $error) {
+                $commentError = trim($error->getMessage());
+            }
+
+            if ($isSocialCommentFetch) {
+                $ok = is_array($commentMutation) && $commentError === '';
+                if (!$ok) http_response_code(422);
+                $commentData = social_comment_response_data(
+                    $pdo,
+                    $currentUser,
+                    'photo',
+                    $photoId,
+                    '/?page=photo&photo_id=' . $photoId
+                );
+                header('Content-Type: application/json; charset=UTF-8');
+                echo json_encode([
+                    'ok' => $ok,
+                    'comment_count' => (int) ($commentData['comment_count'] ?? 0),
+                    'comments_html' => (string) ($commentData['comments_html'] ?? ''),
+                    'message' => $ok ? '' : ($commentError !== '' ? $commentError : t('feed.comment_error')),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+                exit;
+            }
+
+            flash_set(
+                is_array($commentMutation) ? 'success' : 'error',
+                is_array($commentMutation)
+                    ? ($action === 'social_feed_comment_delete' ? t('photo.comment_deleted') : t('photo.comment_added'))
+                    : ($commentError !== '' ? $commentError : t('feed.comment_error'))
+            );
+            redirect('/?page=photo&photo_id=' . $photoId . '#comment-photo-' . (int) ($commentMutation['id'] ?? 0));
+        }
 
         if ($action === 'update_photo') {
             try {
@@ -2991,6 +3026,60 @@ if ($page === 'social') {
         'socialCompetitionsSummary' => $socialCompetitionsSummary,
         'socialCanManageTeam' => $socialCanManageTeam,
         'socialManageableTeamId' => $socialManageableTeamId,
+        'config' => $config,
+    ]);
+}
+
+if ($page === 'search') {
+    workouts_ensure_schema($pdo);
+    $searchQuery = trim((string) ($_GET['q'] ?? ''));
+    if (function_exists('mb_substr')) {
+        $searchQuery = mb_substr($searchQuery, 0, 80);
+    } else {
+        $searchQuery = substr($searchQuery, 0, 80);
+    }
+    $searchUsers = [];
+    $searchExercises = [];
+    $searchRoutines = [];
+    if ($searchQuery !== '') {
+        $escapedSearch = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $searchQuery);
+        $searchLike = '%' . $escapedSearch . '%';
+        $searchUsers = privacy_search_visible_users($pdo, $currentUser, $searchQuery, 12);
+        $searchExercises = db_fetch_all(
+            $pdo,
+            'SELECT * FROM exercise_definitions
+             WHERE active = 1
+               AND (is_system = 1 OR user_id = :current_user)
+               AND (name LIKE :query ESCAPE "\\" OR muscle_group LIKE :query ESCAPE "\\" OR equipment LIKE :query ESCAPE "\\")
+             ORDER BY is_system DESC, name COLLATE NOCASE ASC
+             LIMIT 16',
+            [':query' => $searchLike, ':current_user' => (int) $currentUser['id']]
+        );
+        foreach ($searchExercises as &$searchExercise) {
+            $searchExerciseContent = wk_exercise_content($searchExercise);
+            $searchExercise['display_name'] = (string) ($searchExerciseContent['name'] ?? $searchExercise['name'] ?? '');
+        }
+        unset($searchExercise);
+        $searchRoutines = db_fetch_all(
+            $pdo,
+            'SELECT r.*, (SELECT COUNT(*) FROM routine_exercises re WHERE re.routine_id = r.id) AS exercise_count
+             FROM workout_routines r
+             WHERE r.user_id = :current_user AND r.is_archived = 0
+               AND (r.name LIKE :query ESCAPE "\\" OR r.description LIKE :query ESCAPE "\\")
+             ORDER BY r.is_favorite DESC, r.name COLLATE NOCASE ASC
+             LIMIT 12',
+            [':query' => $searchLike, ':current_user' => (int) $currentUser['id']]
+        );
+    }
+
+    render_view('search', [
+        'title' => t('nav.search'),
+        'currentPage' => 'search',
+        'currentUser' => $currentUser,
+        'searchQuery' => $searchQuery,
+        'searchUsers' => $searchUsers,
+        'searchExercises' => $searchExercises,
+        'searchRoutines' => $searchRoutines,
         'config' => $config,
     ]);
 }
@@ -3878,6 +3967,35 @@ if ($page === 'workouts') {
                 }
                 flash_set('error', t('workouts.routine_copy_failed'));
                 redirect($copySourceUser > 0 ? '/?page=profile&user_id=' . $copySourceUser : '/?page=workouts');
+            case 'routine_copy_friend_exercises':
+                $copySourceUser = max(0, (int) ($_POST['source_user_id'] ?? 0));
+                $copySourceRoutine = max(0, (int) ($_POST['source_routine_id'] ?? 0));
+                $copyTargetRoutine = max(0, (int) ($_POST['target_routine_id'] ?? 0));
+                $copyExerciseRows = (array) ($_POST['routine_exercise_ids'] ?? []);
+                try {
+                    if ($copySourceUser <= 0
+                        || $copySourceRoutine <= 0
+                        || $copyTargetRoutine <= 0
+                        || friends_status($pdo, $meId, $copySourceUser) !== 'friends') {
+                        throw new RuntimeException(t('workouts.routine_copy_failed'));
+                    }
+                    $addedExercises = wk_routine_copy_exercises_from_user(
+                        $pdo,
+                        $copySourceRoutine,
+                        $copySourceUser,
+                        $copyTargetRoutine,
+                        $meId,
+                        $copyExerciseRows
+                    );
+                    if ($addedExercises <= 0) {
+                        throw new RuntimeException(t('workouts.exercises_already_added'));
+                    }
+                    flash_set('success', t('workouts.friend_exercises_copied', ['count' => $addedExercises]));
+                    redirect('/?page=workouts&routine_id=' . $copyTargetRoutine);
+                } catch (Throwable $e) {
+                    flash_set('error', $e->getMessage());
+                    redirect('/?page=workouts&view=friends#friend-routine-' . $copySourceRoutine);
+                }
             case 'routine_reorder':
                 $ids = array_map('intval', (array) ($_POST['order'] ?? []));
                 wk_routine_reorder($pdo, $meId, $ids);
@@ -5315,6 +5433,19 @@ if ($page === 'settings') {
 }
 
 if ($page === 'profile') {
+    if (!is_post()) {
+        $legacyProfileSection = trim((string) ($_GET['section'] ?? ''));
+        if ($legacyProfileSection === 'social') {
+            redirect('/?page=social');
+        }
+        if ($legacyProfileSection === 'training') {
+            $legacyProfileUserId = isset($_GET['user_id']) ? max(0, (int) $_GET['user_id']) : 0;
+            if ($legacyProfileUserId > 0 && $legacyProfileUserId !== (int) $currentUser['id']) {
+                redirect('/?page=profile&user_id=' . $legacyProfileUserId);
+            }
+            redirect('/?page=workouts&view=ranks');
+        }
+    }
     workouts_ensure_schema($pdo);
     profile_custom_widgets_ensure_schema($pdo);
     $requestedProfileUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $currentUser['id'];
@@ -7654,6 +7785,13 @@ if ($page === 'admin') {
             redirect('/?page=admin&section=registration_links');
         }
 
+        if ($action === 'update_public_registration') {
+            $enabled = bool_from_form('public_registration_enabled') === 1;
+            set_app_setting($pdo, 'public_registration_enabled', $enabled ? '1' : '0', (int) $currentUser['id']);
+            flash_set('success', t($enabled ? 'admin.public_registration_enabled_flash' : 'admin.public_registration_disabled_flash'));
+            redirect('/?page=admin&section=users');
+        }
+
         if ($action === 'revoke_registration_invite') {
             $revoked = revoke_registration_invite($pdo, (int) ($_POST['invite_id'] ?? 0), (int) $currentUser['id']);
             flash_set($revoked ? 'success' : 'error', $revoked ? t('admin.invite_revoked') : t('admin.invite_revoke_failed'));
@@ -8429,6 +8567,7 @@ if ($page === 'admin') {
     $team = default_team($pdo);
     $users = db_fetch_all($pdo, 'SELECT * FROM users ORDER BY created_at ASC');
     $registrationInvites = list_registration_invites($pdo);
+    $publicRegistrationEnabled = public_registration_enabled($pdo);
     $registrationInviteUrl = trim((string) ($_SESSION['registration_invite_url'] ?? ''));
     unset($_SESSION['registration_invite_url']);
     $challengeSettings = challenge_settings($pdo, $config);
@@ -8564,8 +8703,8 @@ if ($page === 'admin') {
         'currentUser' => $currentUser,
         'users' => $users,
         'registrationInvites' => $registrationInvites,
+        'publicRegistrationEnabled' => $publicRegistrationEnabled,
         'registrationInviteUrl' => $registrationInviteUrl,
-        'publicRegistrationEnabled' => public_registration_enabled($pdo),
         'team' => $team,
         'teamMembers' => list_team_members($pdo, (int) $team['id'], false),
         'joinRequests' => pending_team_join_requests($pdo, (int) $team['id']),
@@ -11050,12 +11189,23 @@ if ($page === 'analytics') {
     ]);
 }
 
-if ($page === 'dashboard') {
+if ($page === 'dashboard' || $page === 'overview') {
+    $dashboardStandaloneOverview = $page === 'overview';
+    $dashboardRoutePage = $dashboardStandaloneOverview ? 'overview' : 'dashboard';
+    $dashboardRouteUrl = '/?page=' . $dashboardRoutePage;
+    if (!$dashboardStandaloneOverview && !is_post() && (string) ($_GET['home'] ?? '') === 'classic') {
+        // Classic used to be a second Home. Keep old bookmarks working while
+        // making Home unambiguously the social feed.
+        $overviewQuery = $_GET;
+        $overviewQuery['page'] = 'overview';
+        unset($overviewQuery['home'], $overviewQuery['feed'], $overviewQuery['post_type'], $overviewQuery['post_id']);
+        redirect('/?' . http_build_query($overviewQuery));
+    }
     workouts_ensure_schema($pdo);
     if (!is_post() && array_key_exists('user_id', $_GET)) {
         $dashboardCanonicalQuery = $_GET;
         unset($dashboardCanonicalQuery['user_id']);
-        $dashboardCanonicalQuery['page'] = 'dashboard';
+        $dashboardCanonicalQuery['page'] = $dashboardRoutePage;
         redirect('/?' . http_build_query($dashboardCanonicalQuery));
     }
     $dashboardSection = trim((string) ($_GET['section'] ?? ''));
@@ -11071,17 +11221,38 @@ if ($page === 'dashboard') {
                 exit;
             }
             flash_set('error', t('flash.csrf'));
-            redirect('/?page=dashboard');
+            redirect($dashboardRouteUrl);
         }
 
         $action = (string) ($_POST['action'] ?? '');
-        if ($action === 'social_feed_like' || $action === 'social_feed_comment') {
+        $socialCommentActions = ['social_feed_comment', 'social_feed_comment_edit', 'social_feed_comment_delete'];
+        if ($action === 'social_feed_like' || $action === 'social_feed_copy_workout' || in_array($action, $socialCommentActions, true)) {
             $feedType = (string) ($_POST['entity_type'] ?? '');
             $feedId = max(0, (int) ($_POST['entity_id'] ?? 0));
             $feedScope = (string) ($_POST['feed_scope'] ?? 'friends') === 'global' ? 'global' : 'friends';
-            $saved = $action === 'social_feed_like'
-                ? social_feed_toggle_like($pdo, (int) $currentUser['id'], $feedType, $feedId)
-                : social_feed_add_comment($pdo, (int) $currentUser['id'], $feedType, $feedId, (string) ($_POST['comment'] ?? ''));
+            $saved = null;
+            $feedError = '';
+            try {
+                if ($action === 'social_feed_like') {
+                    $saved = social_feed_toggle_like($pdo, (int) $currentUser['id'], $feedType, $feedId);
+                } elseif ($action === 'social_feed_copy_workout') {
+                    $validType = social_feed_entity_type($feedType);
+                    $sourceOwnerId = $validType === 'workout' ? social_feed_entity_owner_id($pdo, $validType, $feedId) : 0;
+                    if ($sourceOwnerId <= 0
+                        || $sourceOwnerId === (int) $currentUser['id']
+                        || !social_feed_entity_visible($pdo, (int) $currentUser['id'], $validType, $feedId)) {
+                        throw new RuntimeException(t('workouts.routine_copy_failed'));
+                    }
+                    $saved = wk_routine_copy_from_session($pdo, $feedId, $sourceOwnerId, (int) $currentUser['id']);
+                    if ((int) $saved <= 0) {
+                        throw new RuntimeException(t('workouts.routine_copy_failed'));
+                    }
+                } else {
+                    $saved = social_comment_apply_action($pdo, $currentUser, $action, $feedType, $feedId, $_POST);
+                }
+            } catch (Throwable $error) {
+                $feedError = trim($error->getMessage());
+            }
             $isFeedFetch = (string) ($_POST['feed_ajax'] ?? '') === '1'
                 || strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'feed-fetch';
             if ($isFeedFetch) {
@@ -11089,30 +11260,39 @@ if ($page === 'dashboard') {
                 $visible = $validType !== '' && social_feed_entity_visible($pdo, (int) $currentUser['id'], $validType, $feedId);
                 $liked = $visible && db_fetch_one($pdo, 'SELECT 1 FROM social_feed_likes WHERE user_id=:user AND entity_type=:type AND entity_id=:id', [':user' => (int) $currentUser['id'], ':type' => $validType, ':id' => $feedId]) !== null;
                 $likeCount = $visible ? (int) (db_fetch_one($pdo, 'SELECT COUNT(*) AS n FROM social_feed_likes WHERE entity_type=:type AND entity_id=:id', [':type' => $validType, ':id' => $feedId])['n'] ?? 0) : 0;
-                $commentCount = 0;
-                if ($visible) {
-                    $commentCount = $validType === 'photo'
-                        ? (int) (db_fetch_one($pdo, 'SELECT COUNT(*) AS n FROM photo_comments WHERE photo_id=:id', [':id' => $feedId])['n'] ?? 0)
-                        : (int) (db_fetch_one($pdo, 'SELECT COUNT(*) AS n FROM social_feed_comments WHERE entity_type=:type AND entity_id=:id', [':type' => $validType, ':id' => $feedId])['n'] ?? 0);
-                }
-                $ok = $visible && ($action === 'social_feed_like' || $saved);
+                $commentData = $visible
+                    ? social_comment_response_data($pdo, $currentUser, $validType, $feedId, '/?page=dashboard', $feedScope)
+                    : ['comment_count' => 0, 'comments_html' => ''];
+                $ok = $visible && $feedError === '' && (
+                    $action === 'social_feed_like'
+                    || ($action === 'social_feed_copy_workout' && (int) $saved > 0)
+                    || is_array($saved)
+                );
                 if (!$ok) http_response_code(422);
                 header('Content-Type: application/json; charset=UTF-8');
                 echo json_encode([
                     'ok' => $ok,
                     'liked' => $liked,
                     'like_count' => $likeCount,
-                    'comment_count' => $commentCount,
-                    'comment' => $action === 'social_feed_comment' && $saved ? trim((string) ($_POST['comment'] ?? '')) : '',
-                    'author' => (string) ($currentUser['display_name'] ?? $currentUser['username'] ?? ''),
-                    'message' => $ok ? '' : t('feed.comment_error'),
-                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    'comment_count' => (int) ($commentData['comment_count'] ?? 0),
+                    'comments_html' => in_array($action, $socialCommentActions, true) ? (string) ($commentData['comments_html'] ?? '') : '',
+                    'routine_id' => $action === 'social_feed_copy_workout' ? (int) $saved : 0,
+                    'routine_url' => $action === 'social_feed_copy_workout' && (int) $saved > 0 ? '/?page=workouts&routine_id=' . (int) $saved : '',
+                    'message' => $ok ? '' : ($feedError !== '' ? $feedError : t('feed.comment_error')),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
                 exit;
             }
-            if ($action === 'social_feed_comment' && !$saved) {
-                flash_set('error', t('feed.comment_error'));
+            if (in_array($action, $socialCommentActions, true) && (!is_array($saved) || $feedError !== '')) {
+                flash_set('error', $feedError !== '' ? $feedError : t('feed.comment_error'));
             }
-            $commentQuery = $action === 'social_feed_comment' ? '&comments=' . rawurlencode($feedType . '-' . $feedId) : '';
+            if ($action === 'social_feed_copy_workout') {
+                if ((int) $saved > 0 && $feedError === '') {
+                    flash_set('success', t('workouts.workout_copied'));
+                    redirect('/?page=workouts&routine_id=' . (int) $saved);
+                }
+                flash_set('error', $feedError !== '' ? $feedError : t('workouts.routine_copy_failed'));
+            }
+            $commentQuery = in_array($action, $socialCommentActions, true) ? '&comments=' . rawurlencode($feedType . '-' . $feedId) : '';
             redirect('/?page=dashboard&home=feed&feed=' . $feedScope . $commentQuery . '#feed-' . rawurlencode($feedType) . '-' . $feedId);
         }
         if ($action === 'restart_onboarding') {
@@ -11123,7 +11303,7 @@ if ($page === 'dashboard') {
         if ($action === 'dismiss_onboarding_prompt') {
             dismiss_user_onboarding_prompt($pdo, (int) $currentUser['id']);
             flash_set('success', t('onboarding.prompt_dismissed'));
-            redirect('/?page=dashboard');
+            redirect($dashboardRouteUrl);
         }
         if ($action === 'resolve_approval') {
             $approvalId = (int) ($_POST['approval_id'] ?? 0);
@@ -11148,7 +11328,7 @@ if ($page === 'dashboard') {
             flash_set($result['ok'] ? 'success' : 'error', $result['message']);
 
             $query = [
-                'page' => 'dashboard',
+                'page' => $dashboardRoutePage,
             ];
             if (!empty($_POST['redirect_week_start'])) {
                 $query['week_start'] = (string) $_POST['redirect_week_start'];
@@ -11192,7 +11372,7 @@ if ($page === 'dashboard') {
                     || ($dashboardIdealRaw !== '' && (!is_numeric($dashboardIdealRaw) || (float) $dashboardIdealRaw < 25 || (float) $dashboardIdealRaw > 400));
                 if ($invalidDashboardTargets) {
                     flash_set('error', $dashboardStepGoal < 0 ? t('onboarding.steps_invalid') : t('metric.invalid'));
-                    redirect('/?page=dashboard&layout_edit=1');
+                    redirect($dashboardRouteUrl . '&layout_edit=1');
                 }
                 $dashboardGoals = array_values(array_filter(
                     user_primary_goals($currentUser),
@@ -11246,13 +11426,13 @@ if ($page === 'dashboard') {
                     save_user_metric_preferences($pdo, $dashboardPreferenceUser, (array) ($_POST['enabled_metrics'] ?? []));
                 } catch (InvalidArgumentException $preferenceError) {
                     flash_set('error', $preferenceError->getMessage());
-                    redirect('/?page=dashboard&layout_edit=1');
+                    redirect($dashboardRouteUrl . '&layout_edit=1');
                 }
             }
             audit_log($pdo, (int) $currentUser['id'], 'dashboard_preferences_updated', 'user', (string) $currentUser['id'], 'Dashboard preferences updated.', null, ['dashboard_view' => $_POST['dashboard_view'] ?? 'current_week', 'widgets' => $widgets, 'reset' => $resetLayout]);
             flash_set('success', t('flash.preferences_updated'));
             $dashboardRedirectParams = [
-                'page' => 'dashboard',
+                'page' => $dashboardRoutePage,
                 'view' => (string) ($_POST['dashboard_view'] ?? 'current_week'),
             ];
             redirect('/?' . http_build_query($dashboardRedirectParams));
@@ -11604,9 +11784,15 @@ if ($page === 'dashboard') {
     }
 
     render_view('dashboard', [
-        'title' => t('nav.dashboard'),
+        'title' => $dashboardStandaloneOverview ? t('overview.title') : t('feed.title'),
+        // Keep the established dashboard body scope. dashboard.css contains a
+        // large, intentional body[data-page="dashboard"] contract; the
+        // standalone Overview is a route/surface distinction, not a new CSS
+        // component namespace. Home intentionally stays highlighted as the
+        // primary hub while Overview is selected from the avatar menu.
         'currentPage' => 'dashboard',
         'currentUser' => $currentUser,
+        'dashboardStandaloneOverview' => $dashboardStandaloneOverview,
         'dashboardShowOnboardingPrompt' => user_should_show_onboarding_prompt($currentUser),
         'dashboardSection' => $dashboardSection,
         'dashboardActiveChallenge' => $dashboardActiveChallenge,

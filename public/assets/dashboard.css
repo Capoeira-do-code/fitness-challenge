@@ -1917,14 +1917,29 @@ body[data-page="quests"]:is([data-theme="dark"], .theme-active-dark) .quest-cata
 .home-feed-actions .is-liked { color: #ef4444; }
 .home-feed-actions .is-liked svg { fill: currentColor; }
 .home-feed-actions span { font-size: .72rem; font-weight: 800; }
+.home-feed-actions .home-feed-copy-workout-form { margin-left: auto; }
+.home-feed-actions .home-feed-copy-workout {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 11px;
+    border: 1px solid color-mix(in srgb, var(--primary) 26%, var(--line));
+    border-radius: 999px;
+    color: var(--primary-dark);
+    background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+    text-decoration: none;
+}
+.home-feed-actions .home-feed-copy-workout svg { width: 18px; height: 18px; }
+.home-feed-actions .home-feed-copy-workout.is-copied { margin-left: auto; color: #13795b; border-color: color-mix(in srgb, #18a999 28%, var(--line)); background: color-mix(in srgb, #18a999 9%, var(--surface)); }
+.home-feed-actions .home-feed-copy-workout-form.is-busy { opacity: .62; }
 .home-feed-comments { display: grid; gap: 9px; padding: 4px 0 8px; }
 .home-feed-comments[hidden] { display: none; }
-.home-feed-comments p { margin: 0; font-size: .78rem; line-height: 1.45; }
-.home-feed-comments p strong { margin-right: 5px; }
-.home-feed-comments form { display: grid; grid-template-columns: minmax(0,1fr) 42px; gap: 7px; }
-.home-feed-comments input { min-width: 0; min-height: 42px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); }
-.home-feed-comments button { display: grid; width: 42px; height: 42px; padding: 0; border: 0; border-radius: 50%; place-items: center; color: #fff; background: var(--primary); }
-.home-feed-comments button svg { width: 18px; height: 18px; }
+.home-feed-comments > .social-comment-composer { display: grid; grid-template-columns: minmax(0,1fr) 42px; gap: 7px; }
+.home-feed-comments > .social-comment-composer input { min-width: 0; min-height: 42px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); }
+.home-feed-comments > .social-comment-composer > button { display: grid; width: 42px; height: 42px; padding: 0; border: 0; border-radius: 50%; place-items: center; color: #fff; background: var(--primary); }
+.home-feed-comments > .social-comment-composer > button svg { width: 18px; height: 18px; }
 .home-feed-empty { display: grid; justify-items: center; gap: 8px; padding: 48px 20px; text-align: center; }
 .home-feed-empty > span { display: grid; width: 54px; height: 54px; place-items: center; border-radius: 18px; color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, var(--surface)); }
 .home-feed-empty h3, .home-feed-empty p { margin: 0; }
@@ -1938,6 +1953,9 @@ body[data-page="quests"]:is([data-theme="dark"], .theme-active-dark) .quest-cata
     .home-feed-scope { flex: 0 0 auto; }
     .home-feed-scope a { min-height: 32px; padding: 7px 10px; font-size: .66rem; }
     .home-feed-post { padding-block: 20px 14px; }
+    .home-feed-actions { gap: 13px; }
+    .home-feed-actions .home-feed-copy-workout { min-width: 38px; padding-inline: 9px; }
+    .home-feed-actions .home-feed-copy-workout span { display: none; }
 }
 
 /* Final isolated classic skin. Kept last so legacy widget rules cannot overlap it. */

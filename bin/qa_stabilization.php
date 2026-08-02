@@ -608,6 +608,57 @@ try {
     $assert(comp_create($pdo, $firstSquadId, $secondSquadId, $firstUserId, 'wk_sessions', 7), 'competition creation accepts one valid selected team and opponent');
     $assert(!comp_create($pdo, $firstSquadId, $secondSquadId, $firstUserId, 'wk_sessions', 7), 'duplicate open competitions are rejected');
 
+    $privacySearchPdo = new PDO('sqlite::memory:');
+    $privacySearchPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $privacySearchPdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    initialize_database($privacySearchPdo, $config);
+    privacy_ensure_schema($privacySearchPdo);
+    $privacySearchSeedUsers = db_fetch_all($privacySearchPdo, 'SELECT * FROM users ORDER BY id LIMIT 2');
+    $privacySearchAdmin = (array) ($privacySearchSeedUsers[0] ?? []);
+    $privacySearchViewer = (array) ($privacySearchSeedUsers[1] ?? []);
+    $createPrivacySearchUser = static function (string $username, string $visibility) use ($privacySearchPdo): int {
+        create_user($privacySearchPdo, [
+            'username' => $username,
+            'password' => 'privacy-search-password',
+            'display_name' => 'QA Privacy Search ' . ucfirst($visibility),
+            'role' => 'user',
+            'step_goal' => 0,
+            'step_days_mask' => '0000000',
+            'workout_target' => 0,
+            'workout_days_mask' => '0000000',
+            'workout_strict' => 0,
+            'ideal_weight' => null,
+            'primary_goal_type' => 'none',
+            'primary_goal_value' => null,
+            'active' => 1,
+        ]);
+        $userId = (int) $privacySearchPdo->lastInsertId();
+        privacy_set_preferences($privacySearchPdo, $userId, $visibility, []);
+
+        return $userId;
+    };
+    $privacyPublicId = $createPrivacySearchUser('qa_search_public', 'public');
+    $privacyFriendsId = $createPrivacySearchUser('qa_search_friends', 'friends');
+    $privacyPrivateId = $createPrivacySearchUser('qa_search_private', 'private');
+    friends_send_request($privacySearchPdo, (int) ($privacySearchViewer['id'] ?? 0), $privacyFriendsId);
+    friends_respond($privacySearchPdo, $privacyFriendsId, (int) ($privacySearchViewer['id'] ?? 0), true);
+    $privacyVisibleResults = privacy_search_visible_users($privacySearchPdo, $privacySearchViewer, 'QA Privacy Search', 12);
+    $privacyVisibleIds = array_map(static fn(array $row): int => (int) ($row['id'] ?? 0), $privacyVisibleResults);
+    $assert(
+        in_array($privacyPublicId, $privacyVisibleIds, true)
+            && in_array($privacyFriendsId, $privacyVisibleIds, true)
+            && !in_array($privacyPrivateId, $privacyVisibleIds, true),
+        'global people search includes public and friend profiles without leaking private profiles'
+    );
+    $privacyAdminResults = privacy_search_visible_users($privacySearchPdo, $privacySearchAdmin, 'QA Privacy Search', 12);
+    $privacyAdminIds = array_map(static fn(array $row): int => (int) ($row['id'] ?? 0), $privacyAdminResults);
+    $assert(
+        in_array($privacyPublicId, $privacyAdminIds, true)
+            && in_array($privacyFriendsId, $privacyAdminIds, true)
+            && in_array($privacyPrivateId, $privacyAdminIds, true),
+        'administrators retain complete people search visibility'
+    );
+
     friends_ensure_schema($pdo);
     $searchBefore = friends_search_addable_users($pdo, $firstUserId, (string) $users[1]['username'], 10);
     $assert(count($searchBefore) === 1 && (int) $searchBefore[0]['id'] === $secondUserId, 'friend search returns an eligible suggestion');
@@ -634,6 +685,82 @@ try {
             && (int) ($importedCustomExercise['user_id'] ?? 0) === $firstUserId
             && (string) ($importedCustomExercise['display_name'] ?? '') === 'QA shared custom press',
         'a custom exercise from a shared workout is safely copied into my routine'
+    );
+
+    $friendRoutineId = wk_routine_create($pdo, $secondUserId, 'QA friend routine');
+    $friendRoutineExerciseId = wk_routine_add_exercise($pdo, $friendRoutineId, $sharedCustomExerciseId, [
+        'target_sets' => 4,
+        'target_reps' => 8,
+        'target_weight' => 22.5,
+    ]);
+    $copiedFriendRoutineId = wk_routine_copy_from_user($pdo, $friendRoutineId, $secondUserId, $firstUserId);
+    $copiedFriendRoutineExercises = wk_routine_exercises($pdo, $copiedFriendRoutineId);
+    $assert(
+        $copiedFriendRoutineId > 0
+            && count($copiedFriendRoutineExercises) === 1
+            && (int) ($copiedFriendRoutineExercises[0]['exercise_owner_id'] ?? 0) === $firstUserId
+            && (int) ($copiedFriendRoutineExercises[0]['target_sets'] ?? 0) === 4,
+        'copying a friend routine clones custom exercises and preserves its targets'
+    );
+    $assert(
+        wk_routine_copy_from_user($pdo, $friendRoutineId, $secondUserId, $firstUserId) === $copiedFriendRoutineId,
+        'copying the same friend routine twice reopens the existing import instead of duplicating it'
+    );
+    $partialTargetRoutineId = wk_routine_create($pdo, $firstUserId, 'QA partial friend import');
+    $assert(
+        wk_routine_copy_exercises_from_user($pdo, $friendRoutineId, $secondUserId, $partialTargetRoutineId, $firstUserId, [$friendRoutineExerciseId]) === 1
+            && wk_routine_copy_exercises_from_user($pdo, $friendRoutineId, $secondUserId, $partialTargetRoutineId, $firstUserId, [$friendRoutineExerciseId]) === 0,
+        'selected friend exercises can be imported once into an explicit destination routine'
+    );
+
+    db_execute(
+        $pdo,
+        'INSERT INTO workout_sessions (user_id,routine_id,title,status,started_at,ended_at,notes,created_at,updated_at)
+         VALUES (:user,NULL,"QA copied workout","completed",:started,:ended,"",:now,:now)',
+        [':user' => $secondUserId, ':started' => $today . ' 17:00:00', ':ended' => $today . ' 18:00:00', ':now' => now_iso()]
+    );
+    $copySourceSessionId = (int) $pdo->lastInsertId();
+    db_execute($pdo, 'INSERT INTO session_exercises (session_id,exercise_def_id,sort_order,unit,notes) VALUES (:session,:exercise,1,"kg","")', [':session' => $copySourceSessionId, ':exercise' => $sharedCustomExerciseId]);
+    $copySourceSessionExerciseId = (int) $pdo->lastInsertId();
+    db_execute($pdo, 'INSERT INTO workout_sets (session_exercise_id,set_index,reps,weight,completed,created_at) VALUES (:exercise,1,10,20,1,:now),(:exercise,2,8,22.5,1,:now)', [':exercise' => $copySourceSessionExerciseId, ':now' => now_iso()]);
+    $copiedSessionRoutineId = wk_routine_copy_from_session($pdo, $copySourceSessionId, $secondUserId, $firstUserId);
+    $copiedSessionExercises = wk_routine_exercises($pdo, $copiedSessionRoutineId);
+    $assert(
+        $copiedSessionRoutineId > 0
+            && (int) ($copiedSessionExercises[0]['target_sets'] ?? 0) === 2
+            && (int) ($copiedSessionExercises[0]['target_reps'] ?? 0) === 8
+            && (float) ($copiedSessionExercises[0]['target_weight'] ?? 0) === 22.5
+            && wk_routine_copy_from_session($pdo, $copySourceSessionId, $secondUserId, $firstUserId) === $copiedSessionRoutineId,
+        'copying a feed workout creates one reusable routine from completed sets without duplicate imports'
+    );
+
+    $qaMeal = nutrition_create_entry($pdo, $firstUserId, [
+        'entry_date' => $today,
+        'entry_time' => '12:30',
+        'meal_type' => 'lunch',
+        'calories' => '640',
+        'protein_g' => '38',
+        'notes' => 'QA editable meal',
+    ]);
+    $qaMealUpdated = nutrition_update_entry($pdo, $config, (int) ($qaMeal['id'] ?? 0), $firstUserId, [
+        'entry_date' => $today,
+        'entry_time' => '13:15',
+        'meal_type' => 'snack',
+        'calories' => '420',
+        'protein_g' => '24',
+        'notes' => 'QA updated meal',
+    ]);
+    $assert(
+        (string) ($qaMealUpdated['meal_type'] ?? '') === 'snack'
+            && (float) ($qaMealUpdated['calories'] ?? 0) === 420.0
+            && (string) ($qaMealUpdated['entry_time'] ?? '') === '13:15',
+        'a meal owner can edit the registered meal and its nutrition values'
+    );
+    $deletedQaMeal = nutrition_delete_entry($pdo, $config, (int) ($qaMeal['id'] ?? 0), $firstUserId);
+    $assert(
+        (int) ($deletedQaMeal['id'] ?? 0) === (int) ($qaMeal['id'] ?? 0)
+            && db_fetch_one($pdo, 'SELECT id FROM nutrition_entries WHERE id=:id', [':id' => (int) ($qaMeal['id'] ?? 0)]) === null,
+        'a meal owner can permanently delete their registered meal'
     );
 
     $socialNow = now_iso();
@@ -696,6 +823,57 @@ try {
             && str_contains($mealCommentDestination, '#feed-meal-' . $socialMealId),
         'a comment notification opens the exact activity with comments expanded'
     );
+    $mealTopComment = db_fetch_one(
+        $pdo,
+        'SELECT * FROM social_feed_comments WHERE entity_type="meal" AND entity_id=:id AND user_id=:user ORDER BY id DESC LIMIT 1',
+        [':id' => $socialMealId, ':user' => $firstUserId]
+    );
+    $mealOwnerReply = social_comment_create(
+        $pdo,
+        $secondUserId,
+        'meal',
+        $socialMealId,
+        'Gracias por comentar',
+        (int) ($mealTopComment['id'] ?? 0)
+    );
+    $replyNotification = db_fetch_one(
+        $pdo,
+        'SELECT * FROM user_notifications WHERE user_id=:user AND kind="social_reply" ORDER BY id DESC LIMIT 1',
+        [':user' => $firstUserId]
+    );
+    $assert(
+        (int) ($mealOwnerReply['parent_comment_id'] ?? 0) === (int) ($mealTopComment['id'] ?? 0)
+            && str_contains((string) ($replyNotification['message'] ?? ''), 'Gracias por comentar')
+            && str_contains(resolve_notification_destination($pdo, (array) $replyNotification), 'comments=meal-' . $socialMealId),
+        'a threaded reply stays one level deep, notifies the replied-to author and opens the activity'
+    );
+    $nestedReply = social_comment_create(
+        $pdo,
+        $firstUserId,
+        'meal',
+        $socialMealId,
+        'De nada',
+        (int) ($mealOwnerReply['id'] ?? 0)
+    );
+    $assert(
+        (int) ($nestedReply['parent_comment_id'] ?? 0) === (int) ($mealTopComment['id'] ?? 0),
+        'replying to a reply is normalized to the single supported thread level'
+    );
+    $editedReply = social_comment_update($pdo, $firstUserId, 'meal', $socialMealId, (int) ($nestedReply['id'] ?? 0), 'De nada, gran sesión');
+    $assert((string) ($editedReply['comment'] ?? '') === 'De nada, gran sesión', 'a comment author can edit their own reply');
+    $ownerCouldEditAnotherComment = true;
+    try {
+        social_comment_update($pdo, $secondUserId, 'meal', $socialMealId, (int) ($nestedReply['id'] ?? 0), 'Owner rewrite');
+    } catch (Throwable) {
+        $ownerCouldEditAnotherComment = false;
+    }
+    $assert(!$ownerCouldEditAnotherComment, 'a post owner cannot edit another author comment');
+    $deletedThread = social_comment_delete($pdo, $users[1], 'meal', $socialMealId, (int) ($mealTopComment['id'] ?? 0));
+    $assert(
+        (int) ($deletedThread['id'] ?? 0) === (int) ($mealTopComment['id'] ?? 0)
+            && social_comment_count($pdo, 'meal', $socialMealId) === 0,
+        'the post owner can delete another author top-level comment and its replies'
+    );
     $notificationCountBeforeSelfLike = (int) (db_fetch_one(
         $pdo,
         'SELECT COUNT(*) AS n FROM user_notifications WHERE user_id=:user AND kind="social_like"',
@@ -739,6 +917,48 @@ try {
         str_contains((string) ($photoCommentNotification['message'] ?? ''), 'Comentario desde el detalle de foto')
             && resolve_notification_destination($pdo, (array) $photoCommentNotification) === '/?page=photo&photo_id=' . $socialPhotoId,
         'a comment from the photo detail notifies its owner and links back to it'
+    );
+    $photoTopComment = db_fetch_one($pdo, 'SELECT * FROM photo_comments WHERE photo_id=:photo ORDER BY id DESC LIMIT 1', [':photo' => $socialPhotoId]);
+    $photoReply = social_comment_create($pdo, $secondUserId, 'photo', $socialPhotoId, 'Respuesta en la foto', (int) ($photoTopComment['id'] ?? 0));
+    $photoReplyNotification = db_fetch_one(
+        $pdo,
+        'SELECT * FROM user_notifications WHERE user_id=:user AND kind="social_reply" ORDER BY id DESC LIMIT 1',
+        [':user' => $firstUserId]
+    );
+    $assert(
+        (int) ($photoReply['parent_comment_id'] ?? 0) === (int) ($photoTopComment['id'] ?? 0)
+            && str_contains(resolve_notification_destination($pdo, (array) $photoReplyNotification), '#comment-photo-' . (int) ($photoReply['id'] ?? 0)),
+        'photo replies use the same thread model and notification deep link as the feed'
+    );
+    $photoSocialNotificationsBeforeDelete = (int) (db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS n FROM user_notifications
+         WHERE kind IN ("social_like", "social_comment", "social_reply")
+           AND json_extract(CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END, "$.entity_type") = "photo"
+           AND CAST(json_extract(CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END, "$.entity_id") AS INTEGER) = :photo',
+        [':photo' => $socialPhotoId]
+    )['n'] ?? 0);
+    $deletedSocialPhoto = delete_photo_entry($pdo, $config, $socialPhotoId);
+    $photoLikesAfterDelete = (int) (db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS n FROM social_feed_likes WHERE entity_type="photo" AND entity_id=:photo',
+        [':photo' => $socialPhotoId]
+    )['n'] ?? 0);
+    $photoSocialNotificationsAfterDelete = (int) (db_fetch_one(
+        $pdo,
+        'SELECT COUNT(*) AS n FROM user_notifications
+         WHERE kind IN ("social_like", "social_comment", "social_reply")
+           AND json_extract(CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END, "$.entity_type") = "photo"
+           AND CAST(json_extract(CASE WHEN json_valid(payload_json) THEN payload_json ELSE "{}" END, "$.entity_id") AS INTEGER) = :photo',
+        [':photo' => $socialPhotoId]
+    )['n'] ?? 0);
+    $assert(
+        (int) ($deletedSocialPhoto['id'] ?? 0) === $socialPhotoId
+            && $photoSocialNotificationsBeforeDelete >= 3
+            && $photoLikesAfterDelete === 0
+            && $photoSocialNotificationsAfterDelete === 0
+            && db_fetch_one($pdo, 'SELECT id FROM photo_comments WHERE photo_id=:photo', [':photo' => $socialPhotoId]) === null,
+        'deleting a photo clears its likes, threaded comments and social notifications'
     );
     $workoutDestination = resolve_notification_destination($pdo, [
         'kind' => 'social_comment',

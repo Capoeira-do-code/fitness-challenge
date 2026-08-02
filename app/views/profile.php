@@ -33,8 +33,8 @@ $canViewProfilePerformance = $isOwnProfile || (!empty($profileDataAccess['steps'
 
 $activeSection = (string) ($_GET['section'] ?? '');
 $allowedSections = $isOwnProfile
-    ? ['goals', 'training', 'social', 'achievements', 'config', 'activity']
-    : array_values(array_filter(['goals', 'training', 'social', 'achievements'], static fn(string $section): bool => $section !== 'training' || $canViewProfileWorkouts));
+    ? ['goals', 'achievements', 'config', 'activity']
+    : ['goals', 'achievements'];
 if (!in_array($activeSection, $allowedSections, true)) {
     $activeSection = '';
 }
@@ -319,7 +319,6 @@ $goalTypeOptions = [
     ['value' => 'steps', 'label' => (string) t('metric.steps')],
     ['value' => 'km', 'label' => (string) t('metric.distance_km')],
     ['value' => 'workouts', 'label' => (string) t('metric.workouts')],
-    ['value' => 'weight', 'label' => (string) t('metric.weight')],
 ];
 foreach ($habitsList as $habit) {
     $goalTypeOptions[] = [
@@ -913,8 +912,9 @@ $profileSetupMoreRows = array_slice($profileSetupRows, 4);
         <div class="profile-mobile-root">
             <nav class="hierarchy-nav-list mobile-hub-section-grid" aria-label="<?= e(t('nav.profile')) ?>">
                 <a class="hierarchy-nav-row" data-tone="orange" href="<?= e($profileUrl('goals')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('target') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('profile.mobile_goals')) ?></strong><small><?= e(t('profile.mobile_goals_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count($profileActiveGoalCards) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
-                <a class="hierarchy-nav-row" data-tone="blue" href="<?= e($profileUrl('training')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('nav.training_short')) ?></strong><small><?= e(t('profile.mobile_training_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= e(t('workouts.rank_' . $profileTrainingRankKey)) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
-                <a class="hierarchy-nav-row" data-tone="green" href="<?= e($profileUrl('social')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('users') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('profile.mobile_social')) ?></strong><small><?= e(t('profile.mobile_social_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count($profileFriends) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <?php if ($isOwnProfile && $canViewProfileWorkouts): ?>
+                    <a class="hierarchy-nav-row profile-rank-shortcut" data-tone="blue" href="/?page=workouts&amp;view=ranks"><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('trophy') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('workouts.rank_' . $profileTrainingRankKey)) ?></strong><small><?= e(t('profile.rank_shortcut_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= e(number_format((float) ($profileTrainingRank['score'] ?? 0), 1, '.', '')) ?> pt</span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
+                <?php endif; ?>
                 <a class="hierarchy-nav-row" data-tone="amber" href="<?= e($profileUrl('achievements')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('medal') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('profile.achievements')) ?></strong><small><?= e(t('profile.mobile_achievements_hint')) ?></small></span><span class="hierarchy-nav-meta"><?= count((array) ($userAchievements ?? [])) ?></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>
                 <?php if ($isOwnProfile): ?>
                     <a class="hierarchy-nav-row" data-tone="violet" href="<?= e($profileUrl('activity')) ?>" data-spa-link><span class="hierarchy-nav-icon" aria-hidden="true"><?= activity_icon_svg('spark') ?></span><span class="hierarchy-nav-copy"><strong><?= e(t('profile.mobile_activity')) ?></strong><small><?= e(t('profile.mobile_activity_hint')) ?></small></span><span class="hierarchy-nav-chevron" aria-hidden="true">&rsaquo;</span></a>

@@ -92,15 +92,29 @@ const profileState = (page) => page.evaluate(() => {
         await login(page);
         await page.goto(`${BASE}/?page=profile`, { waitUntil: 'networkidle' });
         const rootState = await profileState(page);
-        check('Perfil raíz muestra seis accesos coherentes', rootState.rows.length === 6 && !rootState.overflow,
+        check('Perfil raíz muestra cinco accesos coherentes', rootState.rows.length === 5 && !rootState.overflow,
             JSON.stringify(rootState.rows));
+        const rootDestinations = await page.evaluate(() => [...document.querySelectorAll('.profile-mobile-root .hierarchy-nav-row')]
+            .map((link) => link.getAttribute('href') || ''));
+        check('Perfil sustituye Training por el rango y elimina Social', rootDestinations.some((href) => href.includes('view=ranks'))
+            && !rootDestinations.some((href) => href.includes('section=training') || href.includes('section=social')),
+        JSON.stringify(rootDestinations));
         check('Los accesos usan una iconografía SVG uniforme', rootState.rows.every((row) => row.hasSvg
             && row.iconWidth === rootState.rows[0].iconWidth && row.iconHeight === rootState.rows[0].iconHeight));
         check('Los accesos comparten superficie y radio', rootState.rows.every((row) => row.radius === rootState.rows[0].radius
             && row.background === rootState.rows[0].background));
         await page.screenshot({ path: path.join(REPORT_DIR, 'ui-profile-hub-uniform-mobile.png'), fullPage: true });
 
-        const sections = ['goals', 'training', 'social', 'achievements', 'activity'];
+        await page.locator('.profile-mobile-root a[href*="view=ranks"]').click();
+        await page.waitForURL((url) => url.searchParams.get('page') === 'workouts' && url.searchParams.get('view') === 'ranks');
+        check('El rango abre la página dedicada de Ranks', page.url().includes('view=ranks'), page.url());
+        await page.goto(`${BASE}/?page=profile&section=training`, { waitUntil: 'networkidle' });
+        check('La URL heredada de Training redirige a Ranks', page.url().includes('page=workouts')
+            && page.url().includes('view=ranks'), page.url());
+        await page.goto(`${BASE}/?page=profile&section=social`, { waitUntil: 'networkidle' });
+        check('La URL heredada de Social redirige al hub Social', page.url().includes('page=social'), page.url());
+
+        const sections = ['goals', 'achievements', 'activity'];
         for (const section of sections) {
             await page.goto(`${BASE}/?page=profile`, { waitUntil: 'networkidle' });
             await page.evaluate(() => { window.__qaProfileMain = document.querySelector('main.container'); });
@@ -194,7 +208,7 @@ const profileState = (page) => page.evaluate(() => {
                 };
             });
             check(`Perfil raÃ­z ${width}px sin recortes y con objetivos tÃ¡ctiles`, !hubLayout.overflow
-                && hubLayout.count === 6 && hubLayout.targetSizes.every((size) => size.width >= 44 && size.height >= 44),
+                && hubLayout.count === 5 && hubLayout.targetSizes.every((size) => size.width >= 44 && size.height >= 44),
             JSON.stringify(hubLayout));
 
             await page.goto(`${BASE}/?page=profile&section=goals`, { waitUntil: 'networkidle' });

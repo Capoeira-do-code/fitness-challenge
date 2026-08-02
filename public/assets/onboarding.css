@@ -53,6 +53,8 @@ body[data-page="onboarding"] main.container > .flash {
 .onboarding-fields label { display: grid; min-width: 0; gap: 6px; color: var(--ink); font-size: 0.72rem; font-weight: 850; }
 .registration-grid label > small,
 .onboarding-fields label > small { color: var(--muted); font-size: 0.61rem; font-weight: 650; line-height: 1.35; }
+.registration-grid .password-caps-warning { color: #b45309; font-weight: 850; }
+.registration-grid .password-caps-warning[hidden] { display: none !important; }
 .registration-locale { grid-column: 1 / -1; }
 .registration-submit { min-height: 48px; }
 .registration-next-hint { margin: -5px 0 0; color: var(--muted); font-size: 0.69rem; text-align: center; }
@@ -145,6 +147,7 @@ body[data-page="onboarding"] main.container > .flash {
 .onboarding-actions .btn { width: 100%; min-height: 44px; padding-block: 8px; font-size: 0.72rem; }
 
 .onboarding-media-grid { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 12px; }
+.onboarding-media-editor { display: grid; min-width: 0; align-content: start; gap: 9px; }
 .onboarding-media-picker { display: grid; min-width: 0; gap: 10px; padding: 12px; border: 1px dashed color-mix(in srgb, var(--primary) 38%, var(--line)); border-radius: 18px; background: color-mix(in srgb, var(--primary) 4%, var(--surface)); cursor: pointer; }
 .onboarding-media-picker > span:last-of-type { display: grid; gap: 3px; }
 .onboarding-media-picker small { color: var(--muted); font-size: 0.63rem; }
@@ -154,6 +157,12 @@ body[data-page="onboarding"] main.container > .flash {
 .onboarding-avatar-picker .onboarding-media-preview b { font-size: 1.5rem; }
 .onboarding-cover-picker .onboarding-media-preview { aspect-ratio: 3 / 1; }
 .onboarding-cover-picker .onboarding-media-preview svg { width: 30px; height: 30px; }
+.onboarding-image-cropper { padding: 10px; border-radius: 16px; background: var(--surface-2); }
+.onboarding-image-cropper canvas { width: 100%; max-width: none; }
+.onboarding-image-cropper.is-avatar canvas { max-width: 280px; justify-self: center; border-radius: 50%; }
+.onboarding-image-cropper.is-cover canvas { aspect-ratio: 3 / 1; }
+.onboarding-image-cropper label { display: grid; gap: 5px; color: var(--muted); font-size: .61rem; font-weight: 800; }
+.onboarding-image-cropper > small { color: var(--muted); font-size: .59rem; line-height: 1.35; }
 .onboarding-profile-message { display: grid; gap: 6px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); font-size: 0.69rem; font-weight: 850; }
 .onboarding-profile-message input { width: 100%; min-height: 44px; }
 .onboarding-profile-message small { color: var(--muted); font-size: 0.59rem; font-weight: 650; line-height: 1.35; }

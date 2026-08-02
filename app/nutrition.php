@@ -82,6 +82,117 @@ function nutrition_create_entry(PDO $pdo, int $userId, array $input, ?string $ph
     ]) ?? [];
 }
 
+/** Update one meal owned by $userId and keep its gallery photo in sync. */
+function nutrition_update_entry(PDO $pdo, array $config, int $entryId, int $userId, array $input): ?array
+{
+    $entry = db_fetch_one(
+        $pdo,
+        'SELECT * FROM nutrition_entries WHERE id=:id AND user_id=:user LIMIT 1',
+        [':id' => $entryId, ':user' => $userId]
+    );
+    if ($entry === null) {
+        return null;
+    }
+    $date = to_date((string) ($input['entry_date'] ?? $entry['entry_date'] ?? null));
+    $mealType = in_array(($input['meal_type'] ?? ''), ['breakfast', 'lunch', 'dinner', 'snack', 'other'], true)
+        ? (string) $input['meal_type'] : 'other';
+    $numeric = static fn(string $key): ?float => ($input[$key] ?? '') !== '' ? max(0.0, (float) $input[$key]) : null;
+    $calories = $numeric('calories') ?? 0.0;
+    $notes = trim((string) ($input['notes'] ?? ''));
+    if ($calories <= 0 && $notes === '' && trim((string) ($entry['photo_path'] ?? '')) === '') {
+        throw new InvalidArgumentException(t('metric.invalid'));
+    }
+    $time = normalize_log_time($input['entry_time'] ?? '', (string) ($entry['entry_time'] ?? ''));
+    $nutrition = [
+        'calories' => $calories,
+        'protein_g' => $numeric('protein_g'),
+        'carbs_g' => $numeric('carbs_g'),
+        'fat_g' => $numeric('fat_g'),
+        'fiber_g' => $numeric('fiber_g'),
+        'sugar_g' => $numeric('sugar_g'),
+        'sodium_mg' => $numeric('sodium_mg'),
+    ];
+
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        $photoId = (int) ($entry['photo_entry_id'] ?? 0);
+        if ($photoId > 0) {
+            $updatedPhoto = update_photo_entry($pdo, $config, $photoId, $date, $mealType, $notes, $nutrition);
+            if ($updatedPhoto === null) {
+                throw new RuntimeException(t('flash.not_found'));
+            }
+        }
+        // Write the canonical meal row after the optional gallery sync. This also
+        // preserves meal-only types such as "snack", which photo categories do not expose.
+        db_execute(
+            $pdo,
+            'UPDATE nutrition_entries SET entry_date=:date, entry_time=:time, meal_type=:type, notes=:notes,
+                calories=:calories, protein_g=:protein, carbs_g=:carbs, fat_g=:fat, fiber_g=:fiber,
+                sugar_g=:sugar, sodium_mg=:sodium, version=version+1, updated_at=:now
+             WHERE id=:id AND user_id=:user',
+            [
+                ':date' => $date, ':time' => $time, ':type' => $mealType, ':notes' => $notes,
+                ':calories' => $nutrition['calories'], ':protein' => $nutrition['protein_g'],
+                ':carbs' => $nutrition['carbs_g'], ':fat' => $nutrition['fat_g'], ':fiber' => $nutrition['fiber_g'],
+                ':sugar' => $nutrition['sugar_g'], ':sodium' => $nutrition['sodium_mg'], ':now' => now_iso(),
+                ':id' => $entryId, ':user' => $userId,
+            ]
+        );
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+
+        return db_fetch_one($pdo, 'SELECT * FROM nutrition_entries WHERE id=:id AND user_id=:user', [':id' => $entryId, ':user' => $userId]);
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
+/** Delete one meal and its linked gallery post/media when present. */
+function nutrition_delete_entry(PDO $pdo, array $config, int $entryId, int $userId): ?array
+{
+    $entry = db_fetch_one(
+        $pdo,
+        'SELECT * FROM nutrition_entries WHERE id=:id AND user_id=:user LIMIT 1',
+        [':id' => $entryId, ':user' => $userId]
+    );
+    if ($entry === null) {
+        return null;
+    }
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        $photoId = (int) ($entry['photo_entry_id'] ?? 0);
+        $mediaPath = trim((string) ($entry['photo_path'] ?? ''));
+        if ($photoId > 0) {
+            $deletedPhoto = delete_photo_entry($pdo, $config, $photoId, false);
+            $mediaPath = trim((string) ($deletedPhoto['file_path'] ?? $mediaPath));
+        }
+        db_execute($pdo, 'DELETE FROM social_feed_likes WHERE entity_type="meal" AND entity_id=:id', [':id' => $entryId]);
+        db_execute($pdo, 'DELETE FROM social_feed_comments WHERE entity_type="meal" AND entity_id=:id', [':id' => $entryId]);
+        db_execute($pdo, 'DELETE FROM nutrition_entries WHERE id=:id AND user_id=:user', [':id' => $entryId, ':user' => $userId]);
+        if ($ownsTransaction) {
+            $pdo->commit();
+            remove_media_file_if_unreferenced($pdo, $config, $mediaPath, 'delete_nutrition_entry');
+        }
+
+        return $entry;
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
 function nutrition_daily_summary(PDO $pdo, array $user, string $from, string $to): array
 {
     $mealRows = db_fetch_all(

@@ -177,84 +177,22 @@ foreach ($nutritionFields as $field => $meta) {
             </div>
         </div>
 
-        <article class="photo-comments stack">
+        <article class="photo-comments stack" data-social-comment-region>
             <div class="panel-head photo-comments-head">
                 <h2><?= e(t('photo.comments')) ?></h2>
-                <?php if ($commentCount > 0): ?>
-                    <span class="badge"><?= $commentCount ?></span>
-                <?php endif; ?>
+                <span class="badge<?= $commentCount > 0 ? '' : ' is-empty' ?>" data-social-comment-count><?= $commentCount ?></span>
             </div>
 
-            <form method="post" action="/?page=photo&photo_id=<?= $photoId ?>" class="stack photo-comment-form">
+            <form method="post" action="/?page=photo&photo_id=<?= $photoId ?>" class="social-comment-composer photo-comment-form" data-social-comment-form data-allow-multi-submit>
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                <input type="hidden" name="action" value="add_photo_comment">
-                <input type="hidden" name="photo_id" value="<?= $photoId ?>">
-                <label>
-                    <?= e(t('photo.add_comment')) ?>
-                    <input type="text" name="comment" maxlength="1200" placeholder="<?= e(t('photo.comment_placeholder')) ?>" required>
-                </label>
-                <div class="inline-actions photo-comment-actions">
-                    <button type="submit" class="btn btn-primary"><?= e(t('photo.comment_submit')) ?></button>
-                </div>
+                <input type="hidden" name="action" value="social_feed_comment">
+                <input type="hidden" name="entity_type" value="photo">
+                <input type="hidden" name="entity_id" value="<?= $photoId ?>">
+                <label><span class="sr-only"><?= e(t('photo.add_comment')) ?></span><input type="text" name="comment" maxlength="1200" placeholder="<?= e(t('photo.comment_placeholder')) ?>" required></label>
+                <button type="submit" class="btn btn-primary" aria-label="<?= e(t('photo.comment_submit')) ?>"><?= activity_icon_svg('send') ?><span><?= e(t('photo.comment_submit')) ?></span></button>
             </form>
 
-            <?php if ($comments === []): ?>
-                <div class="photo-comments-empty">
-                    <strong><?= e(t('photo.comments_empty')) ?></strong>
-                    <span><?= e(t('photo.comments_empty_hint')) ?></span>
-                </div>
-            <?php else: ?>
-                <div class="photo-comment-list">
-                    <?php foreach ($comments as $comment): ?>
-                        <?php
-                        $commentAuthor = (string) ($comment['display_name'] ?? t('common.user'));
-                        $commentCanDelete = is_admin($currentUser)
-                            || (int) ($comment['user_id'] ?? 0) === (int) ($currentUser['id'] ?? 0)
-                            || $photoOwnerId === (int) ($currentUser['id'] ?? 0);
-                        $commentAvatarInput = [
-                            'display_name' => $commentAuthor,
-                            'avatar_path' => (string) ($comment['avatar_path'] ?? ''),
-                            'updated_at' => (string) ($comment['user_updated_at'] ?? ''),
-                        ];
-                        $commentAvatarUrl = avatar_url($commentAvatarInput);
-                        ?>
-                        <article class="photo-comment-item">
-                            <div class="photo-comment-head">
-                                <a class="photo-comment-author user-profile-link" href="/?page=profile&amp;user_id=<?= (int) ($comment['user_id'] ?? 0) ?>">
-                                    <?php if ($commentAvatarUrl !== ''): ?>
-                                        <img class="profile-avatar" src="<?= e($commentAvatarUrl) ?>" alt="<?= e($commentAuthor) ?>" loading="lazy" decoding="async">
-                                    <?php else: ?>
-                                        <span class="profile-avatar initials"><?= e(initials_for($commentAuthor)) ?></span>
-                                    <?php endif; ?>
-                                    <div>
-                                        <strong><?= e($commentAuthor) ?></strong>
-                                        <span><?= e($formatDateTime((string) ($comment['created_at'] ?? ''))) ?></span>
-                                    </div>
-                                </a>
-                                <?php if ($commentCanDelete): ?>
-                                    <?php $commentDeleteFormId = 'photo-comment-delete-' . (int) ($comment['id'] ?? 0); ?>
-                                    <?= render_kebab_menu([[
-                                        'label' => t('photo.delete_comment'),
-                                        'danger' => true,
-                                        'type' => 'submit',
-                                        'attrs' => [
-                                            'form' => $commentDeleteFormId,
-                                            'data-confirm-action' => t('photo.delete_comment') . '?',
-                                        ],
-                                    ]], ['label' => t('common.actions')]) ?>
-                                    <form id="<?= e($commentDeleteFormId) ?>" method="post" action="/?page=photo&photo_id=<?= $photoId ?>" hidden>
-                                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                        <input type="hidden" name="action" value="delete_photo_comment">
-                                        <input type="hidden" name="photo_id" value="<?= $photoId ?>">
-                                        <input type="hidden" name="comment_id" value="<?= (int) ($comment['id'] ?? 0) ?>">
-                                    </form>
-                                <?php endif; ?>
-                            </div>
-                            <p><?= nl2br(e((string) ($comment['comment'] ?? ''))) ?></p>
-                        </article>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
+            <?= social_comment_thread_html($comments, $currentUser, $photoOwnerId, '/?page=photo&photo_id=' . $photoId, 'photo', $photoId) ?>
         </article>
     </article>
 </section>

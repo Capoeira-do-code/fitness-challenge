@@ -3022,6 +3022,22 @@ document.addEventListener('click', (event) => {
         forms.forEach((form) => bindForm(form));
     };
 
+    const initCapsLockWarnings = () => {
+        document.querySelectorAll('[data-caps-lock-field]').forEach((field) => {
+            if (!(field instanceof HTMLInputElement) || field.dataset.capsLockReady === '1') return;
+            const label = field.closest('label');
+            const warning = label?.querySelector('[data-caps-lock-warning]');
+            if (!(warning instanceof HTMLElement)) return;
+            const sync = (event) => {
+                warning.hidden = !(typeof event.getModifierState === 'function' && event.getModifierState('CapsLock'));
+            };
+            field.addEventListener('keydown', sync);
+            field.addEventListener('keyup', sync);
+            field.addEventListener('blur', () => { warning.hidden = true; });
+            field.dataset.capsLockReady = '1';
+        });
+    };
+
     const initImageCroppers = () => {
         const forms = document.querySelectorAll('[data-image-cropper-form]');
         if (forms.length === 0) {
@@ -3029,9 +3045,11 @@ document.addEventListener('click', (event) => {
         }
 
         forms.forEach((form) => {
-            if (!(form instanceof HTMLFormElement) || form.dataset.cropReady === '1') {
+            if (!(form instanceof HTMLElement) || form.dataset.cropReady === '1') {
                 return;
             }
+
+            const submitForm = form instanceof HTMLFormElement ? form : form.closest('form');
 
             const fileInputs = Array.from(form.querySelectorAll('[data-image-crop-input]'))
                 .filter((input) => input instanceof HTMLInputElement);
@@ -3219,9 +3237,13 @@ document.addEventListener('click', (event) => {
             canvas.addEventListener('pointerup', stopDrag);
             canvas.addEventListener('pointercancel', stopDrag);
 
-            form.addEventListener('submit', () => {
+            submitForm?.addEventListener('submit', () => {
                 if (state.img instanceof Image) {
                     outputInput.value = canvas.toDataURL('image/jpeg', 0.92);
+                    // The cropped data URL is the canonical upload. Keeping the
+                    // original File on the form would send both payloads and can
+                    // exceed PHP's request limit with large onboarding photos.
+                    fileInputs.forEach((fileInput) => { fileInput.value = ''; });
                 } else {
                     outputInput.value = '';
                 }
@@ -6652,6 +6674,7 @@ document.addEventListener('click', (event) => {
         safeInit(initGalleryImageStates);
         safeInit(initGalleryRecentInfinite);
         safeInit(initCompactDisclosures);
+        safeInit(initCapsLockWarnings);
         safeInit(initImageCroppers);
         safeInit(initProfilePdfExport);
         safeInit(initTeamLayoutEditor);
@@ -6764,27 +6787,104 @@ document.addEventListener('click', (event) => {
                 }).catch(function () { form.classList.add('has-error'); });
             });
         });
-        scope.querySelectorAll('[data-feed-comment-form]').forEach(function (form) {
-            if (form.dataset.feedCommentFormReady === '1') return;
-            form.dataset.feedCommentFormReady = '1';
+        scope.querySelectorAll('[data-feed-copy-workout-form]').forEach(function (form) {
+            if (form.dataset.feedCopyWorkoutReady === '1') return;
+            form.dataset.feedCopyWorkoutReady = '1';
             form.addEventListener('submit', function (event) {
                 event.preventDefault();
+                var prompt = String(form.dataset.confirm || '').trim();
+                if (prompt !== '' && !window.confirm(prompt)) return;
+                var button = form.querySelector('.home-feed-copy-workout');
+                form.classList.add('is-busy');
                 submitFeedForm(form).then(function (data) {
-                    var comments = form.closest('[data-feed-comments]');
-                    var post = form.closest('.home-feed-post');
-                    var count = post ? post.querySelector('[data-feed-comment-count]') : null;
-                    if (comments && data.comment) {
-                        var line = document.createElement('p');
-                        var author = document.createElement('strong');
-                        author.textContent = data.author || '';
-                        line.appendChild(author);
-                        line.appendChild(document.createTextNode(' ' + data.comment));
-                        comments.insertBefore(line, form);
+                    if (!data.routine_url) throw new Error(data.message || 'Workout import failed');
+                    var link = document.createElement('a');
+                    link.className = 'home-feed-copy-workout is-copied';
+                    link.href = String(data.routine_url);
+                    link.setAttribute('aria-label', button?.dataset.labelDone || 'Copied');
+                    if (button instanceof HTMLElement) {
+                        link.innerHTML = button.innerHTML;
+                        var label = link.querySelector('span');
+                        if (label instanceof HTMLElement) label.textContent = button.dataset.labelDone || 'Copied';
+                    } else {
+                        link.textContent = 'Copied';
                     }
-                    if (count) count.textContent = String(data.comment_count || 0);
+                    form.replaceWith(link);
+                }).catch(function (error) {
+                    form.classList.add('has-error');
+                    form.setAttribute('title', error && error.message ? error.message : 'Workout import failed');
+                }).finally(function () {
+                    form.classList.remove('is-busy');
+                });
+            });
+        });
+        scope.querySelectorAll('[data-social-comment-reply-toggle], [data-social-comment-edit-toggle]').forEach(function (button) {
+            if (button.dataset.socialCommentToggleReady === '1') return;
+            button.dataset.socialCommentToggleReady = '1';
+            button.addEventListener('click', function () {
+                var comment = button.closest('[data-social-comment]');
+                var targetId = button.getAttribute('aria-controls') || '';
+                var target = targetId !== '' ? document.getElementById(targetId) : null;
+                if (!(comment instanceof HTMLElement) || !(target instanceof HTMLFormElement)) return;
+                comment.querySelectorAll('.social-comment-composer.is-inline').forEach(function (form) {
+                    if (form !== target) form.hidden = true;
+                });
+                var opening = target.hidden;
+                target.hidden = !opening;
+                comment.querySelectorAll('[data-social-comment-reply-toggle], [data-social-comment-edit-toggle]').forEach(function (toggle) {
+                    toggle.setAttribute('aria-expanded', toggle === button && opening ? 'true' : 'false');
+                });
+                if (opening) target.querySelector('textarea[name="comment"]')?.focus({ preventScroll: true });
+            });
+        });
+        scope.querySelectorAll('[data-social-comment-cancel]').forEach(function (button) {
+            if (button.dataset.socialCommentCancelReady === '1') return;
+            button.dataset.socialCommentCancelReady = '1';
+            button.addEventListener('click', function () {
+                var form = button.closest('.social-comment-composer.is-inline');
+                var comment = button.closest('[data-social-comment]');
+                if (form instanceof HTMLFormElement) {
                     form.reset();
-                    form.querySelector('input[name="comment"]')?.focus({ preventScroll: true });
-                }).catch(function () { form.classList.add('has-error'); });
+                    form.hidden = true;
+                }
+                comment?.querySelectorAll('[aria-expanded="true"]').forEach(function (toggle) {
+                    toggle.setAttribute('aria-expanded', 'false');
+                });
+            });
+        });
+        scope.querySelectorAll('[data-social-comment-form], [data-feed-comment-form]').forEach(function (form) {
+            if (form.dataset.socialCommentFormReady === '1') return;
+            form.dataset.socialCommentFormReady = '1';
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+                if (form.hasAttribute('data-social-comment-delete')) {
+                    var prompt = form.getAttribute('data-confirm-message') || 'Delete this comment?';
+                    if (!window.confirm(prompt)) return;
+                }
+                submitFeedForm(form).then(function (data) {
+                    var region = form.closest('[data-social-comment-region]') || form.closest('[data-feed-comments]');
+                    var post = form.closest('.home-feed-post');
+                    var countScope = post || region;
+                    if (region instanceof HTMLElement && data.comments_html) {
+                        var currentList = region.querySelector('[data-social-comment-list]');
+                        var template = document.createElement('template');
+                        template.innerHTML = String(data.comments_html).trim();
+                        var nextList = template.content.firstElementChild;
+                        if (currentList && nextList) currentList.replaceWith(nextList);
+                    }
+                    if (countScope) countScope.querySelectorAll('[data-feed-comment-count], [data-social-comment-count]').forEach(function (count) {
+                        count.textContent = String(data.comment_count || 0);
+                        count.classList.toggle('is-empty', Number(data.comment_count || 0) < 1);
+                    });
+                    if (!form.hasAttribute('data-social-comment-delete')) form.reset();
+                    if (region instanceof HTMLElement) initFeedComments(region);
+                    if (form.isConnected && !form.classList.contains('is-inline')) {
+                        form.querySelector('input[name="comment"], textarea[name="comment"]')?.focus({ preventScroll: true });
+                    }
+                }).catch(function (error) {
+                    form.classList.add('has-error');
+                    form.setAttribute('title', error && error.message ? error.message : 'Comment update failed');
+                });
             });
         });
         scope.querySelectorAll('[data-feed-share]').forEach(function (button) {

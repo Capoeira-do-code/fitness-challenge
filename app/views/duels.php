@@ -92,8 +92,31 @@ $renderDuelDetails = static function (array $duel): void {
             <h1><?= e(t('duels.title')) ?></h1>
             <p class="muted"><?= e(t('duels.subtitle')) ?></p>
         </div>
-        <a class="btn btn-ghost small" href="/?page=friends"><?= e(t('nav.friends')) ?></a>
+        <div class="duels-hero-actions">
+            <a class="btn btn-primary small" href="#new-duel"><span aria-hidden="true"><?= activity_icon_svg('plus') ?></span><?= e(t('duels.create_title')) ?></a>
+            <a class="btn btn-ghost small" href="/?page=friends"><?= e(t('nav.friends')) ?></a>
+        </div>
     </div>
+
+    <nav class="duels-overview" aria-label="<?= e(t('duels.title')) ?>">
+        <?php foreach ([
+            ['items' => $active, 'id' => 'duels-active', 'label' => t('duels.active'), 'icon' => 'spark', 'tone' => 'active'],
+            ['items' => $incoming, 'id' => 'duels-incoming', 'label' => t('duels.incoming'), 'icon' => 'bell', 'tone' => 'incoming'],
+            ['items' => $outgoing, 'id' => 'duels-sent', 'label' => t('duels.sent'), 'icon' => 'link', 'tone' => 'sent'],
+            ['items' => $done, 'id' => 'duels-history', 'label' => t('duels.history'), 'icon' => 'trophy', 'tone' => 'history'],
+        ] as $overviewItem): ?>
+            <?php $overviewCount = count((array) $overviewItem['items']); ?>
+            <?php if ($overviewCount > 0): ?>
+                <a href="#<?= e((string) $overviewItem['id']) ?>" data-tone="<?= e((string) $overviewItem['tone']) ?>">
+            <?php else: ?>
+                <span class="is-empty" data-tone="<?= e((string) $overviewItem['tone']) ?>">
+            <?php endif; ?>
+                    <i aria-hidden="true"><?= activity_icon_svg((string) $overviewItem['icon']) ?></i>
+                    <span><strong><?= $overviewCount ?></strong><small><?= e((string) $overviewItem['label']) ?></small></span>
+                    <?php if ($overviewCount > 0): ?><b aria-hidden="true">›</b><?php endif; ?>
+            <?= $overviewCount > 0 ? '</a>' : '</span>' ?>
+        <?php endforeach; ?>
+    </nav>
 
     <div class="duels-columns">
     <article class="panel duel-create-panel duels-create-panel" id="new-duel">
@@ -146,7 +169,7 @@ $renderDuelDetails = static function (array $duel): void {
     </article>
 
     <?php if ($active !== []): ?>
-    <article class="panel duels-col-main duels-active-panel">
+    <article class="panel duels-col-main duels-active-panel" id="duels-active">
         <div class="panel-head"><h2><?= e(t('duels.active')) ?></h2><span class="badge"><?= count($active) ?></span></div>
         <div class="stack-md">
             <?php foreach ($active as $vm): $d = (array) $vm['duel']; ?>
@@ -195,7 +218,7 @@ $renderDuelDetails = static function (array $duel): void {
     <?php endif; ?>
 
     <?php if ($incoming !== []): ?>
-        <article class="panel duels-col-main duels-incoming-panel">
+        <article class="panel duels-col-main duels-incoming-panel" id="duels-incoming">
             <div class="panel-head"><h2><?= e(t('duels.incoming')) ?></h2><span class="badge"><?= count($incoming) ?></span></div>
             <div class="stack-md">
                 <?php foreach ($incoming as $vm): $d = (array) $vm['duel']; ?>
@@ -224,7 +247,7 @@ $renderDuelDetails = static function (array $duel): void {
     <?php endif; ?>
 
     <?php if ($outgoing !== []): ?>
-        <article class="panel duels-col-main duels-outgoing-panel">
+        <article class="panel duels-col-main duels-outgoing-panel" id="duels-sent">
             <div class="panel-head"><h2><?= e(t('duels.sent')) ?></h2><span class="badge"><?= count($outgoing) ?></span></div>
             <div class="stack-md">
                 <?php foreach ($outgoing as $vm): $d = (array) $vm['duel']; ?>
@@ -247,7 +270,7 @@ $renderDuelDetails = static function (array $duel): void {
     </div>
 
     <?php if ($done !== []): ?>
-        <article class="panel">
+        <article class="panel duels-history-panel" id="duels-history">
             <div class="panel-head"><h2><?= e(t('duels.history')) ?></h2></div>
             <div class="stack-md">
                 <?php foreach ($done as $vm): $d = (array) $vm['duel']; $v = (array) $vm['values']; ?>
