@@ -2406,6 +2406,70 @@ function wk_session_active_for_user(PDO $pdo, int $userId): ?array
     );
 }
 
+/**
+ * Return the active session and the compact progress data consumed by the
+ * site-wide resume dock. The optional previous-set count is only calculated on
+ * the workouts screen where the finish selector needs it.
+ *
+ * @return array{session:?array,summary:array<string,mixed>}
+ */
+function wk_active_session_context(PDO $pdo, int $userId, bool $includePreviousSets = false): array
+{
+    $active = wk_session_active_for_user($pdo, $userId);
+    if ($active === null) {
+        return ['session' => null, 'summary' => []];
+    }
+
+    $sessionId = (int) ($active['id'] ?? 0);
+    $session = $sessionId > 0 ? (wk_session_get($pdo, $sessionId, $userId) ?? $active) : $active;
+    $progress = $sessionId > 0 ? db_fetch_one(
+        $pdo,
+        'SELECT COUNT(ws.id) AS total_sets,
+                COALESCE(SUM(CASE WHEN ws.completed = 1 THEN 1 ELSE 0 END), 0) AS completed_sets
+         FROM session_exercises se
+         LEFT JOIN workout_sets ws ON ws.session_exercise_id = se.id
+         WHERE se.session_id = :session',
+        [':session' => $sessionId]
+    ) : null;
+    $totalSets = max(0, (int) ($progress['total_sets'] ?? 0));
+    $completedSets = max(0, (int) ($progress['completed_sets'] ?? 0));
+    $nextExerciseRow = $sessionId > 0 ? db_fetch_one(
+        $pdo,
+        'SELECT ed.*
+         FROM session_exercises se
+         JOIN exercise_definitions ed ON ed.id = se.exercise_def_id
+         WHERE se.session_id = :session
+           AND (
+               NOT EXISTS (SELECT 1 FROM workout_sets any_set WHERE any_set.session_exercise_id = se.id)
+               OR EXISTS (
+                   SELECT 1 FROM workout_sets pending_set
+                   WHERE pending_set.session_exercise_id = se.id AND pending_set.completed != 1
+               )
+           )
+         ORDER BY se.sort_order ASC, se.id ASC
+         LIMIT 1',
+        [':session' => $sessionId]
+    ) : null;
+    $nextExerciseContent = $nextExerciseRow !== null ? wk_exercise_content($nextExerciseRow) : [];
+    $nextExercise = (string) ($nextExerciseContent['name'] ?? $nextExerciseRow['name'] ?? '');
+
+    $startedAt = strtotime((string) ($session['started_at'] ?? ''));
+    $elapsedSeconds = $startedAt !== false ? max(0, time() - $startedAt) : 0;
+    $summary = [
+        'elapsed_seconds' => $elapsedSeconds,
+        'elapsed_minutes' => intdiv($elapsedSeconds, 60),
+        'completed_sets' => $completedSets,
+        'total_sets' => $totalSets,
+        'progress_pct' => $totalSets > 0 ? min(100, (int) round(($completedSets / $totalSets) * 100)) : 0,
+        'next_exercise' => $nextExercise,
+    ];
+    if ($includePreviousSets && $sessionId > 0) {
+        $summary['previous_sets_count'] = wk_session_previous_completion_count($pdo, $sessionId, $userId);
+    }
+
+    return ['session' => $session, 'summary' => $summary];
+}
+
 function wk_session_get(PDO $pdo, int $id, int $userId): ?array
 {
     return db_fetch_one(
@@ -2720,7 +2784,144 @@ function wk_session_add_exercise(PDO $pdo, int $sessionId, int $exerciseDefId, ?
     return $seId;
 }
 
+/**
+ * Replace an exercise that has not been started yet. Completed work is never
+ * relabelled as a different movement; that would corrupt history and records.
+ *
+ * Returns the session-exercise row ID on success, or 0 when the replacement is
+ * not allowed/available.
+ */
+function wk_session_replace_exercise(
+    PDO $pdo,
+    int $sessionExerciseId,
+    int $replacementExerciseDefId,
+    int $userId
+): int {
+    if ($sessionExerciseId <= 0 || $replacementExerciseDefId <= 0) {
+        return 0;
+    }
+    $row = db_fetch_one(
+        $pdo,
+        'SELECT se.id, se.session_id, se.exercise_def_id,
+                EXISTS(
+                    SELECT 1 FROM workout_sets ws
+                    WHERE ws.session_exercise_id = se.id AND ws.completed = 1
+                ) AS has_completed_sets
+         FROM session_exercises se
+         JOIN workout_sessions s ON s.id = se.session_id
+         WHERE se.id = :session_exercise AND s.user_id = :user AND s.status = "active"
+         LIMIT 1',
+        [':session_exercise' => $sessionExerciseId, ':user' => $userId]
+    );
+    $replacement = wk_exercise_get_for_user($pdo, $replacementExerciseDefId, $userId);
+    if (
+        $row === null
+        || $replacement === null
+        || (int) ($row['has_completed_sets'] ?? 0) === 1
+        || (int) ($row['exercise_def_id'] ?? 0) === $replacementExerciseDefId
+    ) {
+        return 0;
+    }
+    $sessionId = (int) ($row['session_id'] ?? 0);
+    $duplicate = db_fetch_one(
+        $pdo,
+        'SELECT id FROM session_exercises
+         WHERE session_id = :session AND exercise_def_id = :exercise AND id != :current
+         LIMIT 1',
+        [':session' => $sessionId, ':exercise' => $replacementExerciseDefId, ':current' => $sessionExerciseId]
+    );
+    if ($duplicate !== null) {
+        return 0;
+    }
+
+    $defaults = wk_exercise_training_defaults($replacement);
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        db_execute(
+            $pdo,
+            'UPDATE session_exercises
+             SET exercise_def_id = :exercise, unit = :unit, rest_seconds = :rest, notes = :notes
+             WHERE id = :id AND session_id = :session',
+            [
+                ':exercise' => $replacementExerciseDefId,
+                ':unit' => (string) $defaults['unit'],
+                ':rest' => $defaults['rest_seconds'],
+                ':notes' => (string) $defaults['notes'],
+                ':id' => $sessionExerciseId,
+                ':session' => $sessionId,
+            ]
+        );
+        db_execute(
+            $pdo,
+            'DELETE FROM workout_sets WHERE session_exercise_id = :session_exercise',
+            [':session_exercise' => $sessionExerciseId]
+        );
+        for ($setIndex = 0; $setIndex < (int) $defaults['target_sets']; $setIndex++) {
+            wk_set_add($pdo, $sessionExerciseId, $userId, $defaults);
+        }
+        db_execute(
+            $pdo,
+            'UPDATE workout_sessions SET updated_at = :now WHERE id = :session AND user_id = :user',
+            [':now' => now_iso(), ':session' => $sessionId, ':user' => $userId]
+        );
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+
+    return $sessionExerciseId;
+}
+
 /** @param array<string,mixed> $initialValues */
+/**
+ * Persist the rest length the athlete dialled in for one exercise of an active
+ * session, so the rest timer remembers it for the following sets. 0 clears the
+ * target. The choice is also carried back to the parent routine (when the
+ * session came from one) so future sessions of that routine start with it.
+ * Ownership is enforced against the active session.
+ */
+function wk_session_exercise_set_rest(PDO $pdo, int $sessionExerciseId, int $seconds, int $userId): bool
+{
+    $seconds = max(0, min(3600, $seconds));
+    $row = db_fetch_one(
+        $pdo,
+        'SELECT se.id, se.exercise_def_id, s.routine_id
+         FROM session_exercises se
+         JOIN workout_sessions s ON s.id = se.session_id
+         WHERE se.id = :se AND s.user_id = :u AND s.status = "active"',
+        [':se' => $sessionExerciseId, ':u' => $userId]
+    );
+    if ($row === null) {
+        return false;
+    }
+    $value = $seconds > 0 ? $seconds : null;
+    db_execute(
+        $pdo,
+        'UPDATE session_exercises SET rest_seconds = :rs WHERE id = :se',
+        [':rs' => $value, ':se' => $sessionExerciseId]
+    );
+
+    $routineId = (int) ($row['routine_id'] ?? 0);
+    $exerciseDefId = (int) ($row['exercise_def_id'] ?? 0);
+    if ($routineId > 0 && $exerciseDefId > 0) {
+        db_execute(
+            $pdo,
+            'UPDATE routine_exercises SET rest_seconds = :rs WHERE routine_id = :r AND exercise_def_id = :e',
+            [':rs' => $value, ':r' => $routineId, ':e' => $exerciseDefId]
+        );
+    }
+
+    return true;
+}
+
 function wk_set_add(PDO $pdo, int $sessionExerciseId, ?int $userId = null, array $initialValues = []): int
 {
     if ($userId !== null) {
@@ -2759,6 +2960,36 @@ function wk_set_add(PDO $pdo, int $sessionExerciseId, ?int $userId = null, array
     return (int) $pdo->lastInsertId();
 }
 
+/** Parse localized decimal input from either a dot or comma keyboard. */
+function wk_decimal_value(mixed $value): ?float
+{
+    if ($value === null) {
+        return null;
+    }
+    $raw = str_replace(["\u{00A0}", ' '], '', trim((string) $value));
+    if ($raw === '') {
+        return null;
+    }
+    $lastComma = strrpos($raw, ',');
+    $lastDot = strrpos($raw, '.');
+    if ($lastComma !== false && $lastDot !== false) {
+        if ($lastComma > $lastDot) {
+            $raw = str_replace('.', '', $raw);
+            $raw = str_replace(',', '.', $raw);
+        } else {
+            $raw = str_replace(',', '', $raw);
+        }
+    } else {
+        $raw = str_replace(',', '.', $raw);
+    }
+    if (preg_match('/^-?(?:\d+(?:\.\d*)?|\.\d+)$/', $raw) !== 1) {
+        return null;
+    }
+    $number = (float) $raw;
+
+    return is_finite($number) ? $number : null;
+}
+
 function wk_set_update(PDO $pdo, int $setId, array $fields, ?int $userId = null): bool
 {
     if ($userId !== null) {
@@ -2783,8 +3014,10 @@ function wk_set_update(PDO $pdo, int $setId, array $fields, ?int $userId = null)
             $val = $fields[$key];
             if ($key === 'completed') {
                 $params[":$key"] = $val ? 1 : 0;
+            } elseif ($key === 'weight' || $key === 'distance' || $key === 'rpe') {
+                $params[":$key"] = wk_decimal_value($val);
             } else {
-                $params[":$key"] = ($val === '' || $val === null) ? null : ($key === 'weight' || $key === 'distance' || $key === 'rpe' ? (float) $val : (int) $val);
+                $params[":$key"] = ($val === '' || $val === null) ? null : (int) $val;
             }
         }
     }
@@ -2835,7 +3068,7 @@ function wk_session_update_draft_sets(PDO $pdo, int $sessionId, int $userId, arr
             }
             $duration = '';
             if (trim((string) ($draft['duration_minutes'] ?? '')) !== '') {
-                $duration = (int) round(max(0.0, (float) $draft['duration_minutes']) * 60);
+                $duration = (int) round(max(0.0, wk_decimal_value($draft['duration_minutes']) ?? 0.0) * 60);
             } elseif (trim((string) ($draft['duration_seconds'] ?? '')) !== '') {
                 $duration = max(0, (int) $draft['duration_seconds']);
             }
@@ -2866,6 +3099,61 @@ function wk_session_update_draft_sets(PDO $pdo, int $sessionId, int $userId, arr
     }
 
     return $updated;
+}
+
+/**
+ * Mark every set in one exercise as completed when the user advances to the
+ * next exercise. Ownership, session identity and active status are validated
+ * together so a crafted request cannot complete sets from another session.
+ */
+function wk_session_complete_exercise_sets(PDO $pdo, int $sessionId, int $sessionExerciseId, int $userId): int
+{
+    if ($sessionId <= 0 || $sessionExerciseId <= 0 || $userId <= 0) {
+        return 0;
+    }
+    $ownedExercise = db_fetch_one(
+        $pdo,
+        'SELECT se.id, COUNT(ws.id) AS set_count
+         FROM session_exercises se
+         JOIN workout_sessions s ON s.id = se.session_id
+         LEFT JOIN workout_sets ws ON ws.session_exercise_id = se.id
+         WHERE se.id = :exercise AND se.session_id = :session
+           AND s.user_id = :user AND s.status = "active"
+         GROUP BY se.id
+         LIMIT 1',
+        [':exercise' => $sessionExerciseId, ':session' => $sessionId, ':user' => $userId]
+    );
+    $setCount = max(0, (int) ($ownedExercise['set_count'] ?? 0));
+    if ($ownedExercise === null || $setCount === 0) {
+        return 0;
+    }
+
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        db_execute(
+            $pdo,
+            'UPDATE workout_sets SET completed = 1 WHERE session_exercise_id = :exercise',
+            [':exercise' => $sessionExerciseId]
+        );
+        db_execute(
+            $pdo,
+            'UPDATE workout_sessions SET updated_at = :now WHERE id = :session AND user_id = :user',
+            [':now' => now_iso(), ':session' => $sessionId, ':user' => $userId]
+        );
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+
+    return $setCount;
 }
 
 /**
@@ -2926,6 +3214,121 @@ function wk_last_completed_sets_for_exercises(
     }
 
     return $result;
+}
+
+/**
+ * Match unfinished sets in an active session with the last completed set at
+ * the same position for that exercise. Current completed work is immutable.
+ *
+ * @return array<int,array{set_id:int,reps:mixed,weight:mixed,duration:mixed,distance:mixed}>
+ */
+function wk_session_previous_set_matches(PDO $pdo, int $sessionId, int $userId): array
+{
+    $session = wk_session_get($pdo, $sessionId, $userId);
+    if ($session === null || (string) ($session['status'] ?? '') !== 'active') {
+        return [];
+    }
+    $exercises = wk_session_exercises($pdo, $sessionId);
+    if ($exercises === []) {
+        return [];
+    }
+    $previous = wk_last_completed_sets_for_exercises(
+        $pdo,
+        $userId,
+        array_map(
+            static fn(array $exercise): int => (int) ($exercise['exercise_def_id'] ?? 0),
+            $exercises
+        ),
+        $sessionId
+    );
+    $matches = [];
+    foreach ($exercises as $exercise) {
+        $exerciseId = (int) ($exercise['exercise_def_id'] ?? 0);
+        foreach ((array) ($exercise['sets'] ?? []) as $set) {
+            if ((int) ($set['completed'] ?? 0) === 1) {
+                continue;
+            }
+            $prior = (array) ($previous[$exerciseId][(int) ($set['set_index'] ?? 1)] ?? []);
+            if ($prior === []) {
+                continue;
+            }
+            $hasTrainingData = false;
+            foreach (['reps', 'weight', 'duration', 'distance'] as $field) {
+                if (array_key_exists($field, $prior) && $prior[$field] !== null) {
+                    $hasTrainingData = true;
+                    break;
+                }
+            }
+            if (!$hasTrainingData) {
+                continue;
+            }
+            $matches[] = [
+                'set_id' => (int) ($set['id'] ?? 0),
+                'reps' => $prior['reps'] ?? null,
+                'weight' => $prior['weight'] ?? null,
+                'duration' => $prior['duration'] ?? null,
+                'distance' => $prior['distance'] ?? null,
+            ];
+        }
+    }
+
+    return array_values(array_filter($matches, static fn(array $match): bool => (int) ($match['set_id'] ?? 0) > 0));
+}
+
+function wk_session_previous_completion_count(PDO $pdo, int $sessionId, int $userId): int
+{
+    return count(wk_session_previous_set_matches($pdo, $sessionId, $userId));
+}
+
+/**
+ * Complete matching unfinished sets with their last saved performance, then
+ * finish the session atomically. Returns false when no reusable data exists.
+ */
+function wk_session_finish_with_previous_sets(
+    PDO $pdo,
+    int $sessionId,
+    int $userId,
+    bool $countTowardChallenge = true
+): bool {
+    $matches = wk_session_previous_set_matches($pdo, $sessionId, $userId);
+    if ($matches === []) {
+        return false;
+    }
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        foreach ($matches as $match) {
+            db_execute(
+                $pdo,
+                'UPDATE workout_sets
+                 SET reps = :reps, weight = :weight, duration = :duration,
+                     distance = :distance, completed = 1
+                 WHERE id = :id AND completed = 0',
+                [
+                    ':reps' => $match['reps'],
+                    ':weight' => $match['weight'],
+                    ':duration' => $match['duration'],
+                    ':distance' => $match['distance'],
+                    ':id' => (int) $match['set_id'],
+                ]
+            );
+        }
+        if (!wk_session_finish($pdo, $sessionId, $userId, $countTowardChallenge)) {
+            throw new RuntimeException('Workout session could not be completed.');
+        }
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+
+    return true;
 }
 
 function wk_set_delete(PDO $pdo, int $setId): bool

@@ -1308,7 +1308,7 @@ document.addEventListener('click', (event) => {
             body.set('locale', locale);
             body.set('async', '1');
             try {
-                await fetch(form.action, {
+                await fetch(form.getAttribute('action') || window.location.href, {
                     method: 'POST',
                     headers: {
                         'Accept': 'application/json',
@@ -5110,7 +5110,7 @@ document.addEventListener('click', (event) => {
             try {
                 root.classList.add('is-loading');
                 beginPageLoading();
-                const response = await fetch(form.action || window.location.href, {
+                const response = await fetch(form.getAttribute('action') || window.location.href, {
                     method: 'POST',
                     body: new FormData(form),
                     headers: { 'Accept': 'text/html' },
@@ -5162,7 +5162,7 @@ document.addEventListener('click', (event) => {
             }
 
             try {
-                const response = await fetch(form.action || '/?page=notifications', {
+                const response = await fetch(form.getAttribute('action') || '/?page=notifications', {
                     method: 'POST',
                     body: new FormData(form),
                     headers: {
@@ -5540,6 +5540,11 @@ document.addEventListener('click', (event) => {
                 queueMobileViewTransitionStateCleanup(350, true);
             }
         };
+
+        window.FitnessNavigateInPage = (href, options = {}) => navigateInPage(
+            new URL(String(href || window.location.href), window.location.origin),
+            { push: options.push !== false, popState: options.popState || null }
+        );
 
         if (!history.state || typeof history.state !== 'object' || history.state.__fcPjax !== true) {
             history.replaceState({
@@ -6008,6 +6013,169 @@ document.addEventListener('click', (event) => {
 
     let pendingWorkoutStartForm = null;
 
+    let workoutActiveDockTimer = null;
+
+    const initWorkoutActiveDock = () => {
+        if (workoutActiveDockTimer !== null) {
+            window.clearInterval(workoutActiveDockTimer);
+            workoutActiveDockTimer = null;
+        }
+        const dock = document.querySelector('[data-workout-active-dock]');
+        const output = dock?.querySelector('[data-workout-active-elapsed]');
+        if (!(dock instanceof HTMLElement) || !(output instanceof HTMLElement)) {
+            return;
+        }
+        const initialSeconds = Math.max(0, Number.parseInt(dock.dataset.elapsedSeconds || '0', 10) || 0);
+        const initializedAt = Date.now();
+        const renderElapsed = () => {
+            const elapsed = initialSeconds + Math.max(0, Math.floor((Date.now() - initializedAt) / 1000));
+            if (elapsed < 60) {
+                output.textContent = `${elapsed}s`;
+                return;
+            }
+            if (elapsed < 3600) {
+                output.textContent = `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`;
+                return;
+            }
+            output.textContent = `${Math.floor(elapsed / 3600)}h ${Math.floor((elapsed % 3600) / 60)}m`;
+        };
+        renderElapsed();
+        workoutActiveDockTimer = window.setInterval(renderElapsed, 1000);
+    };
+
+    const initWorkoutReplaceExercise = () => {
+        const modal = document.querySelector('[data-workout-replace-modal]');
+        if (!(modal instanceof HTMLElement)) {
+            return;
+        }
+        const form = modal.querySelector('[data-workout-replace-form]');
+        const sessionExerciseInput = modal.querySelector('[data-workout-replace-session-exercise]');
+        const choiceInput = modal.querySelector('[data-workout-replace-choice]');
+        const searchInput = modal.querySelector('[data-workout-replace-search]');
+        const muscleSelect = modal.querySelector('[data-workout-replace-muscle]');
+        const equipmentSelect = modal.querySelector('[data-workout-replace-equipment]');
+        const results = modal.querySelector('[data-workout-replace-results]');
+        const empty = modal.querySelector('[data-workout-replace-empty]');
+        const status = modal.querySelector('[data-workout-replace-status]');
+        const selected = modal.querySelector('[data-workout-replace-selected]');
+        const submit = modal.querySelector('[data-workout-replace-submit]');
+        if (!(form instanceof HTMLFormElement)
+            || !(sessionExerciseInput instanceof HTMLInputElement)
+            || !(choiceInput instanceof HTMLInputElement)
+            || !(searchInput instanceof HTMLInputElement)
+            || !(muscleSelect instanceof HTMLSelectElement)
+            || !(equipmentSelect instanceof HTMLSelectElement)
+            || !(results instanceof HTMLElement)
+            || !(submit instanceof HTMLButtonElement)) {
+            return;
+        }
+        const options = Array.from(results.querySelectorAll('[data-workout-replace-option]'));
+        const normalize = (value) => String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLocaleLowerCase()
+            .trim();
+        const defaultSelectedCopy = selected?.textContent || '';
+        const resetChoice = () => {
+            choiceInput.value = '';
+            options.forEach((option) => option.classList.remove('is-selected'));
+            submit.disabled = true;
+            if (selected) selected.textContent = defaultSelectedCopy;
+        };
+        const filter = () => {
+            const query = normalize(searchInput.value);
+            const muscle = muscleSelect.value;
+            const equipment = equipmentSelect.value;
+            let visible = 0;
+            options.forEach((option) => {
+                if (!(option instanceof HTMLButtonElement)) return;
+                const matches = (query === '' || normalize(option.dataset.name).includes(query))
+                    && (muscle === '' || option.dataset.muscle === muscle)
+                    && (equipment === '' || option.dataset.equipment === equipment);
+                option.hidden = !matches;
+                if (matches) visible += 1;
+            });
+            if (empty instanceof HTMLElement) empty.hidden = visible !== 0;
+        };
+
+        document.querySelectorAll('[data-workout-replace-open]').forEach((trigger) => {
+            if (!(trigger instanceof HTMLButtonElement) || trigger.dataset.workoutReplaceReady === '1') return;
+            trigger.dataset.workoutReplaceReady = '1';
+            trigger.addEventListener('click', () => {
+                sessionExerciseInput.value = trigger.dataset.sessionExerciseId || '';
+                searchInput.value = '';
+                muscleSelect.value = trigger.dataset.currentMuscle || '';
+                equipmentSelect.value = trigger.dataset.currentEquipment || '';
+                if (status instanceof HTMLElement) {
+                    status.textContent = '';
+                    status.classList.remove('has-error');
+                }
+                resetChoice();
+                filter();
+                if (!window.matchMedia('(max-width: 700px)').matches) {
+                    window.setTimeout(() => searchInput.focus({ preventScroll: true }), 180);
+                }
+            });
+        });
+        if (modal.dataset.workoutReplaceReady === '1') return;
+        modal.dataset.workoutReplaceReady = '1';
+        searchInput.addEventListener('input', filter);
+        muscleSelect.addEventListener('change', () => { resetChoice(); filter(); });
+        equipmentSelect.addEventListener('change', () => { resetChoice(); filter(); });
+        options.forEach((option) => {
+            if (!(option instanceof HTMLButtonElement)) return;
+            option.addEventListener('click', () => {
+                searchInput.blur();
+                options.forEach((candidate) => candidate.classList.toggle('is-selected', candidate === option));
+                choiceInput.value = option.dataset.exerciseId || '';
+                submit.disabled = choiceInput.value === '';
+                if (selected) selected.textContent = option.dataset.name || defaultSelectedCopy;
+                if (status instanceof HTMLElement) {
+                    status.textContent = '';
+                    status.classList.remove('has-error');
+                }
+            });
+        });
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (choiceInput.value === '' || submit.disabled) return;
+            submit.disabled = true;
+            submit.classList.add('is-busy');
+            if (status instanceof HTMLElement) {
+                status.textContent = '';
+                status.classList.remove('has-error');
+            }
+            try {
+                // The hidden <input name="action"> shadows form.action, so read
+                // the endpoint from the attribute instead.
+                const response = await fetch(form.getAttribute('action') || '/?page=workouts', {
+                    method: 'POST',
+                    body: new FormData(form),
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || payload.ok !== true) {
+                    throw new Error(payload.message || 'Could not replace this exercise.');
+                }
+                window.AppOverlay?.close(modal, true);
+                if (typeof window.FitnessNavigateInPage === 'function') {
+                    await window.FitnessNavigateInPage(payload.redirect_url, { push: false });
+                } else {
+                    window.location.href = payload.redirect_url;
+                }
+            } catch (error) {
+                if (status instanceof HTMLElement) {
+                    status.textContent = error instanceof Error ? error.message : 'Could not replace this exercise.';
+                    status.classList.add('has-error');
+                }
+                submit.disabled = false;
+                submit.classList.remove('is-busy');
+            }
+        });
+        filter();
+    };
+
     const initWorkoutStartConfirm = () => {
         const modal = document.getElementById('wk-start-confirm-modal');
         const confirmBtn = modal?.querySelector('[data-wk-start-confirm-action]');
@@ -6441,6 +6609,8 @@ document.addEventListener('click', (event) => {
         safeInit(initWorkoutLibraryAjaxAdd);
         safeInit(initWorkoutCreateModal);
         safeInit(initWorkoutRoutinePicker);
+        safeInit(initWorkoutActiveDock);
+        safeInit(initWorkoutReplaceExercise);
         safeInit(initWorkoutStartConfirm);
         safeInit(initWorkoutLibraryInfiniteScroll);
         safeInit(initSpaNavigation);
@@ -7732,6 +7902,32 @@ document.addEventListener('click', (event) => {
         });
     };
 
+    // iOS WebKit can leave a fixed <details>/<summary> visually closed even
+    // after the native state changed. Own the toggle so the quick Log action is
+    // deterministic on every mobile browser.
+    document.addEventListener('click', (event) => {
+        const trigger = event.target instanceof Element
+            ? event.target.closest('details.bottom-nav-plus > summary')
+            : null;
+        const menu = trigger?.parentElement;
+        if (!(trigger instanceof HTMLElement) || !(menu instanceof HTMLDetailsElement)) return;
+        event.preventDefault();
+        menu.open = !menu.open;
+    });
+
+    // Tapping the already-selected tab is useful too: on its root route it
+    // returns to the top, while links from nested routes still navigate home.
+    document.addEventListener('click', (event) => {
+        const activeItem = event.target instanceof Element
+            ? event.target.closest('nav.bottom-nav .liquid-nav-item[aria-current="page"]')
+            : null;
+        if (!(activeItem instanceof HTMLAnchorElement)) return;
+        const targetUrl = new URL(activeItem.href, window.location.href);
+        if (targetUrl.pathname !== window.location.pathname || targetUrl.search !== window.location.search) return;
+        event.preventDefault();
+        window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    });
+
     document.addEventListener('click', (event) => {
         const target = event.target instanceof Element ? event.target.closest('[data-hierarchy-back]') : null;
         if (!(target instanceof HTMLElement)) return;
@@ -7975,6 +8171,74 @@ document.addEventListener('click', (event) => {
 
     // Expose for programmatic use elsewhere
     window.AppOverlay = { open: openOverlay, close: closeOverlay };
+})();
+
+/* Drag the grabber of a bottom sheet (and pull it down while its content is
+   already scrolled to the top) to dismiss it - the expected mobile gesture, and
+   a handy mouse affordance on desktop too. Applies to every sheet that renders
+   a `*-grabber` handle. */
+(() => {
+    'use strict';
+    const GRABBERS = '.workouts-exercise-detail-grabber, .shared-workout-exercise-grabber';
+
+    const attach = (grabber) => {
+        if (!(grabber instanceof HTMLElement) || grabber.dataset.sheetDragReady === '1') return;
+        grabber.dataset.sheetDragReady = '1';
+        const sheet = grabber.closest('.app-modal-card') || grabber.parentElement;
+        const modal = grabber.closest('.app-modal, .app-drawer');
+        if (!(sheet instanceof HTMLElement) || !(modal instanceof HTMLElement)) return;
+
+        // Grow the grab target without shifting the thin visual handle.
+        grabber.style.padding = '10px 40%';
+        grabber.style.margin = '-10px auto 0';
+        grabber.style.boxSizing = 'content-box';
+        grabber.style.backgroundClip = 'content-box';
+        grabber.style.touchAction = 'none';
+        grabber.style.cursor = 'grab';
+
+        let pointerId = null;
+        let startY = 0;
+        let delta = 0;
+
+        const reset = (animate) => {
+            sheet.style.transition = animate ? 'transform 0.22s ease' : '';
+            sheet.style.transform = '';
+            if (animate) window.setTimeout(() => { sheet.style.transition = ''; }, 240);
+        };
+
+        grabber.addEventListener('pointerdown', (event) => {
+            pointerId = event.pointerId;
+            startY = event.clientY;
+            delta = 0;
+            grabber.setPointerCapture?.(pointerId);
+            sheet.style.transition = 'none';
+        });
+        grabber.addEventListener('pointermove', (event) => {
+            if (pointerId === null || event.pointerId !== pointerId) return;
+            delta = Math.max(0, event.clientY - startY);
+            if (delta > 2) event.preventDefault();
+            sheet.style.transform = `translate3d(0, ${delta}px, 0)`;
+        });
+        const finish = (event) => {
+            if (pointerId === null || event.pointerId !== pointerId) return;
+            grabber.releasePointerCapture?.(pointerId);
+            pointerId = null;
+            const shouldClose = delta > Math.min(150, sheet.offsetHeight * 0.25);
+            if (shouldClose && window.AppOverlay) {
+                window.AppOverlay.close(modal);
+                window.setTimeout(() => reset(false), 260);
+            } else {
+                reset(true);
+            }
+        };
+        grabber.addEventListener('pointerup', finish);
+        grabber.addEventListener('pointercancel', finish);
+    };
+
+    const init = () => document.querySelectorAll(GRABBERS).forEach(attach);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+    document.addEventListener('fc:afterPageSwap', init);
 })();
 
 // Profile showcase editor. Event delegation keeps it working after in-app navigation.
@@ -10429,7 +10693,9 @@ document.addEventListener('click', (event) => {
         if (!sessionId) return;
         timer.dataset.restTimerReady = '1';
 
-        const defaultSeconds = clampSeconds(timer.dataset.defaultSeconds);
+        let defaultSeconds = clampSeconds(timer.dataset.defaultSeconds);
+        let currentExerciseId = String(timer.dataset.restExerciseId || '').trim();
+        let restSaveTimer = 0;
         const clock = timer.querySelector('[data-rest-timer-clock]');
         const time = timer.querySelector('[data-rest-timer-time]');
         const title = timer.querySelector('[data-rest-timer-title]');
@@ -10573,6 +10839,39 @@ document.addEventListener('click', (event) => {
             render();
         };
 
+        // Remember the rest length the athlete dials in for this exercise: mirror
+        // it onto the exercise's set rows immediately (so the next completed set
+        // rests the new amount) and save it to the server, debounced.
+        const persistRest = (seconds) => {
+            const exerciseId = currentExerciseId;
+            const value = clampSeconds(seconds);
+            if (!exerciseId) return;
+            defaultSeconds = value;
+            timer.dataset.defaultSeconds = String(value);
+            document.querySelectorAll(`[data-workout-set-form][data-session-id="${CSS.escape(sessionId)}"]`).forEach((form) => {
+                if (form.closest('[data-session-exercise-id]')?.dataset.sessionExerciseId === exerciseId) {
+                    form.dataset.restSeconds = String(value);
+                }
+            });
+            if (typeof window.fetch !== 'function') return;
+            window.clearTimeout(restSaveTimer);
+            restSaveTimer = window.setTimeout(() => {
+                const body = new FormData();
+                body.append('csrf_token', String(timer.dataset.csrf || ''));
+                body.append('action', 'session_update_rest');
+                body.append('session_id', sessionId);
+                body.append('session_exercise_id', exerciseId);
+                body.append('rest_seconds', String(value));
+                body.append('async', '1');
+                fetch('/?page=workouts', {
+                    method: 'POST',
+                    body,
+                    headers: { 'X-Requested-With': 'fetch' },
+                    credentials: 'same-origin',
+                }).catch(() => { /* the value is already applied locally */ });
+            }, 550);
+        };
+
         toggle?.addEventListener('click', () => {
             if (state?.running) pause();
             else if (state && !state.complete && state.remaining > 0) resume();
@@ -10600,6 +10899,7 @@ document.addEventListener('click', (event) => {
                 completionAnnounced = false;
                 persist();
                 render();
+                persistRest(state.duration);
             });
         });
         skip?.addEventListener('click', () => {
@@ -10623,6 +10923,7 @@ document.addEventListener('click', (event) => {
                 if (!(submitter instanceof HTMLButtonElement) || submitter.dataset.nextCompleted !== '1') return;
                 const restSeconds = clampSeconds(form.dataset.restSeconds);
                 if (restSeconds <= 0) return;
+                currentExerciseId = form.closest('[data-session-exercise-id]')?.dataset.sessionExerciseId || currentExerciseId;
                 form.dataset.restTimerStarted = '1';
                 start(restSeconds);
             });
@@ -10636,7 +10937,9 @@ document.addEventListener('click', (event) => {
                     : form.querySelector('[data-workout-set-toggle][data-next-completed="1"]');
                 if (!(submitter instanceof HTMLButtonElement) || submitter.dataset.nextCompleted !== '1') return;
                 const restSeconds = clampSeconds(form.dataset.restSeconds);
-                if (restSeconds > 0) start(restSeconds);
+                if (restSeconds <= 0) return;
+                currentExerciseId = form.closest('[data-session-exercise-id]')?.dataset.sessionExerciseId || currentExerciseId;
+                start(restSeconds);
             });
         });
         document.querySelectorAll(`[data-workout-session-end][data-session-id="${CSS.escape(sessionId)}"]`).forEach((form) => {
@@ -10760,7 +11063,8 @@ document.addEventListener('click', (event) => {
         document.querySelectorAll('[data-workout-session-end]').forEach((form) => {
             if (!(form instanceof HTMLFormElement) || form.dataset.workoutDraftEndReady === '1') return;
             form.dataset.workoutDraftEndReady = '1';
-            form.addEventListener('submit', () => {
+            form.addEventListener('submit', (event) => {
+                if (event.defaultPrevented) return;
                 const sessionId = form.dataset.sessionId || '';
                 if (!sessionId) return;
                 try {
@@ -10775,6 +11079,95 @@ document.addEventListener('click', (event) => {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
     else init();
     document.addEventListener('fc:afterPageSwap', init);
+})();
+
+/* In-page "Add set": a new set used to trigger a full-page reload. Instead we
+   POST it in the background (mirroring every typed value as a draft so nothing
+   is lost), follow the server redirect for the freshly rendered session, and
+   swap just that exercise's card plus the progress counters into place. Falls
+   back to a normal submit whenever fetch/parse is unavailable or fails. */
+(() => {
+    'use strict';
+
+    const editableNames = ['reps', 'weight', 'duration_minutes', 'duration_seconds', 'distance'];
+
+    const buildBody = (addForm, sessionId) => {
+        const body = new FormData(addForm);
+        document.querySelectorAll(`[data-workout-set-form][data-session-id="${CSS.escape(sessionId)}"]`).forEach((setForm) => {
+            const setId = setForm.querySelector('input[name="set_id"]')?.value;
+            if (!setId) return;
+            editableNames.forEach((name) => {
+                const input = setForm.elements.namedItem(name);
+                if (input instanceof HTMLInputElement) body.append(`draft_sets[${setId}][${name}]`, input.value);
+            });
+            const toggle = setForm.querySelector('[data-workout-set-toggle]');
+            const completed = toggle instanceof HTMLElement && toggle.dataset.nextCompleted === '0' ? '1' : '0';
+            body.append(`draft_sets[${setId}][completed]`, completed);
+        });
+        return body;
+    };
+
+    const swapFromResponse = (html, exerciseId) => {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const key = CSS.escape(String(exerciseId));
+        const fresh = doc.querySelector(`[data-session-exercise-id="${key}"]`);
+        const current = document.querySelector(`[data-session-exercise-id="${key}"]`);
+        if (!fresh || !current) return null;
+        current.replaceWith(fresh);
+        // Keep the set counters (standalone status + folded-in nav progress) live.
+        ['.workouts-session-status', '.workouts-session-nav-progress'].forEach((selector) => {
+            const freshCounter = doc.querySelector(selector);
+            const liveCounter = document.querySelector(selector);
+            if (freshCounter && liveCounter) liveCounter.innerHTML = freshCounter.innerHTML;
+        });
+        return fresh;
+    };
+
+    document.addEventListener('submit', (event) => {
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement) || !form.matches('[data-workout-session-action]')) return;
+        if (form.querySelector('input[name="action"]')?.value !== 'session_add_set') return;
+        if (typeof window.fetch !== 'function' || typeof window.DOMParser !== 'function') return;
+        const sessionId = form.dataset.sessionId || form.querySelector('input[name="session_id"]')?.value || '';
+        const exerciseId = form.querySelector('input[name="session_exercise_id"]')?.value || '';
+        if (!sessionId || !exerciseId) return;
+
+        // `form.action` is shadowed by the hidden <input name="action">, so read
+        // the real endpoint from the attribute.
+        const actionUrl = form.getAttribute('action') || '/?page=workouts';
+
+        // Capture phase: take over before the draft mirror + native submit run.
+        event.preventDefault();
+        event.stopImmediatePropagation();
+
+        const button = form.querySelector('button[type="submit"]');
+        if (button instanceof HTMLButtonElement) button.disabled = true;
+        const restore = () => { if (button instanceof HTMLButtonElement) button.disabled = false; };
+
+        fetch(actionUrl, {
+            method: 'POST',
+            body: buildBody(form, sessionId),
+            headers: { 'X-Requested-With': 'fetch' },
+            credentials: 'same-origin',
+        })
+            .then((response) => (response.ok ? response.text() : Promise.reject(new Error('bad status'))))
+            .then((html) => {
+                const fresh = swapFromResponse(html, exerciseId);
+                if (!fresh) throw new Error('exercise not found');
+                try { sessionStorage.removeItem(`fc.workout.session.draft.${sessionId}`); } catch (_) { /* ignore */ }
+                document.dispatchEvent(new CustomEvent('fc:afterPageSwap'));
+                const rows = fresh.querySelectorAll('[data-workout-set-form]');
+                const lastRow = rows[rows.length - 1];
+                const focusTarget = lastRow?.querySelector('input[name="weight"], input[name="duration_minutes"], input[name="duration_seconds"]');
+                if (focusTarget instanceof HTMLInputElement) focusTarget.focus();
+                restore();
+            })
+            .catch(() => {
+                // Anything unexpected: fall back to the classic full-page submit.
+                restore();
+                form.submit();
+            });
+    }, true);
 })();
 
 /* Exercise technique viewer: one compact photo/video surface everywhere the

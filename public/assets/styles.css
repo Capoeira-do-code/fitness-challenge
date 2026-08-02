@@ -35,6 +35,163 @@
     --ui-caption-size: 0.6875rem;
 }
 
+/* Site-wide active workout dock. It lives in the application shell so an
+   unfinished session remains visible from Home, Social, Profile and Training. */
+.workouts-active-session-dock {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 11005;
+    width: min(390px, calc(100vw - 48px));
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+    border-radius: 22px;
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.17), 0 3px 10px rgba(15, 23, 42, 0.08);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+    backdrop-filter: blur(22px) saturate(150%);
+    transition: opacity 160ms ease, transform 160ms ease;
+}
+.workouts-active-session-dock-main {
+    position: relative;
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) auto 34px;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+    min-height: 82px;
+    padding: 11px 10px 14px 12px;
+    color: var(--ink);
+    text-decoration: none;
+}
+.workouts-active-session-dock-main:hover,
+.workouts-active-session-dock-main:focus-visible {
+    color: var(--ink);
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.workouts-active-session-dock-icon {
+    position: relative;
+    display: grid;
+    width: 48px;
+    height: 48px;
+    place-items: center;
+    border-radius: 16px;
+    color: #fff;
+    background: linear-gradient(145deg, #17b26a, #0a8f55);
+    box-shadow: 0 8px 18px color-mix(in srgb, #17b26a 28%, transparent);
+}
+.workouts-active-session-dock-icon svg { width: 23px; height: 23px; }
+.workouts-active-session-dock-icon i {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 11px;
+    height: 11px;
+    border: 2px solid var(--surface);
+    border-radius: 999px;
+    background: #50d426;
+    box-shadow: 0 0 0 3px color-mix(in srgb, #50d426 14%, transparent);
+}
+.workouts-active-session-dock-copy {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+.workouts-active-session-dock-kicker {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+    color: var(--muted);
+    font-size: 0.66rem;
+    line-height: 1;
+}
+.workouts-active-session-dock-kicker b {
+    color: #0b9255;
+    font-size: 0.61rem;
+    font-weight: 800;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+.workouts-active-session-dock-kicker time { font-variant-numeric: tabular-nums; }
+.workouts-active-session-dock-copy > strong,
+.workouts-active-session-dock-copy > small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.workouts-active-session-dock-copy > strong { font-size: 0.91rem; line-height: 1.25; }
+.workouts-active-session-dock-copy > small { color: var(--muted); font-size: 0.68rem; line-height: 1.2; }
+.workouts-active-session-dock-count {
+    display: grid;
+    justify-items: end;
+    line-height: 1;
+}
+.workouts-active-session-dock-count strong { font-size: 0.76rem; font-variant-numeric: tabular-nums; }
+.workouts-active-session-dock-count small { margin-top: 3px; color: var(--muted); font-size: 0.56rem; }
+.workouts-active-session-dock-open {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border-radius: 12px;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+.workouts-active-session-dock-open svg { width: 18px; height: 18px; }
+body.mobile-keyboard-open .workouts-active-session-dock,
+body.mobile-sheet-open .workouts-active-session-dock,
+body:has(.app-modal.is-open) .workouts-active-session-dock,
+body:has(.mobile-quick-sheet.is-open) .workouts-active-session-dock {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(14px);
+}
+body[data-theme="dark"] .workouts-active-session-dock,
+body.theme-active-dark .workouts-active-session-dock {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(18, 18, 19, 0.92);
+    box-shadow: 0 20px 52px rgba(0, 0, 0, 0.46);
+}
+
+@media (max-width: 899px) {
+    body.has-active-workout-dock main.container {
+        padding-bottom: calc(182px + env(safe-area-inset-bottom, 0px));
+    }
+    .workouts-active-session-dock {
+        right: auto;
+        bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+        left: 50%;
+        width: min(620px, calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+        border-radius: 21px;
+        transform: translateX(-50%);
+    }
+    .workouts-active-session-dock-main {
+        grid-template-columns: 46px minmax(0, 1fr) auto 32px;
+        min-height: 74px;
+        gap: 8px;
+        padding: 9px 9px 13px 10px;
+    }
+    .workouts-active-session-dock-icon { width: 46px; height: 46px; border-radius: 15px; }
+    .workouts-active-session-dock-copy > strong { font-size: 0.86rem; }
+    .workouts-active-session-dock-copy > small { font-size: 0.64rem; }
+    .workouts-active-session-dock-count strong { font-size: 0.7rem; }
+    body.mobile-keyboard-open .workouts-active-session-dock,
+    body.mobile-sheet-open .workouts-active-session-dock,
+    body:has(.app-modal.is-open) .workouts-active-session-dock,
+    body:has(.mobile-quick-sheet.is-open) .workouts-active-session-dock {
+        transform: translate(-50%, 14px);
+    }
+}
+
+@media (max-width: 370px) {
+    .workouts-active-session-dock-main { grid-template-columns: 42px minmax(0, 1fr) 30px; }
+    .workouts-active-session-dock-icon { width: 42px; height: 42px; }
+    .workouts-active-session-dock-count { display: none; }
+    .workouts-active-session-dock-copy > strong { font-size: 0.8rem; }
+    .workouts-active-session-dock-kicker { gap: 5px; font-size: 0.6rem; }
+}
+
 /* 2026 product polish: challenge reset choices, compact setup and mobile team panels. */
 .challenge-reset-options{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}.challenge-reset-options fieldset{display:grid;gap:.55rem;padding:.8rem;border:1px solid var(--border);border-radius:16px}.challenge-reset-options label{display:flex;gap:.6rem;align-items:flex-start;padding:.65rem;border-radius:12px;background:var(--surface-soft,rgb(148 163 184/.1))}.challenge-reset-options span,.challenge-reset-options strong,.challenge-reset-options small{display:block}.challenge-reset-options small{margin-top:.2rem;color:var(--muted)}.settings-tracked-metrics .settings-group-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center}.settings-custom-metric-modal .app-modal-card{max-width:620px}.onboarding-goals-more{grid-column:1/-1;border:1px solid var(--border);border-radius:18px;background:var(--surface-soft,rgb(148 163 184/.06))}.onboarding-goals-more>summary{display:flex;justify-content:space-between;gap:1rem;padding:1rem;cursor:pointer;list-style:none}.onboarding-goals-more>summary span,.onboarding-goals-more>summary strong,.onboarding-goals-more>summary small{display:block}.onboarding-goals-more>summary small{color:var(--muted)}.onboarding-goals-more[open]>summary b{transform:rotate(180deg)}.onboarding-goals-more>.onboarding-goal-option{margin:0 .75rem .75rem}.onboarding-goal-options>.onboarding-goal-option:not(.onboarding-multi-goals){border-width:2px}.team-widget-leaderboard .panel-head,.team-widget-challenges .panel-head{gap:.6rem}.team-widget-leaderboard.is-collapsed,.team-widget-challenges.is-collapsed{padding-bottom:.7rem}
 @media(max-width:720px){.challenge-reset-options{grid-template-columns:1fr}.settings-tracked-metrics .settings-group-head{grid-template-columns:auto minmax(0,1fr)}.settings-tracked-metrics .settings-group-head .btn{grid-column:1/-1;width:100%}.mobile-today-overview{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.75rem;align-items:center;padding:1rem;border-radius:20px;background:linear-gradient(135deg,color-mix(in srgb,var(--accent,#6d5dfc) 12%,var(--panel)),var(--panel))}.mobile-today-identity h1{margin:.15rem 0;font-size:clamp(1.35rem,7vw,1.9rem);line-height:1.05}.mobile-today-score{width:min(34vw,130px);min-height:82px;padding:.7rem;border-radius:16px;text-align:center}.mobile-today-score.is-empty strong{font-size:.78rem;line-height:1.15}body[data-page=team] .team-widget-leaderboard,body[data-page=team] .team-widget-challenges{padding:.75rem;border-radius:18px}body[data-page=team] .team-widget-leaderboard .panel-head,body[data-page=team] .team-widget-challenges .panel-head{margin-bottom:.55rem}body[data-page=team] .team-widget-leaderboard .panel-head h2,body[data-page=team] .team-widget-challenges .panel-head h2{font-size:1.05rem}body[data-page=team] .team-widget-leaderboard .leaderboard-row{min-height:48px;padding:.45rem .35rem}body[data-page=team] .team-widget-leaderboard .member-avatar,body[data-page=team] .team-widget-challenges .team-goal-list-icon,body[data-page=team] .team-widget-challenges .team-goal-modal-icon{width:36px!important;height:36px!important;min-width:36px!important}body[data-page=team] .team-widget-challenges .team-goal-mobile-preview{grid-template-columns:36px minmax(0,1fr) auto;gap:.55rem;padding:.65rem .35rem}body[data-page=team] .team-widget-challenges .team-goal-mobile-preview-title{font-size:.92rem}}
@@ -18681,8 +18838,8 @@ body.theme-active-dark .pwa-install-nudge {
     height: 24px;
     margin-inline: auto;
     border-radius: 50%;
-    color: var(--muted);
-    background: color-mix(in srgb, var(--ink) 6%, transparent);
+    color: color-mix(in srgb, var(--exercise-accent, var(--primary)) 72%, var(--ink));
+    background: color-mix(in srgb, var(--exercise-accent, var(--primary)) 14%, transparent);
     font-size: 0.72rem;
     font-weight: 800;
 }
@@ -18692,11 +18849,16 @@ body.theme-active-dark .pwa-install-nudge {
     width: 100%;
     text-align: center;
     min-height: 46px;
-    border-radius: 12px;
+    border-radius: 13px;
     font-size: 1.02rem;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
-    transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+    transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+.workouts-set-field input:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--exercise-accent, var(--primary)) 55%, var(--line));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--exercise-accent, var(--primary)) 16%, transparent);
 }
 .workouts-set-row.is-done .workouts-set-field input {
     color: var(--ink);
@@ -23794,7 +23956,7 @@ body[data-page="shared_workout"].app-scroll-locked nav.bottom-nav.mobile-liquid-
 .shared-workout-exercise-how li { min-height: 0; padding: 0 0 0 .35rem; line-height: 1.5; }
 .shared-workout-exercise-how li:nth-child(even) { background: transparent; }
 .shared-workout-exercise-how li::marker { font-weight: 850; }
-.shared-workout-exercise-done { width: calc(100% - 2.5rem); min-height: 52px; margin: .5rem 1.25rem 0; border-radius: 14px; }
+.shared-workout-exercise-done { position: sticky; bottom: max(.75rem, env(safe-area-inset-bottom)); z-index: 4; width: calc(100% - 2.5rem); min-height: 52px; margin: 1rem 1.25rem 0; border-radius: 14px; box-shadow: 0 0 0 1.25rem var(--surface), 0 12px 26px color-mix(in srgb, var(--ink) 20%, transparent); }
 .shared-workout-routine-card { width: min(540px,100%); padding: 1.25rem; background: var(--surface); }
 .shared-workout-routine-card form { display: grid; gap: 1rem; }
 .shared-workout-routine-list { display: grid; gap: .55rem; margin: 0; padding: 0; border: 0; }
@@ -27289,10 +27451,12 @@ body[data-page="workouts"]:is([data-theme="dark"], .theme-active-dark) .workouts
     .workouts-overview-priority .workouts-today-picker {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
     }
 
     .workouts-overview-priority .workouts-today-picker > .btn {
         min-height: 40px;
+        align-self: center;
     }
 
     .workouts-routines-head-actions .btn {
@@ -27354,8 +27518,15 @@ body[data-page="workouts"]:is([data-theme="dark"], .theme-active-dark) .workouts
         font-size: 0.62rem;
     }
 
+    /* Narrow phones: the routine chips wrap, so stack the picker into a single
+       column (chips, then a full-width Start button) instead of squeezing the
+       button into a stretched pill next to the tall wrapped chips. */
+    .workouts-overview-priority .workouts-today-picker {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
     .workouts-overview-priority .workouts-today-picker > .btn {
-        min-height: 40px;
+        min-height: 44px;
         padding-block: 0.4rem;
         white-space: nowrap;
     }

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 $restTimerSessionId = max(0, (int) ($workoutRestTimerSessionId ?? 0));
+$restTimerExerciseId = max(0, (int) ($workoutRestTimerExerciseId ?? 0));
 $restTimerDefaultSeconds = max(0, min(3600, (int) ($workoutRestTimerDefaultSeconds ?? 0)));
 $restTimerMinutes = intdiv($restTimerDefaultSeconds, 60);
 $restTimerSeconds = $restTimerDefaultSeconds % 60;
@@ -12,6 +13,8 @@ $restTimerClock = sprintf('%02d:%02d', $restTimerMinutes, $restTimerSeconds);
     class="workouts-rest-timer"
     data-workout-rest-timer
     data-session-id="<?= $restTimerSessionId ?>"
+    data-rest-exercise-id="<?= $restTimerExerciseId ?>"
+    data-csrf="<?= e(csrf_token()) ?>"
     data-default-seconds="<?= $restTimerDefaultSeconds ?>"
     data-ready-label="<?= e(t('workouts.rest_ready')) ?>"
     data-ready-hint="<?= e(t('workouts.rest_ready_hint')) ?>"

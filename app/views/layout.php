@@ -258,6 +258,27 @@ $renderQuickActionIcon = static function (string $mode): string {
 <?php
 $bodyClasses = [];
 $minimalAppShell = $loggedIn && $currentPage === 'onboarding';
+$layoutActiveWorkoutSession = null;
+$layoutActiveWorkoutSummary = [];
+if ($loggedIn && !$minimalAppShell) {
+    try {
+        $layoutActiveWorkoutContext = wk_active_session_context(
+            $GLOBALS['pdo'],
+            (int) ($currentUser['id'] ?? 0)
+        );
+        $layoutActiveWorkoutSession = $layoutActiveWorkoutContext['session'];
+        $layoutActiveWorkoutSummary = (array) $layoutActiveWorkoutContext['summary'];
+    } catch (Throwable) {
+        // The active-workout dock is an enhancement. A legacy/migrating
+        // database must never prevent the application shell from rendering.
+    }
+}
+$showLayoutActiveWorkoutDock = $layoutActiveWorkoutSession !== null
+    && !($currentPage === 'workouts'
+        && max(0, (int) ($_GET['session_id'] ?? 0)) === (int) ($layoutActiveWorkoutSession['id'] ?? 0));
+if ($showLayoutActiveWorkoutDock) {
+    $bodyClasses[] = 'has-active-workout-dock';
+}
 if (!empty($immersiveMobile)) {
     $bodyClasses[] = 'mobile-immersive-mode';
 }
@@ -453,6 +474,35 @@ if (!$loggedIn && $currentPage === 'login' && $loginBackgroundUrl !== '') {
     </main>
 
     <?php if ($loggedIn && !$minimalAppShell): ?>
+        <?php if ($showLayoutActiveWorkoutDock): ?>
+            <?php
+            $layoutActiveWorkoutId = (int) ($layoutActiveWorkoutSession['id'] ?? 0);
+            $layoutActiveWorkoutTitle = wk_session_display_title((array) $layoutActiveWorkoutSession);
+            $layoutActiveWorkoutTitle = $layoutActiveWorkoutTitle !== '' ? $layoutActiveWorkoutTitle : t('workouts.session');
+            $layoutActiveWorkoutElapsedSeconds = max(0, (int) ($layoutActiveWorkoutSummary['elapsed_seconds'] ?? 0));
+            $layoutActiveWorkoutElapsedMinutes = intdiv($layoutActiveWorkoutElapsedSeconds, 60);
+            $layoutActiveWorkoutElapsed = $layoutActiveWorkoutElapsedMinutes >= 60
+                ? t('workouts.elapsed_hours', ['hours' => intdiv($layoutActiveWorkoutElapsedMinutes, 60), 'minutes' => $layoutActiveWorkoutElapsedMinutes % 60])
+                : ($layoutActiveWorkoutElapsedMinutes > 0
+                    ? t('workouts.elapsed_minutes', ['minutes' => $layoutActiveWorkoutElapsedMinutes])
+                    : t('workouts.elapsed_seconds', ['seconds' => $layoutActiveWorkoutElapsedSeconds]));
+            $layoutActiveWorkoutCompleted = max(0, (int) ($layoutActiveWorkoutSummary['completed_sets'] ?? 0));
+            $layoutActiveWorkoutTotal = max(0, (int) ($layoutActiveWorkoutSummary['total_sets'] ?? 0));
+            $layoutActiveWorkoutNext = trim((string) ($layoutActiveWorkoutSummary['next_exercise'] ?? ''));
+            ?>
+            <aside class="workouts-active-session-dock" data-workout-active-dock data-elapsed-seconds="<?= $layoutActiveWorkoutElapsedSeconds ?>" aria-label="<?= e(t('workouts.active_session')) ?>">
+                <a class="workouts-active-session-dock-main" href="/?page=workouts&amp;session_id=<?= $layoutActiveWorkoutId ?>" aria-label="<?= e(t('workouts.resume_session')) ?>: <?= e($layoutActiveWorkoutTitle) ?>">
+                    <span class="workouts-active-session-dock-icon" aria-hidden="true"><?= activity_icon_svg('dumbbell') ?><i></i></span>
+                    <span class="workouts-active-session-dock-copy">
+                        <span class="workouts-active-session-dock-kicker"><b><?= e(t('workouts.active_session')) ?></b><time data-workout-active-elapsed><?= e($layoutActiveWorkoutElapsed) ?></time></span>
+                        <strong><?= e($layoutActiveWorkoutTitle) ?></strong>
+                        <small><?= e($layoutActiveWorkoutNext !== '' ? t('workouts.next_named_exercise', ['name' => $layoutActiveWorkoutNext]) : t('workouts.no_next_exercise')) ?></small>
+                    </span>
+                    <span class="workouts-active-session-dock-count"><strong><?= $layoutActiveWorkoutCompleted ?>/<?= $layoutActiveWorkoutTotal ?></strong><small><?= e(t('workouts.sets')) ?></small></span>
+                    <span class="workouts-active-session-dock-open" aria-hidden="true"><?= activity_icon_svg('chevron-right') ?></span>
+                </a>
+            </aside>
+        <?php endif; ?>
         <details class="floating-log add-menu">
             <summary class="add-menu-trigger" aria-label="<?= e(t('entries.title')) ?>">+</summary>
             <div class="add-menu-panel floating-add-panel">

@@ -404,8 +404,104 @@ $check(
 );
 wk_session_cancel($pdo, $draftSessionId, $me);
 
+$continueSessionId = wk_session_start($pdo, $me, $routineId);
+$continueNextExerciseId = wk_session_add_exercise($pdo, $continueSessionId, (int) ($runningForOrder['id'] ?? 0), $me);
+$continueExercises = wk_session_exercises($pdo, $continueSessionId);
+$continueCurrentExerciseId = (int) ($continueExercises[0]['id'] ?? 0);
+$continueCurrentSets = (array) ($continueExercises[0]['sets'] ?? []);
+$continueDraft = [];
+foreach ($continueCurrentSets as $continueSetIndex => $continueSet) {
+    $continueDraft[(int) ($continueSet['id'] ?? 0)] = [
+        'weight' => (string) (70 + $continueSetIndex * 2.5),
+        'reps' => (string) max(1, 8 - $continueSetIndex),
+        'completed' => '0',
+    ];
+}
+wk_session_update_draft_sets($pdo, $continueSessionId, $me, $continueDraft);
+$continuedSetCount = wk_session_complete_exercise_sets($pdo, $continueSessionId, $continueCurrentExerciseId, $me);
+$continuedExercises = wk_session_exercises($pdo, $continueSessionId);
+$continuedCurrentSets = (array) ($continuedExercises[0]['sets'] ?? []);
+$continuedNextSets = (array) ($continuedExercises[1]['sets'] ?? []);
+$check(
+    $continueNextExerciseId > 0
+        && $continuedSetCount === count($continueCurrentSets)
+        && $continuedCurrentSets !== []
+        && count(array_filter($continuedCurrentSets, static fn(array $set): bool => (int) ($set['completed'] ?? 0) === 1)) === count($continuedCurrentSets)
+        && count(array_filter($continuedNextSets, static fn(array $set): bool => (int) ($set['completed'] ?? 0) === 1)) === 0
+        && abs((float) ($continuedCurrentSets[0]['weight'] ?? 0) - 70.0) < 0.01
+        && wk_session_complete_exercise_sets($pdo, $continueSessionId, $continueCurrentExerciseId, $other) === 0
+        && wk_session_complete_exercise_sets($pdo, $continueSessionId + 999, $continueCurrentExerciseId, $me) === 0,
+    'continuar completa todas las series actuales sin tocar el siguiente ejercicio'
+);
+wk_session_cancel($pdo, $continueSessionId, $me);
+
+$previousFinishSessionId = wk_session_start($pdo, $me, $routineId);
+$previousFinishCount = wk_session_previous_completion_count($pdo, $previousFinishSessionId, $me);
+$previousFinishSaved = wk_session_finish_with_previous_sets($pdo, $previousFinishSessionId, $me, false);
+$previousFinishedSession = wk_session_get($pdo, $previousFinishSessionId, $me);
+$previousFinishedSets = (array) (wk_session_exercises($pdo, $previousFinishSessionId)[0]['sets'] ?? []);
+$check(
+    $previousFinishCount === 1
+        && $previousFinishSaved
+        && (string) ($previousFinishedSession['status'] ?? '') === 'completed'
+        && (int) ($previousFinishedSets[0]['completed'] ?? 0) === 1
+        && abs((float) ($previousFinishedSets[0]['weight'] ?? 0) - 80.0) < 0.01
+        && (int) ($previousFinishedSets[0]['reps'] ?? 0) === 5
+        && (int) ($previousFinishedSets[1]['completed'] ?? 0) === 0
+        && (int) ($previousFinishedSets[2]['completed'] ?? 0) === 0,
+    'finalizar con el último entreno completa solo las series anteriores disponibles'
+);
+
+$noPreviousSessionId = wk_session_start($pdo, $other, null, 'QA without prior data');
+wk_session_add_exercise($pdo, $noPreviousSessionId, $benchId, $other);
+$check(
+    wk_session_previous_completion_count($pdo, $noPreviousSessionId, $other) === 0
+        && !wk_session_finish_with_previous_sets($pdo, $noPreviousSessionId, $other, false)
+        && (string) (wk_session_get($pdo, $noPreviousSessionId, $other)['status'] ?? '') === 'active',
+    'ocultar y rechazar finalización anterior cuando no existen datos guardados'
+);
+wk_session_cancel($pdo, $noPreviousSessionId, $other);
+
 $runningExercise = db_fetch_one($pdo, 'SELECT id FROM exercise_definitions WHERE slug = :slug', [':slug' => 'running']);
 $plankExercise = db_fetch_one($pdo, 'SELECT id FROM exercise_definitions WHERE slug = :slug', [':slug' => 'plank']);
+$replaceSessionId = wk_session_start($pdo, $me, null, 'QA Replace exercise');
+$replaceSessionExerciseId = wk_session_add_exercise($pdo, $replaceSessionId, $benchId, $me);
+$replaceSetId = (int) (wk_session_exercises($pdo, $replaceSessionId)[0]['sets'][0]['id'] ?? 0);
+$commaDraftSaved = wk_session_update_draft_sets($pdo, $replaceSessionId, $me, [
+    $replaceSetId => ['weight' => '35,5', 'reps' => '8', 'completed' => '0'],
+]);
+$commaDraftSet = (array) (wk_session_exercises($pdo, $replaceSessionId)[0]['sets'][0] ?? []);
+$replacedSessionExerciseId = wk_session_replace_exercise(
+    $pdo,
+    $replaceSessionExerciseId,
+    (int) ($plankExercise['id'] ?? 0),
+    $me
+);
+$replacedSessionExercise = (array) (wk_session_exercises($pdo, $replaceSessionId)[0] ?? []);
+$check(
+    $commaDraftSaved === 1
+        && abs((float) ($commaDraftSet['weight'] ?? 0) - 35.5) < 0.01
+        && $replacedSessionExerciseId === $replaceSessionExerciseId
+        && (int) ($replacedSessionExercise['exercise_def_id'] ?? 0) === (int) ($plankExercise['id'] ?? 0)
+        && count((array) ($replacedSessionExercise['sets'] ?? [])) > 0,
+    'coma decimal se conserva y el reemplazo pendiente regenera la prescripción'
+);
+$replaceProtectedSetId = (int) ($replacedSessionExercise['sets'][0]['id'] ?? 0);
+wk_set_update($pdo, $replaceProtectedSetId, ['duration' => 30, 'completed' => 1], $me);
+$check(
+    wk_session_replace_exercise($pdo, $replaceSessionExerciseId, (int) ($runningExercise['id'] ?? 0), $me) === 0
+        && wk_session_replace_exercise($pdo, $replaceSessionExerciseId, (int) ($runningExercise['id'] ?? 0), $other) === 0,
+    'reemplazo protege series completadas y propiedad'
+);
+$activeContext = wk_active_session_context($pdo, $me);
+$check(
+    (int) ($activeContext['session']['id'] ?? 0) === $replaceSessionId
+        && (int) ($activeContext['summary']['completed_sets'] ?? 0) === 1
+        && (int) ($activeContext['summary']['total_sets'] ?? 0) > 0,
+    'contexto global de sesión activa expone progreso para el dock'
+);
+wk_session_cancel($pdo, $replaceSessionId, $me);
+
 $organizeSessionId = wk_session_start($pdo, $me, null, 'QA Session order');
 $organizeBenchRow = wk_session_add_exercise($pdo, $organizeSessionId, $benchId, $me);
 $organizeRunRow = wk_session_add_exercise($pdo, $organizeSessionId, (int) ($runningExercise['id'] ?? 0), $me);
@@ -1057,6 +1153,7 @@ $victimExerciseStillExists = db_fetch_one(
 $check($removed === false && $victimExerciseStillExists !== null, 'aislamiento entre usuarios');
 
 $workoutsViewSource = (string) file_get_contents(dirname(__DIR__) . '/app/views/workouts.php');
+$layoutViewSource = (string) file_get_contents(dirname(__DIR__) . '/app/views/layout.php');
 $workoutsCssSource = (string) file_get_contents(dirname(__DIR__) . '/public/assets/workouts.css');
 $globalCssSource = (string) file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
 $check(
@@ -1066,6 +1163,15 @@ $check(
         && !str_contains($globalCssSource, '.workouts-active-session-card.compact-panel'),
     'tarjeta de sesion activa usa layout movil aislado sin parches globales'
 );
+$check(
+    str_contains($workoutsViewSource, 'id="wk-finish-session-modal"')
+        && str_contains($workoutsViewSource, 'name="finish_mode" value="current"')
+        && str_contains($workoutsViewSource, 'name="finish_mode" value="previous"')
+        && str_contains($workoutsViewSource, 'if ($activeSessionPreviousSetCount > 0)')
+        && str_contains($workoutsCssSource, '.workouts-finish-session-modal')
+        && str_contains($workoutsCssSource, '.workouts-finish-option.is-danger'),
+    'selector de finalización separa datos actuales, anteriores y anulación'
+);
 $mainJsSource = (string) file_get_contents(dirname(__DIR__) . '/public/assets/main.js');
 $check(
     str_contains($workoutsViewSource, 'data-clear-workout-suggestion')
@@ -1074,6 +1180,48 @@ $check(
         && str_contains($mainJsSource, 'draft_sets[${setId}]')
         && str_contains($mainJsSource, 'fc.workout.session.draft.'),
     'sesion activa conserva borradores, referencias y retorno desde la guia'
+);
+$check(
+    str_contains($workoutsViewSource, '$todayRoutines !== [] && !$hasActiveWorkoutSession')
+        && str_contains($layoutViewSource, 'class="workouts-active-session-dock"')
+        && str_contains($layoutViewSource, 'data-workout-active-elapsed')
+        && str_contains($layoutViewSource, 'wk_active_session_context')
+        && str_contains($workoutsCssSource, '.workouts-view-list.has-active-session-dock > .workouts-overview-priority')
+        && !str_contains($layoutViewSource, 'workouts-active-session-dock-progress')
+        && !str_contains($globalCssSource, '.workouts-active-session-dock-progress')
+        && str_contains($mainJsSource, 'const initWorkoutActiveDock = () =>')
+        && str_contains($mainJsSource, "closest('details.bottom-nav-plus > summary')")
+        && str_contains($mainJsSource, 'nav.bottom-nav .liquid-nav-item[aria-current="page"]'),
+    'hub movil oculta el entreno diario, fija la sesion activa y mantiene operativa la navegacion inferior'
+);
+$check(
+    str_contains($workoutsViewSource, 'name="action" value="session_continue"')
+        && str_contains($workoutsViewSource, 'data-workout-decimal')
+        && str_contains($workoutsViewSource, 'id="wk-replace-exercise-modal"')
+        && str_contains($workoutsViewSource, 'data-workout-replace-option')
+        && str_contains($workoutsViewSource, 'class="workouts-replace-exercise-action-buttons"')
+        && str_contains($workoutsViewSource, 'data-workout-replace-submit disabled')
+        && str_contains($mainJsSource, 'const initWorkoutReplaceExercise = () =>')
+        && str_contains($mainJsSource, "window.matchMedia('(max-width: 700px)').matches")
+        && str_contains($mainJsSource, 'searchInput.blur()')
+        && str_contains($mainJsSource, 'window.FitnessNavigateInPage')
+        && str_contains($workoutsCssSource, '.workouts-session-panel-back')
+        && str_contains($workoutsCssSource, '.workouts-replace-exercise-card')
+        && str_contains($workoutsCssSource, '.workouts-replace-exercise-action-buttons')
+        && t('workouts.replace_exercise_action') === 'Confirmar cambio',
+    'sesion activa guarda y avanza, unifica cabecera y reemplaza ejercicios sin recarga completa'
+);
+$check(
+    str_contains($workoutsViewSource, "'workout-session-exercise-detail-' . (int) (\$ex['id'] ?? 0)")
+        && str_contains($workoutsViewSource, 'data-workout-exercise-detail-open="<?= e($sessionExerciseDetailId) ?>"')
+        && str_contains($workoutsViewSource, 'class="app-modal-card workouts-exercise-detail-sheet"')
+        && str_contains($workoutsViewSource, 'class="workouts-exercise-detail-actions is-single"')
+        && str_contains($workoutsViewSource, '$sessionExerciseGuide[\'steps\']')
+        && !str_contains($workoutsViewSource, '<details class="workouts-session-technique"')
+        && !str_contains($workoutsViewSource, '<details class="workouts-session-guide"')
+        && str_contains($workoutsCssSource, '.workouts-session-exercise-kind')
+        && str_contains($workoutsCssSource, '.workouts-exercise-detail-notes'),
+    'cabecera de ejercicio abre la ficha tecnica in-page y deja las series limpias'
 );
 
 if ($failures !== []) {

@@ -4332,11 +4332,28 @@ if ($page === 'workouts') {
                 $persistSessionDraft();
                 wk_set_add($pdo, (int) ($_POST['session_exercise_id'] ?? 0), $meId);
                 redirect($sessionReturnUrl((int) ($_POST['session_id'] ?? 0), $returnSessionExerciseId));
+            case 'session_update_rest':
+                $restExerciseId = (int) ($_POST['session_exercise_id'] ?? 0);
+                $restSecondsValue = max(0, min(3600, (int) ($_POST['rest_seconds'] ?? 0)));
+                $restSaved = wk_session_exercise_set_rest($pdo, $restExerciseId, $restSecondsValue, $meId);
+                if ((string) ($_POST['async'] ?? '') === '1') {
+                    json_response(['ok' => $restSaved, 'rest_seconds' => $restSecondsValue], $restSaved ? 200 : 422);
+                }
+                redirect($sessionReturnUrl((int) ($_POST['session_id'] ?? 0), $returnSessionExerciseId));
+            case 'session_continue':
+                $continueSessionId = max(0, (int) ($_POST['session_id'] ?? 0));
+                $continueSessionExerciseId = max(0, (int) ($_POST['current_session_exercise_id'] ?? 0));
+                $persistSessionDraft();
+                wk_session_complete_exercise_sets($pdo, $continueSessionId, $continueSessionExerciseId, $meId);
+                redirect($sessionReturnUrl(
+                    $continueSessionId,
+                    max(0, (int) ($_POST['next_session_exercise_id'] ?? 0))
+                ));
             case 'session_update_set':
                 $persistSessionDraft();
                 $setDuration = '';
                 if (trim((string) ($_POST['duration_minutes'] ?? '')) !== '') {
-                    $setDuration = (int) round(max(0.0, (float) $_POST['duration_minutes']) * 60);
+                    $setDuration = (int) round(max(0.0, wk_decimal_value($_POST['duration_minutes']) ?? 0.0) * 60);
                 } elseif (trim((string) ($_POST['duration_seconds'] ?? '')) !== '') {
                     $setDuration = max(0, (int) $_POST['duration_seconds']);
                 }
@@ -4358,6 +4375,32 @@ if ($page === 'workouts') {
             case 'session_add_exercise':
                 $addedSessionExerciseId = wk_session_add_exercise($pdo, (int) ($_POST['session_id'] ?? 0), (int) ($_POST['exercise_def_id'] ?? 0), $meId);
                 redirect($sessionReturnUrl((int) ($_POST['session_id'] ?? 0), $addedSessionExerciseId > 0 ? $addedSessionExerciseId : $returnSessionExerciseId));
+            case 'session_replace_exercise':
+                $replaceSessionId = max(0, (int) ($_POST['session_id'] ?? 0));
+                $replaceSessionExerciseId = max(0, (int) ($_POST['session_exercise_id'] ?? 0));
+                $replacementExerciseId = max(0, (int) ($_POST['replacement_exercise_def_id'] ?? 0));
+                $replacedSessionExerciseId = wk_session_replace_exercise(
+                    $pdo,
+                    $replaceSessionExerciseId,
+                    $replacementExerciseId,
+                    $meId
+                );
+                $replaceUrl = $sessionReturnUrl(
+                    $replaceSessionId,
+                    $replacedSessionExerciseId > 0 ? $replacedSessionExerciseId : $replaceSessionExerciseId
+                );
+                if ((string) ($_POST['async'] ?? '') === '1') {
+                    json_response([
+                        'ok' => $replacedSessionExerciseId > 0,
+                        'message' => t($replacedSessionExerciseId > 0 ? 'workouts.exercise_replaced' : 'workouts.exercise_replace_failed'),
+                        'redirect_url' => $replaceUrl,
+                    ], $replacedSessionExerciseId > 0 ? 200 : 422);
+                }
+                flash_set(
+                    $replacedSessionExerciseId > 0 ? 'success' : 'error',
+                    t($replacedSessionExerciseId > 0 ? 'workouts.exercise_replaced' : 'workouts.exercise_replace_failed')
+                );
+                redirect($replaceUrl);
             case 'session_exercises_organize':
                 $organizeSessionId = max(0, (int) ($_POST['session_id'] ?? 0));
                 $sessionOrderSaved = wk_session_exercises_organize(
@@ -4371,11 +4414,22 @@ if ($page === 'workouts') {
                 redirect($sessionReturnUrl($organizeSessionId));
             case 'session_finish':
                 $persistSessionDraft();
-                wk_session_finish($pdo, (int) ($_POST['session_id'] ?? 0), $meId, (string) ($_POST['count_challenge'] ?? '1') === '1');
-                flash_set('success', t('flash.workout_saved'));
+                $finishSessionId = max(0, (int) ($_POST['session_id'] ?? 0));
+                $finishCountsTowardChallenge = (string) ($_POST['count_challenge'] ?? '0') === '1';
+                $finishMode = (string) ($_POST['finish_mode'] ?? 'current');
+                $sessionFinished = $finishMode === 'previous'
+                    ? wk_session_finish_with_previous_sets($pdo, $finishSessionId, $meId, $finishCountsTowardChallenge)
+                    : wk_session_finish($pdo, $finishSessionId, $meId, $finishCountsTowardChallenge);
+                flash_set($sessionFinished ? 'success' : 'error', $sessionFinished
+                    ? t('flash.workout_saved')
+                    : t($finishMode === 'previous' ? 'workouts.finish_previous_unavailable' : 'flash.error'));
+                if (!$sessionFinished) {
+                    redirect($sessionReturnUrl($finishSessionId));
+                }
                 redirect('/?page=workouts');
             case 'session_cancel':
-                wk_session_cancel($pdo, (int) ($_POST['session_id'] ?? 0), $meId);
+                $sessionCancelled = wk_session_cancel($pdo, (int) ($_POST['session_id'] ?? 0), $meId);
+                flash_set($sessionCancelled ? 'success' : 'error', $sessionCancelled ? t('workouts.session_cancelled') : t('flash.error'));
                 redirect('/?page=workouts');
             default:
                 redirect('/?page=workouts');
@@ -4699,41 +4753,9 @@ if ($page === 'workouts') {
     }
 
     $sinceMonth = (new DateTimeImmutable('first day of this month'))->format('Y-m-d 00:00:00');
-    $wkActiveSession = wk_session_active_for_user($pdo, $meId);
-    $wkActiveSessionSummary = null;
-    if ($wkActiveSession !== null) {
-        $activeSessionId = (int) ($wkActiveSession['id'] ?? 0);
-        $activeSessionExercises = $wkSession !== null
-            && (int) ($wkSession['id'] ?? 0) === $activeSessionId
-            ? $wkSessionExercises
-            : wk_session_exercises($pdo, $activeSessionId);
-        $activeTotalSets = 0;
-        $activeCompletedSets = 0;
-        $activeNextExercise = '';
-        foreach ($activeSessionExercises as $activeExercise) {
-            $activeSets = array_values((array) ($activeExercise['sets'] ?? []));
-            $activeTotalSets += count($activeSets);
-            $activeIncompleteSets = array_values(array_filter(
-                $activeSets,
-                static fn(array $set): bool => (int) ($set['completed'] ?? 0) !== 1
-            ));
-            $activeCompletedSets += count($activeSets) - count($activeIncompleteSets);
-            if ($activeNextExercise === '' && ($activeSets === [] || $activeIncompleteSets !== [])) {
-                $activeNextExercise = (string) ($activeExercise['exercise_name'] ?? '');
-            }
-        }
-        $activeStartedAt = strtotime((string) ($wkActiveSession['started_at'] ?? ''));
-        $activeElapsedMinutes = $activeStartedAt !== false
-            ? max(0, (int) floor((time() - $activeStartedAt) / 60))
-            : 0;
-        $wkActiveSessionSummary = [
-            'elapsed_minutes' => $activeElapsedMinutes,
-            'completed_sets' => $activeCompletedSets,
-            'total_sets' => $activeTotalSets,
-            'progress_pct' => $activeTotalSets > 0 ? min(100, (int) round(($activeCompletedSets / $activeTotalSets) * 100)) : 0,
-            'next_exercise' => $activeNextExercise,
-        ];
-    }
+    $wkActiveSessionContext = wk_active_session_context($pdo, $meId, true);
+    $wkActiveSession = $wkActiveSessionContext['session'];
+    $wkActiveSessionSummary = $wkActiveSessionContext['summary'];
     $wkAllRoutines = wk_routines_for_user($pdo, $meId, true);
     $wkRoutineExerciseNamePreviews = $wkView === 'list'
         ? wk_routine_exercise_name_previews($pdo, array_column($wkAllRoutines, 'id'))
